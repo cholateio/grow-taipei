@@ -1,0 +1,50 @@
+/* 介面：政策島的奶油卡片 + GROW 的下方物品列 */
+:root { --ink: #211d1d; --cream: #fff8f4; --coral: #db6a41; --yellow: #fcea8b; --line: #e9ded2; --shadow: 0 2px 8px #4a2a1414, 0 8px 24px #4a2a1410; }
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+button { font: inherit; color: var(--ink); min-height: 44px; border-radius: 9px; border: 0; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weight: 700; }
+button.primary:hover { background: #3a3333; }
+
+.topbar { position: fixed; top: 14px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+.topbar > * { pointer-events: auto; }
+.brand { background: var(--cream); border-radius: 18px; padding: 10px 16px; box-shadow: var(--shadow); display: flex; gap: 12px; align-items: center; }
+.brand b { color: var(--coral); font-size: 26px; line-height: .95; font-weight: 900; letter-spacing: -.02em; }
+.brand span { font-weight: 700; font-size: 14px; }
+.tools { display: flex; gap: 8px; }
+.tools button { background: var(--cream); box-shadow: var(--shadow); padding: 0 14px; font-weight: 700; min-width: 44px; }
+.tools button:hover { background: var(--yellow); }
+
+.slots { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; grid-template-columns: repeat(8, 64px); gap: 8px;
+  background: #fff8f4e0; backdrop-filter: blur(10px); padding: 10px 12px 16px; border-radius: 18px; box-shadow: var(--shadow); }
+.slot { position: relative; width: 64px; height: 72px; padding: 6px 4px 4px; background: #fff; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--line);
+  display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.slot svg { width: 34px; height: 34px; }
+.slot .name { font-size: 12px; font-weight: 700; }
+.slot .lv { position: absolute; bottom: -9px; font-style: normal; font-size: 10px; font-weight: 900; color: #fff; background: var(--coral); border-radius: 6px; padding: 1px 6px; }
+.slot .lv:empty { display: none; }
+.slot.max .lv { background: var(--yellow); color: var(--ink); }
+.slot:hover:not(:disabled) { background: var(--yellow); }
+.slot:disabled { cursor: default; }
+.slot.placed { opacity: .55; }
+.slot.placed .lv { opacity: 1; }
+.slots.busy .slot:not(.placed) { opacity: .8; }
+@media (max-width: 640px) {
+  .slots { grid-template-columns: repeat(4, 64px); }
+  .brand b { font-size: 20px; }
+}
+
+.card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(340px, calc(100vw - 32px)); background: var(--cream); border-radius: 22px; box-shadow: var(--shadow); padding: 22px 24px; text-align: center; }
+.card h2 { margin: 4px 0 10px; color: var(--coral); font-size: 26px; font-weight: 900; }
+.card ol { text-align: left; margin: 0 0 16px; padding-left: 1.3em; line-height: 1.9; font-weight: 700; }
+.card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }
+.card .line { margin: 0 0 14px; }
+.card .levels { list-style: none; padding: 0; margin: 0 0 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; text-align: left; font-size: 14px; }
+.card .levels li { display: flex; justify-content: space-between; }
+.card .levels li.max b { background: var(--yellow); border-radius: 6px; padding: 0 5px; }
+.card.error h2 { color: var(--ink); }
+
+.actor-label { background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px #4a2a1414; white-space: nowrap; transform: translateY(-8px); }
+.actor-label b { color: var(--coral); font: 700 10px ui-monospace, monospace; margin-left: 6px; }
+.actor-bubble { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 10px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }

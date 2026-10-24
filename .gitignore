@@ -1,0 +1,5 @@
+spike/assets/
+node_modules/
+shots/
+*.Zone.Identifier
+.DS_Store

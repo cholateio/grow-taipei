@@ -1,0 +1,616 @@
+<title>GROW 魔王討伐戰</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: toy-box column — close-up panorama, caption subtitles, chunky buttons with in-style mini icons. */
+:root{
+  --sky1:#b7ddf0; --sky2:#f0f7e2;
+  --paper:#fbf4e4; --ink:#3d372c;
+  --hill1:#a3d089; --hill2:#7fb86c; --hill3:#5f9fb8;
+  --accent:#d96a3b; --gold:#e8b63a; --plum:#5a3b63;
+  --shadow:0 3px 0 rgba(61,55,44,.25);
+}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:14px;
+}
+.wrap{max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1{font-size:1.35rem;font-weight:900;margin:0;letter-spacing:.04em;text-wrap:balance}
+h1 .en{color:var(--accent);margin-right:.2em}
+.sub{font-size:.8rem;opacity:.75}
+
+.stage{position:relative;border:3px solid var(--ink);border-radius:14px;overflow:hidden;background:linear-gradient(var(--sky1),var(--sky2));box-shadow:var(--shadow)}
+.stage svg{display:block;width:100%;height:auto}
+
+.caption{
+  min-height:2.2em;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:.92rem;font-weight:700;background:var(--ink);color:var(--paper);
+  border-radius:10px;padding:.45em .9em;box-shadow:var(--shadow)
+}
+.caption.flash{animation:cap .35s ease}
+@keyframes cap{0%{transform:scale(.96);opacity:.4}100%{transform:scale(1);opacity:1}}
+
+.panel{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media(max-width:520px){.panel{grid-template-columns:repeat(2,1fr)}}
+button.item{
+  font:inherit;font-weight:700;color:var(--ink);background:#fff;
+  border:2.5px solid var(--ink);border-radius:12px;box-shadow:var(--shadow);
+  padding:.45em .4em .5em;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  transition:transform .08s ease
+}
+button.item:not(:disabled):hover{transform:translateY(-2px);background:#fffdf4}
+button.item:not(:disabled):active{transform:translateY(1px)}
+button.item:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.item:disabled{opacity:.38;cursor:default;box-shadow:none}
+button.item .nm{font-size:.86rem}
+button.item svg.mini{width:46px;height:42px;overflow:visible}
+.pips{display:flex;gap:3px;height:8px}
+.pip{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink);background:transparent}
+.pip.on{background:var(--accent)}
+.pips.maxed .pip.on{background:var(--gold)}
+
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.turn{font-weight:900;font-size:.95rem}
+.turn b{color:var(--accent)}
+button.ghost{
+  font:inherit;font-weight:700;background:transparent;color:var(--ink);
+  border:2px solid var(--ink);border-radius:10px;padding:.35em .9em;cursor:pointer
+}
+button.ghost:hover{background:#fff}
+button.ghost:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.ending{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  background:rgba(61,55,44,.8);color:var(--paper);text-align:center;padding:20px;
+  animation:cap .4s ease
+}
+.ending .big{font-size:1.7rem;font-weight:900;letter-spacing:.08em}
+.ending .big.good{color:var(--gold)}
+.ending .big.bad{color:#ffb199}
+.ending .msg{font-size:.95rem;max-width:34em}
+.ending .score{font-size:.82rem;opacity:.85}
+
+/* ===== 動畫庫（固定字典，spec 只挑選用哪個） ===== */
+svg .inner{transform-box:fill-box;transform-origin:50% 100%}
+/* idle */
+.idle-bob{animation:bob 2.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px)}}
+.idle-breathe{animation:breathe 2.8s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.02,0.985)}}
+.wave{transform-box:fill-box;transform-origin:left center;animation:wave 1.6s ease-in-out infinite}
+@keyframes wave{50%{transform:skewY(7deg)}}
+.smoke{animation:smoke 2.6s linear infinite;transform-box:fill-box}
+@keyframes smoke{0%{transform:translateY(0);opacity:.9}100%{transform:translateY(-30px);opacity:0}}
+.blink{animation:blink 1.8s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+.glowpulse{animation:blink 1.2s ease-in-out infinite}
+.rays{transform-box:fill-box;transform-origin:center;animation:spin 40s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.drift{animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translateX(26px)}}
+/* level-up / placement — squash & stretch */
+.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.12,.9)}100%{transform:scale(1)}}
+.bump{animation:bump .45s ease}
+@keyframes bump{25%{transform:scale(1.22,.82)}55%{transform:scale(.92,1.12)}100%{transform:scale(1)}}
+.maxstar{transform-box:fill-box;transform-origin:center;animation:pop .5s cubic-bezier(.2,1.6,.4,1) both}
+.float{animation:rise 1s ease forwards;transform-box:fill-box}
+@keyframes rise{0%{opacity:0;transform:translateY(6px)}20%{opacity:1}100%{opacity:0;transform:translateY(-24px)}}
+.spark{animation:sparkMove .55s ease-in forwards}
+@keyframes sparkMove{to{transform:translate(var(--dx),var(--dy));opacity:.2}}
+.burststar{animation:bs .55s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes bs{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(1);opacity:0}}
+@media(prefers-reduced-motion:reduce){
+  .idle-bob,.idle-breathe,.wave,.smoke,.blink,.glowpulse,.rays,.drift,
+  .pop,.bump,.maxstar,.float,.spark,.burststar,.caption.flash,.ending{animation:none}
+  .float,.spark,.burststar{opacity:0}
+}
+
+details.spec{font-size:.82rem;border:2px dashed var(--ink);border-radius:10px;padding:.5em .8em;background:#fff}
+details.spec summary{cursor:pointer;font-weight:700}
+details.spec pre{overflow-x:auto;background:var(--paper);padding:.6em;border-radius:8px;font-size:.74rem;line-height:1.5}
+footer{font-size:.74rem;opacity:.7;text-align:center}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap">
+
+<div class="wrap">
+  <header>
+    <h1><span class="en">GROW</span>魔王討伐戰</h1>
+    <span class="sub">按某種順序點下 8 顆按鈕，讓所有東西 LEVEL MAX。</span>
+  </header>
+
+  <div class="stage">
+    <svg id="scene" viewBox="0 0 900 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="奇幻世界場景">
+      <!-- 遠山 -->
+      <path d="M-10 250 L130 170 L250 250 Z" fill="var(--hill3)" opacity=".5"/>
+      <path d="M180 255 L330 150 L470 255 Z" fill="var(--hill3)" opacity=".4"/>
+      <path d="M600 240 L700 185 L800 240 Z" fill="var(--hill3)" opacity=".45"/>
+      <!-- 太陽（有臉）+ 光芒 -->
+      <g transform="translate(92 66)">
+        <g class="rays" stroke="#f3cd6b" stroke-width="5" stroke-linecap="round">
+          <line x1="0" y1="-44" x2="0" y2="-54"/><line x1="0" y1="44" x2="0" y2="54"/>
+          <line x1="-44" y1="0" x2="-54" y2="0"/><line x1="44" y1="0" x2="54" y2="0"/>
+          <line x1="-31" y1="-31" x2="-38" y2="-38"/><line x1="31" y1="31" x2="38" y2="38"/>
+          <line x1="-31" y1="31" x2="-38" y2="38"/><line x1="31" y1="-31" x2="38" y2="-38"/>
+        </g>
+        <circle r="32" fill="#ffe9a8" stroke="#3d372c" stroke-width="3"/>
+        <circle cx="-9" cy="-4" r="2.6" fill="#3d372c"/><circle cx="9" cy="-4" r="2.6" fill="#3d372c"/>
+        <path d="M-6 6 q6 6 12 0" fill="none" stroke="#3d372c" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="-15" cy="4" r="4" fill="#f5b78f" opacity=".7"/><circle cx="15" cy="4" r="4" fill="#f5b78f" opacity=".7"/>
+      </g>
+      <!-- 雲與鳥 -->
+      <g fill="#ffffff" stroke="#3d372c" stroke-width="2.5" class="drift">
+        <ellipse cx="320" cy="56" rx="44" ry="15"/><ellipse cx="366" cy="66" rx="28" ry="11"/>
+      </g>
+      <g fill="#ffffff" stroke="#3d372c" stroke-width="2.5">
+        <ellipse cx="620" cy="42" rx="36" ry="13"/>
+      </g>
+      <g fill="none" stroke="#3d372c" stroke-width="2.5" stroke-linecap="round">
+        <path d="M520 80 q6 -8 12 0 q6 -8 12 0"/><path d="M560 100 q5 -7 10 0 q5 -7 10 0"/>
+      </g>
+      <!-- 後丘（魔王城）與前草原 -->
+      <path d="M-10 268 Q210 196 430 252 T 920 212 V370 H-10 Z" fill="var(--hill2)" stroke="#3d372c" stroke-width="3"/>
+      <path d="M-10 304 Q230 258 520 302 T 920 296 V370 H-10 Z" fill="var(--hill1)" stroke="#3d372c" stroke-width="3"/>
+      <!-- 小徑通往魔王城 -->
+      <path d="M96 318 Q 300 346 470 330 Q 640 314 762 276" fill="none" stroke="#e3cf9e" stroke-width="13" stroke-linecap="round"/>
+      <path d="M96 318 Q 300 346 470 330 Q 640 314 762 276" fill="none" stroke="#3d372c" stroke-width="2" stroke-dasharray="1 14" stroke-linecap="round"/>
+      <!-- 草叢、花、樹、柵欄 -->
+      <g stroke="#3d372c" stroke-width="2.5">
+        <g fill="#7fb86c"><circle cx="190" cy="330" r="9"/><circle cx="203" cy="334" r="7"/></g>
+        <g fill="#7fb86c"><circle cx="648" cy="334" r="9"/><circle cx="661" cy="338" r="7"/></g>
+        <circle cx="300" cy="322" r="4" fill="#f5b0c3"/><circle cx="520" cy="338" r="4" fill="#f5b0c3"/>
+        <circle cx="402" cy="340" r="4" fill="#ffe9a8"/>
+      </g>
+      <g stroke="#3d372c" stroke-width="3">
+        <line x1="40" y1="298" x2="40" y2="326"/><line x1="860" y1="320" x2="860" y2="348"/>
+        <circle cx="40" cy="288" r="14" fill="#7fb86c"/><circle cx="860" cy="310" r="15" fill="#7fb86c"/>
+      </g>
+      <g id="slots"></g>
+      <g id="fx"></g>
+    </svg>
+    <div id="endingBox" hidden></div>
+  </div>
+
+  <div id="caption" class="caption">世界一片寂靜……該從哪裡開始呢？</div>
+
+  <div id="panel" class="panel"></div>
+
+  <div class="bar">
+    <div class="turn">回合 <b id="turnNow">0</b> / 8　｜　LEVEL MAX：<b id="maxNow">0</b> / 8</div>
+    <button class="ghost" id="resetBtn">重新開始</button>
+  </div>
+
+  <details class="spec">
+    <summary>📦 這一關的「謎題規格 (SPEC)」— 引擎只讀這份資料（內含劇透）</summary>
+    <p>遊戲引擎固定不變；下面這份 JSON 就是本關的全部內容。求解器已驗證 8! = 40,320 種排列中<b>只有 1 種</b>能全滿級。美術同樣規格化：每個物品 = 分級疊加的圖層，動畫從固定的動畫庫（idle / level-up / fx）挑選。</p>
+    <pre id="specDump"></pre>
+  </details>
+  <footer>致敬 Eyezmaze「GROW」系列的原創習作 · 規格驅動 · 唯一解已程式驗證</footer>
+</div>
+
+<script>
+"use strict";
+/* ================= SPEC（資料）＝謎題本體 ================= */
+const SPEC = {
+  theme: "勇者討伐魔王",
+  items: [
+    { id:"village", name:"村莊",     max:3, idle:"",            effects: [] },
+    { id:"spring",  name:"精靈之泉", max:2, idle:"",            effects: [
+      { target:"village", amount:1, require:{present:"village"}, story:"泉水灌溉田地，村莊繁榮了！" },
+    ]},
+    { id:"fairy",   name:"精靈",     max:3, idle:"idle-bob",    effects: [
+      { target:"spring",  amount:1, require:{present:"spring"},  story:"精靈淨化了泉水。" },
+      { target:"village", amount:1, require:{present:"village"}, story:"精靈祝福了村莊。" },
+    ]},
+    { id:"hero",    name:"勇者",     max:4, idle:"idle-breathe",effects: [
+      { target:"fairy",   amount:1, require:{present:"fairy"},   story:"勇者與精靈結為夥伴！" },
+    ]},
+    { id:"forge",   name:"鐵匠鋪",   max:2, idle:"",            effects: [
+      { target:"hero",    amount:1, require:{present:"hero"},    story:"鐵匠為勇者打造了護甲。" },
+    ]},
+    { id:"sword",   name:"聖劍",     max:2, idle:"",            effects: [
+      { target:"hero",    amount:1, require:{present:"hero"},    story:"勇者拔起了聖劍！" },
+      { target:"forge",   amount:1, require:{present:"forge"},   story:"鍛造技藝臻至大成。" },
+    ]},
+    { id:"magic",   name:"魔導書",   max:2, idle:"idle-bob",    effects: [
+      { target:"sword",   amount:1, require:{present:"sword"},   story:"聖劍獲得附魔。" },
+      { target:"hero",    amount:1, require:{present:"hero"},    story:"勇者習得了魔法。" },
+      { target:"fairy",   amount:1, require:{present:"fairy"},   story:"精靈之力被記載於書中。" },
+    ]},
+    { id:"castle",  name:"魔王城",   max:3, idle:"",            effects: [
+      { target:"magic",  amount:1, require:{present:"magic"}, story:"面對魔王，魔導書共鳴覺醒！" },
+      { target:"castle", amount:1, require:{minLevel:["hero",4]}, story:"滿級勇者突入魔王城！" },
+      { target:"castle", amount:1, require:{and:[{minLevel:["sword",2]},{minLevel:["magic",2]}]}, story:"聖劍與魔法合擊——魔王被擊敗了！" },
+    ]},
+  ],
+  endings: {
+    good: { big:"🏆 TRUE END", msg:"世界重獲和平。所有事物都成長到了極限！" },
+    bads: [
+      { when:s=>lv(s,"castle")>=2, big:"😣 BAD END · 敗退", msg:"勇者奮戰攻入城中，卻在魔王面前力竭敗退……再差一點點了。" },
+      { when:s=>lv(s,"castle")===1, big:"😈 BAD END · 魔王高枕無憂", msg:"討伐隊根本不成氣候，魔王在城裡笑出了聲。" },
+      { when:s=>lv(s,"village")<3,  big:"🍂 BAD END · 荒蕪之地", msg:"村莊始終沒有發展起來，冒險尚未開始就結束了。" },
+      { when:()=>true,              big:"💤 BAD END", msg:"準備不足的世界，靜靜等待下一位挑戰者。" },
+    ],
+    almost: { big:"😮 ALMOST!", msgOf:n=>`只差「${n}」沒有 LEVEL MAX——順序再想想看！` },
+  },
+};
+
+/* ================= 引擎（與離線求解器同語意） ================= */
+function lv(state,id){ return state[id] ?? 0 }
+function condMet(c,s){
+  if(!c) return true;
+  if(c.present)  return s[c.present]!=null;
+  if(c.minLevel){ const[t,n]=c.minLevel; return s[t]!=null && s[t]>=n }
+  if(c.and)      return c.and.every(x=>condMet(x,s));
+  return false;
+}
+const byId = id => SPEC.items.find(i=>i.id===id);
+function applyPlacement(state, placedId){
+  state[placedId]=1;
+  const fired=[];
+  for(const ef of byId(placedId).effects){
+    if(!condMet(ef.require,state)) continue;
+    if(state[ef.target]==null) continue;
+    const m=byId(ef.target).max;
+    if(state[ef.target]>=m) continue;
+    state[ef.target]=Math.min(m,state[ef.target]+ef.amount);
+    fired.push(ef);
+  }
+  return fired;
+}
+
+/* ================= 美術規格 =================
+   風格規範：線 #3d372c 寬3 圓角；每物品 ≤4 色；能加臉就加臉；腳下必有影子。
+   每物品 = 依等級疊加的圖層陣列 parts[0..max-1]；idle 動畫由 SPEC 指定。 */
+const SLOT = {
+  village:{x:104,y:300,s:1.45,top:62}, forge:{x:240,y:307,s:1.4,top:64},
+  hero:{x:352,y:311,s:1.4,top:72},     sword:{x:447,y:315,s:1.3,top:66},
+  spring:{x:560,y:317,s:1.4,top:40},   fairy:{x:560,y:224,s:1.25,top:46},
+  magic:{x:447,y:222,s:1.2,top:50},    castle:{x:778,y:262,s:1.35,top:100},
+};
+const K='stroke="#3d372c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
+const K2='stroke="#3d372c" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"';
+const ART = {
+  village: [
+    `<ellipse cx="0" cy="2" rx="44" ry="7" fill="rgba(61,55,44,.14)"/>
+     <path d="M-38 0 v-22 q0 -4 4 -4 h28 q4 0 4 4 v22 z" fill="#f6dfae" ${K}/>
+     <path d="M-44 -24 Q-18 -52 8 -24 Z" fill="#e0633c" ${K}/>
+     <path d="M-31 0 v-10 a5.5 5.5 0 0 1 11 0 v10 z" fill="#8c6342" ${K2}/>
+     <circle cx="-6" cy="-14" r="4.5" fill="#bfe2f2" ${K2}/>`,
+    `<line x1="-52" y1="0" x2="-52" y2="-12" ${K}/>
+     <circle cx="-52" cy="-19" r="9" fill="#7fb86c" ${K}/>
+     <path d="M8 0 v-16 q0 -3 3 -3 h20 q3 0 3 3 v16 z" fill="#f6dfae" ${K}/>
+     <path d="M4 -17 Q21 -38 38 -17 Z" fill="#b0583a" ${K}/>
+     <circle cx="21" cy="-9" r="3.5" fill="#bfe2f2" ${K2}/>`,
+    `<line x1="46" y1="0" x2="46" y2="-36" ${K}/>
+     <path class="wave" d="M46 -36 h15 l-4 5 4 5 h-15 z" fill="#e8b63a" ${K2}/>
+     <circle cx="-22" cy="-2" r="3.5" fill="#f5b0c3" ${K2}/>
+     <circle cx="30" cy="0" r="3.5" fill="#ffe9a8" ${K2}/>`,
+  ],
+  spring: [
+    `<ellipse cx="0" cy="2" rx="40" ry="7" fill="rgba(61,55,44,.14)"/>
+     <ellipse cx="0" cy="-1" rx="34" ry="11" fill="#7fc5de" ${K}/>
+     <ellipse cx="0" cy="-2" rx="23" ry="6.5" fill="#a8dcef" ${K2}/>
+     <circle cx="-34" cy="4" r="5" fill="#cfc6b8" ${K2}/><circle cx="33" cy="5" r="4.5" fill="#cfc6b8" ${K2}/>
+     <path d="M-28 -8 q-2 -10 2 -16 M-23 -8 q2 -9 -1 -15" fill="none" ${K2}/>`,
+    `<path d="M0 -4 q-6 -13 0 -25 q6 12 0 25" fill="#cdeef9" ${K2}/>
+     <g><circle cx="0" cy="-32" r="6.5" fill="#cdeef9" ${K2}/>
+        <circle cx="-2.2" cy="-33" r="1.2" fill="#3d372c"/><circle cx="2.2" cy="-33" r="1.2" fill="#3d372c"/>
+        <path d="M-2 -30 q2 2 4 0" fill="none" stroke="#3d372c" stroke-width="1.8"/></g>
+     <circle class="blink" cx="-12" cy="-22" r="2.6" fill="#ffffff" ${K2}/>
+     <circle class="blink" cx="12" cy="-26" r="2.3" fill="#ffffff" ${K2}/>
+     <ellipse cx="18" cy="-1" rx="6" ry="3.5" fill="#7fb86c" ${K2}/>`,
+  ],
+  fairy: [
+    `<ellipse cx="0" cy="26" rx="14" ry="4" fill="rgba(61,55,44,.12)"/>
+     <ellipse cx="-11" cy="-16" rx="6" ry="4" fill="#ffffff" opacity=".95" ${K2}/>
+     <ellipse cx="11" cy="-16" rx="6" ry="4" fill="#ffffff" opacity=".95" ${K2}/>
+     <circle cx="0" cy="-16" r="9" fill="#ffd9b3" ${K}/>
+     <path d="M-9 -19 a9 9 0 0 1 18 0 z" fill="#e0a23c" ${K2}/>
+     <circle cx="-3.2" cy="-15" r="1.4" fill="#3d372c"/><circle cx="3.2" cy="-15" r="1.4" fill="#3d372c"/>
+     <path d="M-2.5 -11.5 q2.5 2.5 5 0" fill="none" stroke="#3d372c" stroke-width="1.8"/>
+     <path d="M-6 -7 h12 l-6 12 z" fill="#aee3b6" ${K2}/>`,
+    `<path d="M-9 -16 q-22 -16 -17 6 q13 5 17 -6 z" fill="#ffffff" opacity=".95" ${K2}/>
+     <path d="M9 -16 q22 -16 17 6 q-13 5 -17 -6 z" fill="#ffffff" opacity=".95" ${K2}/>
+     <path d="M-8 -6 h16 l-8 16 z" fill="#aee3b6" ${K2}/>`,
+    `<ellipse cx="0" cy="-30" rx="8" ry="2.6" fill="none" stroke="#e8b63a" stroke-width="3"/>
+     <path class="blink" d="M-22 -28 l2.5 5 5 .7 -3.8 3.6 1 5.2 -4.7 -2.6 -4.7 2.6 1 -5.2 -3.8 -3.6 5 -.7 z" fill="#e8b63a" ${K2}/>
+     <path class="blink" d="M20 -32 l2 4 4 .6 -3 2.9 .8 4.2 -3.8 -2.1 -3.8 2.1 .8 -4.2 -3 -2.9 4 -.6 z" fill="#e8b63a" ${K2}/>`,
+  ],
+  hero: [
+    `<ellipse cx="0" cy="2" rx="22" ry="5" fill="rgba(61,55,44,.14)"/>
+     <ellipse cx="-6" cy="0" rx="5" ry="3" fill="#8c6342" ${K2}/><ellipse cx="6" cy="0" rx="5" ry="3" fill="#8c6342" ${K2}/>
+     <path d="M-11 -2 v-13 q0 -6 6 -6 h10 q6 0 6 -0 q0 0 0 6 v13 z" fill="#7a9fd4" ${K}/>
+     <circle cx="0" cy="-33" r="13" fill="#ffd9b3" ${K}/>
+     <path d="M-13 -35 a13 13 0 0 1 26 0 z" fill="#8c6342" ${K2}/>
+     <circle cx="-4.6" cy="-31" r="1.8" fill="#3d372c"/><circle cx="4.6" cy="-31" r="1.8" fill="#3d372c"/>
+     <path d="M-3 -26 q3 3 6 0" fill="none" stroke="#3d372c" stroke-width="2"/>
+     <circle cx="-9" cy="-29" r="2.6" fill="#f5b78f" opacity=".8"/><circle cx="9" cy="-29" r="2.6" fill="#f5b78f" opacity=".8"/>`,
+    `<path d="M-14 -35 a14 14 0 0 1 28 0 v2 h-28 z" fill="#b9c4cc" ${K2}/>
+     <circle cx="0" cy="-48" r="3" fill="#e0633c" ${K2}/>
+     <ellipse cx="-16" cy="-11" rx="6.5" ry="9" fill="#e0633c" ${K2}/>
+     <circle cx="-16" cy="-11" r="3" fill="#e8b63a" ${K2}/>`,
+    `<line x1="13" y1="-10" x2="25" y2="-40" ${K} stroke-width="4"/>
+     <line x1="9" y1="-33" x2="21" y2="-30" ${K2}/>
+     <path d="M25 -40 l5 -12 4 7 z" fill="#eef2f4" ${K2}/>`,
+    `<path d="M-11 -17 q-12 10 -7 19 l7 -2 z" fill="#e0633c" ${K2}/>
+     <circle cx="0" cy="-22" r="30" fill="none" stroke="#e8b63a" stroke-width="3" stroke-dasharray="5 8"/>`,
+  ],
+  forge: [
+    `<ellipse cx="0" cy="2" rx="42" ry="7" fill="rgba(61,55,44,.14)"/>
+     <path d="M-28 0 v-20 q0 -4 4 -4 h40 q4 0 4 4 v20 z" fill="#cfc6b8" ${K}/>
+     <circle cx="-16" cy="-7" r="3" fill="#b4a996"/><circle cx="6" cy="-18" r="2.6" fill="#b4a996"/><circle cx="14" cy="-6" r="3" fill="#b4a996"/>
+     <path d="M-34 -22 h26 l10 -18 h10 l10 18 h2 v-2 h-58 z" fill="none"/>
+     <path d="M-34 -22 L-6 -44 h18 L26 -22 Z" fill="#8c7156" ${K}/>
+     <path d="M12 -38 h11 v-16 h-11 z" fill="#6f5a46" ${K2}/>
+     <path d="M-5 0 v-9 a5 5 0 0 1 10 0 v9 z" fill="#4a4038" ${K2}/>
+     <path d="M-52 0 h16 v-3 h-5 v-4 h-2 v4 h-5 z M-56 -7 h22 q2 -4 -2 -4 h-18 q-4 0 -2 4 z" fill="#5c5c66" ${K2}/>
+     <circle cx="-34" cy="-30" r="7" fill="#f6dfae" ${K2}/>
+     <path d="M-37 -33 l6 6 M-31 -33 l-6 6" stroke="#3d372c" stroke-width="2"/>`,
+    `<circle cx="0" cy="-4" r="3" fill="#ff8c42" class="glowpulse"/>
+     <circle cx="-45" cy="-10" r="2" fill="#ff8c42" class="blink"/>
+     <circle class="smoke" cx="17" cy="-58" r="5" fill="#eeeae0" ${K2}/>
+     <circle class="smoke" style="animation-delay:.9s" cx="20" cy="-58" r="4" fill="#eeeae0" ${K2}/>
+     <circle class="smoke" style="animation-delay:1.8s" cx="15" cy="-58" r="3.4" fill="#eeeae0" ${K2}/>`,
+  ],
+  sword: [
+    `<ellipse cx="0" cy="3" rx="32" ry="6" fill="rgba(61,55,44,.14)"/>
+     <path d="M-26 0 Q-26 -17 0 -17 Q26 -17 26 0 Z" fill="#c4ccd2" ${K}/>
+     <path d="M-3.5 -16 h7 v-24 h-7 z" fill="#eef2f4" ${K2}/>
+     <path d="M-10 -45 h20 q3 0 3 2.5 q0 2.5 -3 2.5 h-20 q-3 0 -3 -2.5 q0 -2.5 3 -2.5 z" fill="#e8b63a" ${K2}/>
+     <rect x="-2.5" y="-55" width="5" height="10" fill="#8c6342" ${K2}/>
+     <circle cx="0" cy="-58" r="3.2" fill="#e8b63a" ${K2}/>`,
+    `<g stroke="#e8b63a" stroke-width="3" stroke-linecap="round" class="blink">
+       <line x1="-14" y1="-52" x2="-20" y2="-58"/><line x1="14" y1="-52" x2="20" y2="-58"/>
+       <line x1="-16" y1="-32" x2="-23" y2="-32"/><line x1="16" y1="-32" x2="23" y2="-32"/></g>
+     <circle cx="0" cy="-8" r="4" fill="none" stroke="#e8b63a" stroke-width="2.5"/>`,
+  ],
+  magic: [
+    `<ellipse cx="0" cy="30" rx="13" ry="4" fill="rgba(61,55,44,.12)"/>
+     <rect x="-15" y="-32" width="30" height="25" rx="3" fill="#8e6fb0" ${K}/>
+     <line x1="-9" y1="-32" x2="-9" y2="-7" ${K2}/>
+     <circle cx="5" cy="-19.5" r="4" fill="#e8b63a" ${K2}/>
+     <path d="M10 -7 v8 l-3.5 -3 -3.5 3 v-8 z" fill="#e0633c" ${K2}/>`,
+    `<path d="M-20 -28 q10 -7 20 -1 v22 q-10 -6 -20 0 z" fill="#f6efe0" ${K2}/>
+     <path d="M20 -28 q-10 -7 -20 -1 v22 q10 -6 20 0 z" fill="#f6efe0" ${K2}/>
+     <path d="M-14 -22 h8 M-14 -17 h8 M6 -22 h8 M6 -17 h8" stroke="#8e6fb0" stroke-width="2" stroke-linecap="round"/>
+     <path class="blink" d="M0 -42 l2.4 4.8 4.8 .7 -3.6 3.4 .9 5 -4.5 -2.5 -4.5 2.5 .9 -5 -3.6 -3.4 4.8 -.7 z" fill="#e8b63a" ${K2}/>`,
+  ],
+  castle: [
+    `<ellipse cx="0" cy="3" rx="72" ry="9" fill="rgba(61,55,44,.16)"/>
+     <path d="M-62 0 v-68 h20 v68 z" fill="#4a3153" ${K}/>
+     <path d="M42 0 v-68 h20 v68 z" fill="#4a3153" ${K}/>
+     <path d="M-66 -68 l14 -18 14 18 z" fill="#8c2b2b" ${K}/>
+     <path d="M38 -68 l14 -18 14 18 z" fill="#8c2b2b" ${K}/>
+     <path d="M-45 0 v-52 h90 v52 z" fill="#5a3b63" ${K}/>
+     <path d="M-45 -52 h16 v-9 h-16 z M-8 -52 h16 v-9 h-16 z M29 -52 h16 v-9 h-16 z" fill="#473050" ${K2}/>
+     <g class="glowpulse">
+       <path d="M-22 -30 a6 7 0 0 1 12 0 v5 h-12 z" fill="#ffb199" ${K2}/>
+       <path d="M10 -30 a6 7 0 0 1 12 0 v5 h-12 z" fill="#ffb199" ${K2}/>
+       <rect x="-17.5" y="-31" width="3" height="7" fill="#3d372c"/>
+       <rect x="14.5" y="-31" width="3" height="7" fill="#3d372c"/>
+     </g>
+     <path d="M-12 0 a12 13 0 0 1 24 0 z" fill="#2c2233" ${K2}/>
+     <line x1="-4" y1="-10" x2="-4" y2="0" stroke="#3d372c" stroke-width="2"/>
+     <line x1="4" y1="-10" x2="4" y2="0" stroke="#3d372c" stroke-width="2"/>
+     <line x1="52" y1="-86" x2="52" y2="-102" ${K2}/>
+     <path class="wave" d="M52 -102 h14 l-4 4.5 4 4.5 h-14 z" fill="#8c2b2b" ${K2}/>
+     <path d="M-30 -78 q4 -5 8 0 q-4 -3 -8 0 z M-20 -74 q3 -4 6 0 q-3 -2 -6 0 z" fill="#2c2233"/>`,
+    `<path class="glowpulse" d="M-34 -6 q-3 -9 2 -14 q0 7 5 9 q-1 -10 5 -13 q0 9 3 12 q2 -5 5 -6 q3 9 -4 14 q-8 4 -16 -2 z" fill="#ff8c42" ${K2}/>
+     <path d="M30 -16 l5 -7 -3 -6 4 -6" fill="none" ${K2}/>
+     <circle class="smoke" cx="-30" cy="-26" r="4" fill="#9a8fa3" ${K2}/>`,
+    `<path d="M-2 -52 l-7 -12 5 -9 -6 -8 M14 -40 l6 -8 -4 -7" fill="none" ${K}/>
+     <g>
+       <circle cx="-16" cy="-28" r="7" fill="#f6efe0" ${K2}/>
+       <path d="M-19 -31 l6 6 M-13 -31 l-6 6" stroke="#3d372c" stroke-width="2"/>
+       <circle cx="16" cy="-28" r="7" fill="#f6efe0" ${K2}/>
+       <path d="M13 -31 l6 6 M19 -31 l-6 6" stroke="#3d372c" stroke-width="2"/>
+     </g>
+     <path d="M38 -68 l14 -18 14 18 z" fill="#8c2b2b" ${K} transform="rotate(24 52 -68)"/>
+     <path class="wave" d="M52 -102 h16 l-4.5 5 4.5 5 h-16 z" fill="#e8b63a" ${K2}/>
+     <g stroke="#e8b63a" stroke-width="3" stroke-linecap="round" class="blink">
+       <line x1="-58" y1="-96" x2="-66" y2="-106"/><line x1="0" y1="-104" x2="0" y2="-116"/>
+       <line x1="30" y1="-100" x2="36" y2="-110"/></g>`,
+  ],
+};
+function artMarkup(id, upto){
+  return ART[id].slice(0, upto).map((p,i)=>`<g class="p p${i+1}">${p}</g>`).join("");
+}
+
+/* ================= UI 建構 ================= */
+const sceneSlots=document.getElementById('slots');
+const fxLayer=document.getElementById('fx');
+const panel=document.getElementById('panel');
+const cap=document.getElementById('caption');
+const turnNow=document.getElementById('turnNow');
+const maxNow=document.getElementById('maxNow');
+const endingBox=document.getElementById('endingBox');
+const NS='http://www.w3.org/2000/svg';
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let state={}, order=[], busy=false;
+
+function buildPanel(){
+  panel.innerHTML='';
+  for(const it of SPEC.items){
+    const b=document.createElement('button');
+    b.className='item'; b.id='btn-'+it.id; b.type='button';
+    b.innerHTML=
+      `<svg class="mini" viewBox="-60 -72 120 80" aria-hidden="true"><g>${artMarkup(it.id,1)}</g></svg>`+
+      `<span class="nm">${it.name}</span>`;
+    const pips=document.createElement('span'); pips.className='pips'; pips.id='pips-'+it.id;
+    for(let i=0;i<it.max;i++){const p=document.createElement('span');p.className='pip';pips.appendChild(p)}
+    b.appendChild(pips);
+    b.addEventListener('click',()=>place(it.id,true));
+    panel.appendChild(b);
+  }
+}
+function buildSlots(){
+  sceneSlots.innerHTML='';
+  for(const it of SPEC.items){
+    const s=SLOT[it.id];
+    const g=document.createElementNS(NS,'g');
+    g.id='art-'+it.id;
+    g.setAttribute('transform',`translate(${s.x} ${s.y}) scale(${s.s})`);
+    g.innerHTML=`<g class="inner ${it.idle||''}">${artMarkup(it.id,it.max)}</g>`;
+    g.style.visibility='hidden';
+    sceneSlots.appendChild(g);
+  }
+}
+function refresh(){
+  let maxed=0;
+  for(const it of SPEC.items){
+    const l=state[it.id];
+    const pips=document.getElementById('pips-'+it.id);
+    [...pips.children].forEach((p,i)=>p.classList.toggle('on', l!=null && i<l));
+    pips.classList.toggle('maxed', l===it.max);
+    const g=document.getElementById('art-'+it.id);
+    const inner=g.querySelector('.inner');
+    if(l!=null){
+      g.style.visibility='visible';
+      for(let i=1;i<=it.max;i++){
+        const part=inner.querySelector(':scope > .p'+i);
+        if(part) part.style.display = i<=l ? '' : 'none';
+      }
+      if(l===it.max){
+        maxed++;
+        if(!inner.querySelector(':scope > .maxstar')){
+          const st=document.createElementNS(NS,'g');
+          st.setAttribute('class','maxstar');
+          st.innerHTML=`<path transform="translate(0 ${-SLOT[it.id].top-8})" d="M0 -9 l2.6 5.3 5.9 .9 -4.3 4.1 1 5.8 -5.2 -2.8 -5.2 2.8 1 -5.8 -4.3 -4.1 5.9 -.9 z" fill="#e8b63a" ${K2}/>`;
+          inner.appendChild(st);
+        }
+      }
+    } else g.style.visibility='hidden';
+  }
+  turnNow.textContent=order.length;
+  maxNow.textContent=maxed;
+  return maxed;
+}
+function say(t){ cap.textContent=t; cap.classList.remove('flash'); void cap.offsetWidth; cap.classList.add('flash') }
+const sleep=ms=>new Promise(r=>setTimeout(r, reduceMotion?0:ms));
+
+/* ---- FX：火花飛行 → 星星爆裂 → squash&stretch ---- */
+function anchor(id){ const s=SLOT[id]; return {x:s.x, y:s.y - s.top*s.s*0.6} }
+function fxSpark(fromId,toId){
+  if(fromId===toId||reduceMotion) return;
+  const a=anchor(fromId), b=anchor(toId);
+  const c=document.createElementNS(NS,'circle');
+  c.setAttribute('cx',a.x); c.setAttribute('cy',a.y); c.setAttribute('r','6');
+  c.setAttribute('fill','#e8b63a'); c.setAttribute('stroke','#3d372c'); c.setAttribute('stroke-width','2.5');
+  c.style.setProperty('--dx',(b.x-a.x)+'px'); c.style.setProperty('--dy',(b.y-a.y)+'px');
+  c.setAttribute('class','spark');
+  fxLayer.appendChild(c); setTimeout(()=>c.remove(),650);
+}
+function fxBurst(toId){
+  const p=anchor(toId);
+  const g=document.createElementNS(NS,'g');
+  g.setAttribute('transform',`translate(${p.x} ${p.y})`);
+  for(let i=0;i<6;i++){
+    const ang=(Math.PI*2/6)*i - Math.PI/2;
+    const st=document.createElementNS(NS,'path');
+    st.setAttribute('d','M0 -6 l1.8 3.6 4 .6 -2.9 2.8 .7 4 -3.6 -1.9 -3.6 1.9 .7 -4 -2.9 -2.8 4 -.6 z');
+    st.setAttribute('fill', i%2 ? '#e8b63a' : '#d96a3b');
+    st.setAttribute('class','burststar');
+    st.style.setProperty('--bx', Math.cos(ang)*26+'px');
+    st.style.setProperty('--by', Math.sin(ang)*26+'px');
+    g.appendChild(st);
+  }
+  fxLayer.appendChild(g); setTimeout(()=>g.remove(),700);
+}
+function fxLabel(toId, txt){
+  const s=SLOT[toId];
+  const t=document.createElementNS(NS,'text');
+  t.textContent=txt;
+  t.setAttribute('x',s.x); t.setAttribute('y',s.y - s.top*s.s - 12);
+  t.setAttribute('text-anchor','middle');
+  t.setAttribute('font-size','15'); t.setAttribute('font-weight','900');
+  t.setAttribute('fill','#d96a3b'); t.setAttribute('stroke','#fff');
+  t.setAttribute('stroke-width','3.5'); t.setAttribute('paint-order','stroke');
+  t.setAttribute('class','float');
+  fxLayer.appendChild(t); setTimeout(()=>t.remove(),1100);
+}
+function bump(id){
+  const inner=document.querySelector('#art-'+id+' .inner');
+  inner.classList.remove('pop','bump'); void inner.getBBox(); inner.classList.add('bump');
+  setTimeout(()=>inner.classList.remove('bump'),500);
+}
+
+async function place(id, animate){
+  if(busy||state[id]!=null) return;
+  busy=true;
+  document.getElementById('btn-'+id).disabled=true;
+  const fired=applyPlacement(state,id);
+  order.push(id);
+  const g=document.getElementById('art-'+id);
+  const inner=g.querySelector('.inner');
+  g.style.visibility='visible';
+  if(animate&&!reduceMotion){inner.classList.add('pop');setTimeout(()=>inner.classList.remove('pop'),550)}
+  say(`「${byId(id).name}」出現了。`);
+  refresh();
+  if(animate) await sleep(560);
+  for(const ef of fired){
+    fxSpark(id,ef.target);
+    if(animate) await sleep(380);
+    fxBurst(ef.target); fxLabel(ef.target,'LEVEL UP!'); bump(ef.target);
+    say(ef.story);
+    refresh();
+    if(animate) await sleep(820);
+  }
+  const maxed=refresh();
+  busy=false;
+  if(order.length===SPEC.items.length){ if(animate) await sleep(450); ending(maxed) }
+}
+
+function ending(maxed){
+  const E=SPEC.endings;
+  let big,msg,good=false;
+  if(maxed===SPEC.items.length){ good=true; big=E.good.big; msg=E.good.msg }
+  else if(maxed===SPEC.items.length-1){
+    const miss=SPEC.items.find(i=>state[i.id]!==i.max);
+    big=E.almost.big; msg=E.almost.msgOf(miss.name);
+  } else {
+    const b=E.bads.find(b=>b.when(state)); big=b.big; msg=b.msg;
+  }
+  endingBox.className='ending'; endingBox.hidden=false;
+  endingBox.innerHTML=`
+    <div class="big ${good?'good':'bad'}">${big}</div>
+    <div class="msg">${msg}</div>
+    <div class="score">LEVEL MAX：${maxed} / ${SPEC.items.length}　｜　你的順序：${order.map(i=>byId(i).name).join(' → ')}</div>
+    <button class="ghost" id="againBtn" style="color:#fbf4e4;border-color:#fbf4e4">再挑戰一次</button>`;
+  document.getElementById('againBtn').addEventListener('click',reset);
+  say(good?'恭喜通關！':'差一點……換個順序試試吧。');
+}
+
+function reset(){
+  state={}; order=[]; busy=false;
+  endingBox.hidden=true; endingBox.innerHTML='';
+  for(const it of SPEC.items){
+    document.getElementById('btn-'+it.id).disabled=false;
+    const inner=document.querySelector('#art-'+it.id+' .inner');
+    const st=inner.querySelector(':scope > .maxstar'); if(st) st.remove();
+  }
+  say('世界一片寂靜……該從哪裡開始呢？');
+  refresh();
+}
+
+function boot(data){
+  buildPanel(); buildSlots();
+  document.getElementById('resetBtn').addEventListener('click',reset);
+  document.getElementById('specDump').textContent=JSON.stringify(SPEC.items,null,2);
+  reset();
+  const saved=data&&Array.isArray(data.order)?data.order:null;
+  if(saved) for(const id of saved) if(byId(id)&&state[id]==null){
+    applyPlacement(state,id); order.push(id);
+    document.getElementById('btn-'+id).disabled=true;
+  }
+  const maxed=refresh();
+  if(order.length===SPEC.items.length) ending(maxed);
+  window.claude?.hot?.snapshot?.(()=>({order:[...order]}));
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+</script>

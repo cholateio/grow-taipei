@@ -1,0 +1,894 @@
+<title>GROW 小小世界</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 最終版：回到自家繪本畫風。層疊丘陵的淺 2.5D、跨物件道具（小溪/索道/浮島光束）、三幕演出與行走。 */
+:root{
+  --sky1:#b7ddf0; --sky2:#f0f7e2;
+  --paper:#fbf4e4; --ink:#3d372c;
+  --hill1:#a3d089; --hill2:#7fb86c; --hill3:#5f9fb8;
+  --accent:#d96a3b; --gold:#e8b63a; --plum:#7a5ba3;
+  --bad:#c0442c;
+  --shadow:0 3px 0 rgba(61,55,44,.25);
+}
+html,body{height:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",system-ui,sans-serif;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:14px;
+}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1{font-size:1.35rem;font-weight:900;margin:0;letter-spacing:.04em;text-wrap:balance}
+h1 .en{color:var(--accent);margin-right:.2em}
+.sub{font-size:.8rem;opacity:.75}
+
+.stage{position:relative;border:3px solid var(--ink);border-radius:14px;overflow:hidden;background:linear-gradient(var(--sky1),var(--sky2));box-shadow:var(--shadow)}
+.stage svg{display:block;width:100%;height:auto}
+
+.caption{
+  min-height:2.2em;display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:.92rem;font-weight:700;background:var(--ink);color:var(--paper);
+  border-radius:10px;padding:.45em .9em;box-shadow:var(--shadow)
+}
+.caption.flash{animation:cap .35s ease}
+@keyframes cap{0%{transform:scale(.96);opacity:.4}100%{transform:scale(1);opacity:1}}
+
+.panel{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+@media(max-width:620px){.panel{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:430px){.panel{grid-template-columns:repeat(2,1fr)}}
+button.item{
+  position:relative;
+  font:inherit;font-weight:700;color:var(--ink);background:#fff;
+  border:2.5px solid var(--ink);border-radius:12px;box-shadow:var(--shadow);
+  padding:.4em .3em .45em;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  transition:transform .08s ease
+}
+button.item:not(:disabled):hover{transform:translateY(-2px);background:#fffdf4}
+button.item:not(:disabled):active{transform:translateY(1px)}
+button.item:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.item:disabled{opacity:.5;cursor:default;box-shadow:none}
+button.item .nm{font-size:.84rem}
+button.item svg.mini{width:42px;height:38px;overflow:visible}
+button.item .ord{
+  position:absolute;top:4px;right:6px;display:none;
+  background:#a32638;color:#fff;font-size:.7rem;font-weight:900;
+  padding:0 .4em;border-radius:5px;border:1.5px solid #fff;
+}
+.pips{display:flex;gap:3px;height:8px}
+.pip{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--ink);background:transparent}
+.pip.on{background:var(--accent)}
+.pips.maxed .pip.on{background:var(--gold)}
+
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.turn{font-weight:900;font-size:.95rem}
+.turn b{color:var(--accent)}
+button.ghost{
+  font:inherit;font-weight:700;background:transparent;color:var(--ink);
+  border:2px solid var(--ink);border-radius:10px;padding:.35em .9em;cursor:pointer
+}
+button.ghost:hover{background:#fff}
+button.ghost:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.ghost.on{background:var(--ink);color:var(--paper)}
+
+.ending{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  background:rgba(61,55,44,.8);color:var(--paper);text-align:center;padding:20px;
+  animation:cap .4s ease
+}
+.ending .big{font-size:1.65rem;font-weight:900;letter-spacing:.08em}
+.ending .big.good{color:var(--gold)}
+.ending .big.bad{color:#ffb199}
+.ending .msg{font-size:.95rem;max-width:34em}
+.ending .score{font-size:.8rem;opacity:.85}
+
+/* ===== 動畫庫 ===== */
+svg .inner{transform-box:fill-box;transform-origin:50% 100%}
+.idle-wobble{animation:wobble 2.2s ease-in-out infinite}
+@keyframes wobble{25%{transform:scale(1.05,.95)}75%{transform:scale(.96,1.05)}}
+.idle-float{animation:bob 3s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-7px)}}
+.spin{transform-box:fill-box;transform-origin:center;animation:spin 6s linear infinite}
+.spin.fast{animation-duration:2.4s}
+@keyframes spin{to{transform:rotate(360deg)}}
+.wave{transform-box:fill-box;transform-origin:left center;animation:wave 1.6s ease-in-out infinite}
+@keyframes wave{50%{transform:skewY(7deg)}}
+.blink{animation:blink 1.8s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+.note{animation:noteRise 2.4s linear infinite;transform-box:fill-box}
+@keyframes noteRise{0%{transform:translateY(0);opacity:0}15%{opacity:1}100%{transform:translateY(-26px);opacity:0}}
+.sway{transform-box:fill-box;transform-origin:top center;animation:sway 2.8s ease-in-out infinite}
+@keyframes sway{50%{transform:rotate(5deg)}}
+.rays{transform-box:fill-box;transform-origin:center;animation:spin 40s linear infinite}
+.drift{animation:drift 14s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translateX(26px)}}
+.flow{stroke-dasharray:4 10;animation:flow 1.4s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-14}}
+.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes pop{0%{transform:scale(0)}60%{transform:scale(1.12,.9)}100%{transform:scale(1)}}
+.bump{animation:bump .5s ease}
+@keyframes bump{25%{transform:scale(1.22,.82)}55%{transform:scale(.92,1.12)}100%{transform:scale(1)}}
+.shrink{animation:shrink .5s ease}
+@keyframes shrink{30%{transform:scale(.7,1.2)}60%{transform:scale(1.15,.8)}100%{transform:scale(1)}}
+.nudge{animation:nudge .34s ease}
+@keyframes nudge{30%{transform:rotate(-4deg) translateY(-2px)}70%{transform:rotate(3deg)}100%{transform:none}}
+.chargeA{animation:chargeA .42s ease-in}
+@keyframes chargeA{0%{transform:scale(1)}45%{transform:scale(1.07)}75%{transform:scale(.94,1.06)}100%{transform:scale(1.03)}}
+.walkA{animation:walkA .3s ease-in-out infinite}
+@keyframes walkA{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-4px) rotate(3deg)}}
+.maxstar{transform-box:fill-box;transform-origin:center;animation:pop .5s cubic-bezier(.2,1.6,.4,1) both}
+.float{animation:rise 1s ease forwards;transform-box:fill-box}
+.float.down{fill:var(--bad)}
+@keyframes rise{0%{opacity:0;transform:translateY(6px)}20%{opacity:1}100%{opacity:0;transform:translateY(-24px)}}
+.angry{animation:rise 1s ease forwards;transform-box:fill-box}
+.fly{animation:flyMove var(--dur,.5s) ease-in forwards;opacity:0}
+@keyframes flyMove{0%{opacity:0;transform:translate(0,0)}15%{opacity:1}100%{opacity:.9;transform:translate(var(--dx),var(--dy))}}
+.burststar{animation:bs .55s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes bs{0%{transform:translate(0,0) scale(.4);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(1);opacity:0}}
+.fw{animation:fw .9s ease-out forwards;transform-box:fill-box;transform-origin:center}
+@keyframes fw{0%{transform:translate(0,0) scale(.3);opacity:1}100%{transform:translate(var(--bx),var(--by)) scale(1.1);opacity:0}}
+@media(prefers-reduced-motion:reduce){
+  .idle-wobble,.idle-float,.spin,.wave,.blink,.note,.sway,.rays,.drift,.flow,
+  .pop,.bump,.shrink,.nudge,.chargeA,.walkA,.maxstar,.float,.angry,.fly,.burststar,.fw,.caption.flash,.ending{animation:none}
+  .float,.angry,.fly,.burststar,.fw,.note{opacity:0}
+}
+
+details.spec{font-size:.82rem;border:2px dashed var(--ink);border-radius:10px;padding:.5em .8em;background:#fff}
+details.spec summary{cursor:pointer;font-weight:700}
+details.spec pre{overflow-x:auto;background:var(--paper);padding:.6em;border-radius:8px;font-size:.72rem;line-height:1.5}
+details.spec table{border-collapse:collapse;font-size:.78rem;margin:.4em 0}
+details.spec td,details.spec th{border:1.5px solid var(--ink);padding:.2em .5em;font-variant-numeric:tabular-nums}
+footer{font-size:.74rem;opacity:.7;text-align:center}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700;900&display=swap">
+
+<div class="wrap">
+  <header>
+    <h1><span class="en">GROW</span>小小世界</h1>
+    <span class="sub">10 顆按鈕，一種順序。這些東西會變成什麼……誰知道呢？</span>
+  </header>
+
+  <div class="stage">
+    <svg id="scene" viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="小小世界場景">
+      <path d="M-10 250 L130 170 L250 250 Z" fill="var(--hill3)" opacity=".5"/>
+      <path d="M430 245 L560 165 L690 245 Z" fill="var(--hill3)" opacity=".4"/>
+      <g transform="translate(846 60)">
+        <g class="rays" stroke="#f3cd6b" stroke-width="5" stroke-linecap="round">
+          <line x1="0" y1="-40" x2="0" y2="-50"/><line x1="0" y1="40" x2="0" y2="50"/>
+          <line x1="-40" y1="0" x2="-50" y2="0"/><line x1="40" y1="0" x2="50" y2="0"/>
+          <line x1="-28" y1="-28" x2="-35" y2="-35"/><line x1="28" y1="28" x2="35" y2="35"/>
+          <line x1="-28" y1="28" x2="-35" y2="35"/><line x1="28" y1="-28" x2="35" y2="-35"/>
+        </g>
+        <circle r="29" fill="#ffe9a8" stroke="#3d372c" stroke-width="3"/>
+        <circle cx="-8" cy="-3" r="2.4" fill="#3d372c"/><circle cx="8" cy="-3" r="2.4" fill="#3d372c"/>
+        <path d="M-5 6 q5 5 10 0" fill="none" stroke="#3d372c" stroke-width="2.5" stroke-linecap="round"/>
+      </g>
+      <g fill="#ffffff" stroke="#3d372c" stroke-width="2.5" class="drift">
+        <ellipse cx="250" cy="52" rx="42" ry="14"/><ellipse cx="294" cy="62" rx="26" ry="10"/>
+      </g>
+      <g fill="none" stroke="#3d372c" stroke-width="2.5" stroke-linecap="round">
+        <path d="M480 76 q6 -8 12 0 q6 -8 12 0"/><path d="M540 96 q5 -7 10 0 q5 -7 10 0"/>
+      </g>
+      <path d="M-10 266 Q210 206 430 252 T 920 226 V390 H-10 Z" fill="var(--hill2)" stroke="#3d372c" stroke-width="3"/>
+      <path d="M-10 308 Q230 266 520 308 T 920 300 V390 H-10 Z" fill="var(--hill1)" stroke="#3d372c" stroke-width="3"/>
+      <path d="M90 328 Q 300 352 470 338 Q 650 324 800 330" fill="none" stroke="#e3cf9e" stroke-width="12" stroke-linecap="round"/>
+      <path d="M90 328 Q 300 352 470 338 Q 650 324 800 330" fill="none" stroke="#3d372c" stroke-width="2" stroke-dasharray="1 14" stroke-linecap="round"/>
+      <g stroke="#3d372c" stroke-width="2.5">
+        <g fill="#7fb86c"><circle cx="270" cy="330" r="8"/><circle cx="282" cy="334" r="6"/></g>
+        <circle cx="620" cy="342" r="4" fill="#f5b0c3"/><circle cx="150" cy="344" r="4" fill="#ffe9a8"/>
+      </g>
+      <g id="props"></g>
+      <g id="slots"></g>
+      <g id="cable"></g>
+      <g id="fx"></g>
+    </svg>
+    <div id="endingBox" hidden></div>
+  </div>
+
+  <div id="caption" class="caption">空空的小世界。第一手要放什麼？</div>
+
+  <div id="panel" class="panel"></div>
+
+  <div class="bar">
+    <div class="turn">回合 <b id="turnNow">0</b> / 10　｜　LEVEL MAX：<b id="maxNow">0</b> / 10</div>
+    <div style="display:flex;gap:8px">
+      <button class="ghost" id="speedBtn" title="重試時加速演出">⏩ 快轉</button>
+      <button class="ghost" id="resetBtn">重新開始</button>
+    </div>
+  </div>
+
+  <details class="spec">
+    <summary>📦 謎題規格 SPEC ＋ 難度指標（內含劇透）</summary>
+    <div id="metricsBox"></div>
+    <pre id="specDump"></pre>
+  </details>
+  <footer>致敬 Eyezmaze「GROW」系列的原創習作 · tick 雙軌引擎 · 唯一解與難度皆由求解器量測</footer>
+</div>
+
+<script>
+"use strict";
+/* ================= SPEC ================= */
+const ITEMS = [
+  { id:"stone",  name:"石頭", max:4, tick:{always:true},
+    levels:["石頭","石堆","石塔","石巨人"], idle:"" },
+  { id:"drop",   name:"水滴", max:3, tick:{ltPlus:["drop","stone",0]},
+    levels:["水窪","池塘","噴泉"], idle:"" },
+  { id:"seed",   name:"種子", max:4, tick:{and:[{present:"drop"},{ltPlus:["seed","drop",2]}]},
+    levels:["嫩芽","草叢","大樹","結果的大樹"], idle:"" },
+  { id:"slime",  name:"黏液", max:3, tick:{present:"drop"},
+    levels:["黏液","史萊姆","史萊姆王"], idle:"idle-wobble" },
+  { id:"gear",   name:"齒輪", max:4, tick:{minLevel:["stone",2]},
+    levels:["齒輪","齒輪組","機關台","大風車機關"], idle:"" },
+  { id:"box",    name:"箱子", max:3, tick:{minLevel:["gear",2]},
+    levels:["木箱","小攤位","纜車站"], idle:"" },
+  { id:"ball",   name:"球",   max:3, tick:{minLevel:["gear",3]},
+    levels:["球","彈彈球","滾輪車"], idle:"" },
+  { id:"rope",   name:"繩子", max:3, tick:{and:[{minLevel:["seed",3]},{present:"box"}]},
+    levels:["繩圈","繩橋","纜車索道"], idle:"" },
+  { id:"horn",   name:"喇叭", max:2, tick:{minLevel:["box",3]},
+    levels:["喇叭","樂隊舞台"], idle:"" },
+  { id:"magnet", name:"磁鐵", max:2, tick:{and:[{minLevel:["gear",4]},{minLevel:["ball",3]}]},
+    levels:["磁鐵","浮空燈塔"], idle:"idle-float" },
+];
+const EXTRA = {
+  stone: [ {absent:"box"} ],
+  ball:  [ {maxLevel:["gear",3]} ],
+  horn:  [ {absent:"ball"} ],
+};
+const FX = {
+  drop:   [ {t:"slime", d:+1, req:{present:"slime"}, medium:"splash", move:"target", story:"水花濺起——黏液咕嚕咕嚕喝了起來！"} ],
+  horn:   [ {t:"ball",  d:-9, req:{present:"ball"},  medium:"soundwave", move:"flee", story:"喇叭巨響！球嚇得縮回了原形……", down:true} ],
+};
+const STALL = [
+  { target:"gear", when:{and:[{present:"slime"},{maxLevel:["slime",1]}]}, cause:"slime", story:"齒輪被黏液黏住了" },
+];
+const PERF = {
+  stone:  { cause:"stone",  medium:"pebble", move:null,     line:"又一塊石頭疊了上去。" },
+  drop:   { cause:"stone",  medium:"dig",    move:"cause",  line:"石巨人走到池邊，把池子又挖大了些。" },
+  seed:   { cause:"drop",   medium:"rain",   move:null,     line:"水珠灑落，澆灌著植物。" },
+  slime:  { cause:"drop",   medium:"rain",   move:"target", line:"黏液挪到池邊，咕嚕咕嚕地喝著水。" },
+  gear:   { cause:"stone",  medium:"part",   move:"cause",  line:"石巨人走來，為機關裝上新零件。" },
+  box:    { cause:"gear",   medium:"plank",  move:null,     line:"機關敲敲打打，為箱子加工。" },
+  ball:   { cause:"gear",   medium:"polish", move:"target", line:"球滾到機關旁，被打磨得又圓又亮。" },
+  rope:   { cause:"seed",   medium:"strand", move:null,     line:"繩子一圈圈攀上了大樹。" },
+  horn:   { cause:"box",    medium:"plank",  move:null,     line:"站前敲敲打打，搭起了舞台。" },
+  magnet: { cause:"gear",   medium:"spark",  move:null,     line:"電力接通——磁鐵嗡嗡作響！" },
+};
+const ENDINGS = {
+  good: { big:"🏆 TRUE END", msg:"浮空燈塔亮起，纜車載著大家滑向車站，樂隊奏響終曲，煙火升空——小小世界，完工！" },
+  bads: [
+    { when:s=>lv(s,"slime")===1, big:"🫠 BAD END · 黏糊糊", msg:"角落那灘黏液始終沒打起精神，世界的齒輪也跟著發黏……" },
+    { when:(s,f)=>f.hornScare&&lv(s,"ball")<3, big:"😱 BAD END · 嚇破膽", msg:"被喇叭嚇回原形的球，再也不敢滾出來了。" },
+    { when:s=>lv(s,"stone")<4, big:"⛰️ BAD END · 沉睡的巨人", msg:"箱子送來之後，石頭就再也沒有長大。巨人沉睡不醒。" },
+    { when:s=>lv(s,"gear")<4, big:"⚙️ BAD END · 停擺", msg:"機關缺了最後一轉，風車紋絲不動，大家面面相覷。" },
+    { when:s=>lv(s,"magnet")<2, big:"🌑 BAD END · 熄燈", msg:"浮空燈塔沒有升起。夜幕降臨，小小世界一片漆黑。" },
+    { when:()=>true, big:"💤 BAD END", msg:"半成品的世界，靜靜等待下一位挑戰者。" },
+  ],
+  almost: n=>`只差「${n}」沒有 LEVEL MAX——再想想順序！`,
+};
+const METRICS = {
+  total:3628800, solutions:1, ge9:649, ge8:52640, avg:"3.08",
+  dist:[40320,986160,993630,186166,341052,534742,284344,209746,51991,648,1],
+  firstMoveBest:{stone:10,drop:8,seed:9,slime:8,gear:9,box:2,ball:9,rope:9,horn:9,magnet:8},
+};
+
+/* ================= 引擎（與求解器同語意） ================= */
+const N=ITEMS.length;
+const IDX=Object.fromEntries(ITEMS.map((it,i)=>[it.id,i]));
+const MAX=ITEMS.map(it=>it.max);
+function lv(s,id){ return s[IDX[id]]||0 }
+function compile(c){
+  if(!c) return ()=>true;
+  if(c.always) return ()=>true;
+  if(c.present){ const i=IDX[c.present]; return s=>s[i]>0 }
+  if(c.absent){ const i=IDX[c.absent]; return s=>s[i]===0 }
+  if(c.minLevel){ const [t,n]=c.minLevel, i=IDX[t]; return s=>s[i]>=n }
+  if(c.maxLevel){ const [t,n]=c.maxLevel, i=IDX[t]; return s=>s[i]<=n }
+  if(c.ltPlus){ const [a,b,k]=c.ltPlus, ia=IDX[a], ib=IDX[b]; return s=>s[ia]<s[ib]+k }
+  if(c.and){ const fs=c.and.map(x=>compile(x)); return s=>fs.every(f=>f(s)) }
+  return ()=>false;
+}
+const TICK=ITEMS.map((it,i)=>{
+  const base=compile(it.tick);
+  const extras=(EXTRA[it.id]||[]).map(x=>compile(x));
+  return s=>base(s)&&extras.every(f=>f(s));
+});
+const STALLC=STALL.map(r=>({ti:IDX[r.target], f:compile(r.when), cause:r.cause, story:r.story}));
+const FXC=ITEMS.map(it=>(FX[it.id]||[]).map(e=>({...e, ti:IDX[e.t], f:compile(e.req)})));
+
+function stepTurn(s, pi){
+  s[pi]=1;
+  const tl=[];
+  for(const e of FXC[pi]){
+    if(s[e.ti]>0 && e.f(s)){
+      const before=s[e.ti];
+      s[e.ti]=Math.max(1,Math.min(MAX[e.ti], s[e.ti]+e.d));
+      if(s[e.ti]!==before){
+        const into = s[e.ti]>before && ITEMS[e.ti].levels[s[e.ti]-1]!==ITEMS[e.ti].levels[before-1]
+          ? ITEMS[e.ti].levels[s[e.ti]-1] : null;
+        tl.push({kind:"fx", cause:ITEMS[pi].id, target:ITEMS[e.ti].id,
+                 to:s[e.ti], down:!!e.down, medium:e.medium, move:e.move||null, story:e.story, into});
+      }
+    }
+  }
+  for(let i=0;i<N;i++){
+    if(s[i]===0||s[i]>=MAX[i]) continue;
+    let stallRule=null;
+    for(const r of STALLC) if(r.ti===i&&r.f(s)){stallRule=r;break}
+    if(stallRule){
+      if(TICK[i](s)) tl.push({kind:"stall", cause:stallRule.cause, target:ITEMS[i].id, story:stallRule.story});
+      continue;
+    }
+    if(TICK[i](s)){
+      s[i]++;
+      const into = ITEMS[i].levels[s[i]-1]!==ITEMS[i].levels[s[i]-2] ? ITEMS[i].levels[s[i]-1] : null;
+      const pf=PERF[ITEMS[i].id];
+      tl.push({kind:"grow", cause:pf.cause, target:ITEMS[i].id,
+               to:s[i], medium:pf.medium, move:pf.move, story:pf.line, into});
+    }
+  }
+  return tl;
+}
+const maxedCount=s=>{let c=0;for(let i=0;i<N;i++) if(s[i]===MAX[i])c++;return c};
+
+/* ================= 美術：圖層 [from,to] 制 ================= */
+const SLOT = {
+  stone:{x:95, y:322,s:1.3,top:72}, gear:{x:212,y:326,s:1.25,top:70},
+  box:{x:322,y:330,s:1.25,top:64},  ball:{x:425,y:334,s:1.2,top:56},
+  horn:{x:522,y:330,s:1.2,top:60},  drop:{x:648,y:338,s:1.3,top:40},
+  slime:{x:782,y:336,s:1.3,top:50},
+  seed:{x:160,y:258,s:1.25,top:84}, rope:{x:385,y:252,s:1.2,top:58},
+  magnet:{x:700,y:182,s:1.2,top:62},
+};
+const K='stroke="#3d372c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"';
+const K2='stroke="#3d372c" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"';
+const ART = {
+  stone: [
+    [1,4,`<ellipse cx="0" cy="2" rx="38" ry="7" fill="rgba(61,55,44,.14)"/>`],
+    [1,3,`<path d="M-20 0 Q-24 -24 0 -24 Q24 -24 20 0 Z" fill="#cfc6b8" ${K}/>
+          <path d="M-7 -14 q3 2 6 0 M3 -14 q3 2 6 0" fill="none" stroke="#3d372c" stroke-width="2"/>`],
+    [2,3,`<path d="M-34 0 Q-37 -16 -20 -16 Q-6 -16 -8 0 Z" fill="#bdb3a2" ${K2}/>`],
+    [3,3,`<path d="M-8 -22 Q-10 -40 6 -40 Q20 -40 16 -22 Z" fill="#ddd5c6" ${K2}/>
+          <circle cx="14" cy="-20" r="4" fill="#7fb86c" ${K2}/>`],
+    [4,4,`<path d="M-24 0 h14 v-10 h-14 z M10 0 h14 v-10 h-14 z" fill="#bdb3a2" ${K2}/>
+          <path d="M-20 -8 Q-26 -44 0 -44 Q26 -44 20 -8 Z" fill="#cfc6b8" ${K}/>
+          <path d="M-32 -20 q-8 -12 2 -18 l8 8 z M32 -20 q8 -12 -2 -18 l-8 8 z" fill="#bdb3a2" ${K2}/>
+          <path d="M-14 -52 Q-16 -70 0 -70 Q16 -70 14 -52 Z" fill="#ddd5c6" ${K}/>
+          <circle cx="-5" cy="-60" r="2.6" fill="#ffd45e"/><circle cx="5" cy="-60" r="2.6" fill="#ffd45e"/>
+          <path d="M-3 -55 q3 2 6 0" fill="none" stroke="#3d372c" stroke-width="2"/>
+          <circle cx="16" cy="-36" r="4" fill="#7fb86c" ${K2}/>`],
+  ],
+  drop: [
+    [1,3,`<ellipse cx="0" cy="3" rx="38" ry="7" fill="rgba(61,55,44,.14)"/>`],
+    [1,1,`<ellipse cx="0" cy="0" rx="20" ry="7" fill="#9fd4e8" ${K2}/>`],
+    [2,3,`<ellipse cx="0" cy="0" rx="34" ry="11" fill="#7fc5de" ${K}/>
+          <ellipse cx="0" cy="-1" rx="22" ry="6" fill="#a8dcef" ${K2}/>
+          <path d="M-28 -8 q-2 -9 2 -15 M-23 -8 q2 -8 -1 -14" fill="none" ${K2}/>
+          <ellipse cx="18" cy="-1" rx="6" ry="3.5" fill="#7fb86c" ${K2}/>`],
+    [3,3,`<path d="M0 -4 q-6 -12 0 -24 q6 12 0 24" fill="#cdeef9" ${K2}/>
+          <circle cx="0" cy="-30" r="6" fill="#cdeef9" ${K2}/>
+          <circle cx="-2" cy="-31" r="1.2" fill="#3d372c"/><circle cx="2" cy="-31" r="1.2" fill="#3d372c"/>
+          <path d="M-2 -28 q2 2 4 0" fill="none" stroke="#3d372c" stroke-width="1.8"/>
+          <circle class="blink" cx="-12" cy="-20" r="2.4" fill="#fff" ${K2}/>
+          <circle class="blink" cx="12" cy="-24" r="2.2" fill="#fff" ${K2}/>`],
+  ],
+  seed: [
+    [1,4,`<ellipse cx="0" cy="2" rx="30" ry="6" fill="rgba(61,55,44,.14)"/>`],
+    [1,1,`<path d="M0 0 v-10" ${K}/><path d="M0 -10 q-9 -3 -9 -12 q9 1 9 12 z" fill="#8fcf79" ${K2}/>
+          <path d="M0 -10 q9 -3 9 -12 q-9 1 -9 12 z" fill="#aee3b6" ${K2}/>`],
+    [2,2,`<circle cx="-10" cy="-10" r="10" fill="#8fcf79" ${K2}/><circle cx="8" cy="-13" r="12" fill="#aee3b6" ${K2}/>
+          <circle cx="0" cy="-6" r="9" fill="#8fcf79" ${K2}/>`],
+    [3,4,`<path d="M-5 0 h10 l-2 -26 h-6 z" fill="#8c6342" ${K}/>
+          <circle cx="-16" cy="-36" r="14" fill="#8fcf79" ${K2}/>
+          <circle cx="16" cy="-38" r="14" fill="#aee3b6" ${K2}/>
+          <circle cx="0" cy="-50" r="16" fill="#8fcf79" ${K}/>`],
+    [4,4,`<circle cx="-14" cy="-40" r="4.5" fill="#e0633c" ${K2}/>
+          <circle cx="14" cy="-34" r="4.5" fill="#e0633c" ${K2}/>
+          <circle cx="4" cy="-54" r="4.5" fill="#e0633c" ${K2}/>
+          <circle cx="-5" cy="-47" r="2.2" fill="#ffd45e"/><circle cx="7" cy="-45" r="2.2" fill="#ffd45e"/>
+          <path d="M-2 -41 q3 2.5 6 0" fill="none" stroke="#3d372c" stroke-width="2"/>`],
+  ],
+  slime: [
+    [1,3,`<ellipse cx="0" cy="2" rx="34" ry="6" fill="rgba(61,55,44,.14)"/>`],
+    [1,1,`<path d="M-26 0 q-4 -10 6 -9 q2 -6 10 -5 q10 -2 10 6 q10 0 6 8 z" fill="#b9e07c" ${K2}/>
+          <circle cx="-4" cy="-6" r="1.6" fill="#3d372c"/><circle cx="4" cy="-6" r="1.6" fill="#3d372c"/>
+          <path d="M-2 -2 q2 -2 4 0" fill="none" stroke="#3d372c" stroke-width="1.8"/>`],
+    [2,3,`<path d="M-22 0 Q-26 -26 0 -26 Q26 -26 22 0 Z" fill="#b9e07c" ${K}/>
+          <circle cx="-7" cy="-12" r="2.4" fill="#3d372c"/><circle cx="7" cy="-12" r="2.4" fill="#3d372c"/>
+          <path d="M-4 -6 q4 4 8 0" fill="none" stroke="#3d372c" stroke-width="2.2"/>
+          <circle cx="-13" cy="-8" r="2.8" fill="#8fcf79" opacity=".8"/><circle cx="13" cy="-8" r="2.8" fill="#8fcf79" opacity=".8"/>`],
+    [3,3,`<path d="M-11 -24 l4 -7 4 5 3 -7 3 7 4 -5 4 7 z" fill="#e8b63a" ${K2}/>
+          <circle cx="-26" cy="-4" r="6" fill="#b9e07c" ${K2}/><circle cx="27" cy="-5" r="5" fill="#b9e07c" ${K2}/>`],
+  ],
+  gear: [
+    [1,4,`<ellipse cx="0" cy="2" rx="38" ry="7" fill="rgba(61,55,44,.14)"/>`],
+    [1,4,`<g class="spin" transform="translate(0 -16)">
+            <path d="M0 -16 h5 l1 6 a11 11 0 0 1 4 2 l6 -2 2 4 -4 4 a11 11 0 0 1 0 5 l4 4 -2 4 -6 -2 a11 11 0 0 1 -4 2 l-1 6 h-5 l-1 -6 a11 11 0 0 1 -4 -2 l-6 2 -2 -4 4 -4 a11 11 0 0 1 0 -5 l-4 -4 2 -4 6 2 a11 11 0 0 1 4 -2 z" transform="rotate(10)" fill="#c9a15f" ${K2}/>
+            <circle r="4.5" fill="#fbf4e4" ${K2}/>
+          </g>`],
+    [2,4,`<g class="spin fast" transform="translate(21 -7)">
+            <path d="M0 -9 h3.5 l.8 3.6 a7 7 0 0 1 2.6 1.4 l3.6 -1.2 1.4 2.6 -2.6 2.6 a7 7 0 0 1 0 3 l2.6 2.6 -1.4 2.6 -3.6 -1.2 a7 7 0 0 1 -2.6 1.4 l-.8 3.6 h-3.5 l-.8 -3.6 a7 7 0 0 1 -2.6 -1.4 l-3.6 1.2 -1.4 -2.6 2.6 -2.6 a7 7 0 0 1 0 -3 l-2.6 -2.6 1.4 -2.6 3.6 1.2 a7 7 0 0 1 2.6 -1.4 z" fill="#b8874a" ${K2}/>
+            <circle r="3" fill="#fbf4e4" ${K2}/>
+          </g>`],
+    [3,4,`<path d="M-30 0 h14 v-34 h-14 z M16 0 h14 v-24 h-14 z" fill="#8c7156" ${K2}/>
+          <line x1="-23" y1="-34" x2="23" y2="-24" ${K}/>`],
+    [4,4,`<line x1="0" y1="-34" x2="0" y2="-56" ${K}/>
+          <g class="spin" transform="translate(0 -56)">
+            <path d="M0 0 l4 -22 h-8 z" fill="#f2d8a7" ${K2}/>
+            <path d="M0 0 l4 -22 h-8 z" transform="rotate(90)" fill="#f2d8a7" ${K2}/>
+            <path d="M0 0 l4 -22 h-8 z" transform="rotate(180)" fill="#f2d8a7" ${K2}/>
+            <path d="M0 0 l4 -22 h-8 z" transform="rotate(270)" fill="#f2d8a7" ${K2}/>
+            <circle r="4" fill="#e0633c" ${K2}/>
+          </g>`],
+  ],
+  box: [
+    [1,3,`<ellipse cx="0" cy="2" rx="34" ry="6" fill="rgba(61,55,44,.14)"/>`],
+    [1,1,`<rect x="-14" y="-24" width="28" height="24" fill="#d9b37c" ${K}/>
+          <line x1="-14" y1="-12" x2="14" y2="-12" ${K2}/><line x1="0" y1="-24" x2="0" y2="0" ${K2}/>`],
+    [2,3,`<rect x="-24" y="-26" width="48" height="26" fill="#f2d8a7" ${K}/>
+          <path d="M-29 -26 h58 l-6 -12 h-46 z" fill="#e0633c" ${K}/>
+          <path d="M-29 -26 h58" stroke="#fbf4e4" stroke-width="4" stroke-dasharray="7 7"/>
+          <rect x="-14" y="-18" width="28" height="9" fill="#fbf4e4" ${K2}/>`],
+    [3,3,`<line x1="30" y1="0" x2="30" y2="-44" ${K}/>
+          <rect x="22" y="-56" width="30" height="13" rx="3" fill="#7fc5de" ${K2}/>
+          <circle cx="-30" cy="-32" r="5" fill="#ffe9a8" ${K2}/>
+          <line x1="-30" y1="-27" x2="-30" y2="0" ${K2}/>`],
+  ],
+  ball: [
+    [1,3,`<ellipse cx="0" cy="2" rx="26" ry="5" fill="rgba(61,55,44,.14)"/>`],
+    [1,2,`<circle cx="0" cy="-12" r="12" fill="#e0633c" ${K}/>
+          <path d="M-12 -12 a12 12 0 0 1 24 0" fill="#ffe9a8" stroke="none"/>
+          <circle cx="0" cy="-12" r="12" fill="none" ${K}/>
+          <line x1="-12" y1="-12" x2="12" y2="-12" ${K2}/>`],
+    [2,2,`<circle cx="-4" cy="-15" r="1.8" fill="#3d372c"/><circle cx="4" cy="-15" r="1.8" fill="#3d372c"/>
+          <path d="M-3 -9 q3 3 6 0" fill="none" stroke="#3d372c" stroke-width="2"/>`],
+    [3,3,`<rect x="-22" y="-26" width="44" height="14" rx="5" fill="#7fc5de" ${K}/>
+          <circle cx="-13" cy="-9" r="9" fill="#e0633c" ${K2}/>
+          <path d="M-22 -9 a9 9 0 0 1 18 0" fill="#ffe9a8" stroke="none"/><circle cx="-13" cy="-9" r="9" fill="none" ${K2}/>
+          <circle cx="13" cy="-9" r="9" fill="#e0633c" ${K2}/>
+          <path d="M4 -9 a9 9 0 0 1 18 0" fill="#ffe9a8" stroke="none"/><circle cx="13" cy="-9" r="9" fill="none" ${K2}/>
+          <circle cx="2" cy="-33" r="7" fill="#ffd9b3" ${K2}/>
+          <path d="M-5 -35 a7 7 0 0 1 14 0 z" fill="#8c6342" ${K2}/>
+          <circle cx="-.5" cy="-32" r="1.2" fill="#3d372c"/><circle cx="4.5" cy="-32" r="1.2" fill="#3d372c"/>`],
+  ],
+  rope: [
+    [1,3,`<ellipse cx="0" cy="2" rx="30" ry="6" fill="rgba(61,55,44,.14)"/>`],
+    [1,1,`<circle cx="0" cy="-10" r="10" fill="none" stroke="#c9a15f" stroke-width="6"/>
+          <circle cx="0" cy="-10" r="10" fill="none" stroke="#3d372c" stroke-width="2" stroke-dasharray="4 4"/>`],
+    [2,3,`<line x1="-30" y1="0" x2="-30" y2="-30" ${K}/><line x1="30" y1="0" x2="30" y2="-30" ${K}/>
+          <path d="M-30 -28 q30 12 60 0" fill="none" stroke="#c9a15f" stroke-width="5"/>
+          <path d="M-30 -28 q30 12 60 0" fill="none" stroke="#3d372c" stroke-width="2" stroke-dasharray="4 5"/>`],
+  ],
+  horn: [
+    [1,2,`<ellipse cx="0" cy="2" rx="30" ry="6" fill="rgba(61,55,44,.14)"/>`],
+    [1,2,`<path d="M-16 -8 q-8 0 -8 -5 q0 -5 8 -5 l20 -8 q4 14 0 26 z" fill="#e8b63a" ${K}/>
+          <circle cx="8" cy="-13" r="12" fill="none" ${K}/>
+          <circle cx="-20" cy="-13" r="4" fill="#c9a15f" ${K2}/>`],
+    [2,2,`<rect x="-30" y="-4" width="60" height="6" rx="3" fill="#8c6342" ${K2}/>
+          <path class="note" d="M24 -30 q0 -8 6 -8 l0 10 a3 3 0 1 1 -2 -3 z" fill="#5a3b63"/>
+          <path class="note" style="animation-delay:1.2s" d="M-26 -26 q0 -8 6 -8 l0 10 a3 3 0 1 1 -2 -3 z" fill="#5a3b63"/>
+          <circle cx="-13" cy="-26" r="3" fill="#f5b0c3" ${K2}/>
+          <path d="M-13 -23 v8 M-16 -18 h6" ${K2}/>`],
+  ],
+  magnet: [
+    [1,2,`<ellipse cx="0" cy="150" rx="18" ry="5" fill="rgba(61,55,44,.14)"/>`],
+    [1,2,`<path d="M-14 -24 a14 14 0 0 1 28 0 v14 h-10 v-14 a4 4 0 0 0 -8 0 v14 h-10 z" fill="#e0633c" ${K}/>
+          <rect x="-14" y="-12" width="10" height="6" fill="#b9c4cc" ${K2}/>
+          <rect x="4" y="-12" width="10" height="6" fill="#b9c4cc" ${K2}/>`],
+    [2,2,`<g class="blink" stroke="#e8b63a" stroke-width="2.5" stroke-linecap="round" fill="none">
+            <path d="M-10 -2 q0 6 -4 8 M10 -2 q0 6 4 8 M0 0 v10"/>
+          </g>
+          <line x1="0" y1="26" x2="0" y2="148" stroke="#ffe9a8" stroke-width="4" stroke-dasharray="3 8" opacity=".8"/>
+          <path d="M-26 30 Q0 20 26 30 Q16 44 0 44 Q-16 44 -26 30 Z" fill="#8fd97c" ${K2}/>
+          <rect x="-6" y="14" width="12" height="14" rx="2" fill="#f2ead6" ${K2}/>
+          <path d="M-8 14 h16 l-8 -8 z" fill="#e0633c" ${K2}/>
+          <circle id="lampGlow" class="blink" cx="0" cy="12" r="4.5" fill="#ffe9a8" ${K2}/>
+          <circle cx="12" cy="34" r="3" fill="#f5b0c3" ${K2}/>`],
+  ],
+};
+
+/* ================= UI ================= */
+const sceneSlots=document.getElementById('slots');
+const propsG=document.getElementById('props');
+const cableG=document.getElementById('cable');
+const fxLayer=document.getElementById('fx');
+const panel=document.getElementById('panel');
+const cap=document.getElementById('caption');
+const turnNow=document.getElementById('turnNow');
+const maxNow=document.getElementById('maxNow');
+const endingBox=document.getElementById('endingBox');
+const NS='http://www.w3.org/2000/svg';
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let S=new Int8Array(N), vS=new Int8Array(N);
+let order=[], busy=false, flags={hornScare:false};
+let SPEED=1;
+const T={place:850, nudge:470, medium:700, charge:440, hold:1100, morph:1550, stall:950, walk:800, flee:520, breath:650};
+
+function buildPanel(){
+  panel.innerHTML='';
+  for(const it of ITEMS){
+    const b=document.createElement('button');
+    b.className='item'; b.id='btn-'+it.id; b.type='button';
+    b.innerHTML=
+      `<svg class="mini" viewBox="-42 -66 84 76" aria-hidden="true"><g>${
+        ART[it.id].filter(([f])=>f<=1).map(([,,svg])=>svg).join("")
+      }</g></svg>`+
+      `<span class="nm">${it.name}</span>`;
+    const pips=document.createElement('span'); pips.className='pips'; pips.id='pips-'+it.id;
+    for(let i=0;i<it.max;i++){const p=document.createElement('span');p.className='pip';pips.appendChild(p)}
+    b.appendChild(pips);
+    const ord=document.createElement('span'); ord.className='ord'; ord.id='ord-'+it.id;
+    b.appendChild(ord);
+    b.addEventListener('click',()=>place(it.id,true));
+    panel.appendChild(b);
+  }
+}
+function buildSlots(){
+  sceneSlots.innerHTML='';
+  for(const it of ITEMS){
+    const s=SLOT[it.id];
+    const g=document.createElementNS(NS,'g');
+    g.id='art-'+it.id;
+    g.style.transform=`translate(${s.x}px, ${s.y}px) scale(${s.s})`;
+    g.innerHTML=`<g class="inner ${it.idle||''}">${
+      ART[it.id].map(([f,t,svg])=>`<g class="L" data-f="${f}" data-t="${t}">${svg}</g>`).join("")
+    }</g>`;
+    g.style.visibility='hidden';
+    sceneSlots.appendChild(g);
+  }
+}
+/* 跨物件道具：小溪（水滴≥2 澆灌大樹）、纜車索道（繩子≥3） */
+function cablePts(){
+  const a=SLOT.seed, b=SLOT.box;
+  return {ax:a.x+6, ay:a.y-66, bx:b.x+30, by:b.y-54};
+}
+function cableAt(t){
+  const {ax,ay,bx,by}=cablePts();
+  const mx=(ax+bx)/2, my=Math.min(ay,by)-24;
+  const u=1-t;
+  return {x:u*u*ax+2*u*t*mx+t*t*bx, y:u*u*ay+2*u*t*my+t*t*by};
+}
+function renderProps(){
+  propsG.innerHTML=''; cableG.innerHTML='';
+  if(lv(vS,'drop')>=2 && lv(vS,'seed')>=1){
+    const a=SLOT.drop, b=SLOT.seed;
+    const d=`M${a.x-26} ${a.y-3} C ${a.x-150} ${a.y+14}, ${b.x+180} ${b.y+76}, ${b.x+20} ${b.y+4}`;
+    propsG.innerHTML=
+      `<path d="${d}" fill="none" stroke="#7fc5de" stroke-width="7" stroke-linecap="round" opacity=".95"/>`+
+      `<path class="flow" d="${d}" fill="none" stroke="#e9f7fd" stroke-width="2.5" stroke-linecap="round"/>`;
+  }
+  if(lv(vS,'rope')>=3 && lv(vS,'seed')>=3){
+    const {ax,ay,bx,by}=cablePts();
+    const mx=(ax+bx)/2, my=Math.min(ay,by)-24;
+    const p=cableAt(0.3);
+    cableG.innerHTML=
+      `<path d="M${ax} ${ay} Q ${mx} ${my} ${bx} ${by}" fill="none" stroke="#3d372c" stroke-width="3"/>`+
+      `<g id="gondola" transform="translate(${p.x} ${p.y})"><g class="sway">`+
+      `<line x1="0" y1="0" x2="0" y2="8" ${K2}/>`+
+      `<rect x="-9" y="8" width="18" height="14" rx="4" fill="#e0633c" ${K2}/>`+
+      `<circle cx="0" cy="14" r="2.4" fill="#ffe9a8" ${K2}/></g></g>`;
+  }
+}
+function refresh(){
+  let maxed=0;
+  for(const it of ITEMS){
+    const l=vS[IDX[it.id]];
+    const pips=document.getElementById('pips-'+it.id);
+    [...pips.children].forEach((p,i)=>p.classList.toggle('on', l>0 && i<l));
+    pips.classList.toggle('maxed', l===it.max);
+    const g=document.getElementById('art-'+it.id);
+    const inner=g.querySelector('.inner');
+    if(l>0){
+      g.style.visibility='visible';
+      inner.querySelectorAll(':scope > .L').forEach(el=>{
+        const f=+el.dataset.f, t=+el.dataset.t;
+        el.style.display = (l>=f && l<=t) ? '' : 'none';
+      });
+      if(l===it.max){
+        maxed++;
+        if(!inner.querySelector(':scope > .maxstar')){
+          const st=document.createElementNS(NS,'g');
+          st.setAttribute('class','maxstar');
+          st.innerHTML=`<path transform="translate(0 ${-SLOT[it.id].top-6})" d="M0 -9 l2.6 5.3 5.9 .9 -4.3 4.1 1 5.8 -5.2 -2.8 -5.2 2.8 1 -5.8 -4.3 -4.1 5.9 -.9 z" fill="#e8b63a" ${K2}/>`;
+          inner.appendChild(st);
+        }
+      }
+    } else g.style.visibility='hidden';
+  }
+  renderProps();
+  turnNow.textContent=order.length;
+  maxNow.textContent=maxed;
+  return maxed;
+}
+function say(t){ cap.textContent=t; cap.classList.remove('flash'); void cap.offsetWidth; cap.classList.add('flash') }
+const zz=ms=>new Promise(r=>setTimeout(r, reduceMotion?0:ms/SPEED));
+
+/* ---- 行走 ---- */
+const POS={};
+function curPos(id){ return POS[id]||{x:SLOT[id].x, y:SLOT[id].y} }
+function homePos(id){ return {x:SLOT[id].x, y:SLOT[id].y} }
+function anchor(id){ const p=curPos(id), s=SLOT[id]; return {x:p.x, y:p.y - s.top*s.s*0.6} }
+function towards(aId,bId,frac){
+  const a=SLOT[aId], b=SLOT[bId];
+  return {x:a.x+(b.x-a.x)*frac, y:a.y+(b.y-a.y)*0.35*frac};
+}
+function setPos(id, pt, durMs){
+  POS[id]=pt;
+  const g=document.getElementById('art-'+id), s=SLOT[id];
+  g.style.transition = durMs>0 ? `transform ${durMs}ms ease-in-out` : 'none';
+  g.style.transform = `translate(${pt.x}px, ${pt.y}px) scale(${s.s})`;
+}
+async function walkTo(id, pt, ms){
+  if(reduceMotion){ setPos(id, pt, 0); return }
+  setPos(id, pt, ms/SPEED);
+  const inner=document.querySelector('#art-'+id+' .inner');
+  inner.classList.add('walkA');
+  await zz(ms);
+  inner.classList.remove('walkA');
+}
+
+/* ---- 語意媒介與特效 ---- */
+const SPRITE={
+  rain:   `<path d="M0 -8 C -4.5 -2 -4.5 3 0 5 C 4.5 3 4.5 -2 0 -8 Z" fill="#7fc5de" ${K2}/>`,
+  splash: `<circle r="3.4" fill="#a8dcef" ${K2}/>`,
+  note:   `<path d="M0 -8 q0 -5 5 -6 l0 10 a3.2 3.2 0 1 1 -2 -3 z" fill="#5a3b63" stroke="#3d372c" stroke-width="1.5"/>`,
+  part:   `<g><circle r="4.5" fill="#b8874a" ${K2}/><path d="M0 -8 v3 M0 8 v-3 M-8 0 h3 M8 0 h-3" stroke="#3d372c" stroke-width="2.5" stroke-linecap="round"/></g>`,
+  plank:  `<rect x="-7" y="-2.5" width="14" height="5" rx="1.5" fill="#c9a15f" ${K2} transform="rotate(-18)"/>`,
+  strand: `<rect x="-8" y="-1.8" width="16" height="3.6" rx="1.8" fill="#c9a15f" ${K2} transform="rotate(24)"/>`,
+  spark:  `<path d="M-5 -7 l4 4 -3 1 7 9 -4 -4 3 -1 z" fill="#ffd45e" stroke="#3d372c" stroke-width="1.5"/>`,
+  polish: `<path d="M0 -5 l1.4 3.6 3.6 1.4 -3.6 1.4 -1.4 3.6 -1.4 -3.6 -3.6 -1.4 3.6 -1.4 z" fill="#ffffff" ${K2}/>`,
+  dig:    `<circle r="3.6" fill="#a98457" ${K2}/>`,
+  pebble: `<circle r="4.2" fill="#bdb3a2" ${K2}/>`,
+  soundwave:`<path d="M-3 -8 q8 8 0 16" fill="none" stroke="#c0442c" stroke-width="3" stroke-linecap="round"/>`,
+};
+async function mediumFly(kind, fromId, toId){
+  if(reduceMotion) return;
+  const to=anchor(toId);
+  let from;
+  if(fromId && fromId!==toId) from=anchor(fromId);
+  else from={x:to.x+(Math.random()*16-8), y:to.y-54};
+  const dur=0.65/SPEED;
+  for(let i=0;i<3;i++){
+    const g=document.createElementNS(NS,'g');
+    const jx=(Math.random()*18-9), jy=(Math.random()*10-5);
+    g.setAttribute('transform',`translate(${from.x+jx} ${from.y+jy})`);
+    g.innerHTML=SPRITE[kind]||SPRITE.polish;
+    g.classList.add('fly');
+    g.style.setProperty('--dx',(to.x-from.x)+'px');
+    g.style.setProperty('--dy',(to.y-from.y)+'px');
+    g.style.setProperty('--dur',dur+'s');
+    g.style.animationDelay=(i*0.1/SPEED)+'s';
+    fxLayer.appendChild(g); setTimeout(()=>g.remove(), (dur+0.4)*1000);
+  }
+  await zz(T.medium);
+}
+function fxBurst(toId){
+  const p=anchor(toId);
+  const g=document.createElementNS(NS,'g');
+  g.setAttribute('transform',`translate(${p.x} ${p.y})`);
+  for(let i=0;i<6;i++){
+    const ang=(Math.PI*2/6)*i - Math.PI/2;
+    const st=document.createElementNS(NS,'path');
+    st.setAttribute('d','M0 -6 l1.8 3.6 4 .6 -2.9 2.8 .7 4 -3.6 -1.9 -3.6 1.9 .7 -4 -2.9 -2.8 4 -.6 z');
+    st.setAttribute('fill', i%2 ? '#e8b63a' : '#d96a3b');
+    st.setAttribute('class','burststar');
+    st.style.setProperty('--bx', Math.cos(ang)*24+'px');
+    st.style.setProperty('--by', Math.sin(ang)*24+'px');
+    g.appendChild(st);
+  }
+  fxLayer.appendChild(g); setTimeout(()=>g.remove(),700);
+}
+function fxFirework(x,y){
+  const g=document.createElementNS(NS,'g');
+  g.setAttribute('transform',`translate(${x} ${y})`);
+  const cols=['#e8b63a','#d96a3b','#7fc5de','#f5b0c3','#8fd97c'];
+  for(let i=0;i<10;i++){
+    const ang=(Math.PI*2/10)*i;
+    const st=document.createElementNS(NS,'circle');
+    st.setAttribute('r','4');
+    st.setAttribute('fill', cols[i%cols.length]);
+    st.setAttribute('class','fw');
+    st.style.setProperty('--bx', Math.cos(ang)*46+'px');
+    st.style.setProperty('--by', Math.sin(ang)*46+'px');
+    g.appendChild(st);
+  }
+  fxLayer.appendChild(g); setTimeout(()=>g.remove(),1000);
+}
+function fxLabel(toId, txt, down){
+  const a=anchor(toId);
+  const t=document.createElementNS(NS,'text');
+  t.textContent=txt;
+  t.setAttribute('x',a.x); t.setAttribute('y',a.y - 16);
+  t.setAttribute('text-anchor','middle');
+  t.setAttribute('font-size','14'); t.setAttribute('font-weight','900');
+  t.setAttribute('fill', down?'#c0442c':'#d96a3b'); t.setAttribute('stroke','#fff');
+  t.setAttribute('stroke-width','3.5'); t.setAttribute('paint-order','stroke');
+  t.setAttribute('class','float'+(down?' down':''));
+  fxLayer.appendChild(t); setTimeout(()=>t.remove(),1100);
+}
+function fxStallMark(id){
+  const a=anchor(id);
+  const t=document.createElementNS(NS,'text');
+  t.textContent='💢';
+  t.setAttribute('x',a.x+14); t.setAttribute('y',a.y - 10);
+  t.setAttribute('font-size','16'); t.setAttribute('class','angry');
+  fxLayer.appendChild(t); setTimeout(()=>t.remove(),1100);
+}
+function anim(id, cls){
+  const inner=document.querySelector('#art-'+id+' .inner');
+  if(!inner) return;
+  inner.classList.remove('pop','bump','shrink','nudge','chargeA');
+  void inner.getBBox(); inner.classList.add(cls);
+  setTimeout(()=>inner.classList.remove(cls),560);
+}
+function byIdName(id){ return ITEMS[IDX[id]].name }
+
+/* ---- 三幕演出 ---- */
+async function playEvent(e){
+  if(e.kind==='stall'){
+    if(e.cause && vS[IDX[e.cause]]>0) anim(e.cause,'nudge');
+    fxStallMark(e.target);
+    say(e.story+'……');
+    await zz(T.stall);
+    return;
+  }
+  const cause = e.cause && vS[IDX[e.cause]]>0 ? e.cause : null;
+  const mv = e.move;
+  if(mv==='cause' && cause && cause!==e.target)
+    await walkTo(cause, towards(cause, e.target, 0.58), T.walk);
+  if(mv==='target' && cause && cause!==e.target)
+    await walkTo(e.target, towards(e.target, cause, 0.5), T.walk);
+  if(cause && cause!==e.target){ anim(cause,'nudge'); await zz(T.nudge) }
+  await mediumFly(e.medium, cause, e.target);
+  anim(e.target,'chargeA'); await zz(T.charge);
+  vS[IDX[e.target]]=e.to; refresh();
+  if(e.down){
+    anim(e.target,'shrink'); fxLabel(e.target,'!?',true);
+    say(e.story);
+    if(mv==='flee' && cause){ await zz(360); await walkTo(e.target, towards(e.target, cause, -0.35), T.flee) }
+    await zz(T.hold);
+  } else {
+    anim(e.target,'bump'); fxBurst(e.target); fxLabel(e.target,'LEVEL UP!');
+    say(e.story);
+    await zz(e.into? 640 : T.hold);
+    if(e.into){
+      say(`「${byIdName(e.target)}」變成了『${e.into}』！`);
+      anim(e.target,'bump');
+      await zz(T.morph);
+    }
+  }
+  const back=[];
+  if(mv==='cause' && cause) back.push(walkTo(cause, homePos(cause), T.walk));
+  if(mv==='target' || mv==='flee') back.push(walkTo(e.target, homePos(e.target), T.walk));
+  if(back.length) await Promise.all(back);
+}
+
+async function place(id, animate){
+  if(busy||S[IDX[id]]>0) return;
+  busy=true;
+  document.getElementById('btn-'+id).disabled=true;
+  const tl=stepTurn(S, IDX[id]);
+  order.push(id);
+  const ob=document.getElementById('ord-'+id);
+  ob.textContent=String(order.length).padStart(2,'0'); ob.style.display='block';
+  if(tl.some(e=>e.kind==='fx'&&e.down&&e.target==='ball')) flags.hornScare=true;
+  snapshotNow();
+  vS[IDX[id]]=1;
+  const g=document.getElementById('art-'+id);
+  const inner=g.querySelector('.inner');
+  g.style.visibility='visible';
+  if(animate&&!reduceMotion){ inner.classList.add('pop'); setTimeout(()=>inner.classList.remove('pop'),550) }
+  say(`「${byIdName(id)}」出現了。`);
+  refresh();
+  if(animate) await zz(T.place);
+  for(const e of tl){ if(animate) await playEvent(e); else vS[IDX[e.target]]=e.to??vS[IDX[e.target]] }
+  vS.set(S); const maxed=refresh();
+  busy=false;
+  if(order.length===N){ if(animate) await zz(550); await finale(maxed, animate) }
+  else if(animate) await zz(T.breath);
+}
+
+/* ---- 終曲：燈塔亮起、纜車滑行、煙火 ---- */
+async function finale(maxed, animate){
+  if(maxed===N && animate && !reduceMotion){
+    say('浮空燈塔亮了起來——');
+    anim('magnet','bump');
+    await zz(900);
+    const gon=document.getElementById('gondola');
+    if(gon){
+      say('纜車，出發！');
+      for(let t=0.3; t<=0.92; t+=0.04){
+        const p=cableAt(t);
+        gon.setAttribute('transform',`translate(${p.x} ${p.y})`);
+        await zz(55);
+      }
+      anim('box','bump');
+      await zz(400);
+    }
+    say('🎆 小小世界，完工！');
+    fxFirework(260,110); await zz(380);
+    fxFirework(500,80);  await zz(380);
+    fxFirework(700,120);
+    for(const it of ITEMS){ anim(it.id,'bump'); await zz(90) }
+    await zz(900);
+  }
+  ending(maxed);
+}
+function ending(maxed){
+  let big,msg,good=false;
+  if(maxed===N){ good=true; big=ENDINGS.good.big; msg=ENDINGS.good.msg }
+  else if(maxed===N-1){
+    const miss=ITEMS.find(it=>S[IDX[it.id]]!==it.max);
+    big="😮 ALMOST!"; msg=ENDINGS.almost(miss.name);
+  } else {
+    const b=ENDINGS.bads.find(b=>b.when(S,flags)); big=b.big; msg=b.msg;
+  }
+  endingBox.className='ending'; endingBox.hidden=false;
+  endingBox.innerHTML=`
+    <div class="big ${good?'good':'bad'}">${big}</div>
+    <div class="msg">${msg}</div>
+    <div class="score">LEVEL MAX：${maxed} / ${N}　｜　你的順序：${order.map(byIdName).join(' → ')}</div>
+    <button class="ghost" id="againBtn" style="color:#fbf4e4;border-color:#fbf4e4">再挑戰一次</button>`;
+  document.getElementById('againBtn').addEventListener('click',reset);
+  say(good?'恭喜通關！':'差一點……換個順序試試吧。');
+}
+
+function reset(){
+  S=new Int8Array(N); vS=new Int8Array(N); order=[]; busy=false; flags={hornScare:false};
+  endingBox.hidden=true; endingBox.innerHTML=''; fxLayer.innerHTML='';
+  for(const it of ITEMS){
+    setPos(it.id, homePos(it.id), 0);
+    document.getElementById('btn-'+it.id).disabled=false;
+    document.getElementById('ord-'+it.id).style.display='none';
+    const inner=document.querySelector('#art-'+it.id+' .inner');
+    const st=inner.querySelector(':scope > .maxstar'); if(st) st.remove();
+  }
+  say('空空的小世界。第一手要放什麼？');
+  refresh(); snapshotNow();
+}
+
+function renderSpecPanel(){
+  const dump={items:ITEMS.map(({id,name,max,tick,levels})=>({id,name,max,tick,levels})), extra:EXTRA, fx:FX, stall:STALL, perf:PERF,
+    props:{stream:"水滴≥2 且種子在場 → 池塘到大樹出現流動小溪", cable:"繩子≥3 且大樹長成 → 樹冠到纜車站拉出索道與吊艙", beacon:"磁鐵≥2 → 浮空燈塔＋光束與地面影子", finale:"全滿級 → 燈塔亮起、吊艙滑行到站、三發煙火、全員謝幕"}};
+  document.getElementById('specDump').textContent=JSON.stringify(dump,null,2);
+  const m=METRICS;
+  document.getElementById('metricsBox').innerHTML=`
+    <p>求解器掃過全部 10! = <b>${m.total.toLocaleString()}</b> 種排列：唯一解 <b>${m.solutions}</b> 組、
+    達成 9/10 的排列 <b>${m.ge9.toLocaleString()}</b>、8/10 以上 <b>${m.ge8.toLocaleString()}</b>，
+    平均滿級數 <b>${m.avg}</b>。</p>
+    <table><tr><th>滿級數</th>${m.dist.map((_,k)=>`<td>${k}</td>`).join('')}</tr>
+    <tr><th>排列數</th>${m.dist.map(v=>`<td>${v.toLocaleString()}</td>`).join('')}</tr></table>
+    <p>各首手的「可達最佳滿級數」：${Object.entries(m.firstMoveBest).map(([id,v])=>`${ITEMS[IDX[id]].name} ${v}`).join('、')}。
+    演出＝因(nudge)→媒介(fly)→果(charge→變身→定格) 三幕，跨物件道具規則見 props 欄。</p>`;
+}
+
+let snapshotNow=()=>{};
+function boot(data){
+  buildPanel(); buildSlots();
+  document.getElementById('resetBtn').addEventListener('click',reset);
+  const sb=document.getElementById('speedBtn');
+  sb.addEventListener('click',()=>{
+    SPEED = SPEED===1 ? 3 : 1;
+    sb.classList.toggle('on', SPEED!==1);
+    sb.textContent = SPEED===1 ? '⏩ 快轉' : '▶ 原速';
+  });
+  renderSpecPanel();
+  reset();
+  const saved=data&&Array.isArray(data.order)?data.order:null;
+  if(saved) for(const id of saved) if(IDX[id]!=null&&S[IDX[id]]===0){
+    const tl=stepTurn(S,IDX[id]); order.push(id);
+    if(tl.some(e=>e.kind==='fx'&&e.down&&e.target==='ball')) flags.hornScare=true;
+    document.getElementById('btn-'+id).disabled=true;
+    const ob=document.getElementById('ord-'+id);
+    ob.textContent=String(order.length).padStart(2,'0'); ob.style.display='block';
+  }
+  vS.set(S);
+  const maxed=refresh();
+  if(order.length===N) ending(maxed);
+  snapshotNow=()=>window.claude?.hot?.snapshot?.(()=>({order:[...order]}));
+  snapshotNow();
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(boot) : boot(window.claude?.hot?.data ?? {});
+</script>

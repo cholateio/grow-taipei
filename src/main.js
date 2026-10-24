@@ -8,7 +8,8 @@ import { buildTerrain } from './scene/terrain.js';
 import { SimplexNoise } from '../vendor/three/addons/math/SimplexNoise.js';
 import { mulberry32 } from './scene/random.js';
 import { createPeople, ringPath, WALK_RADIUS } from './scene/people.js';
-import { axialToWorld, cellTop } from './scene/hex.js';
+import { axialToWorld, cellTop, PLATEAU_CELLS, WATER_Y } from './scene/hex.js';
+import { createAssets } from './scene/assets.js';
 
 const loading = document.getElementById('loading');
 const params = new URLSearchParams(location.search);
@@ -32,6 +33,18 @@ try {
     const path = ringPath(axialToWorld(...cell), WALK_RADIUS, cellTop(cell));
     people.spawn({ path: k ? [...path].reverse() : path, speed: 0.32 + k * 0.06, accessory: k ? 'cap' : 'none' });
   }
+  // CC0 模型：台地種樹（主島其他格留給物品），海上兩艘船繞圈。載入失敗不擋開機。
+  const assets = createAssets(THREE);
+  const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
+  const trng = mulberry32(3), decor = new THREE.Group(); view.scene.add(decor);
+  const boats = [];
+  Promise.all([
+    ...PLATEAU_CELLS.flatMap(cell => Array.from({ length: 5 }, (_, i) => {
+      const c = axialToWorld(...cell), a = i / 5 * Math.PI * 2 + trng(), d = 0.95 + trng() * 0.35;
+      return assets.spawn(`kenney/nature/${TREES[Math.floor(trng() * TREES.length)]}.glb`, { x: c.x + Math.cos(a) * d, y: cellTop(cell), z: c.z + Math.sin(a) * d, h: 0.7 + trng() * 0.4, ry: trng() * 6, parent: decor, tint: { leaf: LEAVES[i % 3], bark: 0x9c7a4e } });
+    })),
+    ...['Boat', 'BoatWSail'].map((b, i) => assets.spawn(`quat/ships/${b}.glb`, { h: [0.35, 0.8][i], y: WATER_Y - 0.02, parent: decor }).then(m => boats.push({ m, r: 16.5 + i * 2.2, a: i * 2.6, s: 0.05 + i * 0.015 }))),
+  ]).catch(e => console.warn('裝飾模型載入失敗', e));
   const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
   setTime(TIMES[params.get('time')] ?? TIMES.day);
   view.resize(); addEventListener('resize', view.resize);
@@ -43,7 +56,8 @@ try {
   const clock = new THREE.Clock();
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
-    view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length());
+    view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt);
+    for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
   });
   loading.hidden = true;

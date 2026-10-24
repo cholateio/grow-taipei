@@ -10,6 +10,8 @@ import { mulberry32 } from './scene/random.js';
 import { createPeople, ringPath, WALK_RADIUS } from './scene/people.js';
 import { axialToWorld, cellTop, PLATEAU_CELLS, WATER_Y } from './scene/hex.js';
 import { createAssets } from './scene/assets.js';
+import { createCameraRig } from './scene/camera.js';
+import { OrbitControls } from '../vendor/three/addons/controls/OrbitControls.js';
 
 const loading = document.getElementById('loading');
 const params = new URLSearchParams(location.search);
@@ -47,16 +49,23 @@ try {
   ]).catch(e => console.warn('裝飾模型載入失敗', e));
   const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
   setTime(TIMES[params.get('time')] ?? TIMES.day);
-  view.resize(); addEventListener('resize', view.resize);
-  view.camera.position.set(CENTER.x + 0.24 * 30, CENTER.y + 0.33 * 30, CENTER.z + 0.87 * 30);
-  view.camera.lookAt(CENTER.x, CENTER.y, CENTER.z);
+  // 鏡頭：OrbitControls（阻尼、禁平移、仰角 25°–70°、距離 3–70）+ 全景／飛行
+  const controls = new OrbitControls(view.camera, view.renderer.domElement);
+  Object.assign(controls, { enableDamping: true, dampingFactor: 0.07, enablePan: false, minPolarAngle: 25 * Math.PI / 180, maxPolarAngle: 70 * Math.PI / 180, minDistance: 3, maxDistance: 70 });
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const rig = createCameraRig({ THREE, camera: view.camera, controls, center: CENTER, reducedMotion: motion.matches });
+  motion.addEventListener?.('change', e => rig.setReducedMotion(e.matches));
+  view.renderer.domElement.addEventListener('pointerdown', () => rig.cancel());
+  const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); };
+  fit(); new ResizeObserver(fit).observe(document.body);
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫
-  if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); view.camera.lookAt(cam[3], cam[4], cam[5]); }
+  if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
+
 
   const clock = new THREE.Clock();
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
-    view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt);
+    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt);
     for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
   });

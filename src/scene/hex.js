@@ -5,10 +5,10 @@ const SQ3 = Math.sqrt(3);
 export const MAIN_CELLS = [[0, 0], [1, 0], [-1, 0], [0, 1], [-1, 1], [0, -1], [1, -1]];   // 中心 + 一圈
 export const PLATEAU_CELLS = [[0, -1], [1, -1]];                                          // 北側兩格墊高：陽明山、溫泉
 export const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]];
-// 衛星島放在第 3 圈附近，全景畫面裝得下；代幣 Lv3 的橋接得到
+// 衛星島放在主島外約半徑 10 的一圈（軸座標可以是小數），全景畫面裝得下、和主島隔一條水道
 export const SATELLITES = [
-  { kind: 'lighthouse', q: 3, r: 0 }, { kind: 'windmill', q: -3, r: 0 }, { kind: 'rocks', q: 2, r: 2 },
-  { kind: 'pyramid', q: -3, r: 3 }, { kind: 'playground', q: 3, r: -3 }, { kind: 'forest', q: 0, r: -3 }, { kind: 'chest', q: 0, r: 3 },
+  { kind: 'lighthouse', q: 2.6, r: 0 }, { kind: 'windmill', q: -2.6, r: 0 }, { kind: 'rocks', q: 1.6, r: 1.6 },
+  { kind: 'pyramid', q: -2.6, r: 2.6 }, { kind: 'playground', q: 2.6, r: -2.6 }, { kind: 'forest', q: 0, r: -2.6 }, { kind: 'chest', q: 0, r: 2.6 },
 ];
 
 export function axialToWorld(q, r) { return { x: SQ3 * SPACING * (q + r / 2), z: 1.5 * SPACING * r }; }

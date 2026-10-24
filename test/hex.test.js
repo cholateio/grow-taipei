@@ -36,8 +36,8 @@ test('satellites are outside the main island and apart from each other', () => {
     const p = axialToWorld(s.q, s.r), u = axialToWorld(t.q, t.r); assert.ok(Math.hypot(p.x - u.x, p.z - u.z) >= SPACING * 1.9, `${s.kind}-${t.kind}`);
   }
 });
-test('satellites stay within the overview frame (radius ≤ 15)', () => {
-  for (const s of SATELLITES) { const p = axialToWorld(s.q, s.r); assert.ok(Math.hypot(p.x, p.z) <= 15, s.kind); }
+test('satellites stay within the overview frame (radius ≤ 11) and leave a channel to the main island', () => {
+  for (const s of SATELLITES) { const p = axialToWorld(s.q, s.r), d = Math.hypot(p.x, p.z); assert.ok(d <= 11, s.kind); const mainReach = Math.sqrt(3) * SPACING + R; assert.ok(d - R > mainReach + 0.5, s.kind); }
 });
 test('bridgeDecks: 9 decks from a to b with a sine arch', () => {
   const d = bridgeDecks({ x: 0, z: 0 }, { x: 1, z: 0 });

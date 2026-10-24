@@ -1,0 +1,145 @@
+你是資深 WebGL／Three.js 創意前端工程師兼互動設計師。請做一個單一 HTML 檔的 artifact：「{示範市}政策島」——一座由六角形小島拼成的 3D 互動政策城市，風格是溫暖的黏土玩具模型城市（微縮模型感），用來 demo 給其他人看。
+## 0. 基本約束
+- 單一 HTML 檔，原生 ES Modules，不用 React、不用任何建置工具。
+- Three.js 固定 0.160.0，用 importmap 載入：
+- "three": "https://cdn.jsdelivr.net/....../build/three.module.js"
+- "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+- 只用這些 addons：OrbitControls、CSS2DRenderer、RoundedBoxGeometry、BufferGeometryUtils、SimplexNoise。
+- 不載入任何圖片、3D 模型、字型檔：所有幾何用程式產生，所有貼圖用 canvas 即時畫。字型用系統字 "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif。
+- 所有資料（島、細項、協作線、一天時段）寫成檔案頂端的一個 DATA 物件，程式完全由 DATA 驅動；每個細項自帶 model 欄位指定模型種類，不要把對應寫死在程式裡。
+- 所有隨機都用 mulberry32 固定種子（包含 SimplexNoise 的 random），每次載入的場景完全一樣。
+- 內容一律用虛構示範資料；不要使用任何真實政黨、候選人或機構的名稱、標誌與文案。
+- 整段初始化包 try/catch：WebGL 或 CDN 載入失敗時，在載入畫面顯示錯誤訊息，不要白畫面。localStorage 讀寫也要包 try/catch。
+## 1. 示範內容（可替換）
+- 城市：{示範市}。12 個政策主題（例：交通、托育、教育、長照、運動、綠地、文化、青年、數位、安全、環保、觀光），每個主題 3–7 個細項，共約 50 個。
+- 每個細項：id、名稱、一句白話說明、2–3 條含數字的重點事實、時程（第 1 年／2–3 年／4 年）、model 種類。
+- 6–10 條「協作線」：from 主題 → to 主題、搬運物（書、餐盒、樹苗、藥箱…）、走路的角色、證據等級 official／thematic／pending（決定線的樣式）。
+- dayCycle 5–8 個時段：每段指定哪些細項在該時段亮起（黃色高亮）。
+## 2. 世界佈局（數值照用）
+- pointy-top 六角形（頂點朝 ±z）：外接半徑 R=2.02、格距 SPACING=2.28、島面高 TOP=0.65、水面 WATER_Y=-0.18。
+- axial→world：x = √3·SPACING·(q + r/2)，z = 1.5·SPACING·r；島與島之間留約 0.45 寬的水道。12 島用 axial 座標拼成不規則但彼此相連的城市輪廓（不要排成規則的大六角形）。
+- 島面：CircleGeometry(R-0.05, 6).rotateZ(π/6).rotateX(-π/2)，MeshStandard roughness .92，貼 256² canvas 程序地面貼圖（磚紋／斑點／條紋三種），UV 用世界座標 ÷2.2，讓花紋跨島連續。
+- 每島：半徑 1.8 的步道環（寬約 0.28、淺磚色）、外緣路緣 #e4d6c3、頂緣一圈高 0.16 的彩色圖案帶、外圈淺水環（R+0.7）與白色泡沫環（R+0.16，opacity .55）。島的側壁用和水面相同的 shader，看起來像浮在淺海上。用 polygonOffset 避免 z-fighting。
+- 相鄰島之間各一座小拱橋（9 片甲板，sin 拱高 .04–.1），連接兩島步道環的邊中點。
+- 行人路網：每島 12 個節點（步道六角形的 6 頂點 + 6 邊中點）連成環，橋連接相鄰島，用 Dijkstra 尋路。
+- 島內配置：主建物放在 (0, −0.58)、尺寸約 1.15；其餘細項用交錯格子放在內切半徑 1.36 以內，格子大小依數量從 0.62 自動縮到 0.46。
+## 3. 渲染與相機
+- WebGLRenderer：antialias、alpha、PCFSoftShadowMap、SRGBColorSpace、ACESFilmicToneMapping（exposure 1）、pixelRatio = min(devicePixelRatio, 1.75)（手機 1.4）。頁面背景 radial-gradient(#fffdf9 → #edddcf)。
+- PerspectiveCamera：fov 32、near .3、far 320（窄視角做出模型城市感）。
+- OrbitControls：damping .07、禁止平移、polar 25°–70°、距離 3–70。
+- 全景：方向 normalize(.24, .33, .87)，距離依長寬比分為 28.5（寬螢幕）、38、56（直式）。
+- 選取時飛行 800ms easeInOutCubic，同時插值 position 與 target：島 offset (2.75, 5.3, 6.2)、建物 offset (1.6, 2.5, 3.2)。桌面版左側有卡片時，目標往右偏 1.5。使用者一按下指標就取消飛行。
+- 鳥瞰模式：camera = target + (0.01, 42, 6)。
+## 4. 環境、光線與日夜
+- 天空：SphereGeometry(170)，BackSide 的 ShaderMaterial（depthWrite false、fog false）。uniforms uTop、uHorizon、uSunDir、uSun、uNight。顏色 = mix(horizon, top, smoothstep(-.02,.55,dir.y))，加太陽光暈 pow(dot,18)·.35，夜晚加星星（floor(dir·180) 做 hash，大於 .9965 才亮）。
+- 霧：Fog(0xf4eee3, 42, 150)，顏色永遠等於當下的 horizon。
+- 光：
+- HemisphereLight(0xeef6fa, 0x8f8270, 1.3)。
+- 太陽 DirectionalLight(0xfff1de, 2.8)：castShadow、map 2048、shadow camera ±20／±22、near 1、far 90、bias −.0006、normalBias .045、radius 3。
+- 補光 DirectionalLight(0xbfd6ff, .35)。
+- 只有太陽投影。
+- 水：CircleGeometry(160, 64) 的 ShaderMaterial，淺色 #a4d4da、深色 #6fa9b8。用兩組交疊正弦波做柔和的色彩漂移，離城市越遠越深，再加微小閃光；要支援 fog。
+- 日夜 keyframes，欄位依序為：分鐘、skyTop、horizon、sunColor、sunI、hemiSky、hemiGround、hemiI、night、water。keyframe 之間線性插值：
+- 0: 1e2c58, 3f4f80, b4c2ff, 1.15, 94a2d8, 64566a, 1.85, 1, 5a88b2
+- 300: 26365f, 4c5688, b8c4ff, 1.0, 96a4da, 66586c, 1.85, 1, 5c8ab4
+- 360: 7f8fc4, f6c3a6, ffb48a, 1.3, f3c6b5, 6b5a5a, 1.1, .55, 8fb7c4
+- 450: a9d1ea, fbe6d3, ffe2c4, 2.4, eaf2f6, 8a7a68, 1.25, 0, 9fcfd6
+- 720: 9fd0ec, f4eee3, fff1de, 2.9, eef6fa, 8f8270, 1.35, 0, a9d8db
+- 960: a6cfe6, f8e7d2, ffe3c0, 2.5, f1efe8, 8a7a66, 1.25, 0, 9fcbd2
+- 1065: 8b8fc4, f7b98f, ff9f6a, 1.8, f6d2bc, 7d6660, 1.2, .3, 93a9bd
+- 1140: 5a5e9e, d99aa6, ff9a7a, 1.3, c0b2e0, 655868, 1.35, .75, 6a7cab
+- 1260: 22325f, 445488, c0ccff, 1.2, 98a8dc, 685a6e, 1.9, 1, 5a88b2
+- 1440: 與 0 相同
+- 夜晚 hemi 反而較強：冷藍但看得清楚。
+- 太陽方位：時間先量化到 10 分鐘。t = clamp((min−360)/720, 0, 1)；az = π(.15+.7t)；el = .35 + sin(tπ)·.75；dir = normalize(cos az·cos el, sin el, .55·cos el + .35)；sun.position = 城市中心 + dir·40。太陽永遠在鏡頭這一側的上方。
+- 夜晚：窗戶與燈的 emissive（#ffc777）強度 = night × 3.2；路燈下的加法混合光池、島緣串燈、窗光溢出都乘上 night。
+- 時鐘：從 10:00 開始自動走，每秒 10 分鐘（一天 144 秒）。HUD 有清晨 06、白天 12、黃昏 18、夜晚 21 四顆按鈕可直接跳時間。
+- 遠景層次：
+- 盆地地形：170² 的 PlaneGeometry（細分 160）。中心低，半徑 25–50 之間用 smoothstep 隆起成環狀山，再疊 fbm 噪聲與梯田量化；鏡頭那一側壓低，避免擋到城市。依高度上頂點色：河床 8fb3ad → 沙 d9c9a3 → 田 aec493 → 草 a3b986 → 林 6f8a62 → 岩 b2a38d。使用 flatShading。
+- 背景樹：InstancedMesh 數千棵。針葉 = 3 個 cone merge；闊葉 = 4 顆抖動過的 ico merge。flatShading、不投影，種在半徑 16–52 的山坡上。
+- 三圈遠山剪影帶（MeshBasic，顏色往 horizon 混）。
+- 12 團雲：多顆球組成，沿 +x 慢慢漂，超出範圍後繞回。
+- 海上點綴幾座小島、燈塔、帆船。
+## 5. 建物：實例化「零件庫」
+- 做一個 kit：建模函式只把 {kind, matrix, color} 推進陣列；最後每種幾何 kind 建一個 InstancedMesh，用 setColorAt 上色。所有靜態物件合計約 20–30 個 draw call。
+- 幾何種類：
+- 基本：box、rbox（RoundedBoxGeometry(1,1,1,2,0.12)）、cylinder（14 段）、cone、sphere、ico（detail 1）、dome、torus、prism。
+- hip：4 邊錐轉 45°，當四坡屋頂。
+- 發光：glowbox、glowsphere。
+- 材質：
+- solid：MeshStandard，roughness .78、metalness 0，做出霧面黏土感；前景不要 flatShading。
+- glow：MeshStandard，emissive #ffc777。
+- 每個 instance 的縮放乘上 1 ± 0.0072 隨機抖動，防 z-fighting。
+- 每個細項做一個小型立體場景模型：在單位空間設計（底面 ±0.5、高 0–1.5），再縮放放到格子上。至少做 12 種 archetype，由細項的 model 欄位決定：
+- 小屋：牆 #f4ebdd、coral 四坡屋頂、簷 #a34e34、窗 #a8c4c2。
+- 市政廳加鐘塔、亭子或攤位。
+- 教室：桌椅、黑板、迷你人。
+- 診所、公車站加公車、腳踏車架、球場、農田或花圃、河道加小橋、舞台。
+- 巨大符號物件：書、硬幣、時鐘、地球儀。
+- 每島外圈：
+- 六角形頂點放路燈；邊上放盆栽、灌木、花。
+- 外圈 4–6 棵大樹，各島樹種不同（針葉、櫻花、果樹、棕櫚、柳樹…）。
+- 島內散布長椅等小物件。
+- 小物件在鏡頭距離 ≥ 26 時隱藏（LOD）。
+- 色票：
+- 主色：coral #db6a41、ink #211d1d、cream #fff8f4、yellow #fcea8b、stone #c5b5a7、green #71806a。
+- 材質：glass #86a8a6、wood #b48560、teal #3e7c8c。
+- 植物：#9cc27a、#8db86f、#728f5f。
+- 粉彩點綴：#f2b5c6、#58a6a6、#6f7fb5。
+## 6. 小人與協作線
+- 小人：大頭 chibi，高約 0.35，頭占 40%。
+- 零件：腿、手臂、Capsule 身體、球形頭、半球髮殼、眼睛。每種零件一個 InstancedMesh（DynamicDrawUsage）；腳下一個圓形假影子（opacity .22）。
+- 角色配件：公務員背心加識別證、研究員白袍、長者拐杖、學童黃帽、家長推嬰兒車、通勤族騎腳踏車、農夫斗笠、工人安全帽、旅客行李箱。
+- 行走：
+- 每條協作線依路網 Dijkstra 算出路線，配 4–14 人在路線兩端來回走。
+- 速度 .32–.40，腳踏車 .62–.70；到端點停 1.4 秒交接再折返。
+- 動畫：ph = time·9 + phase·20；腿擺 ±.55、手擺 ±.45、上下起伏 |sin ph|·.012。
+- 鏡頭拉遠時，小人縮放乘上 clamp(d/20, 1, 1.45)，維持可讀。
+- 頭上 badge：128² canvas 做的 Sprite（白圓加 coral 外環，中間是代表搬運物的 ink 線條圖示）。鏡頭距離 < 16 才顯示。
+- 協作線：
+- 沿路網折線做 TubeGeometry（半徑 .035），套 ShaderMaterial：u = vUv.x·長度·5 − time·1.4。
+- 樣式：official 實線；thematic 虛線（fract(u) > .6 時 discard）；pending 點線（fract(u) > .3 時 discard）。
+- coral 色、opacity .82，圖樣會流動。
+- 預設隱藏；選到相關的島、線或小人，或打開「協作線」開關時才顯示，同時出現圖例。
+## 7. 標籤
+- 用 CSS2DRenderer，每島在前側崖邊掛一顆 pill 標籤，例如「01 交通」。選取的島標籤變 ink 底，其他島變淡。
+- 選島後，每個細項上方出現 ①②③ pin，用 coral 細線（depthTest false）連到模型頂端。
+- 「名牌」開關打開時，近距離（< 14）的小人頭上顯示「正在搬 X」氣泡。
+- 每幀做簡單的標籤碰撞避讓：與 UI 面板或其他標籤重疊時先只留號碼，再不行就隱藏；加 8px hysteresis 防閃爍。
+## 8. 互動與介面
+- 點擊：pointerup 且指標移動 ≤ 6px 才 raycast，依命中物件呼叫 selectIsland、selectItem、selectWalker、selectFlow。四者都走同一流程：高亮 → 顯示相關協作線 → 飛行 → 開卡片。
+- 高亮：用 setColorAt 把該建物所有零件往 coral 混 22%；當前時段 dayCycle 亮起的細項往 yellow 混 22%。
+- 桌面版面：
+- 左上品牌卡：毛玻璃、圓角 18，大標題加「政策島」副標。
+- 左側詳細卡片：寬 340px、圓角 22、多層柔和陰影、內部可捲動。內容分三種：
+- 島卡：圖示、摘要、細項列表、協作 chips。
+- 細項卡：160² 離屏渲染的模型縮圖、從事實抓出最多 3 個大數字磚、時程軸。
+- 協作線卡：from → to、證據等級、搬運物。
+- 右側清單側欄：寬 318px，半透明加 backdrop-filter blur 16px；有搜尋框和「政策主題／協作關係」兩個 tab；主題用 details 展開細項 ①②…。
+- HUD pill 工具列：時段四鈕，以及名牌、搬運、協作線、暫停、鳥瞰、日誌六個開關（icon 在上、字在下）。
+- 右上「城市日誌」面板：小人到站時產生 depart／arrive／handoff 事件，有 LIVE 綠點，可依協作線篩選。
+- 左上工具列：全景、清單、說明（?）。
+- 元件樣式：
+- 按鈕：最小高度 44px、圓角 9px；hover 黃底、pressed ink 底、focus 3px coral outline。
+- chip：999px 全圓角、白或奶油底、陰影 0 2px 8px #4a2a1414。
+- 眉標用 ui-monospace 700 10px、字距 2px；大數字用 Georgia 斜體。
+- 載入畫面：大字加「正在組合政策城市…」。第一次進入顯示 3 步驟的操作說明，看過後用 localStorage 記住。
+- 手機版（≤ 800px）：
+- 工具列改直排。
+- 側欄與卡片變成 bottom sheet，預設高度分別 52% 與 34%，有拖曳把手，可撐滿全螢幕。
+- HUD 收進「◷ 時間」按鈕。
+- pixelRatio 上限 1.4，背景樹減量。
+- 鍵盤：方向鍵旋轉鏡頭，Esc 關閉卡片。
+- prefers-reduced-motion：相機直接瞬移、時鐘與所有動畫凍結、協作線改成靜態虛線；監聽 change 事件即時切換。
+- 中英雙語：預設中文，?lang=en 切英文（用 data-en 屬性加 tr() 函式）。
+## 9. 效能
+- 只在需要時 render：有動畫或互動才設 dirty。dt 上限 .08。
+- 只有太陽投影，背景樹不投影，小物件依距離做 LOD。
+- 用 ResizeObserver 處理尺寸變化。
+## 10. 交付方式
+分階段完成，每個階段結束時 artifact 都要能完整執行：
+1. 場景骨架：renderer、相機、控制、天空、水、光、日夜循環、六角島、橋、島名標籤。
+2. 建物零件庫與各細項模型、街道家具、背景地形、樹、雲。
+3. 介面：側欄、卡片、HUD、選取／高亮／飛行，全部接上 DATA。
+4. 小人、協作線、badge、城市日誌。
+5. 收尾：手機版、reduced-motion、操作說明、雙語、效能檢查。

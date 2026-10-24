@@ -167,7 +167,7 @@ GROW 的關鍵（使用者觀察）：**物品升級時，不只物品本身變�
 ### 5.3 衛星島與背景
 
 - 7 座衛星島（燈塔、風車、石堆、階梯丘、遊樂場、小森林、寶箱島）。代幣 Lv3 會架橋連到其中兩座；外星人結局會把石堆島變成降落場。
-- 背景整片 low poly 山坡＋上千棵 instancing 的小樹＋幾間小屋（陽明山）。遠處霧化。
+- 背景：170² PlaneGeometry（細分 160）盆地地形，中心低、半徑 25–50 用 smoothstep 隆起成環狀山，疊 fbm 噪聲與梯田量化，鏡頭那一側壓低；依高度上頂點色（河床 `8fb3ad` → 沙 `d9c9a3` → 田 `aec493` → 草 `a3b986` → 林 `6f8a62` → 岩 `b2a38d`），flatShading。背景樹 InstancedMesh 數千棵（針葉 = 3 cone merge、闊葉 = 4 抖動 ico merge），種在半徑 16–52 的山坡，不投影。三圈遠山剪影帶往 horizon 混色。12 團雲沿 +x 漂。
 - 海上 3–4 艘小船繞圈，純裝飾。
 
 ## 6. 規則引擎（連鎖版）
@@ -236,7 +236,8 @@ place(X):
 
 ### 7.3 小人
 
-- puma 風：膠囊身、球頭、黑髮帽、彩色上衣、深色褲，走路時手腳擺動。不是 GROW 的黃色小人（使用者看過兩版後選 puma 風）。
+- puma 風大頭 chibi：高約 0.35（島面高 0.65 的尺度下），頭占 40%；零件是腿、手臂、Capsule 身體、球形頭、半球髮殼、眼睛，每種零件一個 InstancedMesh（DynamicDrawUsage）；腳下一個圓形假影子（opacity .22）。走路：ph = time·9 + phase·20，腿擺 ±.55、手擺 ±.45、起伏 |sin ph|·.012。鏡頭拉遠時縮放乘 clamp(d/20, 1, 1.45)。不是 GROW 的黃色小人（使用者看過兩版後選 puma 風）。
+- 配件決定身分：學童黃帽、工程師白袍＋識別證、觀光客行李箱、球員棒球帽、偵防師放大鏡、工人安全帽。
 - 基本島民 6 個沿主路來回走；衍生小人（小孩、工程師、觀光客、球員、偵防師）由物品生成。
 - 動物與生物用 Quaternius 動畫模型：老鼠（Walk/Run/Idle/Jump）、外星生物（Flying_Idle）、柴犬（純裝飾，一隻）。
 
@@ -302,17 +303,29 @@ place(X):
 上衣 8 色：珊瑚、藍 `#5a88b2`、粉 `#f2b5c6`、綠 `#8db86f`、黃、白、深藍 `#3f5a8a`、橘黃 `#e8b04a`。
 賽博龐克結局另加霓虹粉 `#ff3fa0`、霓虹藍 `#3fe0ff`。外星人結局另加紫地 `#b9a7d6`、外星綠 `#5fcf7a`。
 
-### 9.2 光線與材質
+### 9.2 光線與材質（2026-10-24 依政策島原始提示詞 `docs/island_prompt.txt` 修正）
 
-- 全部 `MeshLambertMaterial` + `flatShading`，含外部模型（載入時轉換，貼圖與頂點色保留）。
-- 一盞方向光（有陰影，PCFSoft，2048 map，bias −0.0006）＋ 一盞半球光。白天／傍晚／夜晚三組參數（試作 v2 已有），燈泡等級會推動時段。
-- 霧：`Fog(天空色, 45, 130)`。
-- 色調映射 ACES，曝光 1.05。
-- 不用後處理（無 bloom、無 SSAO），效能優先。發光靠 emissive。
+政策島的「黏土玩具模型」質感來自：前景**不用** flatShading、霧面 Standard 材質、窄視角、程序天空與水。採用：
+
+- 前景（島面、建築、角色、物品）：`MeshStandardMaterial`，roughness .78、metalness 0，**不開 flatShading**。外部模型載入時也轉成這個材質（保留貼圖、頂點色、emissive）。
+- 背景（盆地地形、背景樹、遠山）：flatShading、不投影。
+- 發光材質：Standard + emissive `#ffc777`，強度 = night × 3.2。
+- 每個 instance 縮放乘 1 ± 0.0072 隨機抖動，防 z-fighting。
+- 光：HemisphereLight(0xeef6fa, 0x8f8270, 1.3)；太陽 DirectionalLight(0xfff1de, 2.8)，castShadow、map 2048、shadow camera ±20、bias −.0006、normalBias .045、radius 3；補光 DirectionalLight(0xbfd6ff, .35)。只有太陽投影。
+- 天空：SphereGeometry(170) BackSide ShaderMaterial，uTop／uHorizon／uSunDir／uNight；夜晚 hash 星星。霧 `Fog(horizon, 42, 150)`，霧色永遠等於當下 horizon。
+- 水：CircleGeometry(160, 64) ShaderMaterial，淺 `#a4d4da` 深 `#6fa9b8`，兩組正弦波色彩漂移，離島越遠越深，微小閃光，支援 fog。島側壁用同一 shader，看起來像浮在淺海。
+- 日夜：用提示詞 §4 的 keyframe 表（分鐘、skyTop、horizon、sunColor、sunI、hemiSky、hemiGround、hemiI、night、water）線性插值。遊戲裡**時間不自動走**，由燈泡等級與結局推動：開局 10:00（白天），燈泡 Lv3 → 17:45（黃昏），燈泡 Lv4 或賽博龐克結局 → 21:00（夜晚），大停電 → 21:00 但所有 emissive 歸零。
+- 相機：fov 32、near .3、far 320；pixelRatio = min(devicePixelRatio, 1.75)（手機 1.4）；ACES、exposure 1。
+- 不用後處理。
+- 只在需要時 render（有動畫或互動才設 dirty），dt 上限 .08。
+
+這段取代試作 v2/v3 的 Lambert+flat 設定；試作的島幾何、人物、載入程式仍可搬，只換材質。
 
 ### 9.3 幾何語言
 
-- 島：軟化的六角形（每邊 4 段、角落圓化 0.15、半徑抖動 3%），側面向內收 0.86，頂面白色環形邊框，水下一圈半透明沙色淺灘。
+- 島：政策島的六角參數可直接用：pointy-top、外接半徑 R=2.02、格距 2.28、島面高 TOP=0.65、水面 −0.18；主島由 7 格六角（中心＋一圈）拼成，台地是其中北側 2 格墊高；島面貼 256² canvas 程序地面貼圖（UV 用世界座標 ÷2.2 跨格連續）；步道環半徑 1.8、路緣 `#e4d6c3`、頂緣彩色圖案帶高 0.16、外圈淺水環與白色泡沫環（opacity .55）。衛星島各 1 格。
+- 零件庫（kit）：建模函式只推 {kind, matrix, color} 進陣列，最後每種 kind 一個 InstancedMesh、setColorAt 上色；靜態物件合計 20–30 個 draw call。kind：box、rbox（RoundedBox 2, .12）、cylinder(14)、cone、sphere、ico(1)、dome、torus、prism、hip（四坡屋頂）、glowbox、glowsphere、leaf（抖動 ico）、trunk。
+- 小物件（長椅、盆栽、花）在鏡頭距離 ≥ 26 時隱藏。
 - 建築：方塊＋深色直條窗＋橘色平頂；尖頂用四角錐；屋頂色只用珊瑚、深藍、黃三種。
 - 樹：Kenney Nature Kit 的樹（`tree_default/oak/detailed/fat/small`），葉色改成樹三色；背景山坡用程式圓錐 instancing。
 - 101：四角錐台堆疊 8 節，每節上緣一圈 emissive 白邊，頂端尖塔。工地期有黃色吊車。
@@ -400,4 +413,5 @@ grow_taipei/
 - 使用者提供的 GROW Island 截圖（開局、全滿結局、放大圖）。
 - puma.taipei/heart-island 的兩張截圖（全景、近景），只參考風格。
 - `grow_prototype/README.md` 與 `solver/solver3_tick_stats.js`：引擎語意來源。
-- `spike/puma.html`（純程式造型版）、`spike/v3.html`（混合模型版）：已驗證的渲染設定、島幾何、人物、模型載入與材質轉換程式，可直接搬。
+- `spike/puma.html`（純程式造型版）、`spike/v3.html`（混合模型版）：已驗證的島幾何、人物、模型載入與材質轉換程式，可直接搬（材質改依 §9.2）。
+- `docs/island_prompt.txt`：政策島的原始生成提示詞（使用者 2026-10-24 取得）。§9.2–9.3 的渲染數值、日夜 keyframe、kit 零件、chibi 比例、盆地地形都來自它。它的世界佈局（12 島協作線、卡片側欄、日誌、雙語）**不採用**，本遊戲以 GROW 玩法為主軸。

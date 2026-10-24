@@ -72,3 +72,15 @@ test('pathological spec hits SCAN_LIMIT and throws naming the item', () => {
 test('isComplete / isAllMax on the real spec shape', () => {
   const s = createState(mini); assert.equal(isComplete(s), false); assert.equal(isAllMax(s, mini), false);
 });
+test('a positive delta that crosses a level fires that level\'s onLevel actions', () => {
+  const sp = { ORDER: ['p','q'], ITEMS: {
+      p: { name:'P', max:3, up:{ 2:{always:true}, 3:{minLevel:['p',9]} }, onLevel:{ 3:[{ flag:{name:'p3'}, story:'p到3' }] } },
+      q: { name:'Q', max:2, up:{ 2:{minLevel:['q',9]} }, fx:[{ delta:{target:'p', by:1}, story:'q推p' }] } },
+    AFTER_TURN: [], STORIES: { placed:{p:'',q:''}, grow:{ p:{2:'',3:''}, q:{2:''} } } };
+  let s = place(createState(sp), 'p', sp).state;   // p → 2（3 永遠不會自己升）
+  assert.equal(s.lv.p, 2);
+  const r = place(s, 'q', sp);                       // q 的放置反應把 p 推到 3
+  assert.equal(r.state.lv.p, 3); assert.equal(r.state.flags.p3, true);
+  const kinds = r.events.map(e => e.kind + (e.story ?? ''));
+  assert.ok(kinds.indexOf('fxq推p') < kinds.indexOf('fxp到3'));
+});

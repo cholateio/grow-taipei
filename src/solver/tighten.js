@@ -32,26 +32,40 @@ export function score(spec = defaultSpec) {
   const s = stats(results, spec), c = check(results, spec);
   const ends = s.full.map(r => r.ending.id).sort().join('+');
   const softFails = c.failures.filter(f => /沒有任何順序|晶片未 MAX/.test(f)).length;
-  return Math.abs(s.full.length - 2) * 100 + (ends === 'alien+cyber' ? 0 : 50) + (s.greedyReachesTrue ? 20 : 0)
-    + Math.max(0, s.avgMax - 3) * 10 + softFails * 30;
+  // 某一種真結局一條都不剩：之後再怎麼加條件都救不回來，重罰
+  const lostEnding = s.full.length > 0 && !['cyber', 'alien'].every(id => s.full.some(r => r.ending.id === id));
+  return Math.abs(s.full.length - 2) * 100 + (ends === 'alien+cyber' ? 0 : 50) + (lostEnding ? 5000 : 0)
+    + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3) * 10 + softFails * 30;
 }
 
-const fullOrders = spec => stats(enumerate(spec), spec).full.map(r => r.order);
+const fullResults = spec => stats(enumerate(spec), spec).full;
 const fmt = c => `${c.item} up[${c.level}] += ${JSON.stringify(c.cond)}`;
 
-// 便宜的預篩：只重播目前的正解（太多就等距抽 200 條），估計加了子句後還剩幾條。
-// 一條都不擋或全部擋光的子句直接淘汰。
+// 便宜的預篩：兩種真結局的正解各自等距抽最多 200 條重播，估計加了子句後各剩幾條。
+// 什麼都沒擋、或把某一種真結局擋光的子句直接淘汰；目標是各剩 1 條。
 const SAMPLE = 200;
 function shortlist(spec, cands, full, k) {
-  const step = Math.max(1, Math.floor(full.length / SAMPLE));
-  const sample = full.filter((_, i) => i % step === 0), scale = full.length / sample.length;
+  const groups = ['cyber', 'alien'].map(id => {
+    const all = full.filter(r => r.ending.id === id).map(r => r.order);
+    const step = Math.max(1, Math.floor(all.length / SAMPLE));
+    const sample = all.filter((_, i) => i % step === 0);
+    return { id, sample, scale: all.length / Math.max(1, sample.length) };
+  });
+  const total = groups.reduce((n, g) => n + g.sample.length, 0);
   const ranked = [];
   for (const c of cands) {
     const next = withClause(spec, c);
-    let left = 0;
-    for (const order of sample) { try { if (playOrder(order, next).maxCount === spec.ORDER.length) left++; } catch { left = -1; break; } }
-    if (left <= 0 || left === sample.length) continue;
-    ranked.push({ c, gap: Math.abs(left * scale - 2) });
+    let gap = 0, kept = 0, broken = false;
+    for (const g of groups) {
+      let left = 0;
+      for (const order of g.sample) {
+        try { const r = playOrder(order, next); if (r.maxCount === spec.ORDER.length && r.ending.id === g.id) left++; } catch { broken = true; break; }
+      }
+      if (broken || (g.sample.length && left === 0)) { broken = true; break; }
+      kept += left; gap += Math.abs(left * g.scale - 1);
+    }
+    if (broken || kept === total) continue;
+    ranked.push({ c, gap });
   }
   ranked.sort((a, b) => a.gap - b.gap);
   return ranked.slice(0, k).map(r => r.c);
@@ -62,7 +76,7 @@ export function tighten(spec = defaultSpec, { maxSteps = 40, candidateLimit = In
   const applied = [];
   log(`起始 score ${curScore.toFixed(1)}`);
   for (let step = 0; step < maxSteps && curScore > 0; step++) {
-    const full = fullOrders(cur);
+    const full = fullResults(cur);
     if (full.length <= 2) { log(`正解只剩 ${full.length} 條，加條件無法再改善`); break; }
     const pool = shortlist(cur, candidates(cur).slice(0, candidateLimit), full, shortlistSize);
     let best = null;

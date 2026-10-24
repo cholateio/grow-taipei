@@ -31,9 +31,17 @@ test('bobaSugar is a flag, so it holds even though milk is placed at the end', (
   assert.ok(r.extras.includes('bobaSugar') || r.id === 'bobaSugar');
 });
 test('engine sets bobaSugar when boba maxes while milk is not placed yet', () => {
-  let s = createState(spec);
-  for (const id of ['bulb', 'boba', 'chip']) s = place(s, id, spec).state;
-  assert.equal(s.lv.boba, 3); assert.equal(s.lv.milk, 0); assert.equal(s.flags.bobaSugar, true);
+  // 不寫死順序：找任何一條「鮮奶還沒放、珍奶就升滿」的前綴
+  const others = ORDER.filter(id => id !== 'milk');
+  const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
+  let found = 0;
+  for (const order of perms(others)) {
+    let s = createState(spec);
+    for (const id of order) { s = place(s, id, spec).state; if (s.lv.boba === ITEMS.boba.max) break; }
+    if (s.lv.boba !== ITEMS.boba.max) continue;
+    found++; assert.equal(s.lv.milk, 0); assert.equal(s.flags.bobaSugar, true);
+  }
+  assert.ok(found > 0, 'no order maxes boba before milk');
 });
 test('nothing satisfied and not all max → tryAgain', () => {
   assert.equal(resolve(full({ lv: lv({ chip: 5 }) }), spec).id, 'tryAgain');

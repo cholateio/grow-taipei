@@ -28,3 +28,10 @@ test('tighten reduces a loose spec toward two full solutions', { timeout: 600000
   assert.ok(r.finalScore < before, `score ${before} → ${r.finalScore}`);
   assert.equal(r.applied.length > 0, true);
 });
+test('score heavily penalizes specs where one true ending has no solution at all', () => {
+  const allCyber = { ...spec, ITEMS: structuredClone(spec.ITEMS) };
+  allCyber.ITEMS.rat.onLevel[4] = [{ branch: { flag: 'ratBranch', when: { always: true }, then: 'cyber', else: 'cyber' } }];
+  // 同一份規則只差在分岔永遠走賽博龐克：差距必須來自懲罰本身
+  const d = score(allCyber) - score(spec);
+  assert.ok(d >= 5000, `penalty only ${d}`);
+});

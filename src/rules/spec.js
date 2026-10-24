@@ -14,23 +14,27 @@ const present = id => ({ present: id });
 export const ITEMS = {
   milk: {
     name: '鮮奶', max: 4,
-    up: { 2: age('milk', 1), 3: and(age('milk', 2), present('bulb')), 4: min('baseball', 2) },
+    // 小孩搭捷運來上學 → 喝久了長高（老鼠一來就咬鮮奶箱，長不高）→ 組少棒隊、學校蓋鐘塔
+    up: { 2: present('token'), 3: and(age('milk', 2), max('rat', 0)), 4: min('baseball', 2) },
   },
   chip: {
     name: '晶片', max: 5,
-    up: { 2: age('chip', 1), 3: min('token', 2), 4: min('bulb', 2), 5: min('milk', 3) },
+    // 要有電 → 工程師要通勤 → 要有喝鮮奶長大的人才 → 颱風過後矽盾才經過考驗
+    up: { 2: present('bulb'), 3: min('token', 2), 4: min('milk', 3), 5: min('typhoon', 3) },
   },
   bulb: {
     name: '燈泡', max: 4,
-    up: { 2: age('bulb', 1), 3: min('chip', 2), 4: min('chip', 3) },
+    up: { 2: { always: true }, 3: min('chip', 2), 4: min('chip', 3) },
   },
   token: {
     name: '代幣', max: 4,
-    up: { 2: age('token', 1), 3: min('chip', 2), 4: min('chip', 3) },
+    // 電聯車要電（一窩老鼠會咬電線）→ 學生通勤 → 無人駕駛要晶片
+    up: { 2: and(min('bulb', 2), max('rat', 1)), 3: min('milk', 2), 4: min('chip', 3) },
   },
   typhoon: {
     name: '颱風', max: 3,
-    up: { 2: age('typhoon', 1), 3: age('typhoon', 2) },
+    // 有棒球場的話，颱風會賴在球場上不走
+    up: { 2: age('typhoon', 1), 3: and(age('typhoon', 2), max('baseball', 0)) },
     onLevel: {
       2: [
         { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },
@@ -56,14 +60,16 @@ export const ITEMS = {
   },
   boba: {
     name: '珍奶', max: 3,
-    up: { 2: age('boba', 1), 3: min('bulb', 2) },
+    // 觀光客搭捷運來排隊 → 夜市霓虹亮了變噴泉廣場
+    up: { 2: min('token', 2), 3: min('bulb', 3) },
     onLevel: {
       3: [{ when: max('milk', 1), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },
   },
   baseball: {
     name: '棒球', max: 4,
-    up: { 2: age('baseball', 1), 3: min('token', 2), 4: min('bulb', 3) },
+    // 喝鮮奶的小孩來打球 → 捷運載觀眾開賽 → 燈光夠亮開演唱會
+    up: { 2: min('milk', 2), 3: min('token', 2), 4: min('bulb', 3) },
   },
 };
 

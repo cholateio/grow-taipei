@@ -34,8 +34,19 @@ export const isPlaced = (state, id) => state.lv[id] > 0;
 export const isComplete = state => Object.values(state.lv).every(n => n > 0);
 export const isAllMax = (state, spec = defaultSpec) => spec.ORDER.every(id => state.lv[id] === spec.ITEMS[id].max);
 
-// 套用一條 Action；成立就回傳一個事件，否則 null。會直接改 s（呼叫端已拷貝）。
-function applyAction(s, a, kind, cause, rules) {
+// 套用一條 Action；成立就把事件推進 events。會直接改 s（呼叫端已拷貝）。
+// 正向 delta 跨過的每一級，都會接著觸發那一級的 onLevel（「被加上去」也算升級）。
+function applyAction(s, a, kind, cause, rules, events) {
+  const ev = actionEvent(s, a, kind, cause, rules);
+  if (!ev) return;
+  events.push(ev);
+  if (ev.delta && ev.delta.to > ev.delta.from) {
+    const { target, from, to } = ev.delta;
+    for (let n = from + 1; n <= to; n++) for (const b of rules.items[target].onLevel[n] || []) applyAction(s, b, 'fx', target, rules, events);
+  }
+}
+
+function actionEvent(s, a, kind, cause, rules) {
   if (!a.test(s)) return null;
   const ev = { kind, item: cause, cause };
   if (a.delta) {
@@ -59,13 +70,12 @@ export function place(state, id, spec = defaultSpec) {
   if (state.lv[id] > 0) throw new Error(`${id} already placed`);
   const s = { lv: { ...state.lv }, age: { ...state.age }, locked: { ...state.locked }, flags: { ...state.flags }, order: [...state.order, id], turn: state.turn + 1 };
   const events = [];
-  const push = e => { if (e) events.push(e); };
 
   for (const k of spec.ORDER) if (s.lv[k] > 0) s.age[k] += 1;
   s.lv[id] = 1; s.age[id] = 0;
   events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
 
-  for (const a of rules.items[id].fx) push(applyAction(s, a, 'fx', id, rules));
+  for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
 
   const stalled = new Set();
   let lastGrown = null;
@@ -83,11 +93,11 @@ export function place(state, id, spec = defaultSpec) {
       if (!it.up[lv + 1](s)) continue;
       s.lv[k] = lv + 1; lastGrown = k; changed = true;
       events.push({ kind: 'grow', item: k, from: lv, to: lv + 1, story: spec.STORIES.grow[k][lv + 1] });
-      for (const a of it.onLevel[lv + 1] || []) push(applyAction(s, a, 'fx', k, rules));
+      for (const a of it.onLevel[lv + 1] || []) applyAction(s, a, 'fx', k, rules, events);
     }
     if (!changed) break;
   }
 
-  for (const a of rules.after) push(applyAction(s, a, 'after', id, rules));
+  for (const a of rules.after) applyAction(s, a, 'after', id, rules, events);
   return { state: s, events };
 }

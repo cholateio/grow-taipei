@@ -77,7 +77,8 @@ export function check(results, spec = defaultSpec) {
   const s = stats(results, spec), failures = [];
   if (s.full.length !== 2) failures.push(`正解數必須剛好 2，目前 ${s.full.length}`);
   const ends = s.full.map(r => r.ending.id).sort().join('+');
-  if (ends !== 'alien+cyber') failures.push(`兩條正解必須一條賽博龐克、一條外星人，目前 ${ends || '無'}`);
+  const nCyber = s.full.filter(r => r.ending.id === 'cyber').length;
+  if (ends !== 'alien+cyber') failures.push(`兩條正解必須一條賽博龐克、一條外星人，目前賽博龐克 ${nCyber}、外星人 ${s.full.length - nCyber}`);
   for (const id of BAD) if (!results.some(r => r.satisfied.includes(id))) failures.push(`壞結局「${ENDINGS[id].title}」沒有任何順序到得了`);
   const chipShort = results.filter(r => r.ending.missile && r.ending.missile !== 'shield').length / results.length;
   if (chipShort < 0.3) failures.push(`晶片未 MAX 的比例必須 ≥ 30%，目前 ${(chipShort * 100).toFixed(1)}%`);

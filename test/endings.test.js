@@ -50,3 +50,10 @@ test('ENDINGS has ten entries with Chinese titles', () => {
   assert.equal(Object.keys(ENDINGS).length, 10);
   assert.equal(ENDINGS.shieldDown.title, '矽盾未就緒'); assert.equal(ENDINGS.cyber.kind, 'true');
 });
+test('typhoon placed 8th is still Lv1 at the end, so the missile is never deflected', () => {
+  const rest = ORDER.filter(id => id !== 'typhoon');
+  let s = createState(spec);
+  for (const id of [...rest, 'typhoon']) s = place(s, id, spec).state;
+  assert.equal(s.lv.typhoon, 1);
+  assert.notEqual(missile(s, spec), 'deflect');
+});

@@ -67,7 +67,7 @@ test('pathological spec hits SCAN_LIMIT and throws naming the item', () => {
     y:{ name:'Y', max:3, up:{2:{always:true},3:{always:true}}, onLevel:{3:[{delta:{target:'x', by:-1}}]} } },
     AFTER_TURN:[], STORIES:{placed:{x:'',y:''},grow:{x:{2:'',3:''},y:{2:'',3:''}}} };
   let s = place(createState(bad), 'x', bad).state;
-  assert.throws(() => place(s, 'y', bad), new RegExp(`scan limit ${SCAN_LIMIT}`));
+  assert.throws(() => place(s, 'y', bad), new RegExp(`scan limit ${SCAN_LIMIT} exceeded while growing [xy]`));
 });
 test('isComplete / isAllMax on the real spec shape', () => {
   const s = createState(mini); assert.equal(isComplete(s), false); assert.equal(isAllMax(s, mini), false);
@@ -83,4 +83,11 @@ test('a positive delta that crosses a level fires that level\'s onLevel actions'
   assert.equal(r.state.lv.p, 3); assert.equal(r.state.flags.p3, true);
   const kinds = r.events.map(e => e.kind + (e.story ?? ''));
   assert.ok(kinds.indexOf('fxq推p') < kinds.indexOf('fxp到3'));
+});
+test('a delta↔onLevel cycle throws a named chain-limit error instead of a stack overflow', () => {
+  const sp = { ORDER: ['x'], ITEMS: {
+      x: { name:'X', max:3, up:{ 2:{always:true}, 3:{always:true} },
+           onLevel:{ 3:[{ delta:{target:'x', by:-1} }, { delta:{target:'x', by:1} }] } } },
+    AFTER_TURN: [], STORIES: { placed:{x:''}, grow:{ x:{2:'',3:''} } } };
+  assert.throws(() => place(createState(sp), 'x', sp), /chain limit .* x/);
 });

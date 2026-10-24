@@ -36,13 +36,15 @@ export const isAllMax = (state, spec = defaultSpec) => spec.ORDER.every(id => st
 
 // 套用一條 Action；成立就把事件推進 events。會直接改 s（呼叫端已拷貝）。
 // 正向 delta 跨過的每一級，都會接著觸發那一級的 onLevel（「被加上去」也算升級）。
-function applyAction(s, a, kind, cause, rules, events) {
+// 連鎖深度與掃描共用同一個上限，病態規則一律丟出帶物品名的錯誤。
+function applyAction(s, a, kind, cause, rules, events, depth = 0) {
   const ev = actionEvent(s, a, kind, cause, rules);
   if (!ev) return;
   events.push(ev);
   if (ev.delta && ev.delta.to > ev.delta.from) {
     const { target, from, to } = ev.delta;
-    for (let n = from + 1; n <= to; n++) for (const b of rules.items[target].onLevel[n] || []) applyAction(s, b, 'fx', target, rules, events);
+    if (depth >= SCAN_LIMIT) throw new Error(`delta chain limit ${SCAN_LIMIT} exceeded at ${target}`);
+    for (let n = from + 1; n <= to; n++) for (const b of rules.items[target].onLevel[n] || []) applyAction(s, b, 'fx', target, rules, events, depth + 1);
   }
 }
 

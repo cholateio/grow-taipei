@@ -1,5 +1,6 @@
-spike/assets/
-node_modules/
-shots/
 *.Zone.Identifier
 .DS_Store
+.superpowers/
+node_modules/
+shots/
+spike/assets/

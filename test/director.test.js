@@ -25,3 +25,12 @@ test('play while busy throws', async () => {
   let release; const { d, play } = harness({ wait: () => new Promise(r => { release = r; }) });
   const p = play(); await Promise.resolve(); assert.equal(d.busy, true); assert.throws(() => d.play(ev, () => {}), /busy/); d.skip(); release(); await p;
 });
+test('abort ends the show at once: no further events, play resolves, not busy (review #3)', async () => {
+  let release; const log = [];
+  const d = createDirector({ wait: () => new Promise(r => { release = r; }) });
+  const p = d.play(ev, e => { log.push(e.kind); return Promise.resolve(); });
+  await Promise.resolve(); d.abort(); release(); await p;
+  assert.deepEqual(log, ['placed']); assert.equal(d.busy, false);
+  const again = d.play(ev, e => { log.push(e.kind); return Promise.resolve(); }); d.skip(); await again;   // 還能再用
+  assert.deepEqual(log, ['placed', 'placed', 'grow', 'fx']);
+});

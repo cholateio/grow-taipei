@@ -37,3 +37,17 @@ test('reset starts a new state and clears ui/actors', async () => {
   const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
   await g.pick('milk'); g.reset(); assert.equal(g.state.lv.milk, 0); assert.deepEqual(f.ui.placed, []); assert.deepEqual(f.actors.applied, []);
 });
+test('reset during a show: the old show cannot touch the new game, which is playable at once (review #3)', async () => {
+  const f = fakes(); let release = null, aborted = 0;
+  // 這個假導演故意不理 abort，確保遊戲自己也會擋掉舊演出的回呼
+  f.director.play = (events, onEvent) => new Promise(r => { release = async () => { for (const e of events) await onEvent(e, { instant: true }); r(); }; });
+  f.director.abort = () => { aborted++; };
+  Object.defineProperty(f.director, 'busy', { get: () => !!release });
+  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  const p = g.pick('bulb'); g.reset();
+  assert.equal(aborted, 1);
+  const r = release; release = null; await r(); await p;
+  assert.equal(g.state.lv.bulb, 0); assert.deepEqual(f.ui.levels, {}); assert.deepEqual(f.actors.applied, []);
+  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: true }); };
+  assert.equal(await g.pick('milk'), true); assert.equal(g.state.lv.milk, 1);
+});

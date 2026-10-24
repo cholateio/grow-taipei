@@ -1,0 +1,12 @@
+{
+  "name": "grow-taipei",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node src/solver/run.js --check",
+    "stats": "node src/solver/run.js",
+    "tighten": "node src/solver/tighten.js"
+  },
+  "engines": { "node": ">=18" }
+}

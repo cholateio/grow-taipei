@@ -22,9 +22,10 @@ export function missile(state, spec = defaultSpec) {
 
 export function satisfied(state, spec = defaultSpec) {
   const m = missile(state, spec), f = state.flags;
+  // 矽盾未就緒 = 晶片沒滿（不管飛彈後來怎麼了）；被颱風吹歪時標題卡是颱風，兩格圖鑑都亮
   const checks = [
     ['blackout', f.blackout], ['flood', f.flooded], ['domeRats', f.domeRats],
-    ['shieldDown', m === 'hit'], ['typhoonDeflect', m === 'deflect'],
+    ['typhoonDeflect', m === 'deflect'], ['shieldDown', m !== 'shield'],
     ['milkExpired', f.milkExpired], ['bobaSugar', f.bobaSugar],
   ];
   return checks.filter(([, ok]) => ok).map(([id]) => id);

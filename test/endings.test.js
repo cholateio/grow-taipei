@@ -43,6 +43,11 @@ test('engine sets bobaSugar when boba maxes while milk is not placed yet', () =>
   }
   assert.ok(found > 0, 'no order maxes boba before milk');
 });
+test('deflect games light both typhoonDeflect and shieldDown, title card is the deflect', () => {
+  const s = full({ lv: lv({ chip: 4, typhoon: 2 }) });
+  assert.deepEqual(satisfied(s, spec), ['typhoonDeflect', 'shieldDown']);
+  assert.equal(resolve(s, spec).id, 'typhoonDeflect');
+});
 test('nothing satisfied and not all max → tryAgain', () => {
   assert.equal(resolve(full({ lv: lv({ chip: 5 }) }), spec).id, 'tryAgain');
 });

@@ -6,7 +6,7 @@ import * as defaultSpec from '../rules/spec.js';
 import { createState, place } from '../rules/engine.js';
 import { resolve, satisfied, ENDINGS } from '../rules/endings.js';
 
-const BAD = ['blackout', 'flood', 'domeRats', 'shieldDown', 'typhoonDeflect', 'milkExpired', 'bobaSugar'];
+const BAD = ['blackout', 'flood', 'domeRats', 'typhoonDeflect', 'shieldDown', 'milkExpired', 'bobaSugar'];
 
 const countMax = (state, spec) => spec.ORDER.filter(id => state.lv[id] === spec.ITEMS[id].max).length;
 

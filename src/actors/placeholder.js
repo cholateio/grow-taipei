@@ -14,15 +14,18 @@ export function createPlaceholderActors(THREE, { scene, spec }) {
     const p = anchorWorld(id), mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: COLORS[id], roughness: 0.78, metalness: 0 }));
     mesh.castShadow = mesh.receiveShadow = true; mesh.visible = false;
     const holder = new THREE.Group(); holder.position.set(p.x, p.y, p.z); holder.add(mesh); scene.add(holder);
+    // 標籤文字放在自己的 span，氣泡另外掛在 el 上：更新等級時才不會把氣泡一起洗掉
     const el = document.createElement('div'); el.className = 'actor-label';
+    const name = document.createElement('span'), lvText = document.createElement('b');
+    name.textContent = spec.ITEMS[id].name; el.append(name, lvText);
     const label = new CSS2DObject(el); label.visible = false; holder.add(label);
-    actors[id] = { mesh, holder, el, label, lv: 0, anim: null, name: spec.ITEMS[id].name, max: spec.ITEMS[id].max };
+    actors[id] = { mesh, holder, el, lvText, label, lv: 0, anim: null, name: spec.ITEMS[id].name, max: spec.ITEMS[id].max };
   }
 
   function setLevel(a, lv, instant) {
     const from = a.lv ? heightOf(a.lv) : 0.01; a.lv = lv;
     a.mesh.visible = a.label.visible = lv > 0;
-    a.el.innerHTML = `${a.name}<b>${levelLabel(lv, a.max)}</b>`;
+    a.lvText.textContent = levelLabel(lv, a.max);
     if (instant || lv === 0) { a.anim = null; size(a, heightOf(lv)); return Promise.resolve(); }
     return new Promise(done => { a.anim = { kind: 'grow', t: 0, from, to: heightOf(lv), done }; });
   }

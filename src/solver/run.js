@@ -17,22 +17,31 @@ export function playOrder(order, spec = defaultSpec) {
   return { state, ending: resolve(state, spec), satisfied: satisfied(state, spec), maxCount: countMax(state, spec), events };
 }
 
-function permutations(arr) {
-  const out = [], a = [...arr], c = new Array(a.length).fill(0);
-  out.push([...a]);
-  for (let i = 0; i < a.length;) {
-    if (c[i] < i) { const j = i % 2 ? c[i] : 0; [a[j], a[i]] = [a[i], a[j]]; out.push([...a]); c[i]++; i = 0; }
-    else { c[i] = 0; i++; }
-  }
-  return out;
-}
-
+// 深度優先走完所有順序，共用前綴的狀態（place 呼叫數約為逐條重播的 1/3）。
 // 不保留事件列表（4 萬局的事件太佔記憶體）；要看事件就單獨呼叫 playOrder。
 export function enumerate(spec = defaultSpec) {
-  return permutations(spec.ORDER).map(order => {
-    try { const { events, ...r } = playOrder(order, spec); return { order, ...r }; }
-    catch (e) { return { order, error: e.message, ending: { id: 'error' }, satisfied: [], maxCount: 0 }; }
-  });
+  const out = [];
+  const fail = (order, e) => {
+    // 前綴就出錯：把所有以它開頭的順序都記成錯誤
+    const rest = spec.ORDER.filter(id => !order.includes(id));
+    const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
+    for (const p of perms(rest)) out.push({ order: [...order, ...p], error: e.message, ending: { id: 'error' }, satisfied: [], maxCount: 0 });
+  };
+  const walk = (state, order) => {
+    if (order.length === spec.ORDER.length) {
+      out.push({ order, state, ending: resolve(state, spec), satisfied: satisfied(state, spec), maxCount: countMax(state, spec) });
+      return;
+    }
+    for (const id of spec.ORDER) {
+      if (state.lv[id] > 0) continue;
+      const next = [...order, id];
+      let s;
+      try { s = place(state, id, spec).state; } catch (e) { fail(next, e); continue; }
+      walk(s, next);
+    }
+  };
+  walk(createState(spec), []);
+  return out;
 }
 
 export function greedyOrder(spec = defaultSpec) {

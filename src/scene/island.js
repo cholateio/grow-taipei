@@ -71,7 +71,7 @@ function addBridge(kit, cellA, cellB) {
     decks.forEach((d, i) => kit.part('box', { pos: [d.x, d.y, d.z], scale: [0.5, 0.05, d.len * 1.08], rot: [0, d.ry, 0], color: i % 2 ? 0xa77a55 : 0xb48560 }));
     for (const end of [decks[0], decks.at(-1)]) for (const s of [-1, 1]) {
       const ox = Math.cos(end.ry) * 0.27 * s, oz = -Math.sin(end.ry) * 0.27 * s;
-      kit.part('cylinder', { pos: [end.x + ox, end.y + 0.12, end.z + oz], scale: [0.05, 0.24, 0.05], color: 0xfff8f4 });
+      kit.part('cylinder', { pos: [end.x + ox, end.y + 0.09, end.z + oz], scale: [0.035, 0.18, 0.035], color: 0xfff8f4 });
     }
   } else {
     const steps = 5, dx = b.x - a.x, dz = b.z - a.z, ry = Math.atan2(dx, dz), len = Math.hypot(dx, dz) / steps;

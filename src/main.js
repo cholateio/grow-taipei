@@ -4,6 +4,9 @@ import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
 import { buildIsland, buildSatellite } from './scene/island.js';
 import { SATELLITES } from './scene/hex.js';
+import { buildTerrain } from './scene/terrain.js';
+import { SimplexNoise } from '../vendor/three/addons/math/SimplexNoise.js';
+import { mulberry32 } from './scene/random.js';
 
 const loading = document.getElementById('loading');
 const params = new URLSearchParams(location.search);
@@ -18,7 +21,11 @@ try {
   view.scene.add(island.group);
   for (const sat of SATELLITES) view.scene.add(buildSatellite(THREE, kit, sat, island.mats));
   view.scene.add(kit.build()); view.addGlow(kit.glowMaterials);
-  view.setTime(TIMES[params.get('time')] ?? TIMES.day);
+  const simplex = new SimplexNoise({ random: mulberry32(99) });
+  const terrain = buildTerrain(THREE, { noise2: (x, z) => simplex.noise(x, z), quality });
+  view.scene.add(terrain.group);
+  const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
+  setTime(TIMES[params.get('time')] ?? TIMES.day);
   view.resize(); addEventListener('resize', view.resize);
   view.camera.position.set(CENTER.x + 0.24 * 30, CENTER.y + 0.33 * 30, CENTER.z + 0.87 * 30);
   view.camera.lookAt(CENTER.x, CENTER.y, CENTER.z);
@@ -26,7 +33,7 @@ try {
   const clock = new THREE.Clock();
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
-    view.water.update(t);
+    view.water.update(t); terrain.update(t);
     view.render();
   });
   loading.hidden = true;

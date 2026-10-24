@@ -35,7 +35,7 @@ button.primary:hover { background: #3a3333; }
   .brand b { font-size: 20px; }
 }
 
-.card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(340px, calc(100vw - 32px)); background: var(--cream); border-radius: 22px; box-shadow: var(--shadow); padding: 22px 24px; text-align: center; }
+.card { box-sizing: border-box; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(340px, calc(100vw - 32px)); background: var(--cream); border-radius: 22px; box-shadow: var(--shadow); padding: 22px 24px; text-align: center; }
 .card h2 { margin: 4px 0 10px; color: var(--coral); font-size: 26px; font-weight: 900; }
 .card ol { text-align: left; margin: 0 0 16px; padding-left: 1.3em; line-height: 1.9; font-weight: 700; }
 .card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }

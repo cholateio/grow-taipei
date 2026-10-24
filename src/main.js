@@ -1,4 +1,4 @@
-// 開機：之後各任務逐步把場景、介面、遊戲接上來。
+// 開機：場景 → 介面 → 導演 → 遊戲。?auto=a,b,c 自動依序放（截圖用）、?time=、?quality=、?simulateFail=。
 import { createRenderer, pickQuality, CENTER } from './scene/renderer.js';
 import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
@@ -12,6 +12,17 @@ import { axialToWorld, cellTop, PLATEAU_CELLS, WATER_Y } from './scene/hex.js';
 import { createAssets } from './scene/assets.js';
 import { createCameraRig } from './scene/camera.js';
 import { OrbitControls } from '../vendor/three/addons/controls/OrbitControls.js';
+import * as spec from './rules/spec.js';
+import * as engine from './rules/engine.js';
+import * as endings from './rules/endings.js';
+import { ICONS } from './ui/icons.js';
+import { createSlots } from './ui/slots.js';
+import { showHowTo, showEndCard, createTopBar } from './ui/cards.js';
+import { storageGet, storageSet } from './ui/format.js';
+import { createDirector } from './director.js';
+import { createPlaceholderActors } from './actors/placeholder.js';
+import { anchorWorld } from './actors/anchors.js';
+import { createGame } from './game.js';
 
 const loading = document.getElementById('loading');
 const params = new URLSearchParams(location.search);
@@ -61,15 +72,46 @@ try {
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫
   if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
 
+  // 介面、演員、導演、遊戲
+  const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
+  const uiRoot = document.getElementById('ui');
+  const actors = createPlaceholderActors(THREE, { scene: view.scene, spec });
+  const director = createDirector({ onFocus: e => rig.focus(anchorWorld(e.delta?.target ?? e.item)), reducedMotion: motion.matches || !!auto });
+  if (auto) rig.setReducedMotion(true);
+  motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));
+  const moodFor = lv => lv.bulb >= 4 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
+  let slots;
+  const game = createGame({
+    spec, engine, endings, director, actors,
+    ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
+    onLevels: lv => setTime(moodFor(lv)),
+    onFinished: (ending, state) => {
+      setTime(TIMES.night);
+      showEndCard(uiRoot, {
+        title: ending.title, line: endings.ENDINGS[ending.id].line,
+        levels: spec.ORDER.map(id => ({ name: spec.ITEMS[id].name, lv: state.lv[id], max: spec.ITEMS[id].max })),
+        onRestart: restart,
+      });
+    },
+  });
+  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); setTime(TIMES.day); rig.overview(); }
+  const pick = async id => { if (await game.pick(id)) rig.overview(); };
+  slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
+  const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
+  createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
+  // 演出中點畫面 = 跳過
+  view.renderer.domElement.addEventListener('click', () => { if (director.busy) director.skip(); });
+  if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
-    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt);
+    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt);
     for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
   });
   loading.hidden = true;
+  if (auto) (async () => { for (const id of auto) await pick(id); })();
 } catch (e) {
   loading.hidden = false;
   loading.textContent = `無法啟動 3D 畫面：${e.message}`;

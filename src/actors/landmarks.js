@@ -5,8 +5,9 @@ export const id = 'landmarks';
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
 
-export function view() {
-  const v = landmarkWorld('volcano'), s = landmarkWorld('spring');
+// 老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時池水變成淡綠色
+export function view(lv = {}) {
+  const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !(lv.token >= 2) ? 0xbfd39c : WATER;
   return {
     'landmarks.volcano': {
       kind: 'compound', at: v, parts: [
@@ -20,7 +21,7 @@ export function view() {
     'landmarks.spring': {
       kind: 'compound', at: s, parts: [
         { kind: 'cylinder', pos: [0, 0.06, 0], scale: [1.4, 0.12, 1.4], color: CLIFF },
-        { kind: 'cylinder', pos: [0, 0.08, 0], scale: [1.16, 0.1, 1.16], color: WATER, glow: WATER },
+        { kind: 'cylinder', pos: [0, 0.08, 0], scale: [1.16, 0.1, 1.16], color: water, glow: water },
         ...[[0.62, 0.3], [-0.55, 0.42], [0.2, -0.66], [-0.4, -0.5]].map(([x, z], i) => ({ kind: 'ico', pos: [x, 0.14, z], scale: 0.18, rot: [0, i * 2, 0], color: ROCK })),
         { kind: 'box', pos: [0.95, 0.2, -0.75], scale: [0.5, 0.4, 0.4], color: WALL },
         { kind: 'hip', pos: [0.95, 0.52, -0.75], scale: [0.6, 0.24, 0.5], color: YELLOW },

@@ -114,7 +114,7 @@ export function buildSatellite(THREE, kit, sat, mats) {
       P('glowsphere', [0, 1.45, 0], 0.32, 0xfcea8b); P('cone', [0, 1.72, 0], [0.42, 0.3, 0.42], 0x211d1d); tree(0.9, 0.5, 0.8); break;
     case 'windmill':
       P('cylinder', [0, 0.8, 0], [0.1, 1.6, 0.1], 0xfff8f4); P('sphere', [0, 1.6, 0.08], 0.14, 0xfff8f4);
-      for (let i = 0; i < 3; i++) { const a = i * Math.PI * 2 / 3; P('box', [Math.sin(a) * 0.38, 1.6 + Math.cos(a) * 0.38, 0.12], [0.08, 0.75, 0.03], 0xfff8f4, [0, 0, -a]); }
+      // 葉片是演員（src/actors/satellites.js）：颱風狂轉、停電停
       P('rbox', [-0.7, 0.25, 0.4], [0.6, 0.5, 0.5], 0xf1e7da); P('hip', [-0.7, 0.66, 0.4], [0.68, 0.34, 0.58], 0x5a88b2); break;
     case 'rocks':
       [[-0.4, 0.3, 0.8], [0.5, -0.2, 0.65], [0.1, 0.6, 0.5], [-0.3, -0.6, 0.45]].forEach(([x, z, s], i) => P('ico', [x, s * 0.35, z], [s, s * 0.7, s], [0xc9b9a4, 0xb8a892, 0xd6c8b4][i % 3], [0, i, 0])); break;
@@ -126,7 +126,7 @@ export function buildSatellite(THREE, kit, sat, mats) {
     case 'forest':
       [[0, 0, 1.1], [0.7, 0.4, 0.8], [-0.6, 0.5, 0.9], [0.4, -0.7, 0.7], [-0.5, -0.5, 0.85]].forEach(([x, z, s], i) => tree(x, z, s, [0x9bbd7e, 0x8aaf70, 0x6f9560][i % 3])); break;
     case 'chest':
-      P('rbox', [0.2, 0.17, 0.2], [0.55, 0.34, 0.4], 0x9a6a3c); P('rbox', [0.2, 0.37, 0.2], [0.58, 0.08, 0.43], 0xe8c547); tree(-0.6, -0.3, 0.9); break;
+      P('rbox', [0.2, 0.17, 0.2], [0.55, 0.34, 0.4], 0x9a6a3c); tree(-0.6, -0.3, 0.9); break;   // 蓋子是演員：全 MAX 才打開
   }
   return pieces;
 }

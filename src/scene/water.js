@@ -4,7 +4,7 @@ import { WATER_Y } from './hex.js';
 export function createWater(THREE) {
   const uniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
     uShallow: { value: new THREE.Color(0xa4d4da) }, uDeep: { value: new THREE.Color(0x6fa9b8) },
-    uTint: { value: new THREE.Color(0x5a88b2) }, uNight: { value: 0 }, uTime: { value: 0 },
+    uTint: { value: new THREE.Color(0x5a88b2) }, uNight: { value: 0 }, uTime: { value: 0 }, uStorm: { value: 0 },
   }]);
   const material = new THREE.ShaderMaterial({
     uniforms, fog: true,
@@ -20,7 +20,7 @@ export function createWater(THREE) {
     fragmentShader: /* glsl */`
       #include <common>
       #include <fog_pars_fragment>
-      uniform vec3 uShallow, uDeep, uTint; uniform float uNight, uTime;
+      uniform vec3 uShallow, uDeep, uTint; uniform float uNight, uTime, uStorm;
       varying vec2 vXZ;
       float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vnoise(vec2 p) {
@@ -28,11 +28,13 @@ export function createWater(THREE) {
         return mix(mix(h2(i), h2(i + vec2(1, 0)), u.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), u.x), u.y);
       }
       void main() {
-        float w = sin(vXZ.x * 0.35 + uTime * 0.6) * 0.5 + sin(vXZ.y * 0.28 - uTime * 0.45 + vXZ.x * 0.12) * 0.5;
-        vec3 col = mix(uShallow, uDeep, clamp(smoothstep(8.0, 60.0, length(vXZ)) + w * 0.08, 0.0, 1.0));
+        // 颱風 Lv2 時浪變大、變快（uStorm 0..1）
+        float sp = 1.0 + uStorm * 1.5;
+        float w = sin(vXZ.x * 0.35 + uTime * 0.6 * sp) * 0.5 + sin(vXZ.y * 0.28 - uTime * 0.45 * sp + vXZ.x * 0.12) * 0.5;
+        vec3 col = mix(uShallow, uDeep, clamp(smoothstep(8.0, 60.0, length(vXZ)) + w * 0.08 * (1.0 + 2.0 * uStorm), 0.0, 1.0));
         // 雜湊 value noise 做閃光：不週期，不會排成格子
         float g = vnoise(vXZ * 2.3 + vec2(uTime * 0.35, -uTime * 0.25)) * vnoise(vXZ * 1.1 - vec2(uTime * 0.2, uTime * 0.3));
-        col += smoothstep(0.62, 0.9, g) * 0.07 * (1.0 - uNight);
+        col += smoothstep(0.62 - 0.12 * uStorm, 0.9, g) * 0.07 * (1.0 + uStorm) * (1.0 - uNight);
         col = mix(col, uTint * 0.85, uNight * 0.75);
         gl_FragColor = vec4(col, 1.0);
         #include <colorspace_fragment>
@@ -45,5 +47,6 @@ export function createWater(THREE) {
     mesh,
     update(t) { uniforms.uTime.value = t; },
     setTime(s) { uniforms.uTint.value.setHex(s.water); uniforms.uNight.value = s.night; },
+    setStorm(k) { uniforms.uStorm.value = k; },
   };
 }

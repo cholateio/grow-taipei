@@ -32,3 +32,13 @@ test('buildIsland merges all tiles (main + satellites) into one mesh per materia
   const sides = meshes.filter(m => m.castShadow); assert.ok(sides.length >= 1);
   globalThis.document = prevDoc;
 });
+test('windmill blades and the chest lid are actors now, not static kit parts', async () => {
+  const THREE = await import('../vendor/three/three.module.js');
+  const { buildSatellite } = await import('../src/scene/island.js');
+  const { createKit } = await import('../src/scene/kit.js');
+  const ctx2d = new Proxy({}, { get: () => () => {}, set: () => true }), prev = globalThis.document; globalThis.document = { createElement: () => ({ getContext: () => ctx2d }) };
+  const mats = { ground: () => null, rock: null, solid: () => null, curb: null, path: null, shallow: null, foam: null };
+  const kw = createKit(THREE); buildSatellite(THREE, kw, { kind: 'windmill', q: 2.4, r: 0 }, mats); assert.equal(kw.count('box'), 0, 'no blade boxes');
+  const kc = createKit(THREE); buildSatellite(THREE, kc, { kind: 'chest', q: 0, r: 2.4 }, mats); assert.equal(kc.count('rbox'), 1, 'chest body only');
+  globalThis.document = prev;
+});

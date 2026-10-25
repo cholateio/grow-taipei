@@ -40,8 +40,9 @@ test('cloud spins and scooter circles the centre cell', () => {
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
 test('worldEffects: lamps set the clock, typhoon Lv2 sends people indoors, blackout kills the glow at night', () => {
-  assert.deepEqual(worldEffects(lv({}), {}), { time: TIMES.day, peopleVisible: true, glowScale: 1 });
+  assert.deepEqual(worldEffects(lv({}), {}), { time: TIMES.day, peopleVisible: true, glowScale: 1, storm: 0 });
+  assert.equal(worldEffects(lv({ typhoon: 2 }), {}).storm, 1); assert.equal(worldEffects(lv({ typhoon: 3 }), {}).storm, 0);
   assert.equal(worldEffects(lv({ bulb: 3 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 4 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 5 }), {}).time, TIMES.night);
   assert.equal(worldEffects(lv({ typhoon: 2 }), {}).peopleVisible, false); assert.equal(worldEffects(lv({ typhoon: 3 }), {}).peopleVisible, true);
-  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0 });
+  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0, storm: 0 });
 });

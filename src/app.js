@@ -33,6 +33,7 @@ import * as bulb from './actors/bulb.js';
 import * as token from './actors/token.js';
 import * as boba from './actors/boba.js';
 import * as typhoon from './actors/typhoon.js';
+import * as satellites from './actors/satellites.js';
 import { worldEffects } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
@@ -55,17 +56,15 @@ export async function start({ params, loading }) {
     const path = ringPath(axialToWorld(...cell), WALK_RADIUS, cellTop(cell));
     people.spawn({ path: k ? [...path].reverse() : path, speed: 0.32 + k * 0.06, accessory: k ? 'cap' : 'none' });
   }
-  // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品），海上兩艘船繞圈。載入失敗不擋開機。
+  // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品）。海上的船是演員（satellites.js）。載入失敗不擋開機。
   const assets = createAssets(THREE);
   const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
   const trng = mulberry32(3), decor = new THREE.Group(); view.scene.add(decor);
-  const boats = [];
   Promise.all([
     ...PLATEAU_CELLS.flatMap(cell => Array.from({ length: 3 }, (_, i) => {
       const c = axialToWorld(...cell), a = Math.PI * (1.15 + i * 0.35 + trng() * 0.15), d = 1.45 + trng() * 0.25;
       return assets.spawn(`kenney/nature/${TREES[Math.floor(trng() * TREES.length)]}.glb`, { x: c.x + Math.cos(a) * d, y: cellTop(cell), z: c.z + Math.sin(a) * d, h: 0.7 + trng() * 0.4, ry: trng() * 6, parent: decor, tint: { leaf: LEAVES[i % 3], bark: 0x9c7a4e } });
     })),
-    ...['Boat', 'BoatWSail'].map((b, i) => assets.spawn(`quat/ships/${b}.glb`, { h: [0.35, 0.8][i], y: WATER_Y - 0.02, parent: decor }).then(m => boats.push({ m, r: 16.5 + i * 2.2, a: i * 2.6, s: 0.05 + i * 0.015 }))),
   ]).catch(e => console.warn('裝飾模型載入失敗', e));
   // 一隻柴犬沿中心格的步道反向散步（純裝飾，§7.3）
   let shiba = null;
@@ -88,13 +87,13 @@ export async function start({ params, loading }) {
   // 介面、演員、導演、遊戲
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon], ctx: { people, assets, glow: view.glow } });
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
   const director = createDirector({ reducedMotion: motion.matches || !!auto });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));
   // 全島效果：燈泡推動時間、颱風 Lv2 小人躲進室內、大停電熄燈
-  const applyWorld = (lv, flags) => { const w = worldEffects(lv, flags); setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); };
+  const applyWorld = (lv, flags) => { const w = worldEffects(lv, flags); setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); };
   let slots;
   const game = createGame({
     spec, engine, endings, director, actors,
@@ -121,7 +120,6 @@ export async function start({ params, loading }) {
     rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t);
     if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
     // 自動播放（截圖）時第 240 幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
-    for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
     // 自動播放（截圖）演完後的第一幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
     if (autoDone && !reported) { reported = true; console.warn(`[grow] calls=${view.renderer.info.render.calls} tris=${view.renderer.info.render.triangles}`); }

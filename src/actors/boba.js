@@ -4,15 +4,18 @@ import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
 import { island } from './satellites.js';
 import { ITEMS } from '../rules/spec.js';
+import { FLASH } from '../show/flash.js';
 
 export const id = 'boba';
 export const labelY = 1.0;
 const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
-// 排隊：從攤車左側往南（+z，遠離捷運站）排 6 個，再往 −x 轉彎；都面向攤車
-function queue(at, n) {
+// 排隊：攤車時從攤車左側往南（+z，遠離捷運站）排 6 個，再往 −x 轉彎；噴泉廣場（plaza）時噴泉佔滿格子東半，
+// 改沿噴泉南緣外（+z 1.0）往 −x 排一列。都面向攤車／噴泉
+function queue(at, n, plaza = false) {
   return Array.from({ length: n }, (_, i) => {
-    const p = i < 6 ? offset(at, -0.4, 0.15 + 0.22 * i) : offset(at, -0.4 - 0.22 * (i - 5), 0.15 + 0.22 * 5);
+    const p = plaza ? offset(at, 0.3 - 0.22 * i, 1.0)
+      : i < 6 ? offset(at, -0.5, 0.15 + 0.22 * i) : offset(at, -0.5 - 0.22 * (i - 5), 0.15 + 0.22 * 5);
     return { ...p, yaw: Math.atan2(at.x - p.x, at.z - p.z) };
   });
 }
@@ -42,8 +45,8 @@ export function view(lv) {
   v['boba.main'] = { kind: 'compound', at, parts, footprint: n < 3 ? { w: 0.7, d: 0.5 } : { r: 0.95 } };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）
   v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave' } };
-  // 排隊的點在格子上、footprint 外的走路格救得回來（名冊的 stand 日常走回去時尋路）
-  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k) } }; }
+  // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點
+  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k, n >= 3), rescue: true } }; }
   return v;
 }
 
@@ -53,8 +56,40 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const owner = c => c.roster.members('boba.owner')[0] ?? null;
 const engineer = i => once(c => c.roster.members('chip.engineers').filter(m => !m.hidden)[i] ?? null);
 const islander = i => c => c.roster.members('landmarks.islanders').filter(m => !m.hidden)[i] ?? null;
-const STATION_SIDE = offset(anchorWorld('token'), 1.2, 1.0), PIER = offset(AT, 1.6, 1.4), FOREST = island('forest');
-const PUSH = 0.4, ISLANDERS = 10;   // 推攤車慢慢走（約 3 s）；糖分超標時最多這麼多島民一起 ♥
+const PIER = offset(AT, 1.6, 1.4), FOREST = island('forest'), ISLANDERS = 10;   // 糖分超標時最多這麼多島民一起 ♥
+// 推攤車：老闆從攤位北邊約 4.5 的地方出發（捷運站那側的路口），尋路最後一段從 −z 直直推進攤位，攤車停在 at 剛好接上。
+// 攤車在他面前 HANDLE 的地方；攤車朝向追著老闆的朝向轉（每秒 TURN 的比例），轉彎時不會瞬間甩到旁邊
+const FROM = offset(AT, -1.0, -4.5), HANDLE = 0.45, TURN = 12;
+const start = c => { const p = c.nav.nearestWalkable(FROM); return { ...p, yaw: Math.atan2(BEHIND.x - p.x, BEHIND.z - p.z) }; };
+const ahead = (p, yaw) => ({ x: p.x + Math.sin(yaw) * HANDLE, y: p.y, z: p.z + Math.cos(yaw) * HANDLE });
+// 攤車在出發點（老闆面前）白光出現：和老闆的白光同時
+function cartIn() {
+  let obj = null;
+  return {
+    kind: 'cartIn', dur: FLASH,
+    start(c) {
+      obj = c.stage.partObject('boba.main'); if (!obj) return false;
+      const p = start(c), q = ahead(p, p.yaw); obj.position.set(q.x, p.y, q.z); obj.visible = false;
+      c.flash.at({ ...q }, { onPeak: () => { obj.visible = true; } });
+    },
+    end() { if (obj) obj.visible = true; },
+  };
+}
+// 每幀把攤車放在老闆面前；end 停在 at（轉正）
+function push(w) {
+  let obj = null, yaw = 0;
+  const dyaw = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  return {
+    kind: 'push', dur: () => w.dur(),
+    start(c) { obj = c.stage.partObject('boba.main'); const m = owner(c); if (!obj || !m) return false; yaw = m.yaw; },
+    step(k, dt, c) {
+      const m = owner(c); if (!m) return;
+      yaw += dyaw(yaw, m.yaw) * Math.min(1, dt * TURN);
+      const q = ahead(m.pos, yaw); obj.position.set(q.x, m.pos.y, q.z); obj.rotation.y = 0;
+    },
+    end() { if (obj) { obj.position.set(AT.x, AT.y, AT.z); obj.rotation.z = 0; obj.visible = true; } },
+  };
+}
 // 糖分超標：grow 3 的劇本建拍時旗標還沒折進來（是緊接著的 onLevel 事件），照規則資料自己判斷
 const [SUGAR_ID, SUGAR_MAX] = ITEMS.boba.onLevel[3].find(a => a.flag?.name === 'bobaSugar').when.maxLevel;
 const sugary = s => !!s.flags.bobaSugar || s.lv[SUGAR_ID] <= SUGAR_MAX;
@@ -62,13 +97,13 @@ const sugary = s => !!s.flags.bobaSugar || s.lv[SUGAR_ID] <= SUGAR_MAX;
 const pier = k => c => c.nav.nearestWalkable(offset(PIER, -0.25 * k, 0));
 
 export const script = {
-  // 老闆從捷運站那邊推著攤車走到定位（攤車和老闆同時、同向移動）→ ♪
+  // 老闆從捷運站北邊推著攤車走過來（常速約 3 s，攤車每幀都在他面前）→ 停好 → ♪
   placed(e, s, ctx) {
-    const { B } = ctx, off = { dx: STATION_SIDE.x - BEHIND.x, dz: STATION_SIDE.z - BEHIND.z }, w = B.walk(owner, BEHIND, { speed: PUSH });
+    const { B } = ctx, w = B.walk(owner, BEHIND);
     return [
-      B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.spawn('boba.owner', STATION_SIDE),
-      B.apply(e, { only: ['boba.main'], flash: false }), B.move('boba.main', { from: off, to: off, dur: 0 }),   // 攤車停在老闆前面
-      B.together([w, B.move('boba.main', { from: off, to: 0, dur: () => w.dur() })]),
+      B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.apply(e, { only: ['boba.main'], flash: false }),
+      B.together([B.spawn('boba.owner', start), cartIn()]),
+      B.together([w, push(w)]),
       B.apply(e), B.bubble(owner, '♪'), B.home(owner),
     ];
   },

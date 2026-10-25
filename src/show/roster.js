@@ -6,7 +6,7 @@
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
-// （老闆搖杯）。不認得的 home 先當成站在 spec.at。
+// （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt } from '../scene/hex.js';
@@ -68,9 +68,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const { at, r } = wanderHome(spec, i);
     return cellAt(at.x, at.z) ? null : { path: ringPath(at, r, at.y), loop: true, speed: WANDER_SPEED };
   }
+  // rescue：spot 落在 footprint 裡（走路格外）就站到最近的可走點（排隊的人不站進噴泉裡）；
+  // 沒帶 rescue 的照原樣站（泳客站在泳池裡、老鼠泡溫泉）
   function spotOf(spec, i) {
     const spots = spec.home?.kind === 'stand' ? spec.home.spots : null;
-    return spots?.length ? spots[i % spots.length] : { ...spec.at, yaw: 0 };
+    const spot = spots?.length ? spots[i % spots.length] : { ...spec.at, yaw: 0 };
+    return spec.home?.rescue && !nav.walkable(spot.x, spot.z) ? { ...nav.nearestWalkable(spot), yaw: spot.yaw } : spot;
   }
   // 車頂座位：沿車廂前進方向（yaw）偏移，y 抬到車頂
   function seat(h, i, t) {

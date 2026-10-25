@@ -251,3 +251,12 @@ test('stand members with fidget play a short gesture every 3 s and are still bet
   roster.declare('w', kids(1)); for (let i = 0; i < 90; i++) roster.update(1 / 30, i / 30);
   assert.equal(roster.members('w')[0].walker.gesture, null, 'no fidget without the flag');
 });
+test('a stand home with rescue stands at the nearest walkable point when its spot is inside a footprint', () => {
+  const { roster, nav } = setup(), spot = { ...AT, yaw: 0 };
+  nav.setFootprints([{ x: AT.x, z: AT.z, r: 0.6 }]);
+  roster.declare('k', { kind: 'roster', at: AT, n: 1, home: { kind: 'stand', spots: [spot], rescue: true } });
+  const m = roster.members('k')[0], want = nav.nearestWalkable(spot);
+  for (let i = 0; i < 300; i++) roster.update(1 / 30, i / 30);
+  assert.ok(Math.hypot(m.pos.x - want.x, m.pos.z - want.z) < 0.1 && nav.walkable(m.pos.x, m.pos.z), 'rescued out of the footprint');
+  roster.snap(); assert.ok(nav.walkable(m.pos.x, m.pos.z), 'snap rescues too');
+});

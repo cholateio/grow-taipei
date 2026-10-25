@@ -110,23 +110,45 @@ test('scripts: every boba level in both solutions plays in range, ends with LEVE
     }
   }
 });
-test('placed: the owner walks in from the station side pushing the cart, which ends at its anchor; ♪', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, from = offset(anchorWorld('token'), 1.2, 1.0);
-  let first = null, cartFar = false;
+// 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走 3–4 s；每一幀攤車都在他面前 0.3–0.6；攤車在出發點白光出現
+test('placed: the owner pushes the cart in at walking speed — every frame the cart is just in front of him — and it parks at its anchor; ♪', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, frames = [], flashes = [];
+  const at = show.flash.at; show.flash.at = (q, o) => { flashes.push({ x: q.x, z: q.z }); return at(q, o); };
+  let cart0 = null;
   show.update = (dt, t) => {
     update(dt, t);
     const o = show.roster.members('boba.owner')[0], cart = show.stage.partObject('boba.main');
-    if (o && !first) first = { ...o.pos };
-    if (cart && Math.hypot(cart.position.x - AT.x, cart.position.z - AT.z) > 0.5) cartFar = true;
+    if (cart && cart.visible && !cart0) cart0 = { x: cart.position.x, z: cart.position.z };
+    if (o?.walking && cart) frames.push({ o: { ...o.pos }, yaw: o.yaw, speed: o.speed, c: { x: cart.position.x, z: cart.position.z } });
   };
   const { n } = await liveAt(h, SOLUTIONS[0], e => e.kind === 'placed' && e.item === 'boba');
-  assert.ok(first && near(first, from, 0.4), 'owner appears on the station side');
-  assert.ok(cartFar, 'the cart travels with the owner');
+  const secs = frames.length / 30;
+  assert.ok(secs >= 2.5 && secs <= 4.5, `push took ${secs.toFixed(2)} s`);
+  assert.ok(frames.every(f => f.speed === 1.6), 'walking speed');
+  for (const [i, f] of frames.entries()) {
+    const dx = f.c.x - f.o.x, dz = f.c.z - f.o.z, d = Math.hypot(dx, dz), dot = Math.sin(f.yaw) * dx + Math.cos(f.yaw) * dz;
+    assert.ok(d >= 0.3 && d <= 0.6, `frame ${i}: cart ${d.toFixed(2)} from the owner`); assert.ok(dot > 0, `frame ${i}: cart in front`);
+  }
+  assert.ok(Math.hypot(frames[0].o.x - AT.x, frames[0].o.z - AT.z) > 3, 'starts far away');
+  assert.ok(cart0 && flashes.some(q => near(q, cart0, 0.1)), 'the cart appears with a flash where it starts');
   const cart = show.stage.partObject('boba.main');
-  assert.ok(Math.abs(cart.position.x - AT.x) < 1e-9 && Math.abs(cart.position.z - AT.z) < 1e-9, 'cart parked at its anchor');
+  assert.ok(Math.abs(cart.position.x - AT.x) < 1e-9 && Math.abs(cart.position.z - AT.z) < 1e-9 && cart.rotation.z === 0, 'cart parked at its anchor');
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '♪'));
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   assert.ok(near(show.roster.members('boba.owner')[0].pos, offset(AT, 0, -0.45), 0.1), 'owner behind the cart');
+});
+// 審查 I2：噴泉廣場的人龍排在噴泉外的走路格上
+test('Lv3: every queue spot is outside the fountain and walkable once the footprints are set', async () => {
+  const h = await headlessShow(), { show } = h;
+  await liveAt(h, SOLUTIONS[0], isBoba(3));
+  const q = boba.view(show.stage.lv, show.stage.flags)['boba.queue'];
+  assert.equal(q.n, 10);
+  for (const [i, p] of q.home.spots.entries()) {
+    assert.ok(Math.hypot(p.x - AT.x, p.z - AT.z) >= 0.95, `spot ${i} outside the fountain`);
+    assert.ok(show.nav.walkable(p.x, p.z), `spot ${i} walkable`);
+  }
+  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
+  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, q.home.spots[i], 0.1), `tourist ${i} in line`));
 });
 test('Lv2: six tourists come from the pier side and stand in the queue', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, pier = offset(AT, 1.6, 1.4), firsts = new Map();

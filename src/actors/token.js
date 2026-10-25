@@ -11,6 +11,7 @@ export const labelY = 1.0;
 export const TRACK = { radius: 8.3, y: TOP - 0.25 };   // 比島面低：從前面看只會切到島的側壁，不會切到建築
 const GAP = 0.6;   // 車廂間距（弧長）
 const POOL = 0xa4d4da;
+const AT = anchorWorld('token'), POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站務員的崗位（站門口旁）、站門
 
 // 第 i 節車廂在時間 t 的位置：逆時針繞島，角速度 speed（rad/s）
 export function trainPose(t, i, { speed = 0.35 } = {}) {
@@ -21,22 +22,28 @@ export function trainPose(t, i, { speed = 0.35 } = {}) {
 const pylon = (x, z) => { const base = groundAt(x, z), h = TRACK.y - base; return { kind: 'cylinder', pos: [x, base + h / 2, z], scale: [0.12, h, 0.12], color: C.curb }; };
 
 // 支線的中心線（給接駁車走）：從環上離衛星島最近的點到島上
-function spurPath(kind) {
+export function spurPath(kind) {
   const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), d = Math.hypot(c.x, c.z), ux = c.x / d, uz = c.z / d;
   const y0 = TRACK.y + 0.1, y1 = TOP - 0.2 + 0.2;
   return [{ x: ux * TRACK.radius, y: y0, z: uz * TRACK.radius }, { x: ux * (d - 1.0), y: y1, z: uz * (d - 1.0) }];
 }
 
-// 環上離衛星島最近的點，用 8 段階梯狀的高架一路降到島上
+// 環上離衛星島最近的點，用 8 段階梯狀的高架一路降到島上。每 4 段合成一個零件（at 在那 4 段的中間）：
+// Lv4 分兩次白光長出來；一段一個零件會多 16 個 mesh，全開的畫面 draw call 超過 150
+export const SPUR_PARTS = 2;
 function spur(kind) {
   const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), d = Math.hypot(c.x, c.z), ux = c.x / d, uz = c.z / d;
-  const from = TRACK.radius, to = d - 1.0, y0 = TRACK.y, y1 = TOP - 0.2 + 0.1, parts = [], seg = (to - from) / 8;
-  for (let i = 0; i < 8; i++) {
-    const r = from + seg * (i + 0.5), y = y0 + (y1 - y0) * (i + 0.5) / 8;
-    parts.push({ kind: 'box', pos: [ux * r, y, uz * r], scale: [0.3, 0.08, seg * 1.05], rot: [0, Math.atan2(ux, uz), 0], color: C.cream });
-    if (i % 2 === 1 && i < 7) parts.push(pylon(ux * r, uz * r));
-  }
-  return parts;
+  const from = TRACK.radius, to = d - 1.0, y0 = TRACK.y, y1 = TOP - 0.2 + 0.1, seg = (to - from) / 8, per = 8 / SPUR_PARTS;
+  const point = k => ({ x: ux * (from + seg * k), y: y0 + (y1 - y0) * k / 8, z: uz * (from + seg * k) });   // 第 k 段起點（k 可以是小數）
+  return Array.from({ length: SPUR_PARTS }, (_, j) => {
+    const at = point(per * (j + 0.5)), parts = [];
+    for (let i = per * j; i < per * (j + 1); i++) {
+      const p = point(i + 0.5), pos = [p.x - at.x, p.y - at.y, p.z - at.z];
+      parts.push({ kind: 'box', pos, scale: [0.3, 0.08, seg * 1.05], rot: [0, Math.atan2(ux, uz), 0], color: C.cream });
+      if (i % 2 === 1 && i < 7) { const q = pylon(p.x, p.z); parts.push({ ...q, pos: [pos[0], q.pos[1] - at.y, pos[2]] }); }
+    }
+    return { kind: 'compound', at, footprint: false, parts };
+  });
 }
 
 export function view(lv, flags) {
@@ -55,13 +62,16 @@ export function view(lv, flags) {
       { kind: 'box', pos: [0.6, 0.175, 0.3], scale: [0.2, 0.35, 0.2], color: C.blue },
       { kind: 'cylinder', pos: [0.6, 0.3, 0.41], scale: [0.08, 0.02, 0.08], rot: [Math.PI / 2, 0, 0], color: C.neonBlue },
     ] };
-  if (flags.flooded) v['token.swimmers'] = { kind: 'people', at, n: 2, stand: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }] };
+  // 站務員站在站門口、面向外；淹水時他原地換成泳客（from），再多一個泳客；Lv6 無人列車就沒有站務員
+  if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }] } };
+  else if (n < 6) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }] } };
   if (n >= 2) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
     v['token.track'] = { kind: 'compound', at: origin, parts, footprint: false };
-    if (n >= 4) v['token.spurs'] = { kind: 'compound', at: origin, footprint: false, parts: [...spur('lighthouse'), ...spur('playground')] };
-    if (n >= 5) v['token.shuttle'] = { kind: 'shuttle', at: origin, path: spurPath('lighthouse'), speed: flags.flooded ? 0 : 0.6, footprint: false };
+    if (n >= 4) for (const kind of ['lighthouse', 'playground']) spur(kind).forEach((p, i) => { v[`token.spur.${kind}.${i}`] = p; });
+    // 接駁車走遊樂場島的支線（at 在支線起點：白光在那裡閃）
+    if (n >= 5) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 0.6, footprint: false }; }
     v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 6, footprint: false };
   }
   return v;
@@ -71,8 +81,8 @@ export const builders = {
   // 小島接駁車：一節黃色小車在支線上來回
   shuttle(THREE, spec, ctx) {
     const car = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'rbox', pos: [0, 0.14, 0], scale: [0.25, 0.22, 0.4], color: C.yellow }, { kind: 'box', pos: [0, 0.18, 0], scale: [0.26, 0.06, 0.32], color: C.white }] });
-    const object = new THREE.Group(), cursor = createPathCursor(spec.path, { loop: false }); object.add(car.object);
-    return { object, update(dt) { cursor.advance(dt * spec.speed); const p = cursor.locate(); car.object.position.set(p.x, p.y, p.z); car.object.rotation.y = p.yaw; }, dispose: car.dispose };
+    const object = new THREE.Group(), cursor = createPathCursor(spec.path, { loop: false }), o = spec.at; object.add(car.object);   // path 是世界座標，車放在 at 底下
+    return { object, update(dt) { cursor.advance(dt * spec.speed); const p = cursor.locate(); car.object.position.set(p.x - o.x, p.y - o.y, p.z - o.z); car.object.rotation.y = p.yaw; }, dispose: car.dispose };
   },
   // 列車：每節一個圓角車廂 + 白色窗帶，沿環狀線跑；霓虹列車整節發藍光
   train(THREE, spec, ctx) {
@@ -90,4 +100,78 @@ export const builders = {
       dispose() { for (const c of cars) c.dispose(); },
     };
   },
+};
+
+// ── 劇本（§8.4）──
+// 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
+const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+const staffOf = () => once(c => c.roster.members('token.staff').find(m => !m.hidden) ?? null);
+const kid = i => c => c.roster.members('sat.playground')[i] ?? null;
+const STATION_BEARING = Math.atan2(AT.z, AT.x);
+// 站前島緣：站的方位上、半徑 7 的那點（在水裡）最近的可走點；footprint 會變，演到才算
+const shore = c => c.nav.nearestWalkable({ x: Math.cos(STATION_BEARING) * 7.0, z: Math.sin(STATION_BEARING) * 7.0 });
+const satCentre = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP - 0.2, z: c.z }; };
+const LIGHTHOUSE = satCentre('lighthouse'), PLAYGROUND = satCentre('playground');
+// 接駁車在遊樂場島那頭的終點往島心收 0.3：小孩下車的地方；溜滑梯腳下兩個點（相距 0.4）
+const KID_OFF = (() => { const e = spurPath('playground').at(-1), d = Math.hypot(e.x, e.z), k = (d + 0.3) / d; return { x: e.x * k, y: TOP - 0.2, z: e.z * k }; })();
+const SLIDE = [offset(PLAYGROUND, 0.1, 1.1), offset(PLAYGROUND, 0.5, 1.1)];
+// 站務員跑進站體：名冊把他藏起來（Lv6 的 view 不再宣告站務員，apply 時名冊收走）
+const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m) c.roster.hide(m); return false; } });
+
+export const script = {
+  // 白光車站 → 站務員從門口走出來到崗位 → ♪
+  placed(e, s, ctx) {
+    const { B } = ctx, st = staffOf();
+    return [B.apply(e, { hold: ['token.staff'] }), B.spawn('token.staff', DOOR), B.walk(st, POST), B.bubble(st, '♪'), B.home(st)];
+  },
+  grow: {
+    // 環狀線：站務員走到站前島緣 → …… → 圖框「列車」→ 軌道從海面升起 → 列車從站後面駛出（白光在車頭）
+    2(e, s, ctx) {
+      const { B } = ctx, st = staffOf();
+      return [
+        B.walk(st, shore), B.bubble(st, '……'), B.bubble(st, { icon: 'train' }),
+        B.apply(e, { only: ['token.track'], flash: false }), B.scaleIn('token.track', { dur: 0.8 }),
+        B.together([B.apply(e), B.trainDepart()]),   // 先建好列車（藏著）再改時鐘，白光才閃在站後面的車頭
+        B.home(st), B.levelUp('token'),
+      ];
+    },
+    // 五節：列車進站停 → 站務員揮手 → 白光多兩節 → 開走
+    3(e, s, ctx) {
+      const { B } = ctx, st = staffOf();
+      return [B.trainStop({ during: [B.gesture(st, 'wave')] }), B.apply(e), B.levelUp('token')];
+    },
+    // 支線（棒球 ≥3）：站務員 …… → 圖框「小島」→ 鏡頭到燈塔島 → 兩條支線從環上往島上分段白光長出（兩條同一段一起）→ 鏡頭回家
+    4(e, s, ctx) {
+      const { B } = ctx, st = staffOf();
+      return [
+        B.bubble(st, '……'), B.bubble(st, { icon: 'islet' }), B.camera(LIGHTHOUSE),
+        ...Array.from({ length: SPUR_PARTS }, (_, i) => B.apply(e, { only: [`token.spur.lighthouse.${i}`, `token.spur.playground.${i}`] })),
+        B.camera('home'), B.levelUp('token'),
+      ];
+    },
+    // 接駁車：鏡頭到遊樂場島 → 白光接駁車在支線起點 → 開到島上 → 鮮奶 ≥2 時兩個小孩下車走到溜滑梯 → 鏡頭回家
+    5(e, s, ctx) {
+      const { B } = ctx, kids = s.lv.milk >= 2;
+      return [
+        B.camera(PLAYGROUND),
+        B.apply(e, { only: ['token.shuttle', ...(kids ? ['sat.playground'] : [])], hold: ['sat.playground'] }),
+        B.wait(3),   // 車速 0.6，支線約 2.2：開到島那頭
+        ...(kids ? [
+          B.spawn('sat.playground', KID_OFF), B.spawn('sat.playground', offset(KID_OFF, 0.25, 0.15)),
+          B.together([0, 1].map(i => B.walk(kid(i), SLIDE[i]))), B.home([kid(0), kid(1)]),
+        ] : []),
+        B.apply(e), B.camera('home'), B.levelUp('token'),
+      ];
+    },
+    // 無人霓虹（老鼠 ≥3）：列車進站停 → 車頂老鼠 ♪ → 站務員 ！ → 跑進站體（消失）→ 列車白光變霓虹 → 開走
+    6(e, s, ctx) {
+      const { B } = ctx, st = staffOf();
+      return [
+        B.trainStop({ during: [B.bubble(B.trainHead(ctx), '♪'), B.bubble(st, '！'), B.walk(st, DOOR), hide(st)] }),
+        B.apply(e), B.levelUp('token'),
+      ];
+    },
+  },
+  fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）
+  rep: (s, ctx) => ctx.roster.members('token.staff')[0] ?? null,
 };

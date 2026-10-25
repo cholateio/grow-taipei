@@ -197,3 +197,19 @@ test('from prefers a member who existed before this declaration', () => {
   assert.equal(roster.members('chip.engineers').length, 3); assert.equal(people.walkers.length, 4, 'engineers topped up at flush');
   assert.deepEqual(roster.members('chip.engineers').map(m => m.i), [0, 1, 2]);
 });
+// Task 14：衛星島（不在主島走路格上）的 wander 家：繞 ringPath(at, r) 走，不被 nav 拉回主島
+test('a wander home off the main island loops around a ring instead of being pulled back onto the island', async () => {
+  const { SATELLITES, axialToWorld, cellAt } = await import('../src/scene/hex.js');
+  const s = SATELLITES.find(x => x.kind === 'playground'), c0 = axialToWorld(s.q, s.r), c = { x: c0.x, y: 0.45, z: c0.z };
+  const { roster } = setup(); roster.declare('sat.playground', { kind: 'roster', at: c, n: 2, home: { kind: 'wander', at: c, r: 0.5 } });
+  const ms = roster.members('sat.playground'), near = m => Math.abs(Math.hypot(m.pos.x - c.x, m.pos.z - c.z) - 0.5) < 0.05;
+  for (const m of ms) { assert.ok(near(m), 'spawned on the ring'); assert.equal(m.pos.y, 0.45); }
+  const start = ms.map(m => ({ ...m.pos }));
+  for (let i = 0; i < 90; i++) { roster.update(1 / 30, i / 30); for (const m of ms) { assert.equal(cellAt(m.pos.x, m.pos.z), null, 'stays off the main island'); assert.ok(Math.hypot(m.pos.x - c.x, m.pos.z - c.z) < 0.6); } }
+  ms.forEach((m, i) => { assert.ok(near(m)); assert.ok(Math.hypot(m.pos.x - start[i].x, m.pos.z - start[i].z) > 0.5, 'walks round the ring at WANDER_SPEED'); });
+  // 劇本放到島上別處（溜滑梯）再交回日常：直線走回圈上，不經主島
+  roster.claim(ms[0]); roster.setPose(ms[0], { x: c.x + 0.3, y: 0.45, z: c.z + 1.1 }); roster.home(ms[0]);
+  for (let i = 0; i < 90; i++) { roster.update(1 / 30, i / 30); assert.ok(Math.hypot(ms[0].pos.x - c.x, ms[0].pos.z - c.z) < 1.3); }
+  assert.ok(near(ms[0]));
+  roster.claim(ms[1]); roster.setPose(ms[1], { x: c.x, y: 0.45, z: c.z + 1 }); roster.snap(); assert.ok(near(ms[1]));
+});

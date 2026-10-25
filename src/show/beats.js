@@ -10,7 +10,8 @@ import { createPathCursor } from '../scene/path.js';
 
 export { together };
 export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8 };
-export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 3;
+// 加速上限：一圈 2π / 0.35 ≈ 18 s，車剛開走時要 4.5 倍才趕得上 4 秒內進站（三倍會拖到 6 秒）
+export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');
 export const STATION_A = Math.atan2(STATION.z, STATION.x);   // 捷運站對島心的方位（列車車頭停在站前島緣）
 const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, RIDE_Y = 0.18, TRAIN_HEAD_Y = 0.5, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
@@ -262,7 +263,7 @@ export function trainDepart() {
   };
 }
 
-// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 3 倍）在 4 秒內進站，
+// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 4.5 倍）在 4 秒內進站，
 // 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
 // during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end

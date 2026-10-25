@@ -5,9 +5,11 @@
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
-// fidget 與衛星島 wander 之後的任務才做；不認得的 home 先當成站在 spec.at。
+// 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走。fidget 之後的任務才做；不認得的 home 先當成站在 spec.at。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
+import { cellAt } from '../scene/hex.js';
+import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
@@ -59,6 +61,11 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const h = spec.home, at = Array.isArray(h.at) ? h.at[i % h.at.length] : (h.at ?? spec.at);
     return { at, r: h.r ?? 0.5 };
   }
+  // 衛星島上的家：nav 只有主島，wander 會把人拉回主島，所以改成沿家周圍的圓圈慢慢繞（同 path 日常，閉合）
+  function ringHome(spec, i) {
+    const { at, r } = wanderHome(spec, i);
+    return cellAt(at.x, at.z) ? null : { path: ringPath(at, r, at.y), loop: true, speed: WANDER_SPEED };
+  }
   function spotOf(spec, i) {
     const spots = spec.home?.kind === 'stand' ? spec.home.spots : null;
     return spots?.length ? spots[i % spots.length] : { ...spec.at, yaw: 0 };
@@ -72,7 +79,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   // m：已經在場上的成員（snap 用）；follow 的家就是他現在站的地方，剛生出來的站在 spec.at
   function homePose(spec, i, m = null) {
     const h = spec.home ?? {};
-    if (h.kind === 'wander') { const { at, r } = wanderHome(spec, i); return nav.wander(at, r); }
+    if (h.kind === 'wander') {
+      const ring = ringHome(spec, i); if (ring) { const P = pathOf(ring); return pointAt(P, P.total * i / Math.max(1, spec.n)); }
+      const { at, r } = wanderHome(spec, i); return nav.wander(at, r);
+    }
     if (h.kind === 'ride') return seat(h, i, now);
     if (h.kind === 'path') { const P = pathOf(h); return pointAt(P, P.total * i / Math.max(1, spec.n)); }
     if (h.kind === 'follow' && m) return { ...m.pos, yaw: m.yaw };
@@ -262,6 +272,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
     if (h.kind === 'path') { onPath(m, h, dt); return; }
     if (h.kind === 'follow') { follow(m, h, dt); return; }
+    const ring = h.kind === 'wander' ? ringHome(spec, m.i) : null;
+    if (ring) { onPath(m, ring, dt); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
       if ((m.rest -= dt) > 0) return;

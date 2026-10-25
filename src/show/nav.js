@@ -1,6 +1,6 @@
 // 走路格與尋路：主島六格與橋面切成方格，A* 八方向（不切角）找路，再沿視線拉直。
 // 建築佔地（footprint）是另一層可隨時重設的阻擋集合。純函式、不依賴 three。
-import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, edgeMidpoint, WATER_Y } from '../scene/hex.js';
+import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, edgeMidpoint, WATER_Y, SATELLITES } from '../scene/hex.js';
 
 export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25;
 const SQ3 = Math.sqrt(3), HALF = 9.5, BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, WANDER_TRIES = 12;
@@ -23,6 +23,10 @@ function insideCell(x, z) {
   const c = axialToWorld(...cell), dx = Math.abs(x - c.x), dz = Math.abs(z - c.z), r = R - MARGIN;
   return dx <= r * SQ3 / 2 && dz + dx / SQ3 <= r;
 }
+
+// 點在哪一座衛星島上（島中心 R 以內）；不在衛星島上回 -1
+const SAT_CENTRES = SATELLITES.map(s => axialToWorld(s.q, s.r));
+export const satelliteAt = ({ x, z }) => SAT_CENTRES.findIndex(c => Math.hypot(x - c.x, z - c.z) <= R);
 
 const onAnyBridge = (x, z) => BRIDGES.some(br => {
   const { s, off } = onBridge(br, x, z);
@@ -117,6 +121,9 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
 
   function route(from, to) {
     const head = [{ x: from.x, y: from.y ?? groundY(from.x, from.z), z: from.z }];
+    // 衛星島不在走路格上：同一座島上的兩點直接直線走（不被拉回主島）
+    const sat = cellAt(from.x, from.z) ? -1 : satelliteAt(from);
+    if (sat >= 0 && !cellAt(to.x, to.z) && satelliteAt(to) === sat) return [head[0], { x: to.x, y: to.y ?? head[0].y, z: to.z }];
     const rescued = !walkable(from.x, from.z), start = rescued ? nearestWalkable(from) : from;
     if (rescued) head.push(start);
     const end = nearestWalkable(to);

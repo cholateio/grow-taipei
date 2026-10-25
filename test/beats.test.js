@@ -9,7 +9,7 @@ import { axialToWorld, cellTop } from '../src/scene/hex.js';
 import { trainPose } from '../src/actors/token.js';
 installFakeDom();
 const { createFlash } = await import('../src/show/flash.js');
-const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, partHead } = await import('../src/show/beats.js');
+const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, partHead } = await import('../src/show/beats.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 const ev = { kind: 'grow', item: 'milk' };
@@ -156,7 +156,7 @@ test('bubble shows over the target and is cancelled when the beat ends; a dotted
   tl.update(1.2); assert.equal(bubbles.cancelled, 1); assert.deepEqual(bubbles.shown[1].head(), { x: 1, y: 2, z: 3 });
   tl.skip(); assert.equal(bubbles.cancelled, 2);
 });
-test('trainStop speeds the clock up to 3× to arrive within 4 s, holds 3 s, then resumes; no train → skipped', () => {
+test('trainStop speeds the clock up (at most 4.5×) to arrive within 4 s, holds 3 s, then resumes; no train → skipped', () => {
   const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
   ctx.now = (STATION_A - Math.PI) / 0.35;   // 車頭現在在站的對面（差 π rad，照 0.35 rad/s 要 8.98 s → 加速 2.24× 剛好 4 s 進站）
   tl.play([B.trainStop()], ctx); tl.update(0);
@@ -165,7 +165,8 @@ test('trainStop speeds the clock up to 3× to arrive within 4 s, holds 3 s, then
   const a = ((ctx.now + rail.offset) * 0.35 - STATION_A) % (2 * Math.PI); assert.ok(Math.abs(a) < 0.05 || Math.abs(a - 2 * Math.PI) < 0.05, 'head at the station after 4 s');
   const o = rail.offset; ctx.now += 1; tl.update(1); assert.ok(Math.abs(rail.offset - (o - 1)) < 1e-6, 'held: offset falls as fast as time rises');
   const far = fake({ parts: ['token.train'] }); far.ctx.now = (STATION_A - 1.9 * Math.PI) / 0.35; far.tl.play([B.trainStop()], far.ctx); far.tl.update(0);
-  assert.ok(Math.abs(far.tl.currentDur - (1.9 * Math.PI / 0.35 / 3 + 3)) < 1e-6, 'capped at 3×');
+  assert.ok(Math.abs(far.tl.currentDur - (TRAIN_ARRIVE + TRAIN_STOP)) < 1e-6, 'just missed the train (1.9π away, 4.26×): still in by 4 s');
+  assert.ok(TRAIN_MAX_BOOST * TRAIN_ARRIVE >= 2 * Math.PI / 0.35, 'the cap covers a full lap');
   const none = fake({ parts: [] }); none.tl.play([B.trainStop(), B.wait(0.1)], none.ctx); none.tl.update(0); assert.equal(none.tl.currentKind, 'wait');
 });
 test('trainStop during: beats start at arrival in order; the train still leaves after stop; skip starts and ends them', () => {

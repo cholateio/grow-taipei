@@ -29,10 +29,14 @@ test('lighthouse lights at bulb 2, sweeps at bulb 3, dark in a blackout', () => 
   assert.equal(sat.view(lv({ bulb: 3 }), {})['sat.beam'].kind, 'beam');
   assert.equal(sat.view(lv({ bulb: 3 }), { blackout: true })['sat.lighthouse'], undefined);
 });
-test('playground kids need the spur and a school; forest tourists need a queue; the shop needs the chain', () => {
-  assert.equal(sat.view(lv({ token: 3, milk: 3 }), {})['sat.playground'], undefined);
-  const kids = sat.view(lv({ token: 4, milk: 2 }), {})['sat.playground']; assert.equal(kids.n, 2); assert.equal(kids.accessory, 'none');
-  assert.equal(sat.view(lv({ token: 4, milk: 5 }), {})['sat.playground'].accessory, 'cap');
+test('playground kids come with the shuttle and need a school; forest tourists need a queue; the shop needs the chain', () => {
+  // 小孩是坐接駁車（代幣 Lv5）來的：代幣 Lv5 的劇本 hold 住名冊、在車旁 spawn
+  assert.equal(sat.view(lv({ token: 4, milk: 3 }), {})['sat.playground'], undefined);
+  assert.equal(sat.view(lv({ token: 5, milk: 1 }), {})['sat.playground'], undefined);
+  const kids = sat.view(lv({ token: 5, milk: 2 }), {})['sat.playground'], s = SATELLITES.find(x => x.kind === 'playground'), c = axialToWorld(s.q, s.r);
+  assert.deepEqual([kids.kind, kids.n, kids.accessory, kids.home.kind, kids.home.r], ['roster', 2, 'none', 'wander', 0.5]);
+  assert.ok(Math.hypot(kids.home.at.x - c.x, kids.home.at.z - c.z) < 0.5, 'wanders on the playground island');
+  assert.equal(sat.view(lv({ token: 5, milk: 5 }), {})['sat.playground'].accessory, 'cap');
   assert.equal(sat.view(lv({ boba: 2 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forestShop'], undefined);
   assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forestShop'].kind, 'compound');
 });

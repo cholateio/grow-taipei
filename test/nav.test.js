@@ -54,3 +54,10 @@ test('wander stays near home and walkable; separate pushes overlapping walkers a
   nav.separate([a, b, still], 0.1);
   assert.ok(Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) > 0.1); assert.deepEqual(still.pos, { x: 0.05, y: 0, z: 0 });
 });
+test('a route between two points on the same satellite island is a straight line, not via the main island', async () => {
+  const { SATELLITES, axialToWorld } = await import('../src/scene/hex.js');
+  const s = SATELLITES.find(x => x.kind === 'playground'), o = axialToWorld(s.q, s.r), nav = createNav();
+  const a = { x: o.x - 0.4, y: 0.45, z: o.z }, b = { x: o.x + 0.3, y: 0.45, z: o.z + 1.1 }, r = nav.route(a, b);
+  assert.equal(r.length, 2); assert.deepEqual(r[0], a); assert.deepEqual(r[1], b);
+  assert.ok(nav.route({ x: 0, y: 0, z: 3.2 }, c([0, 0])).length >= 2, 'water → main island still rescued');
+});

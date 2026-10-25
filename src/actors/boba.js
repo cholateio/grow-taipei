@@ -7,11 +7,12 @@ export const id = 'boba';
 export const labelY = 1.0;
 const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
-// 排隊：先往 −x 排 6 個，再往 +z 轉彎
-function queue(at, n, start) {
-  return Array.from({ length: n }, (_, i) => i < 6
-    ? { ...offset(at, start - 0.22 * i, 0.1), yaw: Math.PI / 2 }
-    : { ...offset(at, start - 0.22 * 5, 0.1 + 0.22 * (i - 5)), yaw: Math.PI });
+// 排隊：從攤車左側往南（+z，遠離捷運站）排 6 個，再往 −x 轉彎；都面向攤車
+function queue(at, n) {
+  return Array.from({ length: n }, (_, i) => {
+    const p = i < 6 ? offset(at, -0.4, 0.15 + 0.22 * i) : offset(at, -0.4 - 0.22 * (i - 5), 0.15 + 0.22 * 5);
+    return { ...p, yaw: Math.atan2(at.x - p.x, at.z - p.z) };
+  });
 }
 
 export function view(lv) {
@@ -35,6 +36,6 @@ export function view(lv) {
     { kind: 'box', pos: [0, 0.3, 0.9], scale: [0.4, 0.06, 0.02], color: fresh ? C.blue : C.cream },
   ];
   v['boba.main'] = { kind: 'compound', at, parts };
-  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'people', at, n: k, accessory: 'suitcase', shirt: SHIRTS, stand: queue(at, k, n >= 3 ? -1.0 : -0.45) }; }
+  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'people', at, n: k, accessory: 'suitcase', shirt: SHIRTS, stand: queue(at, k) }; }
   return v;
 }

@@ -3,17 +3,25 @@
 // node src/solver/run.js --check  另跑驗收，失敗 exit 1
 import { fileURLToPath } from 'node:url';
 import * as defaultSpec from '../rules/spec.js';
-import { createState, place } from '../rules/engine.js';
+import { createState, place, advance } from '../rules/engine.js';
 import { resolve, satisfied, ENDINGS } from '../rules/endings.js';
 
 const BAD = ['blackout', 'flood', 'domeRats', 'typhoonDeflect', 'shieldDown', 'milkExpired', 'bobaSugar'];
 
 const countMax = (state, spec) => spec.ORDER.filter(id => state.lv[id] === spec.ITEMS[id].max).length;
 
+// 第 8 個放完後的倒數回合（spec.CLOSING_TURNS），和遊戲本體一樣
+export function closing(state, spec = defaultSpec) {
+  const events = [];
+  for (let i = 0; i < (spec.CLOSING_TURNS ?? 0); i++) { const r = advance(state, spec); state = r.state; events.push(...r.events); }
+  return { state, events };
+}
+
 export function playOrder(order, spec = defaultSpec) {
   let state = createState(spec);
   const events = [];
   for (const id of order) { const r = place(state, id, spec); state = r.state; events.push(...r.events); }
+  { const r = closing(state, spec); state = r.state; events.push(...r.events); }
   return { state, ending: resolve(state, spec), satisfied: satisfied(state, spec), maxCount: countMax(state, spec), events };
 }
 
@@ -29,6 +37,7 @@ export function enumerate(spec = defaultSpec) {
   };
   const walk = (state, order) => {
     if (order.length === spec.ORDER.length) {
+      try { state = closing(state, spec).state; } catch (e) { fail(order, e); return; }
       out.push({ order, state, ending: resolve(state, spec), satisfied: satisfied(state, spec), maxCount: countMax(state, spec) });
       return;
     }
@@ -82,7 +91,8 @@ export function check(results, spec = defaultSpec) {
   for (const id of BAD) if (!results.some(r => r.satisfied.includes(id))) failures.push(`壞結局「${ENDINGS[id].title}」沒有任何順序到得了`);
   const chipShort = results.filter(r => r.ending.missile && r.ending.missile !== 'shield').length / results.length;
   if (chipShort < 0.3) failures.push(`晶片未 MAX 的比例必須 ≥ 30%，目前 ${(chipShort * 100).toFixed(1)}%`);
-  if (s.avgMax > 3) failures.push(`隨機順序平均 MAX 數必須 ≤ 3，目前 ${s.avgMax.toFixed(2)}`);
+  // 一回合一級的節奏下大家都會長一些，門檻從 3 放寬到 3.5（§6.5 #4，2026-10-25）
+  if (s.avgMax > 3.5) failures.push(`隨機順序平均 MAX 數必須 ≤ 3.5，目前 ${s.avgMax.toFixed(2)}`);
   if (s.greedyReachesTrue) failures.push('貪婪策略不能走到真結局');
   const errs = results.filter(r => r.error);
   if (errs.length) failures.push(`${errs.length} 種順序讓引擎出錯，例如 ${errs[0].order.join(',')}：${errs[0].error}`);

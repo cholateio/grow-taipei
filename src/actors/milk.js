@@ -34,9 +34,10 @@ export function view(lv) {
   v['milk.main'] = { kind: 'compound', at, parts };
   if (n >= 2 && !home) {
     const league = n >= 4 && lv.baseball >= 2;
-    const center = league ? offset(anchorWorld('baseball'), 0, 1.1) : offset(at, 0, 0.95);
+    // 少棒隊在巨蛋旁的空地練球（門口留給球員和觀眾）
+    const center = league ? offset(anchorWorld('baseball'), -1.15, 0.75) : offset(at, 0, 0.95);
     v['milk.kids'] = {
-      kind: 'people', at, n: 3, path: ringPath(center, 0.5, center.y), speed: 0.5, shirt: C.yellow,
+      kind: 'people', at, n: 3, path: ringPath(center, league ? 0.4 : 0.5, center.y), speed: 0.5, shirt: C.yellow,
       accessory: n >= 4 ? 'cap' : 'none', ...(n >= 3 ? { scale: 1.3 } : {}),
     };
   }

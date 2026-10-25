@@ -35,3 +35,10 @@ test('score heavily penalizes specs where one true ending has no solution at all
   const d = score(allCyber) - score(spec);
   assert.ok(d >= 5000, `penalty only ${d}`);
 });
+test('tighten honours a candidate filter (only levels ≥ 3 get clauses)', { timeout: 600000 }, () => {
+  const loose = { ...spec, ITEMS: structuredClone(spec.ITEMS) };
+  for (const id of spec.ORDER) for (let n = 2; n <= loose.ITEMS[id].max; n++) loose.ITEMS[id].up[n] = { always: true };
+  const seen = new Set();
+  const r = tighten(loose, { maxSteps: 1, shortlistSize: 3, filter: c => { seen.add(c.level); return c.level >= 3; } });
+  assert.ok(seen.has(2), 'filter saw level-2 candidates'); assert.ok(r.applied.every(c => c.level >= 3));
+});

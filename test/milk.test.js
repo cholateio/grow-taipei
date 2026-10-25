@@ -35,7 +35,7 @@ test('rats ≥2 or typhoon Lv2 send the kids home and light the windows', () => 
 test('milk 4 with a dome relocates the kids to the dome gate (little league)', () => {
   const v = milk.view(lv({ milk: 4, baseball: 2 }), {}), b = anchorWorld('baseball');
   const c = v['milk.kids'].path.reduce((a, p) => ({ x: a.x + p.x / 24, z: a.z + p.z / 24 }), { x: 0, z: 0 });
-  assert.ok(Math.hypot(c.x - b.x, c.z - b.z) < 2.5);
+  assert.ok(Math.hypot(c.x - b.x, c.z - b.z) < 2.5); assert.ok(Math.hypot(c.x - b.x, c.z - (b.z + 1.05)) > 0.9, 'off the gate where players and fans stand');
 });
 test('typhoon Lv3 swaps the school roof colour', () => {
   const roof = v => v['milk.main'].parts.find(p => p.kind === 'hip').color;

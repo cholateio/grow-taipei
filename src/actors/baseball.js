@@ -8,9 +8,10 @@ export const id = 'baseball';
 export const labelY = 1.3;
 const SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
+// 觀眾站在巨蛋門前的弧線上，正中間留一條走道給球員；人數少一點，不然和小孩、老鼠擠成一團
 function fans(at, n) {
   return Array.from({ length: n }, (_, i) => {
-    const a = (i / (n - 1) - 0.5) * 1.3, r = 1.65 + (i % 2) * 0.15, x = Math.sin(a) * r, z = Math.cos(a) * r;
+    const t = i / (n - 1) - 0.5, a = t * 1.7 + Math.sign(t) * 0.25, r = 1.75, x = Math.sin(a) * r, z = Math.cos(a) * r;
     return { ...offset(at, x, z), yaw: Math.atan2(-x, -z) };
   });
 }
@@ -31,9 +32,9 @@ export function view(lv, flags) {
     );
     if (n >= 3) parts.push({ kind: 'box', pos: [0, 0.72, 0], scale: [1.2, 0.04, 0.12], color: C.yellow, glow: C.yellow });
     if (n >= 4) for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; parts.push({ kind: 'box', pos: [Math.cos(a) * 1.3, 0.2, Math.sin(a) * 1.1], scale: [0.06, 0.3, 0.06], color: C.neonBlue, glow: C.neonBlue }); }
-    v['baseball.players'] = { kind: 'people', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], stand: [{ ...offset(at, -0.5, 1.3), yaw: Math.PI / 2 }, { ...offset(at, 0.5, 1.3), yaw: -Math.PI / 2 }] };
-    v['baseball.ball'] = { kind: 'ball', at, from: [-0.45, 1.3], to: [0.45, 1.3] };
-    if (n >= 3) { const k = n >= 4 ? 10 : 6; v['baseball.crowd'] = { kind: 'people', at, n: k, stand: fans(at, k), shirt: SHIRTS }; }
+    v['baseball.players'] = { kind: 'people', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], stand: [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...offset(at, 0.45, 1.05), yaw: -Math.PI / 2 }] };
+    v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05] };
+    if (n >= 3) { const k = n >= 4 ? 6 : 4; v['baseball.crowd'] = { kind: 'people', at, n: k, stand: fans(at, k), shirt: SHIRTS }; }
   }
   v['baseball.main'] = { kind: 'compound', at, parts };
   if (flags.domeRats) { const gate = offset(at, 0, 1.1); v['baseball.staff'] = { kind: 'people', at, n: 2, accessory: 'helmet', path: ringPath(gate, 0.6, gate.y), speed: 0.9 }; }

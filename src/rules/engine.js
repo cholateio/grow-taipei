@@ -1,5 +1,5 @@
 // 連鎖規則引擎：place(state, id) → { state, events }。不可變，Node 與瀏覽器共用。
-// 語意見設計文件 §6.2：放置 → 放置反應 → 反覆掃描升級到不動為止 → 回合結束反應。
+// 語意見設計文件 §6.2：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合最多一級）→ 回合結束反應。
 import * as defaultSpec from './spec.js';
 import { compile } from './conditions.js';
 
@@ -70,36 +70,46 @@ export function place(state, id, spec = defaultSpec) {
   const rules = rulesOf(spec);
   if (!(id in rules.items)) throw new Error(`unknown item ${id}`);
   if (state.lv[id] > 0) throw new Error(`${id} already placed`);
-  const s = { lv: { ...state.lv }, age: { ...state.age }, locked: { ...state.locked }, flags: { ...state.flags }, order: [...state.order, id], turn: state.turn + 1 };
+  return turn(state, id, spec, rules);
+}
+
+// 沒有放置的回合（飛彈倒數：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合）
+export function advance(state, spec = defaultSpec) { return turn(state, null, spec, rulesOf(spec)); }
+
+function turn(state, id, spec, rules) {
+  const s = { lv: { ...state.lv }, age: { ...state.age }, locked: { ...state.locked }, flags: { ...state.flags }, order: id ? [...state.order, id] : [...state.order], turn: state.turn + 1 };
   const events = [];
 
   for (const k of spec.ORDER) if (s.lv[k] > 0) s.age[k] += 1;
-  s.lv[id] = 1; s.age[id] = 0;
-  events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
+  if (id) {
+    s.lv[id] = 1; s.age[id] = 0;
+    events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
+    for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
+  }
 
-  for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
-
-  const stalled = new Set();
+  // GROW 的節奏（使用者 2026-10-25）：每回合每個物品最多升一級，剛放下的物品當回合不升。
+  // 掃描仍反覆到不動為止，所以 A 升了讓 B 升的連鎖還在，只是每人每回合一步。
+  const stalled = new Set(), grown = new Set(id ? [id] : []);
   let lastGrown = null;
   for (let scan = 0; ; scan++) {
     if (scan >= SCAN_LIMIT) throw new Error(`scan limit ${SCAN_LIMIT} exceeded while growing ${lastGrown}`);
     let changed = false;
     for (const k of spec.ORDER) {
       const it = rules.items[k], lv = s.lv[k];
-      if (lv === 0 || lv >= it.max || s.locked[k]) continue;
+      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) continue;
       const st = it.stall.find(r => r.test(s));
       if (st) {
         if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
         continue;
       }
       if (!it.up[lv + 1](s)) continue;
-      s.lv[k] = lv + 1; lastGrown = k; changed = true;
+      s.lv[k] = lv + 1; lastGrown = k; changed = true; grown.add(k);
       events.push({ kind: 'grow', item: k, from: lv, to: lv + 1, story: spec.STORIES.grow[k][lv + 1] });
       for (const a of it.onLevel[lv + 1] || []) applyAction(s, a, 'fx', k, rules, events);
     }
     if (!changed) break;
   }
 
-  for (const a of rules.after) applyAction(s, a, 'after', id, rules, events);
+  for (const a of rules.after) applyAction(s, a, 'after', id ?? 'turn', rules, events);
   return { state: s, events };
 }

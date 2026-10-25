@@ -14,15 +14,26 @@ export function createGame({ spec, engine, endings, ui, director, actors, onFini
     state = next;
     const mine = generation, current = () => mine === generation;
     ui.setBusy(true); ui.setPlaced(id);
-    try {
-      await director.play(events, async (e, opts) => { if (!current()) return; await actors.apply(e, opts); if (current()) syncLevel(e); });
-    } finally {
-      // 演出可能被跳過或中斷：最後以引擎狀態為準再對一次（被 RESET 掉的就不碰新的一局）
-      if (current()) { for (const k of spec.ORDER) if (state.lv[k] > 0) ui.setLevel(k, state.lv[k]); ui.setBusy(false); }
-    }
+    const show = async evs => {
+      try {
+        await director.play(evs, async (e, opts) => { if (!current()) return; await actors.apply(e, opts); if (current()) syncLevel(e); });
+      } finally {
+        // 演出可能被跳過或中斷：最後以引擎狀態為準再對一次（被 RESET 掉的就不碰新的一局）
+        if (current()) { for (const k of spec.ORDER) if (state.lv[k] > 0) ui.setLevel(k, state.lv[k]); ui.setBusy(false); }
+      }
+      if (current()) onLevels(state.lv, state.flags);
+    };
+    await show(events);
     if (!current()) return false;
-    onLevels(state.lv, state.flags);
-    if (engine.isComplete(state)) { finished = true; onFinished(endings.resolve(state, spec), state); }
+    if (engine.isComplete(state)) {
+      // 飛彈倒數：第 8 個放完後全島再自己長幾回合（spec.CLOSING_TURNS），晚放的東西才來得及長大
+      for (let i = 0; i < (spec.CLOSING_TURNS ?? 0); i++) {
+        const r = engine.advance(state, spec); state = r.state; ui.setBusy(true);
+        await show(r.events);
+        if (!current()) return false;
+      }
+      finished = true; onFinished(endings.resolve(state, spec), state);
+    }
     return true;
   }
 

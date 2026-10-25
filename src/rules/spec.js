@@ -1,10 +1,13 @@
 // 台北成長的規則資料（純資料，無邏輯）。引擎與求解器共用。
 // up[n]：從 n−1 升到 n 的條件。fx：放置反應。onLevel[n]：升到 n 時的反應。
 // 颱風檢查、老鼠分岔、過期旗標是謎題骨架；求解器的收緊器只調 up[]。
-// 2026-10-25 使用者要求晶片不要當樞紐：現在只有珍奶 Lv3 與老鼠分岔看晶片，其他物品不選晶片也長得大。
+// 2026-10-25 使用者要求：(1) 晶片不要當樞紐；(2) GROW 的節奏——Lv2、Lv3 放下後自己一回合長一級，
+// 最後一兩級才看別人（含「要趕在 X 之前」的時間窗口）；引擎每回合每物品最多升一級，第 8 個放完後再長 CLOSING_TURNS 回合。
 // 設計文件：docs/superpowers/specs/2026-10-24-grow-taipei-design.md §5、§6
 
 export const ORDER = ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'];
+// 飛彈倒數：第 8 個物品放完後，全島再自己長這麼多回合才迎接飛彈（晚放的東西才來得及長大）
+export const CLOSING_TURNS = 2;
 
 const and = (...c) => ({ and: c });
 const age = (id, n) => ({ age: [id, n] });
@@ -15,23 +18,23 @@ const present = id => ({ present: id });
 export const ITEMS = {
   milk: {
     name: '鮮奶', max: 4,
-    // 小孩搭捷運來上學 → 喝久了長高（老鼠一來就咬鮮奶箱，長不高）→ 組少棒隊、學校蓋鐘塔
-    up: { 2: present('token'), 3: and(age('milk', 2), max('rat', 0)), 4: min('baseball', 2) },
+    // 牛奶箱 → 小學 → 長高（自己長）→ 鐘塔：要有少棒隊；北士科廠房一開工老師全跳槽去當工程師，所以要趕在晶片升級前
+    up: { 2: age('milk', 1), 3: age('milk', 2), 4: and(min('baseball', 2), max('chip', 1)) },
   },
   chip: {
     name: '晶片', max: 5,
-    // 要有電 → 工程師要通勤 → 要有喝鮮奶長大的人才 → 颱風過後矽盾才經過考驗
-    up: { 2: present('bulb'), 3: min('token', 2), 4: min('milk', 3), 5: min('typhoon', 3) },
+    // 工地 → 廠房 → 園區（自己長）→ 總部要有喝鮮奶長大的人才 → 颱風過後矽盾才經過考驗
+    up: { 2: age('chip', 1), 3: age('chip', 2), 4: min('milk', 3), 5: min('typhoon', 3) },
   },
   bulb: {
     name: '燈泡', max: 4,
-    // 珍奶排隊人龍把路口擠滿 → 霓虹招牌亮起來；大巨蛋開打夜場 → 全島 LED
-    up: { 2: { always: true }, 3: min('boba', 2), 4: min('baseball', 3) },
+    // 路燈 → 整條路 → 霓虹（自己長）→ 大巨蛋開打夜場才全島 LED
+    up: { 2: age('bulb', 1), 3: age('bulb', 2), 4: min('baseball', 3) },
   },
   token: {
     name: '代幣', max: 4,
-    // 電聯車要電（一窩老鼠會咬電線）→ 學生通勤 → 老鼠學會搭捷運之後沒人敢開車，乾脆改無人駕駛
-    up: { 2: and(min('bulb', 2), max('rat', 1)), 3: min('milk', 2), 4: min('rat', 3) },
+    // 車站 → 列車 → 環狀線（自己長）→ 老鼠學會搭捷運之後沒人敢開車，改無人駕駛；但要趕在全島 LED 之前，不然電不夠
+    up: { 2: age('token', 1), 3: age('token', 2), 4: and(min('rat', 3), max('bulb', 3)) },
   },
   typhoon: {
     name: '颱風', max: 3,
@@ -49,7 +52,8 @@ export const ITEMS = {
   },
   rat: {
     name: '老鼠', max: 4,
-    up: { 2: age('rat', 1), 3: age('rat', 2), 4: age('rat', 3) },
+    // 一隻 → 一窩：學校蓋好有人打掃就不生了，要趁牛奶箱還沒變學校 → 搭捷運：要有列車 → 分岔
+    up: { 2: and(age('rat', 1), max('milk', 1)), 3: and(age('rat', 2), min('token', 2)), 4: age('rat', 3) },
     onLevel: {
       2: [
         { when: present('milk'), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },
@@ -62,21 +66,22 @@ export const ITEMS = {
   },
   boba: {
     name: '珍奶', max: 3,
-    // 觀光客搭捷運來排隊 → 廠房的工程師加班狂喝，攤車撐不住，升級成噴泉廣場
-    up: { 2: min('token', 2), 3: min('chip', 2) },
+    // 攤車 → 排隊人龍（自己長）→ 廠房的工程師加班狂喝，攤車撐不住，升級成噴泉廣場
+    up: { 2: age('boba', 1), 3: min('chip', 2) },
     onLevel: {
       3: [{ when: max('milk', 1), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },
   },
   baseball: {
     name: '棒球', max: 4,
-    // 喝鮮奶的小孩來打球 → 捷運載觀眾開賽 → 燈光夠亮開演唱會
-    up: { 2: min('milk', 2), 3: min('token', 2), 4: min('bulb', 3) },
+    // 沙地 → 大巨蛋：要趕在捷運通車前蓋（通車後交通評估就過不了）→ 捷運載觀眾開賽 → 燈光夠亮開演唱會
+    up: { 2: and(age('baseball', 1), max('token', 1)), 3: min('token', 2), 4: min('bulb', 3) },
   },
 };
 
 export const AFTER_TURN = [
-  { when: and(present('milk'), max('milk', 1), age('milk', 4)), flag: { name: 'milkExpired' }, story: '鮮奶放到過期了…' },
+  // 放了五回合學校還沒蓋鐘塔（少棒隊一直沒組成、或被老鼠和停電拖累）→ 鮮奶過期
+  { when: and(present('milk'), max('milk', 3), age('milk', 5)), flag: { name: 'milkExpired' }, story: '鮮奶放到過期了…' },
 ];
 
 export const STORIES = {

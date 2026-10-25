@@ -35,7 +35,7 @@ export function score(spec = defaultSpec) {
   // 某一種真結局一條都不剩：之後再怎麼加條件都救不回來，重罰
   const lostEnding = s.full.length > 0 && !['cyber', 'alien'].every(id => s.full.some(r => r.ending.id === id));
   return Math.abs(s.full.length - 2) * 100 + (ends === 'alien+cyber' ? 0 : 50) + (lostEnding ? 5000 : 0)
-    + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3) * 10 + softFails * 30;
+    + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3.5) * 10 + softFails * 30;
 }
 
 const fullResults = spec => stats(enumerate(spec), spec).full;
@@ -71,14 +71,15 @@ function shortlist(spec, cands, full, k) {
   return ranked.slice(0, k).map(r => r.c);
 }
 
-export function tighten(spec = defaultSpec, { maxSteps = 40, candidateLimit = Infinity, shortlistSize = 30, log = () => {} } = {}) {
+// filter：只考慮通過的候選子句（例如只動 Lv3 以上，保住「Lv2 自己長」的 GROW 節奏）
+export function tighten(spec = defaultSpec, { maxSteps = 40, candidateLimit = Infinity, shortlistSize = 30, filter = () => true, log = () => {} } = {}) {
   let cur = spec, curScore = score(spec);
   const applied = [];
   log(`起始 score ${curScore.toFixed(1)}`);
   for (let step = 0; step < maxSteps && curScore > 0; step++) {
     const full = fullResults(cur);
     if (full.length <= 2) { log(`正解只剩 ${full.length} 條，加條件無法再改善`); break; }
-    const pool = shortlist(cur, candidates(cur).slice(0, candidateLimit), full, shortlistSize);
+    const pool = shortlist(cur, candidates(cur).filter(filter).slice(0, candidateLimit), full, shortlistSize);
     let best = null;
     for (const c of pool) {
       const next = withClause(cur, c), sc = score(next);

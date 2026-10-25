@@ -17,9 +17,10 @@ test('full games with the real modules leave no glow, walkers or models behind a
   const glow = createGlowRegistry(), people = createPeople(THREE, { max: 48 });
   const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow } });
   const base = { glow: glow.size, walkers: people.walkers.length };
-  for (const order of [['typhoon', 'milk', 'token', 'baseball', 'rat', 'bulb', 'chip', 'boba'], ['typhoon', 'milk', 'token', 'baseball', 'rat', 'bulb', 'boba', 'chip']]) {
+  for (const order of [['typhoon', 'rat', 'milk', 'baseball', 'chip', 'token', 'bulb', 'boba'], ['typhoon', 'rat', 'milk', 'baseball', 'token', 'chip', 'bulb', 'boba']]) {
     let s = engine.createState(spec);
     for (const id of order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); await new Promise(res => setTimeout(res, 0)); }
+    for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); }
     stage.reset(); await new Promise(res => setTimeout(res, 0));
     assert.equal(glow.size, base.glow, order.join()); assert.equal(people.walkers.length, base.walkers);
   }

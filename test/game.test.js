@@ -4,7 +4,7 @@ import { createGame } from '../src/game.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import * as endings from '../src/rules/endings.js';
-const CYBER = ['typhoon','milk','token','baseball','rat','bulb','chip','boba'];   // solutions.md 的賽博龐克正解
+const CYBER = ['typhoon','rat','milk','baseball','chip','token','bulb','boba'];   // solutions.md 的賽博龐克正解
 function fakes() {
   const ui = { levels: {}, placed: [], busy: [], setLevel(id, lv) { this.levels[id] = lv; }, setPlaced(id) { this.placed.push(id); }, setBusy(f) { this.busy.push(f); }, reset() { this.levels = {}; this.placed = []; } };
   const actors = { applied: [], apply(e) { this.applied.push(e); return Promise.resolve(); }, reset() { this.applied = []; } };
@@ -50,4 +50,11 @@ test('reset during a show: the old show cannot touch the new game, which is play
   assert.equal(g.state.lv.bulb, 0); assert.deepEqual(f.ui.levels, {}); assert.deepEqual(f.actors.applied, []);
   f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: true }); };
   assert.equal(await g.pick('milk'), true); assert.equal(g.state.lv.milk, 1);
+});
+test('after the eighth item the game plays CLOSING_TURNS extra growth turns before finishing', async () => {
+  const f = fakes(); let plays = 0, done = null; const d = f.director, play = d.play.bind(d); d.play = (ev, cb) => { plays++; return play(ev, cb); };
+  const g = createGame({ spec, engine, endings, ...f, onFinished: (ending, state) => { done = { ending, state }; } });
+  for (const id of CYBER) await g.pick(id);
+  assert.equal(plays, 8 + spec.CLOSING_TURNS); assert.equal(done.state.turn, 8 + spec.CLOSING_TURNS); assert.equal(done.ending.id, 'cyber');
+  assert.equal(f.ui.busy.at(-1), false);
 });

@@ -14,10 +14,10 @@ test('baseball lv1 is a sand lot; lv2 a dome with two players and a ball', () =>
   assert.ok(v2['baseball.main'].parts.some(p => p.kind === 'dome')); assert.equal(v2['baseball.players'].stand.length, 2);
   assert.equal(v2['baseball.players'].accessory, 'cap'); assert.equal(v2['baseball.ball'].kind, 'ball');
 });
-test('lv3 adds a crowd of 6 and the glowing roof slit; lv4 ten fans and blue light sticks', () => {
+test('lv3 adds a crowd of 4 and the glowing roof slit; lv4 six fans and blue light sticks', () => {
   const v3 = baseball.view(lv({ baseball: 3 }), {}), v4 = baseball.view(lv({ baseball: 4 }), {});
-  assert.equal(v3['baseball.crowd'].n, 6); assert.ok(v3['baseball.main'].parts.some(p => p.glow === 0xfcea8b));
-  assert.equal(v4['baseball.crowd'].n, 10); assert.ok(v4['baseball.main'].parts.filter(p => p.glow === 0x3fe0ff).length >= 8);
+  assert.equal(v3['baseball.crowd'].n, 4); assert.ok(v3['baseball.main'].parts.some(p => p.glow === 0xfcea8b));
+  assert.equal(v4['baseball.crowd'].n, 6); assert.ok(v4['baseball.main'].parts.filter(p => p.glow === 0x3fe0ff).length >= 8);
 });
 test('domeRats flag adds two helmeted staff running around the gate', () => {
   const v = baseball.view(lv({ baseball: 2 }), { domeRats: true });
@@ -30,4 +30,8 @@ test('the ball flies back and forth between the players', () => {
 });
 test('every baseball part stays inside its cell', () => {
   for (const n of [1, 2, 3, 4]) for (const s of Object.values(baseball.view(lv({ baseball: n }), { domeRats: true }))) for (const p of worldPoints(s)) assert.ok(distToCell(p, [-1, 1]) < RING_R, `lv${n} ${JSON.stringify(p)}`);
+});
+test('crowd leaves an aisle for the players: no fan within 0.35 of a player', () => {
+  const v = baseball.view(lv({ baseball: 4 }), {});
+  for (const f of v['baseball.crowd'].stand) for (const p of v['baseball.players'].stand) assert.ok(Math.hypot(f.x - p.x, f.z - p.z) > 0.35);
 });

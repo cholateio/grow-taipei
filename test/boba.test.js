@@ -16,3 +16,8 @@ test('lv3 fountain plaza; milk ≥2 makes it ten with a fresh-milk sign', () => 
 test('boba parts and queue stay in the token cell', () => {
   for (const n of [1, 2, 3]) for (const s of Object.values(boba.view(lv({ boba: n, milk: 2 }), {}))) for (const p of worldPoints(s)) assert.ok(distToCell(p, [0, 1]) < RING_R, `lv${n}`);
 });
+test('the queue runs away from the MRT station and everyone faces the cart', async () => {
+  const { anchorWorld } = await import('../src/actors/anchors.js');
+  const q = boba.view(lv({ boba: 3, milk: 2 }), {})['boba.queue'], st = anchorWorld('token'), cart = anchorWorld('boba');
+  for (const p of q.stand) { assert.ok(Math.hypot(p.x - st.x, p.z - st.z) > 0.9, 'clear of the station'); assert.ok(Math.abs(p.yaw - Math.atan2(cart.x - p.x, cart.z - p.z)) < 1e-9); }
+});

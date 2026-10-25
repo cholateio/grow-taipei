@@ -8,7 +8,7 @@
     "stats": "node src/solver/run.js",
     "tighten": "node src/solver/tighten.js",
     "serve": "node tools/serve.mjs",
-    "shot": "node tools/shot.mjs open= mid=auto=typhoon,milk,token,baseball storm=auto=typhoon,boba seven=auto=typhoon,milk,token,baseball,rat,bulb,chip end=auto=typhoon,milk,token,baseball,rat,bulb,chip,boba alien=auto=typhoon,milk,token,baseball,rat,bulb,boba,chip night=time=night phone=quality=low",
+    "shot": "node tools/shot.mjs open= mid=auto=typhoon,rat,milk,baseball storm=auto=typhoon,boba seven=auto=typhoon,rat,milk,baseball,chip,token,bulb end=auto=typhoon,rat,milk,baseball,chip,token,bulb,boba alien=auto=typhoon,rat,milk,baseball,token,chip,bulb,boba night=time=night phone=quality=low",
     "vendor": "bash tools/vendor.sh"
   },
   "engines": {

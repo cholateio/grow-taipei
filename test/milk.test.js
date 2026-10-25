@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
+import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import * as milk from '../src/actors/milk.js';
 import { anchorWorld } from '../src/actors/anchors.js';
@@ -90,5 +91,32 @@ test('scripts: every milk event in both solutions plays 3–15 s, ends with LEVE
       for (const m of show.roster.members('milk.kids')) assert.equal(m.mode, 'home');
     });
     assert.ok(seen.length >= 3, `milk events seen: ${seen}`);
+  }
+});
+
+// Lv6 只在倒數蒙太奇回合長出來（playItem 演不到）：用引擎把正解瞬間演到鮮奶 grow 6 之前（鮮奶 5、晶片 ≥3），再單獨 live 演這一級
+test('milk 6 live: the university plays 3–15 s, LEVEL UP over milk is the last new bubble, kids end at home in mortarboards', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h;
+  const isSix = e => e.kind === 'grow' && e.item === 'milk' && e.to === 6;
+  for (const order of SOLUTIONS) {
+    show.reset();
+    let s = engine.createState(spec), e6 = null;
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const step of steps) {
+      const r = step(s); s = r.state;
+      for (const e of r.events) { if (isSix(e)) { e6 = e; break; } await run([e], { instant: true }); }
+      if (e6) break;
+      await run([{ kind: 'settle' }], { instant: true });
+    }
+    assert.ok(e6, 'milk grows to 6');
+    assert.equal(show.stage.lv.milk, 5); assert.ok(show.stage.lv.chip >= 3, `chip ${show.stage.lv.chip}`);
+    const n = bubblesLog.length, secs = await run([e6]);
+    assert.ok(secs >= 3 && secs <= 15, `grow 6 took ${secs.toFixed(1)}s`);
+    const last = bubblesLog.slice(n).at(-1), head = show.stage.headOf('milk');
+    assert.equal(last?.text, 'LEVEL UP');
+    assert.ok(Math.hypot(last.at.x - head.x, last.at.y - head.y, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
+    const kids = show.roster.members('milk.kids');
+    assert.equal(kids.length, 3);
+    for (const m of kids) { assert.equal(m.mode, 'home'); assert.equal(m.walker.accessory, 'mortar'); }
   }
 });

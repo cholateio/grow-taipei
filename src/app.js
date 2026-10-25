@@ -98,6 +98,7 @@ export async function start({ params, loading }) {
     ctx: { people, assets, glow: view.glow, weather, rail }, rig,
     world: (effects, instant) => aimWorld({ ...worldTarget, ...effects }, instant),
     reducedMotion: motion.matches || instantAuto(),
+    rnd: live ? mulberry32(21) : Math.random,   // ?live 截圖：散步點、停頓用固定種子，同一個 warp 每次拍到同一刻
   });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => show.setReducedMotion(e.matches || instantAuto()));

@@ -1,6 +1,7 @@
 // 台北成長的規則資料（純資料，無邏輯）。引擎與求解器共用。
 // up[n]：從 n−1 升到 n 的條件。fx：放置反應。onLevel[n]：升到 n 時的反應。
 // 颱風檢查、老鼠分岔、過期旗標是謎題骨架；求解器的收緊器只調 up[]。
+// 2026-10-25 使用者要求晶片不要當樞紐：現在只有珍奶 Lv3 與老鼠分岔看晶片，其他物品不選晶片也長得大。
 // 設計文件：docs/superpowers/specs/2026-10-24-grow-taipei-design.md §5、§6
 
 export const ORDER = ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'];
@@ -24,12 +25,13 @@ export const ITEMS = {
   },
   bulb: {
     name: '燈泡', max: 4,
-    up: { 2: { always: true }, 3: min('chip', 2), 4: min('chip', 3) },
+    // 珍奶排隊人龍把路口擠滿 → 霓虹招牌亮起來；大巨蛋開打夜場 → 全島 LED
+    up: { 2: { always: true }, 3: min('boba', 2), 4: min('baseball', 3) },
   },
   token: {
     name: '代幣', max: 4,
-    // 電聯車要電（一窩老鼠會咬電線）→ 學生通勤 → 無人駕駛要晶片
-    up: { 2: and(min('bulb', 2), max('rat', 1)), 3: min('milk', 2), 4: min('chip', 3) },
+    // 電聯車要電（一窩老鼠會咬電線）→ 學生通勤 → 老鼠學會搭捷運之後沒人敢開車，乾脆改無人駕駛
+    up: { 2: and(min('bulb', 2), max('rat', 1)), 3: min('milk', 2), 4: min('rat', 3) },
   },
   typhoon: {
     name: '颱風', max: 3,
@@ -60,8 +62,8 @@ export const ITEMS = {
   },
   boba: {
     name: '珍奶', max: 3,
-    // 觀光客搭捷運來排隊 → 夜市霓虹亮了變噴泉廣場
-    up: { 2: min('token', 2), 3: min('bulb', 3) },
+    // 觀光客搭捷運來排隊 → 廠房的工程師加班狂喝，攤車撐不住，升級成噴泉廣場
+    up: { 2: min('token', 2), 3: min('chip', 2) },
     onLevel: {
       3: [{ when: max('milk', 1), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },

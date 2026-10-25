@@ -67,6 +67,22 @@ export function createState(spec = defaultSpec) {
   return { lv, age, locked: {}, flags: {}, order: [], turn: 0 };
 }
 
+// 演出層共用：把一個事件疊到 { lv, flags } 上（舞台的鏡像、遊戲逐事件回報全島狀態）。純函數，不改輸入。
+export function foldEvent(view, e) {
+  let { lv, flags } = view;
+  if (e.kind === 'placed') lv = { ...lv, [e.item]: 1 };
+  else if (e.kind === 'grow') lv = { ...lv, [e.item]: e.to };
+  if (e.delta) lv = { ...lv, [e.delta.target]: e.delta.to };
+  if (e.flag) flags = { ...flags, [e.flag.name]: e.flag.value };
+  return lv === view.lv && flags === view.flags ? view : { lv, flags };
+}
+
+// 颱風登陸：這個事件把颱風從 <2 帶到 2（只有登陸那回合小人躲起來、雨最大）
+export function landsTyphoon(e) {
+  if (e.kind === 'grow') return e.item === 'typhoon' && e.from < 2 && e.to === 2;
+  return !!e.delta && e.delta.target === 'typhoon' && e.delta.from < 2 && e.delta.to === 2;
+}
+
 export const isPlaced = (state, id) => state.lv[id] > 0;
 export const isComplete = state => Object.values(state.lv).every(n => n > 0);
 export const isAllMax = (state, spec = defaultSpec) => spec.ORDER.every(id => state.lv[id] === spec.ITEMS[id].max);

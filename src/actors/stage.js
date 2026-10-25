@@ -1,10 +1,12 @@
-// 舞台：演員的外觀只由「等級向量 + 旗標」決定（§7.1）。每個模組 view(lv, flags) → { key: partSpec }，
+// 舞台：演員的外觀只由「等級向量 + 旗標 + meta」決定（§7.1）。每個模組 view(lv, flags, meta) → { key: partSpec }，
 // 舞台比對前後兩份 view：沒變的零件不動，變了的「舊的縮掉冒煙 → 新的彈出」（GROW 式變身，0.6 秒 easeOutBack）。
 // 跳過、reduced-motion、RESET 都只是「立刻套用最終 view」。
 import { CSS2DObject } from '../../vendor/three/addons/renderers/CSS2DRenderer.js';
 import { createPartFactory } from './parts.js';
 import { anchorWorld } from './anchors.js';
 import { levelLabel } from '../ui/format.js';
+import { foldEvent, landsTyphoon } from '../rules/engine.js';
+import { stageOf, STAGE_NAMES } from './tower.js';
 
 const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4;
 const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
@@ -26,7 +28,10 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   root.add(partsGroup, labelsGroup, puffsGroup); scene.add(root);
   const puffGeo = new THREE.IcosahedronGeometry(1, 0);
 
-  let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {};
+  // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
+  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來）
+  const META0 = { total: 0, landing: false };
+  let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
   const live = new Map();          // key → { spec, part, anim }
   const leaving = new Set();       // 正在縮掉的舊零件
   const puffs = [];
@@ -70,11 +75,13 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   }
   function clearPuffs() { for (const p of puffs) { puffsGroup.remove(p.m); p.m.material.dispose(); } puffs.length = 0; }
 
+  // 回傳 { done, added }：done 等所有新零件彈完，added 是這次換上的零件鍵（沒變就是空的）
   function sync(instant) {
-    const waits = [];
+    const waits = [], added = [];
     if (instant) { for (const e of live.values()) finish(e); for (const e of [...leaving]) drop(e); clearPuffs(); }
     for (const mod of modules) {
-      const next = mod.view(lv, flags), { add, remove } = diffParts(views[mod.id], next);
+      const next = mod.view(lv, flags, meta), { add, remove } = diffParts(views[mod.id], next);
+      added.push(...add); if (remove.length && !add.length) added.push(...remove);
       for (const key of remove) {
         const e = live.get(key); if (!e) continue;
         live.delete(key); finish(e);
@@ -89,7 +96,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       }
       views[mod.id] = next;
     }
-    return Promise.all(waits);
+    return { done: Promise.all(waits), added };
   }
 
   function shake(id) {
@@ -105,23 +112,30 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   sync(true);
 
   return {
+    // 回傳 Promise<boolean>：false = 畫面上什麼都沒變（導演就不等）
     apply(e, { instant = false } = {}) {
       const target = e.delta ? e.delta.target : e.item;
-      if (e.kind === 'placed') lv = { ...lv, [e.item]: 1 };
-      else if (e.kind === 'grow') lv = { ...lv, [e.item]: e.to };
-      if (e.delta) lv = { ...lv, [e.delta.target]: e.delta.to };
-      if (e.flag) flags = { ...flags, [e.flag.name]: e.flag.value };
+      ({ lv, flags } = foldEvent({ lv, flags }, e));
+      if (landsTyphoon(e)) meta = { ...meta, landing: true };
+      if (e.kind === 'settle') {
+        const before = stageOf(meta.total);
+        meta = { total: Object.values(lv).reduce((a, b) => a + b, 0), landing: false };
+        const { done, added } = sync(instant);
+        if (!added.length) return Promise.resolve(false);
+        if (!instant && stageOf(meta.total) !== before) float('tower', STAGE_NAMES[stageOf(meta.total)]);
+        return done.then(() => true);
+      }
       // 等待事件不演（使用者 2026-10-25：光點與轉頭讓畫面太亂）；扣不動的扣級（1→1）也不演
-      if (e.kind === 'wait' || (e.delta && e.delta.from === e.delta.to && !e.lock && !e.flag)) return Promise.resolve();
-      const changed = sync(instant);
+      if (e.kind === 'wait' || (e.delta && e.delta.from === e.delta.to && !e.lock && !e.flag)) return Promise.resolve(false);
+      const changed = sync(instant).done;
       if (!instant) {
         if (e.kind === 'placed') float(target, 'Lv.1');
         else if (e.kind === 'grow') float(target, levelLabel(e.to, spec.ITEMS[target].max));
         else if (e.delta) float(target, levelLabel(e.delta.to, spec.ITEMS[target].max), e.delta.to < e.delta.from ? 'down' : '');
       }
       // 純演出的事件（老鼠撞翻攤車、颱風假、卡住）：該物品的零件搖一搖
-      if (!instant && (e.kind === 'stall' || (e.kind === 'fx' && !e.delta && !e.flag))) return Promise.all([changed, shake(e.item)]).then(() => {});
-      return changed.then(() => {});
+      if (!instant && (e.kind === 'stall' || (e.kind === 'fx' && !e.delta && !e.flag))) return Promise.all([changed, shake(e.item)]).then(() => true);
+      return changed.then(() => true);
     },
     update(dt, t) {
       for (const e of [...live.values(), ...leaving]) {
@@ -146,11 +160,13 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       for (const e of live.values()) drop(e);
       for (const e of [...leaving]) drop(e);
       live.clear(); clearPuffs(); clearFloats();
-      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {};
+      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0;
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync(true);
     },
+    headOf,
     levelOf: id => lv[id],
+    get meta() { return meta; },
     get lv() { return lv; },
     get flags() { return flags; },
     partKeys: () => [...live.keys()],

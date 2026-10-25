@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT, condDeps } from '../src/rules/engine.js';
+import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT, condDeps, foldEvent, landsTyphoon } from '../src/rules/engine.js';
 
 // 迷你 spec：a 放了就自己每回合升；b 的 Lv2 需要 a>=2，Lv3 需要 a>=3（同回合連鎖）
 const mini = {
@@ -176,4 +176,23 @@ test('wait fires only when a helper is missing, and names the missing helper (re
   const blockedOnlyByMax = { ...keep, ITEMS: { ...keep.ITEMS, h: { name: 'H', max: 2, up: { 2: { always: true } } } } };
   let b = place(createState(blockedOnlyByMax), 'k', blockedOnlyByMax).state; b = place(b, 'h', blockedOnlyByMax).state; b = place(b, 'x', blockedOnlyByMax).state;
   r = place(b, 'q', blockedOnlyByMax); assert.equal(r.state.lv.x, 2); assert.equal(r.events.filter(e => e.kind === 'wait').length, 0);
+});
+
+// 演出層共用的事件折疊（舞台與遊戲都用，計畫 3.6）
+test('foldEvent applies placed / grow / delta / flag and leaves the input alone', () => {
+  const s0 = { lv: { milk: 0, rat: 2 }, flags: {} };
+  const s1 = foldEvent(s0, { kind: 'placed', item: 'milk', to: 1 });
+  assert.equal(s1.lv.milk, 1); assert.equal(s0.lv.milk, 0);
+  assert.equal(foldEvent(s1, { kind: 'grow', item: 'milk', from: 1, to: 2 }).lv.milk, 2);
+  assert.equal(foldEvent(s1, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }).lv.milk, 1);
+  assert.equal(foldEvent(s1, { kind: 'fx', item: 'rat', delta: { target: 'rat', from: 2, to: 3 } }).lv.rat, 3);
+  assert.equal(foldEvent(s1, { kind: 'fx', item: 'typhoon', flag: { name: 'blackout', value: true } }).flags.blackout, true);
+  assert.equal(foldEvent(s1, { kind: 'wait', item: 'milk', waits: [] }), s1);
+});
+test('landsTyphoon: only the event that brings the typhoon to Lv2', () => {
+  assert.equal(landsTyphoon({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }), true);
+  assert.equal(landsTyphoon({ kind: 'fx', item: 'typhoon', delta: { target: 'typhoon', from: 1, to: 2 } }), true);
+  assert.equal(landsTyphoon({ kind: 'grow', item: 'typhoon', from: 2, to: 3 }), false);
+  assert.equal(landsTyphoon({ kind: 'grow', item: 'milk', from: 1, to: 2 }), false);
+  assert.equal(landsTyphoon({ kind: 'fx', item: 'typhoon', delta: { target: 'typhoon', from: 2, to: 2 } }), false);
 });

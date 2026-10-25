@@ -1,5 +1,5 @@
 // 鮮奶（§5.1）：牛奶箱 → 一層小學與 3 個小孩 → 兩層、小孩長高 1.3 倍 → 三層、升旗 → 鐘塔、棒球帽（有球場就組少棒隊）→ 大學、學士帽。
-// 老鼠 ≥2 或颱風 Lv2：小孩躲回校舍，窗戶亮燈。
+// 老鼠 ≥2 或颱風登陸那回合：小孩躲回校舍，窗戶亮燈（颱風賴著不走的後續回合小孩照常出來）。
 import { anchorWorld } from './anchors.js';
 import { ringPath } from '../scene/people.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
@@ -7,14 +7,14 @@ import { C, roofColor, rebuilt, offset } from './palette.js';
 export const id = 'milk';
 export const labelY = 1.4;
 
-export function view(lv) {
+export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = anchorWorld('milk'), v = {};
   if (!n) return v;
   const parts = [
     { kind: 'rbox', pos: [-0.95, 0.225, 0.75], scale: 0.45, color: C.cream },
     { kind: 'box', pos: [-0.95, 0.3, 0.75], scale: [0.47, 0.08, 0.47], color: C.blue },
   ];
-  const home = lv.rat >= 2 || lv.typhoon === 2;
+  const home = lv.rat >= 2 || (lv.typhoon === 2 && !!meta.landing);
   // 一級蓋一層：Lv2 一層、Lv3 兩層、Lv4 起三層；Lv6 升格大學，校舍拉長
   const floors = n >= 4 ? 3 : n >= 3 ? 2 : n >= 2 ? 1 : 0, h = 0.2 + 0.5 * floors, w = n >= 6 ? 2.2 : 1.4;
   if (floors) {

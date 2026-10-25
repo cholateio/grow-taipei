@@ -130,3 +130,45 @@ test('a no-op knock (1→1) floats nothing', async () => {
   await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false });
   assert.equal(floats(scene).length, n);
 });
+
+// 計畫 3.6：101 不搭別人的事件跳階，回合最後的 settle 才跳，並在塔頂飄字
+const tower = await import('../src/actors/tower.js');
+test('grow events leave 101 alone until settle, which pops it and floats the stage name', async () => {
+  const { stage, scene, run } = setup([fakeMilk, tower]);
+  await stage.apply(placed, { instant: true });
+  for (let to = 2; to <= 6; to++) await stage.apply({ kind: 'grow', item: 'milk', from: to - 1, to }, { instant: true });
+  await stage.apply({ kind: 'placed', item: 'chip', to: 1 }, { instant: true });
+  await stage.apply({ kind: 'grow', item: 'chip', from: 1, to: 3 }, { instant: true });   // 總和 9
+  assert.equal(stage.meta.total, 0); assert.ok(stage.partKeys().includes('tower.crane'));
+  const before = floats(scene).length, p = stage.apply({ kind: 'settle' }, { instant: false });
+  assert.equal(stage.meta.total, 9);
+  assert.equal(floats(scene).length, before + 1); assert.equal(floats(scene).at(-1).element.textContent, '101 蓋一半');
+  run(1.2); assert.notEqual(await p, false);
+});
+test('two thresholds in one turn pop once with the final stage name', async () => {
+  const { stage, scene } = setup([fakeMilk, tower]);
+  await stage.apply(placed, { instant: true });
+  await stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 1, to: 20 } }, { instant: true });
+  const before = floats(scene).length; stage.apply({ kind: 'settle' }, { instant: false });
+  assert.equal(floats(scene).length, before + 1); assert.equal(floats(scene).at(-1).element.textContent, '101 完工');
+});
+test('settle with nothing to change and wait events resolve false (the director will not wait)', async () => {
+  const { stage, scene } = setup([fakeMilk, tower]);
+  await stage.apply(placed, { instant: true });
+  const n = floats(scene).length;
+  assert.equal(await stage.apply({ kind: 'settle' }, { instant: false }), false); assert.equal(floats(scene).length, n);
+  assert.equal(await stage.apply({ kind: 'wait', item: 'milk', waits: [] }, { instant: false }), false);
+  assert.equal(await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false }), false);
+});
+test('the typhoon landing sets meta.landing until settle', async () => {
+  const { stage } = setup([fakeMilk]);
+  await stage.apply({ kind: 'placed', item: 'typhoon', to: 1 }, { instant: true });
+  await stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, { instant: true });
+  assert.equal(stage.meta.landing, true);
+  await stage.apply({ kind: 'settle' }, { instant: true }); assert.equal(stage.meta.landing, false);
+  await stage.apply({ kind: 'grow', item: 'typhoon', from: 2, to: 3 }, { instant: true }); assert.equal(stage.meta.landing, false);
+});
+test('headOf is exposed for the fly-in target', () => {
+  const { stage } = setup([fakeMilk]);
+  const h = stage.headOf('milk'); assert.ok(Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.z));
+});

@@ -7,6 +7,8 @@ export const id = 'tower';
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45;
 
+export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
+
 // 41 級後門檻跟著放大（原本 7/15/23）
 export function stageOf(total) { return total >= 30 ? 'lit' : total >= 19 ? 'full' : total >= 9 ? 'half' : 'site'; }
 
@@ -33,9 +35,10 @@ function body(stage) {
   return { parts, top: y };
 }
 
-export function view(lv) {
-  const at = anchorWorld('tower'), total = Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
-  const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, parts } };
+// meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6）
+export function view(lv, flags, meta = {}) {
+  const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
+  const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + 0.6, parts } };
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55] };
   if (lv.chip >= 5) {
     // 矽盾天線：塔頂的環

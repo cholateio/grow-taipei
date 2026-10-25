@@ -47,3 +47,11 @@ test('crane, pulse and lightshow builders animate', () => {
   show.update(0.1, 1); assert.notEqual(show.materials[0].emissive.getHex(), c0);
   for (const p of [crane, pulse, show]) p.dispose?.(); assert.equal(glow.size, 0);
 });
+
+// 101 跳階只在回合最後的 settle 發生（計畫 3.6）：view 用 meta.total，沒給才自己加總
+test('view uses meta.total when given; stage names for the float', () => {
+  assert.equal(tiers(tower.view(lvOf(20), {}, { total: 0 })), 1, 'meta.total wins');
+  assert.equal(tiers(tower.view(lvOf(20), {})), 10);
+  assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' });
+  assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
+});

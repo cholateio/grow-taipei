@@ -40,12 +40,17 @@ test('knocking milk back from 6 removes the university and its graduates (review
   assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'));
   assert.ok(!stage.partKeys().includes('milk.gate'));
 });
-test('rats ≥2 or typhoon Lv2 send the kids home and light the windows', () => {
+test('rats ≥2 or the typhoon landing send the kids home and light the windows', () => {
   for (const extra of [{ rat: 2 }, { typhoon: 2 }]) {
-    const v = milk.view(lv({ milk: 3, ...extra }), {});
+    const v = milk.view(lv({ milk: 3, ...extra }), {}, { landing: true });
     assert.equal(v['milk.kids'], undefined, JSON.stringify(extra)); assert.ok(v['milk.main'].parts.some(p => p.glow === 0xffc777));
   }
   assert.ok(milk.view(lv({ milk: 3, typhoon: 3 }), {})['milk.kids'], 'back out after the storm');
+});
+// 錄影審查：颱風被大巨蛋卡在 Lv2 的後續回合，小孩不能整場消失（只在登陸那回合躲）
+test('milk kids stay out after the landing turn while the typhoon lingers', () => {
+  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {}, { landing: false })['milk.kids']);
+  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {})['milk.kids'], 'no meta = not landing');
 });
 test('milk 5 with a ballfield relocates the kids next to the dome (little league)', () => {
   const v = milk.view(lv({ milk: 5, baseball: 2 }), {}), b = anchorWorld('baseball');

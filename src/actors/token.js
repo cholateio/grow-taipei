@@ -173,5 +173,5 @@ export const script = {
     },
   },
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）
-  rep: (s, ctx) => ctx.roster.members('token.staff')[0] ?? null,
+  rep: (s, ctx) => ctx.roster.members('token.staff').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

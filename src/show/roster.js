@@ -356,9 +356,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   const api = {
     group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, showAll, snap, update, reset,
     members: key => [...(groups.get(key)?.members ?? [])],
-    nearest(key, p) {
+    // visible：藏起來的人（颱風登陸躲進門裡）不算
+    nearest(key, p, { visible = false } = {}) {
       let best = null, bestD = Infinity;
-      for (const m of groups.get(key)?.members ?? []) { const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z); if (d < bestD) { bestD = d; best = m; } }
+      for (const m of groups.get(key)?.members ?? []) { if (visible && m.hidden) continue; const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z); if (d < bestD) { bestD = d; best = m; } }
       return best;
     },
     get count() { let n = 0; for (const g of groups.values()) n += g.members.length; return n; },

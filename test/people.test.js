@@ -94,3 +94,10 @@ test('gestures: knock leans the body, jump lifts it, look overrides yaw', () => 
   w.gesture = { kind: 'look', k: 0.5, yaw: 1.2 }; people.update(0.016, 0); assert.ok(Math.abs(bodyAt().ry - 1.2) < 1e-6);
   w.gesture = null; people.update(0.016, 0); assert.ok(Math.abs(bodyAt().y - base.y) < 1e-9);
 });
+// look 沒帶 yaw：照原本朝向，不能讓矩陣變 NaN（終審 Minor 3）
+test('look without a yaw keeps the walker facing and the body matrix finite', () => {
+  const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0.3, y: 0, z: 0.2, yaw: 0.7, walking: false });
+  w.gesture = { kind: 'look', k: 0.5 }; people.update(0.016, 0);
+  const m = new THREE.Matrix4(); people.group.getObjectByName('people:body').getMatrixAt(0, m);
+  assert.ok(m.elements.every(Number.isFinite), 'body matrix is finite');
+});

@@ -135,5 +135,5 @@ export const script = {
     },
   },
   fx: () => null,   // 燈泡自己沒有 onLevel
-  rep: (s, ctx) => ctx.roster.members('bulb.electrician')[0] ?? null,
+  rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

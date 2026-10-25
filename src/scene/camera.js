@@ -1,4 +1,4 @@
-// 鏡頭：全景框景與 800ms 飛行（政策島提示詞 §3）。controls 只需要 { target, update() }。
+// 鏡頭：全景框景與 1000ms 飛行（政策島提示詞 §3）。controls 只需要 { target, update() }。
 const n = Math.hypot(0.24, 0.33, 0.87);
 export const OVERVIEW_DIR = { x: 0.24 / n, y: 0.33 / n, z: 0.87 / n };
 

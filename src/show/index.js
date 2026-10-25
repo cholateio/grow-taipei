@@ -22,7 +22,6 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, flash, rail, rnd });
   scene.add(roster.group);
   stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster });
-  flash.clear();   // 開局的島民不用白光揭露，直接站在島上
 
   // 鏡頭：拍會平移；記住這回合有沒有離開全景，reduced-motion 回合結束才知道要不要拉回來
   let panned = false;
@@ -35,7 +34,9 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
 
   function refresh() { nav.setFootprints(stage.footprints()); }
-  refresh();   // 開局的島民一出來就要繞開建築
+  // 開局：舞台建好時島民已經先生出來了（那時走路格還不知道建築在哪，可能站進 101 工地裡）——
+  // 先讓走路格認得建築，再讓每個人瞬間回家重挑位置；開局不用白光揭露，直接站在島上
+  refresh(); roster.snap(); flash.clear();
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
     stage.commitAll(); roster.showAll(); roster.snap(); flash.clear(); bubbles.clear();

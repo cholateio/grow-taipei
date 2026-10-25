@@ -135,5 +135,5 @@ export const script = {
   },
   // 糖分超標在 grow 3 裡演了；這裡只把旗標折進來
   fx: (e, s, ctx) => (e.flag?.name === 'bobaSugar' ? [ctx.B.apply(e, { flash: false })] : null),
-  rep: (s, ctx) => ctx.roster.members('boba.owner')[0] ?? null,
+  rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

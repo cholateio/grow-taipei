@@ -83,10 +83,11 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
 
     let beats;
     if (e.kind === 'wait') {
-      // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近的島民
+      // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近、看得到的島民
       beats = [B.apply(e, { flash: false })];
       if (i === lastWait && e.waits?.length) {
-        const w = e.waits[0], rep = c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item));
+        // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上
+        const w = e.waits[0], rep = c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item;
         beats.push(B.bubble(rep, { icon: w.for[0] }, HINT_DUR));
       }
     } else {

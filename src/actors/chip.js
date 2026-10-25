@@ -126,5 +126,5 @@ export const script = {
     },
   },
   fx: () => null,   // 晶片自己沒有 onLevel
-  rep: (s, ctx) => ctx.roster.members('chip.engineers')[0] ?? ctx.roster.members('chip.worker')[0] ?? null,
+  rep: (s, ctx) => ctx.roster.members('chip.engineers').find(m => !m.hidden) ?? ctx.roster.members('chip.worker').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

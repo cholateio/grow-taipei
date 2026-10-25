@@ -105,7 +105,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     const g = w.gesture, gk = g?.k ?? 0, two = Math.PI * 2;
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
-    const yaw = g?.kind === 'look' ? g.yaw : p.yaw, wave = g?.kind === 'wave';
+    const yaw = g?.kind === 'look' ? (g.yaw ?? p.yaw) : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));

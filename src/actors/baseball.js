@@ -157,5 +157,5 @@ export const script = {
     },
   },
   fx: () => null,   // 大巨蛋鼠災是颱風的劇本（domeRats）
-  rep: (s, ctx) => ctx.roster.members('baseball.players')[0] ?? null,
+  rep: (s, ctx) => ctx.roster.members('baseball.players').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

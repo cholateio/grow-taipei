@@ -175,3 +175,29 @@ test('a knocked cart is righted with a flash at the start of the next turn', asy
   }
   assert.ok(knocked);
 });
+
+// 開局：島民一出來就要繞開建築（101 工地的沙地也算），也不留沒演的白光（終審 Important 1）
+test('on the opening screen no islander stands inside a building and no flash is pending, for seeds 1–40', async () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const { show } = await headlessShow({ seed });
+    for (const m of show.roster.members('landmarks.islanders')) assert.ok(show.nav.walkable(m.pos.x, m.pos.z), `seed ${seed} islander ${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+    assert.equal(show.flash.count, 0, `seed ${seed}`);
+  }
+});
+
+// 颱風登陸那回合大家躲進門裡：等待圖框不能掛在藏起來的人頭上，沒人在外面就掛在建築上（終審 Important 2）
+test('the wait hint on a landing turn hangs over the building when its owner is hidden', async () => {
+  const { show, run, bubblesLog } = await headlessShow();
+  let s = engine.createState(spec);
+  for (const id of ['boba', 'typhoon']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const r = place(s, 'milk');
+  assert.ok(r.events.some(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2), 'milk is the landing turn');
+  const w = r.events.filter(e => e.kind === 'wait').at(-1)?.waits?.[0];
+  assert.equal(w?.item, 'boba', 'boba waits on the landing turn');
+  bubblesLog.length = 0;
+  await run([...r.events, { kind: 'settle' }]);
+  const hint = bubblesLog.find(b => b.kind?.icon === w.for[0]);
+  assert.ok(hint, 'the wait hint showed');
+  const head = show.stage.headOf('boba');
+  assert.ok(Math.hypot(hint.at.x - head.x, hint.at.z - head.z) < 1e-6 && Math.abs(hint.at.y - head.y) < 1e-6, `hint at (${hint.at.x.toFixed(2)}, ${hint.at.y.toFixed(2)}, ${hint.at.z.toFixed(2)})`);
+});

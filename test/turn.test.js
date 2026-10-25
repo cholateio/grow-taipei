@@ -47,7 +47,7 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
 
 test('only the last wait event of a turn shows the hint; the hint target falls back to the nearest islander', () => {
   const islander = { ...walker }, asked = [];
-  const ctx = fakeCtx({ roster: { nearest: (key, p) => { asked.push([key, p]); return islander; }, keys: () => [], members: () => [] } });
+  const ctx = fakeCtx({ roster: { nearest: (key, p, opts) => { asked.push([key, p, opts]); return islander; }, keys: () => [], members: () => [] } });
   const w = item => ({ kind: 'wait', item, waits: [{ item, for: ['baseball', 'milk'] }] });
   const beats = buildTurn([w('chip'), w('bulb')], base(), ctx);
   const bubbles = beats.filter(b => b.kind === 'bubble');
@@ -55,13 +55,22 @@ test('only the last wait event of a turn shows the hint; the hint target falls b
   // 沒有 rep 劇本 → 找離 bulb 錨點最近的島民；泡泡內容是第一個缺的幫手的圖框
   let shown = null;
   bubbles[0].start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });
-  assert.equal(asked[0][0], 'landmarks.islanders'); assert.deepEqual(shown.kind, { icon: 'baseball' }); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 });
+  assert.equal(asked[0][0], 'landmarks.islanders'); assert.deepEqual(asked[0][2], { visible: true }, 'hidden islanders do not count'); assert.deepEqual(shown.kind, { icon: 'baseball' }); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 });
   // 模組 rep 劇本優先
   const rep = { ...walker, head: () => ({ x: 9, y: 9, z: 9 }) };
   const bulb = { id: 'bulb', view() {}, script: { rep: (s, c) => (s.lv && c ? rep : null) } };
   const [hint] = buildTurn([w('bulb')], base([tower, bulb]), ctx).filter(b => b.kind === 'bubble');
   hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } });
   assert.deepEqual(shown, { x: 9, y: 9, z: 9 });
+});
+
+// 外面一個看得到的人都沒有（颱風登陸大家躲進門裡）：等待圖框掛在物品頭上（終審 Important 2）
+test('the wait hint hangs over the item when no visible islander is around', () => {
+  const ctx = fakeCtx({ stage: { headOf: id => ({ x: id === 'bulb' ? 7 : 0, y: 2, z: 0 }), lv: {}, flags: {}, meta: {} } });
+  const [hint] = buildTurn([{ kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }], base(), ctx).filter(b => b.kind === 'bubble');
+  let shown = null;
+  assert.notEqual(hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } }), false, 'the hint still shows');
+  assert.deepEqual(shown, { x: 7, y: 2, z: 0 });
 });
 
 test('a module script replaces the default and still gets a trailing apply', () => {

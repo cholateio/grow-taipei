@@ -11,7 +11,8 @@ export const labelY = 0.8;
 const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
 const SITE = offset(TOWER, 0.9, 0.6);     // 101 工地（電工從這裡出發）
 const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
-const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45, RUN = 4.6;
+const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
+export const LIGHTING_SPEED = 2.4;   // 點燈這段電工快走（一般走路 1.6）
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）
 function ringPoint(cell, deg, r) {
   const c = axialToWorld(...cell), a = deg * Math.PI / 180;
@@ -28,7 +29,7 @@ const TOUR = [
 export const ROAD = TOUR.flatMap(([cell, degs]) => degs.map(d => ringPoint(cell, d, d % 60 ? RING_R - 0.05 : RING_R * SQ3 / 2)));
 
 // 路燈：每個低格的 90°／210°／330° 角各一盞。燈都在路口：隔著水道的兩三盞是同一個路口，電工站在第一盞旁一站點完。
-// 路口照沿主路經過的順序排，鍵 bulb.lamps.<i> 就是攤平後的順序。
+// 路口照沿主路經過的順序排；LAMP_POINTS 是攤平後的順序。
 const JUNCTIONS = [
   [[[0, 0], 90], [[0, 1], 210], [[-1, 1], 330]],   // 中心格南角：三格交會
   [[[1, 0], 210], [[0, 0], 330]], [[[1, 0], 330]], [[[1, 0], 90], [[0, 1], 330]], [[[0, 1], 90]], [[[-1, 1], 90]],
@@ -39,12 +40,12 @@ const LAMPS = JUNCTIONS.flat();
 export const LAMP_POINTS = LAMPS.map(([cell, deg]) => ringPoint(cell, deg, LAMP_R));
 // 電工點燈時站的位置：燈往格心收 0.45（在走路格裡）
 export const lampApproach = i => { const [cell, deg] = LAMPS[i]; return ringPoint(cell, deg, LAMP_R - APPROACH); };
-// 每個路口的燈鍵號：[[0, 1, 2], [3, 4], [5], …]
-export const STOPS = JUNCTIONS.map((j, k) => j.map((_, i) => JUNCTIONS.slice(0, k).flat().length + i));
+// 每一站（路口）點的燈號：[[0, 1, 2], [3, 4], [5], …]；燈頭零件 bulb.lamps.<站> 照這張表分組（大停電也一站站熄）
+export const LAMP_STOPS = JUNCTIONS.map((j, k) => j.map((_, i) => JUNCTIONS.slice(0, k).flat().length + i));
 
-function lamp(x, z, head) {
-  return [{ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5, 0.06], color: C.ink }, { kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head }];
-}
+const post = (x, z) => ({ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5, 0.06], color: C.ink });
+const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head });
+const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 
 export function view(lv, flags) {
   const n = lv.bulb, at = AT, v = {};
@@ -56,8 +57,12 @@ export function view(lv, flags) {
   v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)), footprint: { r: 0.15 } };
   v['bulb.electrician'] = { kind: 'roster', at, n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5 } };
   if (n >= 2) {
-    // 一盞一個零件：Lv2 劇本沿路一盞盞白光點亮、大停電一盞盞熄
-    LAMP_POINTS.forEach((p, i) => { v[`bulb.lamps.${i}`] = { kind: 'compound', at: p, parts: lamp(0, 0, head(i + 1)), footprint: false }; });
+    // 燈桿全部一個零件（同一種材質只花一個 draw call）；燈頭每一站一個零件：Lv2 劇本一站站白光點亮、大停電一站站熄
+    v['bulb.posts'] = { kind: 'compound', at, parts: LAMP_POINTS.map(p => post(p.x - at.x, p.z - at.z)), footprint: false };
+    LAMP_STOPS.forEach((g, k) => {
+      const o = LAMP_POINTS[g[0]];
+      v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(i + 1))), footprint: false };
+    });
     const stall = (x, z, roof) => [
       { kind: 'box', pos: [x, 0.22, z], scale: [0.5, 0.45, 0.4], color: C.wall },
       { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },
@@ -89,16 +94,18 @@ export const script = {
     ];
   },
   grow: {
-    // 整條路：電工小跑步沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮）→ 夜市兩攤白光。
+    // 整條路：電工快走沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮；燈桿跟第一站一起出現）→ 夜市兩攤白光。
     // 從離他最近的那一站開始繞（他在主路上巡，人在哪就從哪開始）
     2(e, s, ctx) {
       const { B } = ctx, m = el(ctx), p = ctx.roster.members('bulb.electrician')[0]?.pos;
-      const k0 = p ? STOPS.reduce((b, g, k) => (dist(lampApproach(g[0]), p) < dist(lampApproach(STOPS[b][0]), p) ? k : b), 0) : 0;
-      const stops = STOPS.map((_, k) => STOPS[(k0 + k) % STOPS.length]);
-      const go = g => B.walk(m, lampApproach(g[0]), { speed: RUN }), light = g => B.apply(e, { only: g.map(i => `bulb.lamps.${i}`) });
+      const n = LAMP_STOPS.length, near = k => dist(lampApproach(LAMP_STOPS[k][0]), p);
+      const k0 = p ? LAMP_STOPS.reduce((b, _, k) => (near(k) < near(b) ? k : b), 0) : 0;
+      const stops = LAMP_STOPS.map((_, i) => (k0 + i) % n);
+      const go = k => B.walk(m, lampApproach(LAMP_STOPS[k][0]), { speed: LIGHTING_SPEED });
+      const light = (k, first, last) => B.apply(e, { only: [...(first ? ['bulb.posts'] : []), `bulb.lamps.${k}`, ...(last ? ['bulb.market', 'sat.lighthouse'] : [])] });
       return [
-        go(stops[0]), ...stops.slice(1).map((g, k) => B.together([go(g), light(stops[k])])), light(stops.at(-1)),
-        B.apply(e), B.home(m), B.levelUp('bulb'),
+        go(stops[0]), ...stops.slice(1).map((k, i) => B.together([go(k), light(stops[i], i === 0)])), light(stops.at(-1), false, true),   // 最後一站、夜市兩攤、燈塔島的燈同一拍依序閃（LEVEL UP 之後不再有白光）
+        B.home(m), B.levelUp('bulb'),
       ];
     },
     // 霓虹、傍晚：電工走到夜市 → ♪ → 白光霓虹 → 天色淡入傍晚

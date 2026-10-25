@@ -44,8 +44,8 @@ export const builders = {
     object.add(part.object);
     return { object, update(dt, t) { part.object.position.y = Math.sin(t * 0.8) * 0.08; if (spec.spin) part.object.rotation.y += dt * spec.spin; }, dispose: part.dispose };
   },
-  // 大雨：240 根半透明雨絲在半徑 8 內從 6 落到 0 循環，不投影
-  rain(THREE, spec) {
+  // 大雨：240 根半透明雨絲在半徑 8 內從 6 落到 0 循環，不投影。ctx.weather.rain（0–1，app 每幀淡入）決定下幾根、多濃
+  rain(THREE, spec, ctx) {
     const N = 240, rnd = mulberry32(5), object = new THREE.Group();
     const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.02, 0.35, 0.02), new THREE.MeshBasicMaterial({ color: 0xa4d4da, transparent: true, opacity: 0.6, depthWrite: false }), N);
     mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
@@ -54,6 +54,8 @@ export const builders = {
     return {
       object,
       update(dt, t) {
+        const k = ctx.weather?.rain ?? 1;
+        mesh.count = Math.round(N * k); mesh.material.opacity = 0.6 * Math.min(1, 0.4 + k * 0.6);
         drops.forEach((d, i) => { const y = 6 - ((d.ph + t) * 6 % 6); mesh.setMatrixAt(i, m.compose(p.set(d.x, y, d.z), tilt, one)); });
         mesh.instanceMatrix.needsUpdate = true;
       },

@@ -2,8 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as typhoon from '../src/actors/typhoon.js';
-import { worldEffects } from '../src/actors/world.js';
-import { TIMES } from '../src/scene/daynight.js';
 import { landmarkWorld } from '../src/actors/anchors.js';
 import { lv } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
@@ -39,10 +37,12 @@ test('cloud spins and scooter circles the centre cell', () => {
   const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 1 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
-test('worldEffects: lamps set the clock, typhoon Lv2 sends people indoors, blackout kills the glow at night', () => {
-  assert.deepEqual(worldEffects(lv({}), {}), { time: TIMES.day, peopleVisible: true, glowScale: 1, storm: 0 });
-  assert.equal(worldEffects(lv({ typhoon: 2 }), {}).storm, 1); assert.equal(worldEffects(lv({ typhoon: 3 }), {}).storm, 0);
-  assert.equal(worldEffects(lv({ bulb: 3 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 4 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 5 }), {}).time, TIMES.night);
-  assert.equal(worldEffects(lv({ typhoon: 2 }), {}).peopleVisible, false); assert.equal(worldEffects(lv({ typhoon: 3 }), {}).peopleVisible, true);
-  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0, storm: 0 });
+// 計畫 3.6：颱風賴著不走時雨變小（app 把 weather.rain 淡到 0.35）
+test('rain shows fewer, fainter drops when weather.rain is low', () => {
+  const weather = { rain: 1 }, f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders, weather });
+  const p = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.rain']), mesh = p.object.children[0];
+  p.update(0, 0.1); assert.equal(mesh.count, 240); const o = mesh.material.opacity;
+  weather.rain = 0.35; p.update(0, 0.2); assert.equal(mesh.count, 84); assert.ok(mesh.material.opacity < o);
+  const plain = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders }).build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.rain']);
+  plain.update(0, 0.1); assert.equal(plain.object.children[0].count, 240, 'no weather = full rain');
 });

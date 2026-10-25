@@ -34,9 +34,11 @@ import * as token from './actors/token.js';
 import * as boba from './actors/boba.js';
 import * as typhoon from './actors/typhoon.js';
 import * as satellites from './actors/satellites.js';
-import { worldEffects } from './actors/world.js';
+import { worldEffects, stepWorld } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
+
+const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
 export async function start({ params, loading }) {
 
@@ -87,26 +89,31 @@ export async function start({ params, loading }) {
   // 介面、演員、導演、遊戲
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow } });
+  const weather = { rain: 0 };   // 雨的濃度，全島效果每幀淡入後寫進來（typhoon.js 的 rain 讀它）
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
   // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
   const live = params.has('live');
   const director = createDirector({ reducedMotion: motion.matches || (!!auto && !live) });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || (!!auto && !live)));
-  // 全島效果：燈泡推動時間、颱風 Lv2 小人躲進室內、大停電熄燈
-  const applyWorld = (lv, flags) => { const w = worldEffects(lv, flags); setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); };
+  // 全島效果：燈泡推動時間、颱風登陸小人躲進室內、大停電熄燈。在造成它的事件當下設目標，每幀約 1 秒淡過去；
+  // 跳過、reduced-motion、截圖、RESET 直接貼齊
+  const showWorld = w => { setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); weather.rain = w.rain; };
+  let world = { ...worldEffects(zeroLevels(), {}), time: TIMES[params.get('time')] ?? TIMES.day }, worldTarget = world;
+  const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || (auto && !live)) { world = w; showWorld(w); } };
+  const applyWorld = (lv, flags, { instant = false } = {}) => aimWorld(worldEffects(lv, flags, actors.meta), instant);
   let slots;
   const game = createGame({
     spec, engine, endings, director, actors,
     ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
     onFinished: (ending, state) => {
-      setTime(TIMES.night);
+      aimWorld({ ...worldTarget, time: TIMES.night });
       showEndCard(uiRoot, { title: ending.title, line: endings.ENDINGS[ending.id].line, onRestart: restart });
     },
   });
-  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags); rig.overview(); }
+  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.overview(); }
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
@@ -119,6 +126,7 @@ export async function start({ params, loading }) {
   let autoDone = false, reported = false;
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
+    const w = stepWorld(world, worldTarget, dt); if (w !== world) { world = w; showWorld(w); }
     rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t);
     if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
     // 自動播放（截圖）時第 240 幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）

@@ -152,3 +152,28 @@ test('wait is one grouped event per turn and absent when nothing waits', () => {
   assert.equal(w.length, 1); assert.deepEqual(w[0].waits.find(x => x.item === 'e'), { item: 'e', for: ['a'] });
   assert.ok(!w[0].waits.some(x => x.item === 'z'), 'freshly placed z is not waiting');
 });
+// 審查 #2：「要低於／不在」的條件不是幫手——via 只列 minLevel/present，wait 只在缺幫手時發、for 列缺的幫手
+const keep = {
+  ORDER: ['h', 'x', 'k', 'q'],
+  ITEMS: {
+    h: { name: 'H', max: 2, up: { 2: { age: ['h', 4] } } },
+    x: { name: 'X', max: 2, up: { 2: { always: true } } },
+    k: { name: 'K', max: 3, up: { 2: { and: [{ age: ['k', 1] }, { maxLevel: ['x', 1] }] }, 3: { and: [{ minLevel: ['h', 2] }, { maxLevel: ['x', 1] }] } } },
+    q: { name: 'Q', max: 1, up: {} },
+  },
+  AFTER_TURN: [], STORIES: { placed: { h: '', x: '', k: '', q: '' }, grow: { h: { 2: '' }, x: { 2: '' }, k: { 2: '', 3: '' }, q: {} } },
+};
+test('via lists only helpers (minLevel/present), never the "must stay below" items (review #2)', () => {
+  let s = place(createState(keep), 'k', keep).state;
+  const r = place(s, 'q', keep), g = r.events.find(e => e.kind === 'grow' && e.item === 'k');
+  assert.deepEqual(g.via, [], 'x ≤ 1 is not a helper');
+});
+test('wait fires only when a helper is missing, and names the missing helper (review #2)', () => {
+  let s = place(createState(keep), 'k', keep).state; s = place(s, 'q', keep).state;   // k 2；k 3 需 h ≥2（h 還沒放）且 x ≤1
+  let r = place(s, 'h', keep); let w = r.events.find(e => e.kind === 'wait');
+  assert.deepEqual(w.waits, [{ item: 'k', for: ['h'] }]);
+  // 只被「x 要 ≤1」擋住（h 夠了、x 已經 2）：不算在等誰，不發 wait
+  const blockedOnlyByMax = { ...keep, ITEMS: { ...keep.ITEMS, h: { name: 'H', max: 2, up: { 2: { always: true } } } } };
+  let b = place(createState(blockedOnlyByMax), 'k', blockedOnlyByMax).state; b = place(b, 'h', blockedOnlyByMax).state; b = place(b, 'x', blockedOnlyByMax).state;
+  r = place(b, 'q', blockedOnlyByMax); assert.equal(r.state.lv.x, 2); assert.equal(r.events.filter(e => e.kind === 'wait').length, 0);
+});

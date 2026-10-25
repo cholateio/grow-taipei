@@ -73,8 +73,9 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     for (const w of waits) {
       const target = headOf(w.for[0]);
       float(w.item, '…', 'wait');
+      // 只轉主零件：環狀線、全島路燈這種錨在別處的零件跟著轉會整片扭掉（審查 #1）
       for (const [key, e] of live) {
-        if (!key.startsWith(`${w.item}.`)) continue;
+        if (key !== `${w.item}.main`) continue;
         const o = e.part.object, yaw = Math.atan2(target.x - o.position.x, target.z - o.position.z);
         out.push(new Promise(done => turns.push({ o, yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)) * 0.5, t: 0, done })));
       }
@@ -152,9 +153,13 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       };
       // 先飛光點（誰幫的、誰害的），到了才變身
       const helpers = !instant && e.kind === 'grow' ? (e.via ?? []) : [];
-      const harm = !instant && e.kind === 'fx' && e.cause && (e.delta || e.lock) ? (e.delta ? e.delta.target : e.lock) : null;
-      if (helpers.length || (harm && harm !== e.cause)) {
-        const pairs = helpers.length ? helpers.map(from => ({ from, to: target })) : [{ from: e.cause, to: harm, dark: true }];
+      // 別人造成的變化：扣級、鎖死是黑光點；加成（颱風外送 +1）是亮光點；扣不動（1→1）什麼都不演
+      const noop = e.delta && e.delta.from === e.delta.to && !e.lock && !e.flag;
+      if (noop) return Promise.resolve();
+      const hit = !instant && e.kind === 'fx' && e.cause && (e.delta || e.lock) ? (e.delta ? e.delta.target : e.lock) : null;
+      const dark = !!e.lock || (e.delta && e.delta.to < e.delta.from);
+      if (helpers.length || (hit && hit !== e.cause)) {
+        const pairs = helpers.length ? helpers.map(from => ({ from, to: target })) : [{ from: e.cause, to: hit, dark }];
         return flySparks(pairs, () => { const changed = sync(false); floatIt(); return changed; }).then(() => {});
       }
       const changed = sync(instant);

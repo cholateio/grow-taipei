@@ -19,6 +19,29 @@ export function condDeps(cond, self, spec = defaultSpec) {
   return spec.ORDER.filter(id => found.has(id));
 }
 
+// 幫手：條件裡「要有／要夠高」的物品（minLevel、present）。「要低於／不在」的不是幫手（審查 #2）
+export function helperDeps(cond, self, spec = defaultSpec) {
+  const found = new Set();
+  const walk = c => {
+    if (!c || typeof c !== 'object') return;
+    if ('minLevel' in c) found.add(c.minLevel[0]);
+    if ('present' in c) found.add(c.present);
+    for (const key of ['and', 'or']) if (key in c) c[key].forEach(walk);
+  };
+  walk(cond); found.delete(self);
+  return spec.ORDER.filter(id => found.has(id));
+}
+
+// 這一刻缺的幫手：沒達標的 minLevel／present（or 已經成立就不缺）
+function missingHelpers(cond, s, self, out = new Set()) {
+  if (!cond || typeof cond !== 'object') return out;
+  if ('minLevel' in cond && s.lv[cond.minLevel[0]] < cond.minLevel[1] && cond.minLevel[0] !== self) out.add(cond.minLevel[0]);
+  if ('present' in cond && !(s.lv[cond.present] > 0) && cond.present !== self) out.add(cond.present);
+  if ('and' in cond) cond.and.forEach(c => missingHelpers(c, s, self, out));
+  if ('or' in cond) { const before = out.size, tmp = new Set(); cond.or.forEach(c => missingHelpers(c, s, self, tmp)); if (tmp.size && before === out.size) for (const id of tmp) out.add(id); }
+  return out;
+}
+
 const compiled = new WeakMap();
 function rulesOf(spec) {
   if (compiled.has(spec)) return compiled.get(spec);
@@ -28,10 +51,10 @@ function rulesOf(spec) {
   for (const id of spec.ORDER) {
     const it = spec.ITEMS[id];
     const up = {}, deps = {};
-    for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = condDeps(it.up[n], id, spec); }
+    for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = helperDeps(it.up[n], id, spec); }
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, deps, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, deps, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -124,12 +147,14 @@ function turn(state, id, spec, rules) {
     if (!changed) break;
   }
 
-  // 等不到別人的物品：整回合合成一個 wait 事件（剛放的、這回合升過的、卡在 stall 的不算）
+  // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；
+  // 只被「要低於／不在」擋住的不算在等誰）
   const waits = [];
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k];
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k)) continue;
-    if (it.deps[lv + 1].length && !it.up[lv + 1](s)) waits.push({ item: k, for: it.deps[lv + 1] });
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || it.up[lv + 1](s)) continue;
+    const missing = missingHelpers(it.raw[lv + 1], s, k);
+    if (missing.size) waits.push({ item: k, for: spec.ORDER.filter(id => missing.has(id)) });
   }
   if (waits.length) events.push({ kind: 'wait', item: waits[0].item, waits });
 

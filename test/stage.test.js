@@ -155,3 +155,22 @@ test('an instant apply during a spark finishes it and pops at once', async () =>
   await stage.apply(grow(3), { instant: true });
   assert.equal(sparks(scene).length, 0); assert.ok(parts().every(o => Math.abs(o.scale.x - 1) < 1e-9));
 });
+// 審查 #1：等待手勢只轉在物品錨點附近的零件（環狀線、全島路燈這種放在原點的零件不能跟著扭）
+test('wait gesture turns only parts anchored near the item, not origin-anchored spreads (review #1)', async () => {
+  const spread = { id: 'milk', labelY: 1, view: lv => lv.milk ? { 'milk.main': { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }] }, 'milk.ring': { kind: 'compound', at: { x: 9, y: 0, z: 9 }, parts: [{ kind: 'box', pos: [0, 0, 0], scale: 0.3, color: 0x5a88b2 }] } } : {} };
+  const { stage, parts, run } = setup([spread, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  const ring = parts().find(o => o.position.x === 9);
+  stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false }); run(0.3);
+  assert.equal(ring.rotation.y, 0);
+});
+// 升級加成（颱風外送 +1）是亮光點；扣不動的扣級（1→1）沒有光點也不飄字
+test('a positive delta from a cause flies a bright spark; a no-op delta flies nothing and floats nothing', async () => {
+  const { stage, scene, run } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  const p = stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 1, to: 2 } }, { instant: false });
+  assert.equal(sparks(scene)[0].userData.dark, false); run(1.5); await p;
+  const n = floats(scene).length;
+  await stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 2, to: 2 } }, { instant: false });
+  assert.equal(sparks(scene).length, 0); assert.equal(floats(scene).length, n);
+});

@@ -124,3 +124,50 @@ test('re-declaring with a new scale updates the walker scale and headY in place'
   for (const m of now) { assert.equal(m.walker.scale, 1.3); assert.ok(Math.abs(m.headY - HEAD_Y.people * 1.3) < 1e-9); assert.ok(m.walker.pose.y < 0, 'veiled until the peak'); }
   flash.update(1); assert.ok(now.every(m => m.walker.pose.y > 0));
 });
+
+// 晶片工程師通勤：path 日常沿折線來回（開放路徑走到底折返），起點依 i / n 錯開
+const ROUTE = [{ x: AT.x - 1, y: AT.y, z: AT.z }, { x: AT.x + 0.2, y: AT.y, z: AT.z }, { x: AT.x + 0.2, y: AT.y, z: AT.z + 0.8 }];   // 總長 2.0
+const toRoute = p => Math.min(...ROUTE.slice(1).map((b, k) => {
+  const a = ROUTE[k], dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz)));
+  return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t);
+}));
+test('path home walks back and forth along the polyline', () => {
+  const { roster } = setup(); roster.declare('k', { ...kids(2), home: { kind: 'path', path: ROUTE, loop: false, speed: 0.8 } });
+  const [a, b] = roster.members('k'), end = ROUTE.at(-1);
+  assert.ok(Math.hypot(a.pos.x - ROUTE[0].x, a.pos.z - ROUTE[0].z) < 1e-6, 'member 0 starts at phase 0');
+  assert.ok(Math.hypot(b.pos.x - AT.x, b.pos.z - AT.z) < 1e-6, 'member 1 starts half way (s = 1.0)');
+  let reached = -1, back = false;
+  for (let i = 0; i < 30 * 4; i++) {
+    roster.update(1 / 30, i / 30);
+    for (const m of [a, b]) assert.ok(toRoute(m.pos) < 0.3, `on the route at frame ${i}`);
+    const d = Math.hypot(a.pos.x - end.x, a.pos.z - end.z);
+    if (reached < 0 && d < 0.05) reached = i; else if (reached >= 0 && d > 0.5) back = true;
+  }
+  assert.ok(reached > 0 && reached < 30 * 2.7, `member 0 reached the end at ~2.5 s (frame ${reached})`);
+  assert.ok(back, 'and turned back'); assert.ok(a.walking);
+  roster.claim(a); roster.setPose(a, { x: AT.x - 0.4, y: AT.y, z: AT.z + 0.6 }); roster.home(a);
+  for (let i = 0; i < 30 * 3; i++) roster.update(1 / 30, i / 30);
+  assert.ok(toRoute(a.pos) < 0.05, 'walks back onto the route after a script');
+  roster.snap(); assert.ok(Math.hypot(a.pos.x - ROUTE[0].x, a.pos.z - ROUTE[0].z) < 1e-6, 'snap puts it at its phase point');
+});
+test('follow home trails the nearest member of another key and stops at dist', () => {
+  const { roster } = setup(), P = { x: AT.x - 0.9, y: AT.y, z: AT.z + 0.3 }, R = { x: AT.x + 0.9, y: AT.y, z: AT.z + 0.3 };
+  roster.declare('chip.detective', { ...kids(1), at: P, home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } });
+  const d = roster.members('chip.detective')[0]; assert.deepEqual([d.pos.x, d.pos.z], [P.x, P.z]);
+  for (let i = 0; i < 30; i++) roster.update(1 / 30, i / 30);
+  assert.deepEqual([d.pos.x, d.pos.z, d.walking], [P.x, P.z, false], 'no rats: stands');
+  roster.declare('rat.pack', { ...kids(1), home: { kind: 'stand', spots: [{ ...R, yaw: 0 }] } });
+  const far = () => Math.hypot(d.pos.x - R.x, d.pos.z - R.z);
+  for (let i = 0; i < 30 * 4; i++) roster.update(1 / 30, i / 30);
+  assert.ok(Math.abs(far() - 0.6) < 0.1, `stops 0.6 from the rat (${far().toFixed(2)})`); assert.equal(d.walking, false);
+  const rat = roster.members('rat.pack')[0]; roster.claim(rat); roster.setPose(rat, { x: R.x, y: R.y, z: R.z - 1.0 });
+  const R2 = rat.pos, gap = () => Math.hypot(d.pos.x - R2.x, d.pos.z - R2.z);
+  for (let i = 0; i < 30 * 4; i++) roster.update(1 / 30, i / 30);
+  assert.ok(Math.abs(gap() - 0.6) < 0.1, `follows when the rat moves (${gap().toFixed(2)})`);
+});
+// 換身分搬走一個人後，原名冊不夠宣告的人數就補人（工程師 2 → 3 的同一刻有一個變成偵防師）
+test('from tops the source roster back up to its declared n', () => {
+  const { roster } = setup(); roster.declare('chip.engineers', kids(2));
+  roster.declare('chip.engineers', kids(3)); roster.declare('chip.detective', { ...kids(1), accessory: 'glass', from: 'chip.engineers' }); roster.flush();
+  assert.equal(roster.members('chip.engineers').length, 3); assert.equal(roster.members('chip.detective').length, 1);
+});

@@ -25,10 +25,10 @@ export async function headlessShow({ modules = ALL, reducedMotion = false } = {}
   const people = createPeople(THREE, { max: 48 });
   const rigLog = [];
   const rig = { log: rigLog, panTo(t, ms) { rigLog.push(['panTo', t, ms]); }, home(ms) { rigLog.push(['home', ms]); } };
-  const worldLog = [], bubblesLog = [];
+  const worldLog = [], bubblesLog = [], rail = { offset: 0 };
   const scene = new THREE.Scene(); scene.add(people.group);
   const show = createShow(THREE, {
-    scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail: { offset: 0 } },
+    scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail },
     rig, world: (effects, instant) => worldLog.push([effects, instant]), reducedMotion,
   });
   // 每次 bubbles.show／levelUp 記下 { kind | text, at }（at = 出現那一刻頭上的位置）
@@ -55,7 +55,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false } = {}
     return show.elapsed;
   }
 
-  return { show, people, assets, rig, worldLog, bubblesLog, run, scene };
+  return { show, people, assets, rig, worldLog, bubblesLog, run, scene, rail };
 }
 
 // 照 order 放完一局：itemId 的 placed／grow 事件單獨 live 演並呼叫 check(e, secs)，其他事件 instant；每回合最後 settle instant

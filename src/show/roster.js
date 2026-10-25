@@ -2,21 +2,36 @@
 // 每個鍵一個 group { key, spec, members, leaving, held, pending, retired }：
 //   leaving：待退的人，等 flush() 才真的退（stage 依模組順序 declare，from 的目標名冊可能晚一步才來搬人）
 //   held／pending：hold 住的宣告，等 sync() 才套用；pending 為 null 表示「hold 中被 retire，等 sync 再退」
-// 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂。
+// 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
+//   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
-// path／follow／fidget 與衛星島 wander 之後的任務才做；不認得的 home 先當成站在 spec.at。
+// fidget 與衛星島 wander 之後的任務才做；不認得的 home 先當成站在 spec.at。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
-import { createPathCursor } from '../scene/path.js';
+import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5, STAGGER = 0.15;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下；同一次宣告依序閃的間隔
+const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
 const look = md => `${!!md?.antenna},${!!md?.eye}`;   // 模型的「配件」：天線、獨眼
 const body = md => JSON.stringify([md?.path, md?.h, md?.anim, md?.tint, md?.glow]);   // 模型本體：變了就換一個 holder
+// path 日常：開放路徑的長度、第 s 公尺的位置、離 p 最近的那一點在第幾公尺
+const pathOf = h => { const loop = !!h.loop, lens = measurePath(h.path, loop); return { path: h.path, loop, lens, total: lens.at(-1) }; };
+const pointAt = (P, s) => locateOnPath(P.path, P.lens, s, P.loop);
+function nearestS(P, p) {
+  let best = 0, bestD = Infinity;
+  for (let k = 0; k < P.lens.length - 1; k++) {
+    const a = P.path[k], b = P.path[(k + 1) % P.path.length], dx = b.x - a.x, dz = b.z - a.z, len2 = dx * dx + dz * dz;
+    const t = len2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) : 0;
+    const d = Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t);
+    if (d < bestD) { bestD = d; best = P.lens[k] + t * (P.lens[k + 1] - P.lens[k]); }
+  }
+  return best;
+}
 const headYOf = spec => (spec.model ? HEAD_Y.model * spec.model.h / MODEL_H : HEAD_Y.people) * (spec.scale ?? 1);
 
 // 模型身上的小配件（從 rat.js 的 builders.rats 搬來）：機器鼠天線、變異鼠的大眼睛
@@ -53,10 +68,13 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const p = trainPose(t + (rail?.offset ?? 0), car, { speed: h.speed });
     return { x: p.x + Math.sin(p.yaw) * off, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * off, yaw: p.yaw };
   }
-  function homePose(spec, i) {
+  // m：已經在場上的成員（snap 用）；follow 的家就是他現在站的地方，剛生出來的站在 spec.at
+  function homePose(spec, i, m = null) {
     const h = spec.home ?? {};
     if (h.kind === 'wander') { const { at, r } = wanderHome(spec, i); return nav.wander(at, r); }
     if (h.kind === 'ride') return seat(h, i, now);
+    if (h.kind === 'path') { const P = pathOf(h); return pointAt(P, P.total * i / Math.max(1, spec.n)); }
+    if (h.kind === 'follow' && m) return { ...m.pos, yaw: m.yaw };
     return spotOf(spec, i);
   }
 
@@ -145,9 +163,11 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
       const m = src.leaving.length ? src.leaving.pop() : src.members.pop();
-      m.key = g.key; m.i = g.members.length; m.trip = null; m.rest = 0; g.members.push(m);
+      m.key = g.key; m.i = g.members.length; m.trip = null; m.cursor = null; m.rest = 0; g.members.push(m);
       if (!restyle(m, spec, m.i)) veil(m, next());   // 換身分一定閃一下
     }
+    // 搬走後原名冊不夠它宣告的人數（工程師 2 → 3 的同一刻有一個變偵防師）：原名冊補人
+    if (src && !src.held && src.spec) while (src.members.length < src.spec.n) { const i = src.members.length; src.members.push(spawn(src, src.spec, i, homePose(src.spec, i), 'home', next())); }
     while (g.members.length < spec.n) { const i = g.members.length; g.members.push(spawn(g, spec, i, homePose(spec, i), 'home', next())); }
   }
 
@@ -191,9 +211,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     return m;
   }
 
-  function claim(m) { m.mode = 'script'; m.trip = null; m.rest = 0; }
+  function claim(m) { m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; }
   function home(m) {
-    m.mode = 'home'; m.trip = null; m.rest = 0;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
+    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
   }
@@ -208,7 +228,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
         m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.veil = null; m.veiled = false;
-        setPose(m, { ...homePose(spec, m.i), walking: false });
+        m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
   }
@@ -228,6 +248,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   function idle(m, spec, dt, t) {
     const h = spec.home ?? {};
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
+    if (h.kind === 'path') { onPath(m, h, dt); return; }
+    if (h.kind === 'follow') { follow(m, h, dt); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
       if ((m.rest -= dt) > 0) return;
@@ -241,6 +263,31 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const path = nav.route(m.pos, spot), end = path.at(-1);
     if (end.x !== spot.x || end.z !== spot.z) path.push({ x: spot.x, y: spot.y ?? nav.groundY(spot.x, spot.z), z: spot.z });   // spot 可能在走路格外（屋頂、footprint 裡）
     go(m, path);
+  }
+
+  // path：不在折線上（剛被劇本放回來）就先走到折線上最近的一點，再從那裡沿線來回
+  function onPath(m, h, dt) {
+    if (m.cursor) { m.cursor.advance(h.speed * dt); setPose(m, { ...m.cursor.locate(), walking: true }); return; }
+    if (m.trip) { walk(m, dt); if (m.trip) return; }
+    const P = pathOf(h), s = nearestS(P, m.pos), p = pointAt(P, s);
+    if (Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE) {
+      const path = nav.route(m.pos, p); path.push(p);   // 折線可能在走路格外（橋頭）：最後一段直接走上去
+      go(m, path); if (m.trip) return;
+    }
+    m.cursor = createPathCursor(h.path, { loop: !!h.loop, s });
+  }
+  // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著
+  function follow(m, h, dt) {
+    const dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
+    if (!target) { if (m.trip || m.walking) { m.trip = null; setPose(m, { ...m.pos, walking: false }); } return; }
+    const d = Math.hypot(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
+    if (m.trip && d <= dist) { m.trip = null; setPose(m, { ...m.pos, walking: false }); return; }
+    if (!m.trip && d <= dist + FOLLOW_SLACK) return;
+    if (!m.trip || Math.hypot(target.pos.x - m.trip.goal.x, target.pos.z - m.trip.goal.z) > FOLLOW_REPLAN) {
+      go(m, nav.route(m.pos, target.pos)); if (!m.trip) return;
+      m.trip.goal = { ...target.pos };
+    }
+    walk(m, dt);
   }
 
   function update(dt, t) {
@@ -265,7 +312,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     groups.clear();
   }
 
-  return {
+  const api = {
     group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, snap, update, reset,
     members: key => [...(groups.get(key)?.members ?? [])],
     nearest(key, p) {
@@ -276,4 +323,5 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     get count() { let n = 0; for (const g of groups.values()) n += g.members.length; return n; },
     keys: () => [...groups.keys()],
   };
+  return api;
 }

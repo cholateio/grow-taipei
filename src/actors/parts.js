@@ -117,7 +117,27 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  const KINDS = { compound, people, glb, smoke, fireworks };
+  // 因果光點：發光小球（扣級是不發光的黑球）從 at 沿拋物線飛到 to，0.35 秒，到了 done = true
+  function spark(spec) {
+    const { at, to, color = 0xfcea8b, dark = false } = spec, object = new THREE.Group(), owned = [];
+    const mat = dark ? new THREE.MeshStandardMaterial({ color: 0x211d1d, roughness: 0.78 }) : new THREE.MeshStandardMaterial({ color, emissive: color, roughness: 0.78 });
+    if (!dark) { ctx.glow.add(mat); owned.push(mat); mat.emissiveIntensity = Math.max(1.5, mat.emissiveIntensity); }
+    const ball = new THREE.Mesh(puffGeo, mat); ball.scale.setScalar(0.1); object.add(ball); object.userData.dark = dark;
+    const dx = to.x - at.x, dy = to.y - at.y, dz = to.z - at.z;
+    let t = 0;
+    const part = {
+      object, done: false,
+      update(dt) {
+        t = Math.min(1, t + dt / 0.35);
+        ball.position.set(dx * t, dy * t + 0.8 * 4 * t * (1 - t), dz * t);
+        if (t >= 1) part.done = true;
+      },
+      dispose() { for (const m of owned) ctx.glow.remove(m); mat.dispose(); },
+    };
+    return part;
+  }
+
+  const KINDS = { compound, people, glb, smoke, fireworks, spark };
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 

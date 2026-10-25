@@ -51,5 +51,8 @@ button.primary:hover { background: #3a3333; }
 /* 飄起來的等級字：升級珊瑚色往上飄，掉級灰色往下掉 */
 .actor-float { color: var(--coral); font: 900 15px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 6px #fff; white-space: nowrap; pointer-events: none; animation: float-up 1.4s ease-out forwards; }
 .actor-float.down { color: #7a6f68; animation-name: float-down; }
+/* 等待：灰色「…」原地淡出 */
+.actor-float.wait { color: #7a6f68; font-size: 18px; animation-name: float-hold; }
+@keyframes float-hold { 0% { opacity: 0; } 20% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-46px) scale(1); } }
 @keyframes float-down { 0% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(28px); } }

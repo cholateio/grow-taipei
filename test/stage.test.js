@@ -87,9 +87,10 @@ test('a level change floats "Lv.n" above the item main part; instant shows nothi
   await stage.apply(grow(3), { instant: true }); assert.equal(floats(scene).length, 0);
 });
 test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async () => {
-  const { stage, scene } = setup();
+  const { stage, scene, run } = setup();
   await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
   stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
+  run(0.4);   // 黑光點從老鼠飛過來、落地後才掉級
   assert.equal(floats(scene)[0].element.className, 'actor-float down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
   stage.apply(grow(spec.ITEMS.milk.max), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
 });
@@ -105,4 +106,52 @@ test('delta event updates the target item mirror and view; flags are mirrored', 
   assert.equal(stage.levelOf('milk'), 1); assert.equal(people.walkers.length, 0);
   await stage.apply({ kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'blackout', value: true }, lock: 'bulb' }, { instant: true });
   assert.equal(stage.flags.blackout, true);
+});
+// 看得見的因果（§7.2）：升級前先從 via 物品飛光點；扣級飛黑光點；等待的物品轉頭看它在等的東西
+const helper = { id: 'baseball', labelY: 1, view: lv => lv.baseball ? { 'baseball.main': { kind: 'compound', at: { x: -3, y: 0.65, z: 4 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xdb6a41 }] } } : {} };
+const sparks = scene => scene.getObjectByName('stage:sparks').children;
+test('a grow with via plays a spark from the helper before the target pops', async () => {
+  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  const before = parts().length;
+  const p = stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false });
+  assert.equal(sparks(scene).length, 1); assert.ok(Math.abs(sparks(scene)[0].position.x - (-3)) < 1e-6, 'starts at the helper');
+  run(0.2); assert.equal(parts().length, before, 'target has not popped yet');
+  run(1.2); await p; assert.ok(parts().length > before, 'popped after the spark'); assert.equal(sparks(scene).length, 0);
+});
+test('spark falls back to the anchor when the via item has no parts (review focus 2)', async () => {
+  const { stage, scene, run } = setup();
+  await stage.apply(placed, { instant: true });
+  const { anchorWorld } = await import('../src/actors/anchors.js');
+  const p = stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['chip'] }, { instant: false });
+  assert.ok(Math.abs(sparks(scene)[0].position.x - anchorWorld('chip').x) < 1e-6); run(1.5); await p;
+});
+test('a knock-back flies a dark spark from the cause', async () => {
+  const { stage, scene, run } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
+  const p = stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
+  assert.equal(sparks(scene).length, 1); assert.equal(sparks(scene)[0].userData.dark, true); run(1.5); await p;
+});
+test('wait event turns the waiting item toward what it waits for and floats "…"; instant shows nothing (review focus 1)', async () => {
+  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  const box = parts().find(o => Math.abs(o.position.x - at.x) < 1e-6 && Math.abs(o.position.z - at.z) < 1e-6);
+  const p = stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false });
+  run(0.3); assert.notEqual(box.rotation.y, 0, 'turned'); assert.ok(floats(scene).some(f => f.element.textContent === '…' && f.element.className.includes('wait')));
+  run(1.5); await p; assert.ok(Math.abs(box.rotation.y) < 1e-6, 'turned back');
+  const before = floats(scene).length; await stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: true });
+  assert.equal(floats(scene).length, before); assert.ok(Math.abs(box.rotation.y) < 1e-6);
+});
+test('reset clears sparks in flight', async () => {
+  const { stage, scene } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false }); stage.reset();
+  assert.equal(sparks(scene).length, 0);
+});
+test('an instant apply during a spark finishes it and pops at once', async () => {
+  const { stage, scene, parts } = setup([fakeMilk, helper]);
+  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false });
+  await stage.apply(grow(3), { instant: true });
+  assert.equal(sparks(scene).length, 0); assert.ok(parts().every(o => Math.abs(o.scale.x - 1) < 1e-9));
 });

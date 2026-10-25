@@ -15,7 +15,7 @@ test('plays events in order with per-kind durations', async () => {
 });
 test('skip mid-way applies the rest instantly without waiting', async () => {
   const { log, waits, play } = harness({ onEvent: (d, log) => (e, o) => { log.push([e.kind, o.instant]); if (e.kind === 'placed') d.skip(); return Promise.resolve(); } });
-  await play(); assert.deepEqual(log.filter(l => l[0] !== 'focus'), [['placed',false],['grow',true],['fx',true]]); assert.equal(waits.length, 1);
+  await play(); assert.deepEqual(log.filter(l => l[0] !== 'focus'), [['placed',false],['grow',true],['fx',true]]); assert.equal(waits.length, 0, 'skipped during the animation: no pause');
 });
 test('reduced motion makes every event instant with no waits', async () => {
   const { log, waits, play } = harness({ reducedMotion: true }); await play();
@@ -39,18 +39,23 @@ test('wait events take no time; a grow takes DURATIONS.grow whether or not it ha
   await d.play([{ kind: 'grow', item: 'milk', via: ['baseball'] }, { kind: 'wait', item: 'milk', waits: [] }, { kind: 'grow', item: 'milk', via: [] }], () => Promise.resolve());
   assert.deepEqual(waits, [DURATIONS.grow, DURATIONS.grow]);
 });
-// 手感（計畫 3.6）：時間從事件開始算，動畫本身算在裡面；沒演東西的事件不等
-test('the timer starts with the event, before the actor finishes', async () => {
+// 使用者 2026-10-25：太快了——一個升級演完、停一下，才換下一個。DURATIONS 是演完之後的間隔
+test('the pause starts after the animation finishes', async () => {
   const log = []; const d = createDirector({ wait: ms => { log.push(['wait', ms]); return Promise.resolve(); } });
   await d.play([{ kind: 'grow', item: 'milk' }], () => { log.push(['apply']); return new Promise(r => setTimeout(() => { log.push(['popped']); r(); }, 5)); });
-  assert.deepEqual(log, [['wait', DURATIONS.grow], ['apply'], ['popped']]);
+  assert.deepEqual(log, [['apply'], ['popped'], ['wait', DURATIONS.grow]]);
+});
+test('a skip during the animation skips the pause too', async () => {
+  const waits = []; const d = createDirector({ wait: ms => { waits.push(ms); return Promise.resolve(); } });
+  await d.play([{ kind: 'grow', item: 'milk' }, { kind: 'grow', item: 'chip' }], () => { d.skip(); return Promise.resolve(); });
+  assert.deepEqual(waits, []);
 });
 test('an event that shows nothing does not wait', async () => {
   const d = createDirector({ wait: () => new Promise(() => {}) });
   await d.play([{ kind: 'settle' }, { kind: 'fx', item: 'milk' }], () => Promise.resolve(false));
   assert.equal(d.busy, false);
 });
-test('settle has its own duration', () => { assert.equal(DURATIONS.settle, 900); assert.equal(DURATIONS.placed, 1100); });
+test('every shown event is followed by a clear pause', () => { for (const k of ['placed', 'grow', 'fx', 'stall', 'settle']) assert.ok(DURATIONS[k] >= 700, k); });
 // 審查：放置事件要先飛入，飛的途中按跳過，落地後要立刻套用（opts.instant 是活的）
 test('opts.instant turns true when skip happens during the event', async () => {
   const d = createDirector({ wait: () => new Promise(() => {}) }); const seen = [];

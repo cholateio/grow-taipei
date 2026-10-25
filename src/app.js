@@ -90,7 +90,7 @@ export async function start({ params, loading }) {
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
   const weather = { rain: 0 };   // 雨的濃度，全島效果每幀淡入後寫進來（typhoon.js 的 rain 讀它）
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather, icons: ICONS } });
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
   // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
   const live = params.has('live');

@@ -59,8 +59,7 @@ button.primary:hover { background: #3a3333; }
 /* 飄起來的等級字：升級珊瑚色往上飄，掉級灰色往下掉 */
 /* 外層只負責被 CSS2DRenderer 定位（不能有 transform 動畫），動畫在內層 .rise */
 .actor-float { pointer-events: none; }
-.actor-float .rise { display: flex; align-items: center; gap: 4px; color: var(--coral); font: 900 22px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 8px #fff; white-space: nowrap; animation: float-up 1.4s ease-out forwards; }
-.actor-float .rise svg { width: 26px; height: 26px; flex: none; background: #fff; border-radius: 50%; padding: 2px; box-shadow: 0 1px 4px #4a2a1430; }
+.actor-float .rise { display: block; color: var(--coral); font: 900 22px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 8px #fff; white-space: nowrap; animation: float-up 2.2s ease-out forwards; }
 .actor-float .rise.down { color: #7a6f68; animation-name: float-down; }
-@keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-46px) scale(1); } }
+@keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 12% { opacity: 1; transform: translateY(0) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-50px) scale(1); } }
 @keyframes float-down { 0% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(28px); } }

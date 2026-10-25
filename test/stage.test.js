@@ -39,8 +39,8 @@ test('diffParts classifies added / removed / kept by spec equality', () => {
 test('placed → main part pops in; grow → extra part added, the unchanged part object is kept', async () => {
   const { stage, parts, run } = setup();
   const p = stage.apply(placed, { instant: false }); assert.equal(parts().length, 1); assert.ok(parts()[0].scale.x < 0.05, 'starts small');
-  run(0.7); await p; assert.ok(Math.abs(parts()[0].scale.x - 1) < 1e-9);
-  const box = parts()[0]; const q = stage.apply(grow(2), { instant: false }); run(0.7); await q;
+  run(1.0); await p; assert.ok(Math.abs(parts()[0].scale.x - 1) < 1e-9);
+  const box = parts()[0]; const q = stage.apply(grow(2), { instant: false }); run(1.0); await q;
   assert.ok(parts().includes(box)); assert.deepEqual(stage.partKeys().sort(), ['milk.kids', 'milk.main']);
 });
 test('a changed spec swaps the part: old shrinks away, new pops in', async () => {
@@ -62,7 +62,6 @@ test('reset mid-transition disposes everything (review focus 1)', async () => {
   stage.reset();
   assert.equal(parts().length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(stage.partKeys(), []); assert.equal(floats(scene).length, 0, 'floats cleared');
   assert.equal(stage.levelOf('milk'), 0);
-  assert.equal(scene.getObjectByName('stage:puffs').children.length, 0, 'transition smoke cleared');
 });
 test('glow registry returns to baseline after reset (review focus 5)', async () => {
   const { stage, glow } = setup(); const base = glow.size;
@@ -77,7 +76,7 @@ test('fx without delta shakes the item parts and resolves after 0.6 s of updates
 });
 // GROW 式：沒有常駐標籤，等級變化時物件頭上飄一個「Lv.n」就好
 const floats = scene => scene.getObjectByName('stage:labels').children;
-test('a level change floats "Lv.n" above the item main part; instant shows nothing; it is gone after 1.4 s', async () => {
+test('a level change floats "Lv.n" above the item main part; instant shows nothing; it is gone after 2.2 s', async () => {
   const { stage, scene, run } = setup();
   stage.apply(placed, { instant: false });
   assert.equal(floats(scene).length, 1); assert.equal(floats(scene)[0].element.textContent, 'Lv.1'); assert.equal(floats(scene)[0].element.className, 'actor-float');
@@ -85,7 +84,7 @@ test('a level change floats "Lv.n" above the item main part; instant shows nothi
   assert.equal(floats(scene)[0].element.children[0].tagName, 'span'); assert.equal(floats(scene)[0].element.children[0].className, 'rise');
   assert.ok(Math.abs(floats(scene)[0].position.y - (at.y + 1)) < 1e-9, 'labelY above milk.main');
   stage.apply(grow(2), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.2');
-  run(1.5); assert.equal(floats(scene).length, 0);
+  run(1.5); assert.ok(floats(scene).length > 0, 'still rising at 1.5 s'); run(0.8); assert.equal(floats(scene).length, 0);
   await stage.apply(grow(3), { instant: true }); assert.equal(floats(scene).length, 0);
 });
 test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async () => {
@@ -182,16 +181,14 @@ test('headOf is exposed for the fly-in target', () => {
   const h = stage.headOf('milk'); assert.ok(Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.z));
 });
 
-test('floats carry the item icon; 101 floats text only', async () => {
+// 使用者 2026-10-25：飄字前面不要物品圖示
+test('floats are text only, even when icons are available', async () => {
   const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
   const stage = createStage(THREE, { scene, spec, modules: [fakeMilk, tower], ctx: { people, assets: { spawn: async () => new THREE.Group() }, glow, icons: { milk: '<svg>milk</svg>' } } });
   stage.apply(placed, { instant: false });
   const inner = floats(scene).at(-1).element.children[0];
-  assert.match(inner._html, /^<svg>milk<\/svg>Lv\.1$/);
-  await stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 1, to: 9 } }, { instant: true });
-  stage.apply({ kind: 'settle' }, { instant: false }); assert.equal(floats(scene).at(-1).element.children[0]._html, '101 蓋一半');
+  assert.doesNotMatch(inner._html ?? '', /svg/); assert.equal(inner.textContent, 'Lv.1');
 });
-
 // 計畫 3.6：變身有預備動作（舊的先壓扁），大東西幾乎不晃、小東西彈得多，煙跟著零件大小
 test('a replaced part squashes before shrinking and the new one waits for it', async () => {
   const { stage, parts, run } = setup();
@@ -205,14 +202,20 @@ test('a replaced part squashes before shrinking and the new one waits for it', a
 const sized = (key, scale) => ({ id: 'milk', view: lv => lv.milk ? { [key]: { kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'box', pos: [0, scale / 2, 0], scale, color: 0xffffff }] } } : {} });
 const peak = async scale => {
   const { stage, parts, scene } = setup([sized('milk.main', scale)]);
-  stage.apply(placed, { instant: false }); const puffs = scene.getObjectByName('stage:puffs').children.length;
+  stage.apply(placed, { instant: false });
   let max = 0; for (let t = 0; t < 1; t += 1 / 60) { stage.update(1 / 60, t); max = Math.max(max, parts()[0].scale.x); }
-  return { max, puffs };
+  return { max, smoke: scene.getObjectByName('stage:puffs') };
 };
 test('big parts barely overshoot; small parts bounce', async () => {
   assert.ok((await peak(20)).max < 1.03, 'ring-sized'); assert.ok((await peak(0.4)).max > 1.08, 'lamp-sized');
 });
-test('puff count grows with part size, and a brand-new part puffs too', async () => {
-  const small = await peak(0.4), big = await peak(20);
-  assert.equal(small.puffs, 3); assert.equal(big.puffs, 10);
+// 使用者 2026-10-25：升級時不要白煙；彈出也放慢一點（Lv 動畫延長）
+test('level changes make no smoke', async () => {
+  assert.equal((await peak(0.4)).smoke, undefined); assert.equal((await peak(20)).smoke, undefined);
+});
+test('the pop takes about three quarters of a second', async () => {
+  const { stage, run } = setup(); let done = false;
+  stage.apply(placed, { instant: false }).then(() => { done = true; });
+  run(0.6); await new Promise(r => setTimeout(r, 0)); assert.equal(done, false);
+  run(0.3); await new Promise(r => setTimeout(r, 0)); assert.equal(done, true);
 });

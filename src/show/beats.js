@@ -148,13 +148,14 @@ const flashable = ({ key, at }) => !atOrigin(at) || key.split('.')[0] in ANCHORS
 // 白光由這拍自己照時間放（不用 flash 的 delay），等著的才不會先算進畫面上的白光
 export function apply(e, { flash = true, only, hold } = {}) {
   let changed = [], fired = 0, t = 0;
-  const opts = { ...(only && { only }), ...(hold && { hold }), deferred: flash };
+  // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
+  const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: flash }; };
   return {
-    kind: 'apply', only,   // only 留在拍上給測試看（劇本套了哪些鍵、什麼順序）
+    kind: 'apply', only,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）
     dur: () => (changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
     estimate: () => (flash ? FLASH : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一道白光
     start(ctx) {
-      const all = ctx.stage.apply(e, opts).changed; fired = 0; t = 0;
+      const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;
       const pending = new Set(flash ? ctx.stage.pendingKeys() : []);
       changed = all.filter(c => pending.has(c.key) && flashable(c));
       if (!changed.length) return false;

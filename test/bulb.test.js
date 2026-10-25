@@ -91,13 +91,14 @@ const fakeCtx = (el = null) => ({ B, roster: { members: k => (k === 'bulb.electr
 const flat = beats => beats.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
 const onlys = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).flatMap(b => b.only);
 const E = to => ({ kind: 'grow', item: 'bulb', to });
-const applies = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => b.only);
+// only 可能是 ctx => 鍵（演到才算）：用假 ctx 解開
+const applies = (beats, ctx) => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => (typeof b.only === 'function' ? b.only(ctx) : b.only));
 const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 1 ? ['bulb.market', 'sat.lighthouse'] : [])]);
 test('grow 2 lights the stops one by one along the road (posts with the first; market and lighthouse with the last)', () => {
   const s = { lv: lv({ bulb: 2 }), flags: {} };
-  assert.deepEqual(applies(bulb.script.grow[2](E(2), s, fakeCtx())), stopOrder(0));
+  const c0 = fakeCtx(); assert.deepEqual(applies(bulb.script.grow[2](E(2), s, c0), c0), stopOrder(0));
   // 電工在半路上：從他最近的那站開始，沿路繞一圈（順序照樣沿路）；第 9 盞是第 5 站
-  const p = bulb.lampApproach(9), got = applies(bulb.script.grow[2](E(2), s, fakeCtx({ pos: p, head: () => p })));
+  const p = bulb.lampApproach(9), c9 = fakeCtx({ pos: p, head: () => p }), got = applies(bulb.script.grow[2](E(2), s, c9), c9);
   assert.ok(bulb.LAMP_STOPS[5].includes(9)); assert.deepEqual(got, stopOrder(5));
   // 直接找 walk 的速度：快走 2.4，不衝刺
   assert.ok(flat(bulb.script.grow[2](E(2), s, fakeCtx())).filter(b => b.kind === 'walk').length === N_STOPS);
@@ -123,7 +124,7 @@ async function liveAt({ run, bubblesLog }, order, pred) {
   throw new Error('event not found');
 }
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
-const MAX_SECS = { 1: 8, 2: 20, 3: 10, 4: 10, 5: 10 };   // Lv2 電工快走繞全島一圈（約 17 s；回合 8–45 s 由 pace 管）
+const MAX_SECS = { 1: 8, 2: 22, 3: 10, 4: 10, 5: 10 };   // Lv2 電工快走繞全島一圈（實測 19–19.7 s；回合 8–45 s 由 pace 管）
 function checkBulb({ show, bubblesLog }, e, secs, n) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1;
   assert.ok(secs >= 3 && secs <= MAX_SECS[to], `${what} took ${secs.toFixed(1)}s`);
@@ -186,4 +187,43 @@ test('ROAD clears the core of every footprint at the end of both solutions', asy
       }
     });
   }
+});
+
+// 審查：起點那一站要用「第一段走路開始那一刻」電工的位置挑，不是建拍時（同回合前面的劇本演的時候他還在巡路）
+test('grow 2 picks its first stop from where the electrician is when the walk starts, not when the turn is built', async () => {
+  const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
+  let st = engine.createState(spec), evs = null;
+  for (const id of order) {
+    const r = engine.place(st, id, spec); st = r.state;
+    if (r.events.some(isBulb(2))) { evs = r.events; break; }
+    await run([...r.events, { kind: 'settle' }], { instant: true });
+  }
+  // 整回合 live 演（珍奶放置、鮮奶、晶片的劇本都在燈泡前面），電工在那段時間照常巡路
+  let atBuild = null, atWalk = null;
+  const scripted = bulb.script.grow[2];
+  bulb.script.grow[2] = (e, s2, ctx) => {
+    atBuild = { ...ctx.roster.members('bulb.electrician')[0].pos };
+    const beats = scripted(e, s2, ctx), w = beats[0], start = w.start;
+    w.start = c => { atWalk = { ...c.roster.members('bulb.electrician')[0].pos }; return start(c); };
+    return beats;
+  };
+  try {
+    const update = show.update, first = [];
+    show.update = (dt, t) => { update(dt, t); for (let i = 0; i < N_STOPS; i++) if (!first.includes(i) && show.stage.partObject(`bulb.lamps.${i}`)?.visible) first.push(i); };
+    assert.ok(evs.indexOf(evs.find(isBulb(2))) > 0, 'bulb grows after other events in the turn');
+    await run([...evs, { kind: 'settle' }]);
+    const nearest = p => bulb.LAMP_STOPS.reduce((b, gg, k) => (Math.hypot(bulb.lampApproach(gg[0]).x - p.x, bulb.lampApproach(gg[0]).z - p.z) < Math.hypot(bulb.lampApproach(bulb.LAMP_STOPS[b][0]).x - p.x, bulb.lampApproach(bulb.LAMP_STOPS[b][0]).z - p.z) ? k : b), 0);
+    assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1, 'electrician patrolled during the wait');
+    assert.equal(first[0], nearest(atWalk), `first stop ${first[0]} vs nearest at walk ${nearest(atWalk)} / at build ${nearest(atBuild)}`);
+  } finally { bulb.script.grow[2] = scripted; }
+});
+test('Lv4 never picks hidden islanders', () => {
+  const vis = { pos: { x: 9, z: 9 }, head: () => ({ x: 9, y: 0, z: 9 }) }, m = landmarkWorld('market');
+  const hid = { pos: { ...m }, hidden: true, head: () => m }, vis2 = { pos: { x: 8, z: 8 }, head: () => ({ x: 8, y: 0, z: 8 }) };
+  const ctx = { B, roster: { members: k => (k === 'landmarks.islanders' ? [hid, vis, vis2] : []) }, nav: { slots: () => [m, m] } };
+  const beats = flat(bulb.script.grow[4](E(4), { lv: lv({ bulb: 4 }), flags: {} }, ctx)).filter(b => b.kind === 'walk');
+  const who = [];
+  const fakeCtx2 = { ...ctx, roster: { ...ctx.roster, claim: x => who.push(x) }, nav: { route: (a, b) => [a, b], routeLength: () => 0, slots: () => [m, m] } };
+  for (const b of beats) b.start(fakeCtx2);
+  assert.ok(!who.includes(hid), 'hidden islander picked'); assert.equal(who.length, 2);
 });

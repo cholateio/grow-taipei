@@ -81,8 +81,14 @@ export function view(lv, flags) {
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const el = ctx => () => ctx.roster.members('bulb.electrician')[0] ?? null;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-// 離夜市最近的兩個島民（每段劇本自己記一組）
-const nearestPair = () => once(c => c.roster.members('landmarks.islanders').slice().sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
+// 從離 p 最近的那一站開始、沿路繞一圈的站序（沒有人就從第 0 站）
+function rotationFrom(p) {
+  const n = LAMP_STOPS.length, near = k => dist(lampApproach(LAMP_STOPS[k][0]), p);
+  const k0 = p ? LAMP_STOPS.reduce((b, _, k) => (near(k) < near(b) ? k : b), 0) : 0;
+  return LAMP_STOPS.map((_, i) => (k0 + i) % n);
+}
+// 離夜市最近的兩個看得見的島民（每段劇本自己記一組）
+const nearestPair = () => once(c => c.roster.members('landmarks.islanders').filter(m => !m.hidden).sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
 
 export const script = {
   // 電工從 101 工地走到路邊 → 敲 → 白光第一盞路燈 → 沿主路巡
@@ -97,14 +103,14 @@ export const script = {
     // 整條路：電工快走沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮；燈桿跟第一站一起出現）→ 夜市兩攤白光。
     // 從離他最近的那一站開始繞（他在主路上巡，人在哪就從哪開始）
     2(e, s, ctx) {
-      const { B } = ctx, m = el(ctx), p = ctx.roster.members('bulb.electrician')[0]?.pos;
-      const n = LAMP_STOPS.length, near = k => dist(lampApproach(LAMP_STOPS[k][0]), p);
-      const k0 = p ? LAMP_STOPS.reduce((b, _, k) => (near(k) < near(b) ? k : b), 0) : 0;
-      const stops = LAMP_STOPS.map((_, i) => (k0 + i) % n);
-      const go = k => B.walk(m, lampApproach(LAMP_STOPS[k][0]), { speed: LIGHTING_SPEED });
-      const light = (k, first, last) => B.apply(e, { only: [...(first ? ['bulb.posts'] : []), `bulb.lamps.${k}`, ...(last ? ['bulb.market', 'sat.lighthouse'] : [])] });
+      const { B } = ctx, m = el(ctx), n = LAMP_STOPS.length;
+      // 站的順序在第一段走路開始時才定（同回合前面的劇本演的時候他還在巡路）；之後每拍都照這個順序
+      const order = once(c => rotationFrom(c.roster.members('bulb.electrician')[0]?.pos));
+      const stop = i => c => order(c)[i];
+      const go = i => B.walk(m, c => lampApproach(LAMP_STOPS[stop(i)(c)][0]), { speed: LIGHTING_SPEED });
+      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 1 ? ['bulb.market', 'sat.lighthouse'] : [])] });
       return [
-        go(stops[0]), ...stops.slice(1).map((k, i) => B.together([go(k), light(stops[i], i === 0)])), light(stops.at(-1), false, true),   // 最後一站、夜市兩攤、燈塔島的燈同一拍依序閃（LEVEL UP 之後不再有白光）
+        go(0), ...Array.from({ length: n - 1 }, (_, i) => B.together([go(i + 1), light(i)])), light(n - 1),   // 最後一站、夜市兩攤、燈塔島的燈同一拍依序閃（LEVEL UP 之後不再有白光）
         B.home(m), B.levelUp('bulb'),
       ];
     },

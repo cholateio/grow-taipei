@@ -125,6 +125,15 @@ test('apply without flash is instant; only and hold are passed through', () => {
   assert.deepEqual(stage.calls[0][2], { only: ['x'], hold: ['y'], deferred: false });
   assert.equal(tl.currentKind, 'wait'); assert.equal(flash.count, 0); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet);
 });
+// only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候站哪）
+test('apply resolves a lazy only at start, not when the beat is built', () => {
+  const { ctx, tl, stage } = fake({ changed: ['x'] });
+  let pick = ['a'];
+  const beat = B.apply(ev, { flash: false, only: c => (assert.equal(c, ctx), pick) });
+  pick = ['x'];
+  tl.play([beat, B.wait(0.1)], ctx); tl.update(0);
+  assert.deepEqual(stage.calls[0][2], { only: ['x'], deferred: false });
+});
 test('a who function that returns nothing skips the beat', () => {
   const { ctx, tl, roster, bubbles } = fake(); const none = () => null;
   tl.play([B.walk(none, c([0, 0])), B.bubble(() => undefined, '！'), B.gesture(none, 'wave'), B.jump(none, () => c([0, 0])), B.home([none]), B.levelUp(none), B.wait(0.1)], ctx);

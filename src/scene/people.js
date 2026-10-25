@@ -3,8 +3,8 @@ import { mulberry32 } from './random.js';
 
 export const SHIRTS = [0xdb6a41, 0x5a88b2, 0xf2b5c6, 0x8db86f, 0xfcea8b, 0xffffff, 0x3f5a8a, 0xe8b04a];
 export const ACCESSORIES = ['none', 'cap', 'coat', 'suitcase', 'glass'];
-// 六角步道帶在邊中點只到 1.68，用 1.6 走才不會踩出島外
-export const WALK_RADIUS = 1.6;
+// 六角內切半徑 2.165，步道帶在邊中點只到 2.1 左右，用 2.0 走才不會踩出島外
+export const WALK_RADIUS = 2.0;
 const SKIN = 0xf3c9a5, HAIR = 0x3a2a22, INK = 0x211d1d, PANTS = [0x3a3a4a, 0x3f5a8a, 0x5c5650];
 
 export function walkPose(ph) { const s = Math.sin(ph); return { leg: 0.55 * s, arm: -0.45 * s, bob: Math.abs(s) * 0.012 }; }

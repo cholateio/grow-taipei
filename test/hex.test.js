@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { R, SPACING, TOP, axialToWorld, hexCorners, MAIN_CELLS, PLATEAU_CELLS, adjacentPairs, edgeMidpoint, SATELLITES, cellTop, RING_R } from '../src/scene/hex.js';
+import { R, SPACING, TOP, axialToWorld, hexCorners, MAIN_CELLS, PLATEAU_CELLS, adjacentPairs, edgeMidpoint, SATELLITES, cellTop, RING_R, cellAt, groundAt, PLATEAU_TOP, WATER_Y } from '../src/scene/hex.js';
 import { bridgeDecks } from '../src/scene/bridge.js';
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
@@ -36,11 +36,21 @@ test('satellites are outside the main island and apart from each other', () => {
     const p = axialToWorld(s.q, s.r), u = axialToWorld(t.q, t.r); assert.ok(Math.hypot(p.x - u.x, p.z - u.z) >= SPACING * 1.9, `${s.kind}-${t.kind}`);
   }
 });
-test('satellites stay within the overview frame (radius ≤ 11) and leave a channel to the main island', () => {
-  for (const s of SATELLITES) { const p = axialToWorld(s.q, s.r), d = Math.hypot(p.x, p.z); assert.ok(d <= 11, s.kind); const mainReach = Math.sqrt(3) * SPACING + R; assert.ok(d - R > mainReach + 0.5, s.kind); }
+test('satellites stay within the overview frame (radius ≤ 12) and leave a channel to the main island', () => {
+  for (const s of SATELLITES) { const p = axialToWorld(s.q, s.r), d = Math.hypot(p.x, p.z); assert.ok(d <= 12, s.kind); const mainReach = Math.sqrt(3) * SPACING + R; assert.ok(d - R > mainReach + 0.5, s.kind); }
 });
 test('bridgeDecks: 9 decks from a to b with a sine arch', () => {
   const d = bridgeDecks({ x: 0, z: 0 }, { x: 1, z: 0 });
   assert.equal(d.length, 9); assert.ok(near(d[0].x, 0, 0.1)); assert.ok(near(d[8].x, 1, 0.1));
   assert.ok(near(Math.max(...d.map(k => k.y)), TOP + 0.08, 1e-6)); assert.ok(near(d[0].y, TOP, 1e-6));
+});
+test('cellAt / groundAt: centre, plateau, channel, open water', () => {
+  assert.deepEqual(cellAt(0, 0), [0, 0]);
+  const p = axialToWorld(0, -1); assert.deepEqual(cellAt(p.x, p.z), [0, -1]); assert.equal(groundAt(p.x, p.z), PLATEAU_TOP);
+  const mid = (axialToWorld(0, 0).x + axialToWorld(1, 0).x) / 2;   // 兩格之間的水道
+  assert.equal(cellAt(mid, 0), null); assert.equal(groundAt(mid, 0), WATER_Y);
+  assert.equal(cellAt(30, 30), null);
+});
+test('island is 1.25× the policy-island hex: R 2.5, spacing 2.76, path ring 2.25', () => {
+  assert.equal(R, 2.5); assert.equal(SPACING, 2.76); assert.equal(RING_R, 2.25);
 });

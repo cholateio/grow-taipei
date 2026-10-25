@@ -2,7 +2,7 @@
 const n = Math.hypot(0.24, 0.33, 0.87);
 export const OVERVIEW_DIR = { x: 0.24 / n, y: 0.33 / n, z: 0.87 / n };
 
-export function overviewDistance(aspect) { return aspect >= 1.4 ? 28.5 : aspect >= 0.8 ? 38 : 56; }
+export function overviewDistance(aspect) { return aspect >= 1.4 ? 33 : aspect >= 0.8 ? 40 : 56; }
 export function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
 export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y: 0.6, z: 0 }, reducedMotion = false }) {

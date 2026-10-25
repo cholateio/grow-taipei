@@ -21,7 +21,7 @@ export function view(lv) {
   ] };
   else {
     // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山
-    v['typhoon.main'] = { kind: 'compound', at, shadow: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c, glow: c })) };
+    v['typhoon.main'] = { kind: 'compound', at, shadow: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
     const park = landmarkWorld('park');
     v['typhoon.park'] = { kind: 'compound', at: park, parts: [
       { kind: 'box', pos: [0, 0.01, 0], scale: [1.1, 0.02, 0.3], rot: [0, 0.6, 0], color: C.sand },

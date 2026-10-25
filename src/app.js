@@ -4,7 +4,7 @@ import * as THREE from '../vendor/three/three.module.js';
 import { createRenderer, pickQuality, CENTER } from './scene/renderer.js';
 import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
-import { buildIsland, buildSatellite } from './scene/island.js';
+import { buildIsland } from './scene/island.js';
 import { SATELLITES } from './scene/hex.js';
 import { buildTerrain } from './scene/terrain.js';
 import { SimplexNoise } from '../vendor/three/addons/math/SimplexNoise.js';
@@ -36,6 +36,7 @@ import * as typhoon from './actors/typhoon.js';
 import { worldEffects } from './actors/world.js';
 import { anchorWorld } from './actors/anchors.js';
 import { createGame } from './game.js';
+import { createPathCursor } from './scene/path.js';
 
 export async function start({ params, loading }) {
 
@@ -43,9 +44,8 @@ export async function start({ params, loading }) {
   const quality = pickQuality(params.get('quality'), { width: innerWidth, mobile: /Mobi|Android/i.test(navigator.userAgent) });
   const view = createRenderer(THREE, { canvas: document.getElementById('c'), labelsEl: document.getElementById('labels'), quality });
   const kit = createKit(THREE);
-  const island = buildIsland(THREE, kit);
+  const island = buildIsland(THREE, kit, { satellites: SATELLITES });
   view.scene.add(island.group);
-  for (const sat of SATELLITES) view.scene.add(buildSatellite(THREE, kit, sat, island.mats));
   view.scene.add(kit.build()); view.addGlow(kit.glowMaterials);
   const simplex = new SimplexNoise({ random: mulberry32(99) });
   const terrain = buildTerrain(THREE, { noise2: (x, z) => simplex.noise(x, z), quality });
@@ -68,6 +68,10 @@ export async function start({ params, loading }) {
     })),
     ...['Boat', 'BoatWSail'].map((b, i) => assets.spawn(`quat/ships/${b}.glb`, { h: [0.35, 0.8][i], y: WATER_Y - 0.02, parent: decor }).then(m => boats.push({ m, r: 16.5 + i * 2.2, a: i * 2.6, s: 0.05 + i * 0.015 }))),
   ]).catch(e => console.warn('裝飾模型載入失敗', e));
+  // 一隻柴犬沿中心格的步道反向散步（純裝飾，§7.3）
+  let shiba = null;
+  const shibaPath = createPathCursor([...ringPath(axialToWorld(0, 0), 1.8, cellTop([0, 0]))].reverse());
+  assets.spawn('quat/animals/ShibaInu.glb', { h: 0.22, anim: 'Walk', parent: decor }).then(m => { shiba = m; }).catch(e => console.warn('柴犬載入失敗', e));
   const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
   setTime(TIMES[params.get('time')] ?? TIMES.day);
   // 鏡頭：OrbitControls（阻尼、禁平移、仰角 25°–70°、距離 3–70）+ 全景／飛行
@@ -115,12 +119,17 @@ export async function start({ params, loading }) {
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
+  let autoDone = false, reported = false;
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
     rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t);
+    if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
+    // 自動播放（截圖）時第 240 幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
     for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
+    // 自動播放（截圖）演完後的第一幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
+    if (autoDone && !reported) { reported = true; console.warn(`[grow] calls=${view.renderer.info.render.calls} tris=${view.renderer.info.render.triangles}`); }
   });
   loading.hidden = true;
-  if (auto) (async () => { for (const id of auto) await pick(id); })();
+  if (auto) (async () => { for (const id of auto) await pick(id); autoDone = true; })();
 }

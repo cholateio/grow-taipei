@@ -31,6 +31,11 @@ try {
       const r = await run([...flags(name.includes('phone') ? '390,844' : '1280,800'), `--screenshot=shots/${name}.png`, base(query)]);
       const bad = (r.stderr || '').split('\n').filter(l => l.includes('CONSOLE') && /Uncaught|Error|Failed/.test(l));
       console.log(`${bad.length ? '✖' : '✔'} shots/${name}.png  (${query || '預設'})`);
+      // app 在 ?auto 時印的 [grow] calls=… 行：draw call 超過 150 加警告
+      for (const l of (r.stderr || '').split('\n').filter(l => l.includes('[grow]'))) {
+        const m = l.match(/\[grow\][^"]*/), calls = +(l.match(/calls=(\d+)/)?.[1] ?? 0);
+        console.log(`   ${calls > 150 ? '⚠ ' : ''}${m ? m[0] : l}`);
+      }
       for (const l of bad) console.log('   ' + l.replace(/^.*CONSOLE[^"]*/, ''));
       if (bad.length || r.status !== 0) failed = true;
     }

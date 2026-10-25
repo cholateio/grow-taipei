@@ -18,3 +18,17 @@ test('every main cell gets a known ground kind, plateau is lawn, centre is brick
   for (const c of PLATEAU_CELLS) assert.equal(tileGround(c), 'lawn');
   assert.equal(tileGround([0, 0]), 'brick');
 });
+test('buildIsland merges all tiles (main + satellites) into one mesh per material (draw-call budget §10)', async () => {
+  const THREE = await import('../vendor/three/three.module.js');
+  const { buildIsland } = await import('../src/scene/island.js');
+  const { createKit } = await import('../src/scene/kit.js');
+  const { SATELLITES } = await import('../src/scene/hex.js');
+  const ctx2d = new Proxy({}, { get: () => () => {}, set: () => true });
+  const prevDoc = globalThis.document; globalThis.document = { createElement: () => ({ getContext: () => ctx2d, width: 0, height: 0 }) };
+  const island = buildIsland(THREE, createKit(THREE), { satellites: SATELLITES });
+  const meshes = []; island.group.traverse(o => { if (o.isMesh) meshes.push(o); });
+  assert.ok(meshes.length <= 16, `${meshes.length} meshes`);
+  assert.equal(new Set(meshes.map(m => m.material)).size, meshes.length, 'one mesh per material');
+  const sides = meshes.filter(m => m.castShadow); assert.ok(sides.length >= 1);
+  globalThis.document = prevDoc;
+});

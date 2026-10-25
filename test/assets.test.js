@@ -16,3 +16,9 @@ test('first asset batch is present, CC0-listed and small', () => {
   assert.ok(total < 1_000_000);
   const lic = readFileSync('assets/LICENSES.md', 'utf8'); assert.match(lic, /Kenney/); assert.match(lic, /Quaternius/); assert.match(lic, /CC0/);
 });
+test('every assets/<source>/<pack>/ folder has a CC0 row in LICENSES.md, and the rat and shiba are shipped', async () => {
+  const { readdirSync } = await import('node:fs');
+  const lic = readFileSync('assets/LICENSES.md', 'utf8');
+  for (const src of ['kenney', 'quat']) for (const pack of readdirSync(`assets/${src}`)) assert.ok(lic.includes(`\`${src}/${pack}/\``), `${src}/${pack}`);
+  for (const f of ['assets/quat/enemies/Rat.glb', 'assets/quat/animals/ShibaInu.glb']) assert.ok(existsSync(f), f);
+});

@@ -2,6 +2,7 @@
 import { R, TOP, WATER_Y, RING_R, MAIN_CELLS, PLATEAU_CELLS, axialToWorld, hexCorners, cellTop, adjacentPairs, edgeMidpoint } from './hex.js';
 import { bridgeDecks } from './bridge.js';
 import { groundTexture } from './textures.js';
+import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 const RIM_COLORS = [0xdb6a41, 0xfcea8b, 0x6f7fb5, 0x58a6a6, 0xf2b5c6];
@@ -29,22 +30,32 @@ function worldUV(geo, ox, oz) {
   uv.needsUpdate = true;
 }
 
-function buildTile(THREE, { center, top }, { ground, rim, mats }) {
-  const g = new THREE.Group();
-  g.position.set(center.x, 0, center.z);
+// 一格六角的七片幾何（島面、側壁、彩色帶、路緣、步道環、淺水環、泡沫），已平移到世界座標
+function tilePieces(THREE, { center, top }, { ground, rim, mats }) {
+  const out = [], put = (geo, mat, y, { cast = false, receive = false } = {}) => { geo.translate(center.x, y, center.z); out.push({ geo, mat, cast, receive }); };
   const surface = flatHex(THREE, R - 0.05); worldUV(surface, center.x, center.z);
-  const topMesh = new THREE.Mesh(surface, mats.ground(ground)); topMesh.position.y = top; topMesh.receiveShadow = true;
+  put(surface, mats.ground(ground), top, { receive: true });
   const sideH = top - (WATER_Y - 0.6);
-  const side = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.97, sideH, 6, 1, true), mats.rock);
-  side.position.y = top - sideH / 2; side.castShadow = side.receiveShadow = true;
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.012, R + 0.012, 0.16, 6, 1, true), mats.solid(rim));
-  band.position.y = top - 0.09;
-  const curb = new THREE.Mesh(flatHexRing(THREE, R - 0.16, R), mats.curb); curb.position.y = top + 0.006; curb.receiveShadow = true;
-  const ring = new THREE.Mesh(flatHexRing(THREE, RING_R - 0.14, RING_R + 0.14), mats.path); ring.position.y = top + 0.01; ring.receiveShadow = true;
-  const shallow = new THREE.Mesh(flatHexRing(THREE, R, R + 0.7), mats.shallow); shallow.position.y = WATER_Y + 0.008;
-  const foam = new THREE.Mesh(flatHexRing(THREE, R + 0.05, R + 0.16), mats.foam); foam.position.y = WATER_Y + 0.016;
-  g.add(topMesh, side, band, curb, ring, shallow, foam);
-  return g;
+  put(new THREE.CylinderGeometry(R, R * 0.97, sideH, 6, 1, true), mats.rock, top - sideH / 2, { cast: true, receive: true });
+  put(new THREE.CylinderGeometry(R + 0.012, R + 0.012, 0.16, 6, 1, true), mats.solid(rim), top - 0.09);
+  put(flatHexRing(THREE, R - 0.16, R), mats.curb, top + 0.006, { receive: true });
+  put(flatHexRing(THREE, RING_R - 0.14, RING_R + 0.14), mats.path, top + 0.01, { receive: true });
+  put(flatHexRing(THREE, R, R + 0.7), mats.shallow, WATER_Y + 0.008);
+  put(flatHexRing(THREE, R + 0.05, R + 0.16), mats.foam, WATER_Y + 0.016);
+  return out;
+}
+
+// 同材質的片合成一個 mesh：14 格 × 7 片原本是 98 個 draw call，合併後十來個（§10 ≤ 150）
+function mergeByMaterial(THREE, pieces) {
+  const group = new THREE.Group(), byMat = new Map();
+  for (const p of pieces) { if (!byMat.has(p.mat)) byMat.set(p.mat, []); byMat.get(p.mat).push(p); }
+  for (const [mat, list] of byMat) {
+    const mesh = new THREE.Mesh(mergeGeometries(list.map(p => p.geo)), mat);
+    mesh.castShadow = list[0].cast; mesh.receiveShadow = list[0].receive;
+    list.forEach(p => p.geo.dispose());
+    group.add(mesh);
+  }
+  return group;
 }
 
 function materials(THREE) {
@@ -83,17 +94,18 @@ function addBridge(kit, cellA, cellB) {
   }
 }
 
-export function buildIsland(THREE, kit, { cells = MAIN_CELLS } = {}) {
-  const mats = materials(THREE), group = new THREE.Group(), tiles = tileLayout(cells);
-  tiles.forEach((t, i) => group.add(buildTile(THREE, t, { ground: tileGround(t.cell), rim: RIM_COLORS[i % RIM_COLORS.length], mats })));
+export function buildIsland(THREE, kit, { cells = MAIN_CELLS, satellites = [] } = {}) {
+  const mats = materials(THREE), tiles = tileLayout(cells), pieces = [];
+  tiles.forEach((t, i) => pieces.push(...tilePieces(THREE, t, { ground: tileGround(t.cell), rim: RIM_COLORS[i % RIM_COLORS.length], mats })));
   for (const [a, b] of adjacentPairs(cells)) addBridge(kit, a, b);
-  return { group, tiles, mats };
+  for (const sat of satellites) pieces.push(...buildSatellite(THREE, kit, sat, mats));
+  return { group: mergeByMaterial(THREE, pieces), tiles, mats };
 }
 
-// 衛星島：單格，比主島矮一點，上面一個小地標
+// 衛星島：單格，比主島矮一點，上面一個小地標（進 kit）。回傳島本身的幾何片，由 buildIsland 一起合併
 export function buildSatellite(THREE, kit, sat, mats) {
   const center = axialToWorld(sat.q, sat.r), top = TOP - 0.2;
-  const group = buildTile(THREE, { center, top }, { ground: sat.kind === 'rocks' ? 'stripes' : 'lawn', rim: 0xe4d6c3, mats });
+  const pieces = tilePieces(THREE, { center, top }, { ground: sat.kind === 'rocks' ? 'stripes' : 'lawn', rim: 0xe4d6c3, mats });
   const P = (kind, [x, y, z], scale, color, rot) => kit.part(kind, { pos: [center.x + x, top + y, center.z + z], scale, color, rot });
   const tree = (x, z, s = 1, leaf = 0x9bbd7e) => { P('trunk', [x, 0.25 * s, z], [0.12 * s, 0.5 * s, 0.12 * s], 0x9c7a4e); P('leaf', [x, 0.72 * s, z], 0.75 * s, leaf); };
   switch (sat.kind) {
@@ -116,5 +128,5 @@ export function buildSatellite(THREE, kit, sat, mats) {
     case 'chest':
       P('rbox', [0.2, 0.17, 0.2], [0.55, 0.34, 0.4], 0x9a6a3c); P('rbox', [0.2, 0.37, 0.2], [0.58, 0.08, 0.43], 0xe8c547); tree(-0.6, -0.3, 0.9); break;
   }
-  return group;
+  return pieces;
 }

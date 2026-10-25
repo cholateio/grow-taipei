@@ -2,8 +2,8 @@
 const n = Math.hypot(0.24, 0.33, 0.87);
 export const OVERVIEW_DIR = { x: 0.24 / n, y: 0.33 / n, z: 0.87 / n };
 
-// 近一點：主島佔滿畫面，外圈衛星島可以被切到（使用者 2026-10-25）
-export function overviewDistance(aspect) { return aspect >= 1.4 ? 27 : aspect >= 0.8 ? 34 : 56; }
+// 再拉近：主島佔滿畫面，外圈衛星島可以被切到（使用者 2026-10-25）
+export function overviewDistance(aspect) { return aspect >= 1.4 ? 19 : aspect >= 0.8 ? 26 : 40; }
 export function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
 export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y: 0.6, z: 0 }, reducedMotion = false }) {
@@ -23,8 +23,14 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
     get flying() { return !!flight; },
     setReducedMotion(flag) { reducedMotion = flag; if (flag && flight) go(flight.pos, flight.target, 0); },
     fit(a) { aspect = a; go(overviewPos(), home.clone(), 0); },
-    overview(ms = 800) { go(overviewPos(), home.clone(), ms); },
-    focus(target, offset = { x: 1.6, y: 2.5, z: 3.2 }, ms = 800) { const t = v(target); go(t.clone().add(v(offset)), t, ms); },
+    // 回到全景框景
+    home(ms = 1000) { go(overviewPos(), home.clone(), ms); },
+    overview(ms = 1000) { return this.home(ms); }, // 舊名，app.js 在 Task 9 前還在用
+    // 平移：鏡頭與注視點同向移動 target − home，視角不變
+    panTo(target, ms = 1000) {
+      const t = v(target), delta = t.clone().sub(home);
+      go(overviewPos().add(delta), t, ms);
+    },
     cancel() { flight = null; },
     update(dt) {
       if (flight) {

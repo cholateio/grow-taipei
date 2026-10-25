@@ -7,7 +7,7 @@
 
 export const ORDER = ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'];
 // 飛彈倒數：第 8 個物品放完後，全島再自己長這麼多回合才迎接飛彈（晚放的東西才來得及長大）
-export const CLOSING_TURNS = 2;
+export const CLOSING_TURNS = 3;
 
 const and = (...c) => ({ and: c });
 const age = (id, n) => ({ age: [id, n] });
@@ -19,32 +19,32 @@ export const ITEMS = {
   milk: {
     name: '鮮奶', max: 6,
     // 牛奶箱 → 小學 → 長高（自己長）→ 鐘塔：要有少棒隊；北士科廠房一開工老師全跳槽去當工程師，所以要趕在晶片升級前
-    up: { 2: age('milk', 1), 3: age('milk', 2), 4: and(min('baseball', 2), max('chip', 1)), 5: age('milk', 4), 6: age('milk', 5) },
+    up: { 2: age('milk', 1), 3: age('milk', 2), 4: age('milk', 3), 5: and(age('milk', 4), min('baseball', 2)), 6: min('chip', 3) },
   },
   chip: {
     name: '晶片', max: 6,
     // 工地 → 廠房 → 園區（自己長）→ 總部要有喝鮮奶長大的人才 → 颱風過後矽盾才經過考驗
-    up: { 2: age('chip', 1), 3: age('chip', 2), 4: min('milk', 3), 5: min('typhoon', 3), 6: age('chip', 5) },
+    up: { 2: age('chip', 1), 3: age('chip', 2), 4: min('milk', 3), 5: min('token', 3), 6: min('typhoon', 3) },
   },
   bulb: {
     name: '燈泡', max: 5,
     // 路燈 → 整條路 → 霓虹（自己長）→ 大巨蛋開打夜場才全島 LED
-    up: { 2: age('bulb', 1), 3: age('bulb', 2), 4: min('baseball', 3), 5: age('bulb', 4) },
+    up: { 2: age('bulb', 1), 3: age('bulb', 2), 4: age('bulb', 3), 5: min('baseball', 4) },
   },
   token: {
     name: '代幣', max: 6,
     // 車站 → 列車 → 環狀線（自己長）→ 老鼠學會搭捷運之後沒人敢開車，改無人駕駛；但要趕在全島 LED 之前，不然電不夠
-    up: { 2: age('token', 1), 3: age('token', 2), 4: and(min('rat', 3), max('bulb', 3)), 5: age('token', 4), 6: age('token', 5) },
+    up: { 2: age('token', 1), 3: age('token', 2), 4: min('baseball', 3), 5: age('token', 4), 6: and(min('rat', 3), max('bulb', 4)) },
   },
   typhoon: {
     name: '颱風', max: 3,
     // 有棒球場的話，颱風會賴在球場上不走
-    up: { 2: age('typhoon', 1), 3: and(age('typhoon', 2), max('baseball', 0)) },
+    up: { 2: age('typhoon', 1), 3: and(age('typhoon', 2), max('baseball', 2)) },
     onLevel: {
       2: [
         { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },
         { when: and(present('token'), max('token', 2)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },
-        { when: and(min('rat', 2), min('baseball', 2)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
+        { when: and(min('rat', 2), min('baseball', 3)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
         { when: present('milk'), story: '颱風假！小朋友在家看電視' },
         { when: present('boba'), delta: { target: 'boba', by: 1 }, story: '颱風天珍奶外送爆單' },
       ],
@@ -52,8 +52,8 @@ export const ITEMS = {
   },
   rat: {
     name: '老鼠', max: 5,
-    // 一隻 → 一窩：學校蓋好有人打掃就不生了，要趁牛奶箱還沒變學校 → 搭捷運：要有列車 → 分岔
-    up: { 2: and(age('rat', 1), max('milk', 1)), 3: and(age('rat', 2), min('token', 2)), 4: age('rat', 3), 5: age('rat', 4) },
+    // 老鼠要趁亂生一窩：學校（鮮奶 2）、看台（棒球 2）蓋好都有人打掃，颱風過後大掃除（颱風 3）也生不出來
+    up: { 2: and(age('rat', 1), max('milk', 1), max('baseball', 1), max('typhoon', 2)), 3: and(age('rat', 2), min('token', 2)), 4: age('rat', 3), 5: age('rat', 4) },
     onLevel: {
       2: [
         { when: present('milk'), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },
@@ -67,7 +67,7 @@ export const ITEMS = {
   boba: {
     name: '珍奶', max: 4,
     // 攤車 → 排隊人龍（自己長）→ 廠房的工程師加班狂喝，攤車撐不住，升級成噴泉廣場
-    up: { 2: age('boba', 1), 3: min('chip', 2), 4: age('boba', 3) },
+    up: { 2: age('boba', 1), 3: min('chip', 2), 4: min('token', 4) },
     onLevel: {
       3: [{ when: max('milk', 1), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },
@@ -75,13 +75,13 @@ export const ITEMS = {
   baseball: {
     name: '棒球', max: 6,
     // 沙地 → 大巨蛋：要趕在捷運通車前蓋（通車後交通評估就過不了）→ 捷運載觀眾開賽 → 燈光夠亮開演唱會
-    up: { 2: and(age('baseball', 1), max('token', 1)), 3: min('token', 2), 4: min('bulb', 3), 5: age('baseball', 4), 6: age('baseball', 5) },
+    up: { 2: age('baseball', 1), 3: and(age('baseball', 2), max('token', 1)), 4: min('token', 2), 5: min('bulb', 3), 6: min('boba', 2) },
   },
 };
 
 export const AFTER_TURN = [
-  // 放了五回合學校還沒蓋鐘塔（少棒隊一直沒組成、或被老鼠和停電拖累）→ 鮮奶過期
-  { when: and(present('milk'), max('milk', 3), age('milk', 5)), flag: { name: 'milkExpired' }, story: '鮮奶放到過期了…' },
+  // 放了六回合學校還沒蓋鐘塔（少棒隊一直沒組成、或被老鼠和停電拖累）→ 鮮奶過期
+  { when: and(present('milk'), max('milk', 4), age('milk', 6)), flag: { name: 'milkExpired' }, story: '鮮奶放到過期了…' },
 ];
 
 export const STORIES = {

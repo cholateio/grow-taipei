@@ -8,6 +8,8 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople } from '../src/scene/people.js';
 installFakeDom();
 const { createStage } = await import('../src/actors/stage.js');
+import { enumerate, stats } from '../src/solver/run.js';
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const modules = await Promise.all(['landmarks', 'tower', 'milk', 'baseball', 'chip', 'rat', 'bulb', 'token', 'boba', 'typhoon'].map(m => import(`../src/actors/${m}.js`)));
 
 // 真模組跑完整一局（賽博與外星兩條解）再 RESET：發光登記表、小人、模型都要回到開局（審查 #1、#2）
@@ -17,7 +19,7 @@ test('full games with the real modules leave no glow, walkers or models behind a
   const glow = createGlowRegistry(), people = createPeople(THREE, { max: 48 });
   const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow } });
   const base = { glow: glow.size, walkers: people.walkers.length };
-  for (const order of [['typhoon', 'rat', 'milk', 'baseball', 'chip', 'token', 'bulb', 'boba'], ['typhoon', 'rat', 'milk', 'baseball', 'token', 'chip', 'bulb', 'boba']]) {
+  for (const order of SOLUTIONS) {
     let s = engine.createState(spec);
     for (const id of order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); await new Promise(res => setTimeout(res, 0)); }
     for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); }

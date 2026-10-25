@@ -69,6 +69,33 @@ export function greedyOrder(spec = defaultSpec) {
   return order;
 }
 
+// 節奏（§6.5 #6，使用者 2026-10-25「末期統一升等很突然」）：正解逐回合重播（含倒數），
+// 同一回合到 MAX 的物品 ≤ 3 個，且「有物品到 MAX」的回合至少 4 個不同回合。
+// （每回合「升級」數不設限：每個物品每回合自己長一級，中盤六七個一起長正是熱鬧的地方）
+export const PACING = { maxMaxesPerTurn: 3, minMaxTurns: 4 };
+export function pacing(full, spec = defaultSpec) {
+  let maxGrowsPerTurn = 0, maxMaxesPerTurn = 0, maxTurns = Infinity;
+  const failures = [];
+  for (const r of full) {
+    let state = createState(spec);
+    const steps = [...r.order.map(id => s => place(s, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS ?? 0 }, () => s => advance(s, spec))];
+    const turnsWithMax = new Set(); let worstGrows = 0, worstMaxes = 0;
+    steps.forEach((step, t) => {
+      const res = step(state); state = res.state;
+      worstGrows = Math.max(worstGrows, res.events.filter(e => e.kind === 'grow').length);
+      const maxed = new Set(res.events.filter(e => (e.kind === 'grow' && e.to === spec.ITEMS[e.item].max) || (e.delta && e.delta.to === spec.ITEMS[e.delta.target].max)).map(e => e.delta?.target ?? e.item));
+      if (maxed.size) turnsWithMax.add(t);
+      worstMaxes = Math.max(worstMaxes, maxed.size);
+    });
+    maxGrowsPerTurn = Math.max(maxGrowsPerTurn, worstGrows); maxMaxesPerTurn = Math.max(maxMaxesPerTurn, worstMaxes); maxTurns = Math.min(maxTurns, turnsWithMax.size);
+    const name = r.order.join(',');
+    if (worstMaxes > PACING.maxMaxesPerTurn) failures.push(`節奏：${name} 有一回合 ${worstMaxes} 個物品同時到 MAX（上限 ${PACING.maxMaxesPerTurn}）`);
+    if (turnsWithMax.size < PACING.minMaxTurns) failures.push(`節奏：${name} 只有 ${turnsWithMax.size} 個回合出現 MAX（至少 ${PACING.minMaxTurns}）`);
+  }
+  if (!full.length) maxTurns = 0;
+  return { ok: failures.length === 0, maxGrowsPerTurn, maxMaxesPerTurn, maxTurns, failures };
+}
+
 export function stats(results, spec = defaultSpec) {
   const byEnding = {}, maxHist = new Array(spec.ORDER.length + 1).fill(0);
   let sumMax = 0;
@@ -94,6 +121,7 @@ export function check(results, spec = defaultSpec) {
   // 一回合一級的節奏下大家都會長一些，門檻從 3 放寬到 3.5（§6.5 #4，2026-10-25）
   if (s.avgMax > 3.5) failures.push(`隨機順序平均 MAX 數必須 ≤ 3.5，目前 ${s.avgMax.toFixed(2)}`);
   if (s.greedyReachesTrue) failures.push('貪婪策略不能走到真結局');
+  failures.push(...pacing(s.full, spec).failures);
   const errs = results.filter(r => r.error);
   if (errs.length) failures.push(`${errs.length} 種順序讓引擎出錯，例如 ${errs[0].order.join(',')}：${errs[0].error}`);
   return { ok: failures.length === 0, failures };

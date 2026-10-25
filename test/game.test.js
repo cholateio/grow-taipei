@@ -4,7 +4,8 @@ import { createGame } from '../src/game.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import * as endings from '../src/rules/endings.js';
-const CYBER = ['typhoon','rat','milk','baseball','chip','token','bulb','boba'];   // solutions.md 的賽博龐克正解
+import { enumerate, stats } from '../src/solver/run.js';
+const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 正解從求解器取，規則改了不用手改
 function fakes() {
   const ui = { levels: {}, placed: [], busy: [], setLevel(id, lv) { this.levels[id] = lv; }, setPlaced(id) { this.placed.push(id); }, setBusy(f) { this.busy.push(f); }, reset() { this.levels = {}; this.placed = []; } };
   const actors = { applied: [], apply(e) { this.applied.push(e); return Promise.resolve(); }, reset() { this.applied = []; } };

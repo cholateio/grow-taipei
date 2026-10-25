@@ -46,5 +46,5 @@ button.primary:hover { background: #3a3333; }
 .card.error h2 { color: var(--ink); }
 
 .actor-label { background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px #4a2a1414; white-space: nowrap; transform: translateY(-8px); }
-.actor-label b { color: var(--coral); font: 700 10px ui-monospace, monospace; margin-left: 6px; }
+.actor-label b { color: var(--coral); font: 700 10px ui-monospace, monospace; margin-right: 5px; }
 .actor-bubble { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 10px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }

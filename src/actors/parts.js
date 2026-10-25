@@ -80,7 +80,7 @@ export function createPartFactory(THREE, ctx) {
   }
 
   function smoke(spec) {
-    const { n = 4, size = 0.2, rise = 1.2, color: hex = 0xffffff, opacity = 0.8 } = spec, object = new THREE.Group();
+    const { n = 4, size = 0.2, rise = 1.2, color: hex = 0xffffff, opacity = 0.8, offsetY = 0 } = spec, object = new THREE.Group();
     const puffs = Array.from({ length: n }, (_, i) => {
       const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: hex, transparent: true, depthWrite: false }));
       object.add(m); return { m, ph: i / n };
@@ -90,7 +90,7 @@ export function createPartFactory(THREE, ctx) {
       update(dt, t) {
         for (const p of puffs) {
           const k = (p.ph + t * 0.18) % 1;
-          p.m.position.set(Math.sin(k * 5 + p.ph * 7) * 0.15, k * rise, 0);
+          p.m.position.set(Math.sin(k * 5 + p.ph * 7) * 0.15, offsetY + k * rise, 0);
           p.m.scale.setScalar(size * (0.5 + k)); p.m.material.opacity = opacity * (1 - k) + 1e-3;
         }
       },

@@ -21,7 +21,7 @@ export function createGame({ spec, engine, endings, ui, director, actors, onFini
       if (current()) { for (const k of spec.ORDER) if (state.lv[k] > 0) ui.setLevel(k, state.lv[k]); ui.setBusy(false); }
     }
     if (!current()) return false;
-    onLevels(state.lv);
+    onLevels(state.lv, state.flags);
     if (engine.isComplete(state)) { finished = true; onFinished(endings.resolve(state, spec), state); }
     return true;
   }

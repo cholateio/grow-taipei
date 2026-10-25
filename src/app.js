@@ -22,7 +22,8 @@ import { createSlots } from './ui/slots.js';
 import { showHowTo, showEndCard, createTopBar } from './ui/cards.js';
 import { storageGet, storageSet } from './ui/format.js';
 import { createDirector } from './director.js';
-import { createPlaceholderActors } from './actors/placeholder.js';
+import { createStage } from './actors/stage.js';
+import * as landmarks from './actors/landmarks.js';
 import { anchorWorld } from './actors/anchors.js';
 import { createGame } from './game.js';
 
@@ -45,14 +46,14 @@ export async function start({ params, loading }) {
     const path = ringPath(axialToWorld(...cell), WALK_RADIUS, cellTop(cell));
     people.spawn({ path: k ? [...path].reverse() : path, speed: 0.32 + k * 0.06, accessory: k ? 'cap' : 'none' });
   }
-  // CC0 模型：台地種樹（主島其他格留給物品），海上兩艘船繞圈。載入失敗不擋開機。
+  // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品），海上兩艘船繞圈。載入失敗不擋開機。
   const assets = createAssets(THREE);
   const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
   const trng = mulberry32(3), decor = new THREE.Group(); view.scene.add(decor);
   const boats = [];
   Promise.all([
-    ...PLATEAU_CELLS.flatMap(cell => Array.from({ length: 5 }, (_, i) => {
-      const c = axialToWorld(...cell), a = i / 5 * Math.PI * 2 + trng(), d = 0.95 + trng() * 0.35;
+    ...PLATEAU_CELLS.flatMap(cell => Array.from({ length: 3 }, (_, i) => {
+      const c = axialToWorld(...cell), a = Math.PI * (1.15 + i * 0.35 + trng() * 0.15), d = 1.45 + trng() * 0.25;
       return assets.spawn(`kenney/nature/${TREES[Math.floor(trng() * TREES.length)]}.glb`, { x: c.x + Math.cos(a) * d, y: cellTop(cell), z: c.z + Math.sin(a) * d, h: 0.7 + trng() * 0.4, ry: trng() * 6, parent: decor, tint: { leaf: LEAVES[i % 3], bark: 0x9c7a4e } });
     })),
     ...['Boat', 'BoatWSail'].map((b, i) => assets.spawn(`quat/ships/${b}.glb`, { h: [0.35, 0.8][i], y: WATER_Y - 0.02, parent: decor }).then(m => boats.push({ m, r: 16.5 + i * 2.2, a: i * 2.6, s: 0.05 + i * 0.015 }))),
@@ -74,7 +75,7 @@ export async function start({ params, loading }) {
   // 介面、演員、導演、遊戲
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
-  const actors = createPlaceholderActors(THREE, { scene: view.scene, spec });
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks], ctx: { people, assets, glow: view.glow } });
   const director = createDirector({ onFocus: e => rig.focus(anchorWorld(e.delta?.target ?? e.item)), reducedMotion: motion.matches || !!auto });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));
@@ -83,7 +84,7 @@ export async function start({ params, loading }) {
   const game = createGame({
     spec, engine, endings, director, actors,
     ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
-    onLevels: lv => setTime(moodFor(lv)),
+    onLevels: (lv, flags) => setTime(moodFor(lv, flags)),
     onFinished: (ending, state) => {
       setTime(TIMES.night);
       showEndCard(uiRoot, {
@@ -105,7 +106,7 @@ export async function start({ params, loading }) {
   const clock = new THREE.Clock();
   view.renderer.setAnimationLoop(() => {
     const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
-    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt);
+    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t);
     for (const b of boats) { b.a += dt * b.s; b.m.position.set(Math.cos(b.a) * b.r, WATER_Y - 0.02 + Math.sin(t * 2 + b.r) * 0.02, Math.sin(b.a) * b.r); b.m.rotation.y = -b.a; }
     view.render();
   });

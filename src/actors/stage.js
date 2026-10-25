@@ -17,6 +17,9 @@ export function diffParts(prev, next) {
 
 const WIDE = 2.4, SHRINK = 0.9;   // 自動 footprint：水平邊長超過 WIDE 的不算（軌道、整圈路燈、彩虹），其餘縮 0.9
 
+// 老鼠咬鮮奶（§8.6 的反應）：鮮奶因老鼠掉級的那個事件
+export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause === 'rat' && e.delta.to < e.delta.from;
+
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   const factory = createPartFactory(THREE, { ...ctx, builders, THREE });
@@ -25,10 +28,11 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
   root.add(partsGroup); scene.add(root);
 
   // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
-  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來，到下一回合開始）
-  const META0 = { total: 0, landing: false };
+  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來，到下一回合開始）；
+  //   bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）
+  const META0 = { total: 0, landing: false, bitten: false };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
-  let landingStale = false;   // 登陸回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
+  let stale = null;   // 登陸／被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
   const live = new Map();          // key → { spec, part, fp }（pending 的新零件也在這裡）
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
@@ -103,11 +107,12 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
   }
 
   function fold(e) {
-    if (landingStale) { landingStale = false; meta = { ...meta, landing: false }; }
+    if (stale) { meta = { ...meta, ...stale }; stale = null; }
     ({ lv, flags } = foldEvent({ lv, flags }, e));
     if (landsTyphoon(e)) meta = { ...meta, landing: true };
+    if (bitesMilk(e)) meta = { ...meta, bitten: true };
     if (e.kind === 'settle') {
-      landingStale = meta.landing;
+      if (meta.landing || meta.bitten) stale = { landing: false, bitten: false };
       meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0) };
     }
   }
@@ -132,7 +137,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
       for (const e of live.values()) drop(e);
       for (const p of pending.values()) if (p.old) drop(p.old);
       live.clear(); pending.clear(); roster?.reset?.();
-      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; landingStale = false; seen = new WeakSet();
+      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; seen = new WeakSet();
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync();
     },

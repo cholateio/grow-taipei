@@ -118,10 +118,17 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     if (m.holder) { dress(m, {}); assets.release(m.holder); }
   }
 
-  // 依宣告調整一個成員的外觀（people：配件；模型：本體與天線／眼睛）；有換就藏起來等白光，回傳有沒有換
+  // 依宣告調整一個成員的外觀（people：配件、身高；模型：本體與天線／眼睛）；有換就藏起來等白光，回傳有沒有換
   function restyle(m, spec, i) {
     m.speed = spec.speed ?? WALK_SPEED[m.kind];
-    if (m.walker) { const acc = accOf(spec, i); if (m.walker.accessory === acc) return false; m.walker.setAccessory(acc); veil(m, next()); return true; }
+    if (m.walker) {
+      // people：配件或身高（鮮奶 Lv3 長高 1.3）變了就原地換，頭頂跟著抬高
+      const acc = accOf(spec, i), scale = spec.scale ?? 1;
+      if (m.walker.accessory === acc && m.walker.scale === scale) return false;
+      if (m.walker.accessory !== acc) m.walker.setAccessory(acc);
+      m.walker.scale = m.scale = scale; m.headY = headYOf(spec);
+      veil(m, next()); return true;
+    }
     const md = spec.model; if (!md) return false;
     if (body(m.dress) !== body(md) || (spec.scale ?? 1) !== m.scale) remodel(m, spec);
     else if (look(m.dress) !== look(md)) dress(m, md);

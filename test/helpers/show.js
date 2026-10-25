@@ -2,6 +2,7 @@
 // 假 rig（記錄 panTo／home）、world 記錄。測試與 tools/pace.mjs 都用它在 Node 裡把回合一幀一幀演完。
 import * as THREE from '../../vendor/three/three.module.js';
 import * as spec from '../../src/rules/spec.js';
+import * as engine from '../../src/rules/engine.js';
 import { installFakeDom } from './fakedom.js';
 import { createGlowRegistry } from '../../src/scene/glow.js';
 import { createPeople } from '../../src/scene/people.js';
@@ -57,5 +58,16 @@ export async function headlessShow({ modules = ALL, reducedMotion = false } = {}
   return { show, people, assets, rig, worldLog, bubblesLog, run, scene };
 }
 
-// TODO(Task 11)：playItem(show, run, order, itemId, check /* (e, secs) */)
-//   照 order 放完一局：itemId 的 placed／grow 事件單獨 live 演並呼叫 check，其他事件 instant；每回合最後 settle instant
+// 照 order 放完一局：itemId 的 placed／grow 事件單獨 live 演並呼叫 check(e, secs)，其他事件 instant；每回合最後 settle instant
+// （單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）
+export async function playItem(show, run, order, itemId, check) {
+  let s = engine.createState(spec);
+  for (const id of order) {
+    const r = engine.place(s, id, spec); s = r.state;
+    for (const e of r.events) {
+      if (e.item === itemId && (e.kind === 'placed' || e.kind === 'grow')) { const secs = await run([e]); await check(e, secs); }
+      else await run([e], { instant: true });
+    }
+    await run([{ kind: 'settle' }], { instant: true });
+  }
+}

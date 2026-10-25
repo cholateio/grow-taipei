@@ -151,6 +151,16 @@ test('the typhoon landing lasts through its turn end and clears on the next turn
   stage.apply(placed); assert.equal(stage.meta.landing, false, 'next turn');
   stage.apply({ kind: 'settle' }); assert.equal(stage.meta.landing, false);
 });
+// 老鼠咬鮮奶（fx、cause rat、鮮奶掉級）：小孩躲一回合，跟颱風登陸一樣撐過回合結束畫面，下一回合第一個事件才收
+test('a rat bite on milk sets meta.bitten through the turn settle; the next turn clears it', () => {
+  const { stage } = setup([fakeMilk]);
+  stage.apply(placed); stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 });
+  stage.apply({ kind: 'fx', item: 'rat', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } });
+  assert.equal(stage.meta.bitten, true);
+  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.bitten, true, 'still sheltering at rest');
+  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 }); assert.equal(stage.meta.bitten, false, 'next turn');
+  stage.apply({ kind: 'fx', item: 'rat', cause: 'rat', delta: { target: 'milk', from: 2, to: 2 } }); assert.equal(stage.meta.bitten, false, 'no level lost, no bite');
+});
 test('a turn with nothing but settle also ends the landing', () => {
   const { stage } = setup([fakeMilk]);
   stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });

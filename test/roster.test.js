@@ -9,7 +9,7 @@ import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
 import { FLASH_PEAK } from '../src/show/flash.js';
 installFakeDom();
-const { createRoster } = await import('../src/show/roster.js');
+const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
 
 const AT = anchorWorld('milk');
 const kids = n => ({ kind: 'roster', at: AT, n, shirt: 0xfcea8b, home: { kind: 'wander', at: AT, r: 1.0 } });
@@ -115,4 +115,12 @@ test('snap puts every member home at once, including home-mode members still wal
 // 小問題 2：同一份宣告，hold → 不 hold 也要套用
 test('re-declaring a held spec without hold applies it', () => {
   const { roster } = setup(); roster.declare('k', kids(2), { hold: true }); roster.declare('k', kids(2)); assert.equal(roster.members('k').length, 2);
+});
+// 鮮奶 Lv3 長高：同一群小孩原地變 1.3 倍（白光後露出），頭頂跟著抬高
+test('re-declaring with a new scale updates the walker scale and headY in place', () => {
+  const { roster, flash } = setup(); roster.declare('k', kids(3)); const ms = roster.members('k'); flash.update(1);
+  roster.declare('k', { ...kids(3), scale: 1.3 });
+  const now = roster.members('k'); assert.ok(now.every((m, i) => m === ms[i]), 'same members');
+  for (const m of now) { assert.equal(m.walker.scale, 1.3); assert.ok(Math.abs(m.headY - HEAD_Y.people * 1.3) < 1e-9); assert.ok(m.walker.pose.y < 0, 'veiled until the peak'); }
+  flash.update(1); assert.ok(now.every(m => m.walker.pose.y > 0));
 });

@@ -78,3 +78,10 @@ test('glb part releases its model from the asset system on dispose, and releases
   const b = f.build({ kind: 'glb', at, path: 'b.glb', h: 1 }); b.dispose(); await new Promise(r => setTimeout(r, 0));
   assert.equal(released.length, 2);
 });
+test('fireworks: one InstancedMesh of 60 sparks that bursts out from the centre and falls, no shadows', () => {
+  const { f } = setup();
+  const p = f.build({ kind: 'fireworks', at, colors: [0xff3fa0, 0x3fe0ff] }), mesh = p.object.children[0];
+  assert.equal(mesh.count, 60); assert.equal(mesh.castShadow, false);
+  const m = new THREE.Matrix4(), v = new THREE.Vector3(); p.update(0, 0.05); mesh.getMatrixAt(0, m); const r0 = v.setFromMatrixPosition(m).length();
+  p.update(0, 0.5); mesh.getMatrixAt(0, m); assert.ok(v.setFromMatrixPosition(m).length() > r0, 'spreads out');
+});

@@ -65,3 +65,7 @@ test('rats on a flooded line sit still on the stopped train (review #3)', async 
   const p = f.build(s); await new Promise(r => setTimeout(r, 0));
   p.update(0.1, 1); const a = p.object.children[0].position.clone(); p.update(0.1, 7); assert.ok(a.distanceTo(p.object.children[0].position) < 1e-9);
 });
+test('rat lv5 final forms: a ten-rat cyber army circling 101; the alien rat gets a hovering UFO', () => {
+  const c = rat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['rat.pack'], a = rat.view(lv({ rat: 5 }), { ratBranch: 'alien' });
+  assert.equal(c.n, 10); assert.equal(a['rat.ufo'].kind, 'ufo'); assert.equal(rat.view(lv({ rat: 4 }), { ratBranch: 'alien' })['rat.ufo'], undefined);
+});

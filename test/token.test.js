@@ -22,14 +22,16 @@ test('token lv2 track has 12 pylons whose heights come from groundAt', () => {
   for (const p of ps) { const base = groundAt(p.pos[0], p.pos[2]); assert.ok(Math.abs(p.pos[1] - p.scale[1] / 2 - base) < 1e-9); assert.ok(Math.abs(p.pos[1] + p.scale[1] / 2 - token.TRACK.y) < 1e-9); }
   assert.equal(v['token.train'].cars, 3);
 });
-test('token lv3 adds two spurs ending on the lighthouse and playground islands; lv4 makes the cars glow', () => {
-  const v = token.view(L({ token: 3 }), {}), spur = v['token.spurs'];
+test('lv3 five cars; lv4 two spurs to the lighthouse and playground islands; lv5 a shuttle; lv6 neon cars', () => {
+  assert.equal(token.view(L({ token: 3 }), {})['token.train'].cars, 5); assert.equal(token.view(L({ token: 3 }), {})['token.spurs'], undefined);
+  const v = token.view(L({ token: 4 }), {}), spur = v['token.spurs'];
   for (const kind of ['lighthouse', 'playground']) {
     const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r);
     assert.ok(spur.parts.some(p => p.kind === 'box' && Math.hypot(p.pos[0] - c.x, p.pos[2] - c.z) < 2.2), kind);
   }
-  assert.equal(v['token.train'].cars, 5); assert.ok(!v['token.train'].neon);
-  assert.ok(token.view(L({ token: 4 }), {})['token.train'].neon);
+  assert.equal(v['token.train'].cars, 5); assert.ok(!v['token.train'].neon); assert.equal(v['token.shuttle'], undefined);
+  assert.equal(token.view(L({ token: 5 }), {})['token.shuttle'].kind, 'shuttle'); assert.ok(!token.view(L({ token: 5 }), {})['token.train'].neon);
+  assert.ok(token.view(L({ token: 6 }), {})['token.train'].neon);
 });
 test('flooded turns the station into a pool with two swimmers and stops the train', () => {
   const v = token.view(L({ token: 2 }), { flooded: true });
@@ -37,7 +39,7 @@ test('flooded turns the station into a pool with two swimmers and stops the trai
 });
 test('train builder: cars follow trainPose and glow when neon', () => {
   const glow = createGlowRegistry(), f = createPartFactory(THREE, { glow, builders: token.builders });
-  const p = f.build({ ...token.view(L({ token: 4 }), {})['token.train'] }); p.update(0.1, 3);
+  const p = f.build({ ...token.view(L({ token: 6 }), {})['token.train'] }); p.update(0.1, 3);
   assert.equal(p.object.children.length, 5); const want = token.trainPose(3, 0);
   assert.ok(Math.abs(p.object.children[0].position.x - want.x) < 1e-9); assert.ok(glow.size > 0);
 });
@@ -47,4 +49,9 @@ test('the ring line runs in the water channel outside the main island, below the
   assert.ok(token.TRACK.radius > mainReach + 0.5 && token.TRACK.radius < satInner - 0.3, `${token.TRACK.radius} between ${mainReach} and ${satInner}`);
   assert.ok(token.TRACK.y <= TOP + 0.6);
   for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; assert.equal(groundAt(Math.cos(a) * token.TRACK.radius, Math.sin(a) * token.TRACK.radius), WATER_Y); }
+});
+test('shuttle runs back and forth on the lighthouse spur', () => {
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: token.builders });
+  const p = f.build(token.view(L({ token: 5 }), {})['token.shuttle']); p.update(0.5, 0.5); const a = p.object.children[0].position.clone(); p.update(1.5, 2);
+  assert.ok(a.distanceTo(p.object.children[0].position) > 0.3);
 });

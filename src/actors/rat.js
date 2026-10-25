@@ -1,4 +1,5 @@
-// 老鼠（§5.1）：一隻 → 一窩 5 隻 → 搭捷運（代幣 ≥2）或泡北投溫泉 → Lv4 分岔：機器鼠排隊跟偵防師（賽博）／變異鼠在溫泉邊對天空揮手（外星）。
+// 老鼠（§5.1）：一隻 → 一窩 5 隻 → 搭捷運（代幣 ≥2）或泡北投溫泉 → Lv4 分岔：機器鼠排隊跟偵防師（賽博）／變異鼠在溫泉邊對天空揮手（外星）
+// → Lv5 最終型態：機器鼠軍團繞 101 ／ 變異鼠頭上盤旋小 UFO。
 // 颱風把老鼠沖進大巨蛋：5 隻繞著巨蛋門口跑。模型用 Quaternius Easy Enemies 的 Rat。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { ringPath } from '../scene/people.js';
@@ -32,13 +33,28 @@ export function view(lv, flags) {
     };
     case 'spring': return { 'rat.pack': rats({ at: spring, anim: 'Idle', spots: Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Math.PI * 2 + 0.3; return { ...offset(spring, Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.1), yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }; }) }) };
     case 'train': return { 'rat.pack': rats({ at, h: 0.12, anim: 'Idle', train: { cars: lv.token >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35 } }) };
-    case 'cyber': return { 'rat.pack': rats({ at, tint: { Grey: 0xc0c8d0 }, antenna: true, loop: { path: ENGINEER_ROUTE, loop: false, speed: 0.6, phase: 0.1, step: 0.03 } }) };
-    case 'alien': return { 'rat.main': rats({ at: offset(spring, -0.75, 0.55, 0.05), n: 1, h: 0.5, anim: 'Idle', tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true }) };
+    // Lv5 最終型態：機器鼠軍團 10 隻繞 101 列隊（骨架動畫上限 12：10 + 柴犬）
+    case 'cyber': return lv.rat >= 5
+      ? { 'rat.pack': rats({ at, n: 10, tint: { Grey: 0xc0c8d0 }, antenna: true, loop: { path: ringPath(anchorWorld('tower'), 1.3, anchorWorld('tower').y), speed: 0.5, step: 0.1 } }) }
+      : { 'rat.pack': rats({ at, tint: { Grey: 0xc0c8d0 }, antenna: true, loop: { path: ENGINEER_ROUTE, loop: false, speed: 0.6, phase: 0.1, step: 0.03 } }) };
+    case 'alien': {
+      const mutant = offset(spring, -0.75, 0.55, 0.05), v = { 'rat.main': rats({ at: mutant, n: 1, h: 0.5, anim: 'Idle', tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true }) };
+      if (lv.rat >= 5) v['rat.ufo'] = { kind: 'ufo', at: offset(mutant, 0, 0, 1.3) };   // 變異鼠加冕：頭上盤旋一艘小 UFO（鋪外星結局）
+      return v;
+    }
     case 'dome': { const gate = offset(anchorWorld('baseball'), 0, 1.1); return { 'rat.pack': rats({ at: gate, loop: { path: ringPath(gate, 0.9, gate.y), speed: 1.1, step: 0.2 } }) }; }
   }
 }
 
 export const builders = {
+  // 小 UFO：銀色碟 + 綠色底光，在原地小圓盤旋、上下飄
+  ufo(THREE, spec, ctx) {
+    const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [
+      { kind: 'dome', pos: [0, 0, 0], scale: [0.9, 0.3, 0.9], color: 0xc0c8d0 }, { kind: 'cylinder', pos: [0, 0, 0], scale: [1.0, 0.04, 1.0], color: 0x9aa7b8 },
+      { kind: 'sphere', pos: [0, -0.06, 0], scale: [0.35, 0.12, 0.35], color: C.alien, glow: C.alien },
+    ] }), object = new THREE.Group(); object.add(part.object);
+    return { object, update(dt, t) { part.object.position.set(Math.cos(t * 0.8) * 0.3, Math.sin(t * 1.7) * 0.08, Math.sin(t * 0.8) * 0.3); part.object.rotation.y += dt * 2; }, dispose: part.dispose };
+  },
   // 一群老鼠：沿路徑（loop）、站定點（spots）、或坐在列車車頂（train）
   rats(THREE, spec, ctx) {
     const object = new THREE.Group(), at = spec.at, extras = [];

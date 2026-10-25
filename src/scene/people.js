@@ -3,7 +3,7 @@ import { mulberry32 } from './random.js';
 import { measurePath, locateOnPath } from './path.js';
 
 export const SHIRTS = [0xdb6a41, 0x5a88b2, 0xf2b5c6, 0x8db86f, 0xfcea8b, 0xffffff, 0x3f5a8a, 0xe8b04a];
-export const ACCESSORIES = ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike'];
+export const ACCESSORIES = ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike', 'mortar'];
 // 六角內切半徑 2.165，步道帶在邊中點只到 2.1 左右，用 2.0 走才不會踩出島外
 export const WALK_RADIUS = 2.0;
 const SKIN = 0xf3c9a5, HAIR = 0x3a2a22, INK = 0x211d1d, PANTS = [0x3a3a4a, 0x3f5a8a, 0x5c5650];
@@ -29,6 +29,7 @@ function partDefs(THREE) {
     ['lens', new THREE.TorusGeometry(0.028, 0.006, 6, 12)], ['handle', new THREE.CylinderGeometry(0.005, 0.005, 0.05, 5)],
     ['helmet', new THREE.SphereGeometry(0.08, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)],
     ['wheelF', new THREE.TorusGeometry(0.05, 0.012, 6, 14)], ['wheelB', new THREE.TorusGeometry(0.05, 0.012, 6, 14)],
+    ['mortar', new THREE.BoxGeometry(0.13, 0.015, 0.13)], ['tassel', new THREE.BoxGeometry(0.008, 0.05, 0.008)],   // 大學生的學士帽
     ['shadow', new THREE.CircleGeometry(0.07, 16).rotateX(-Math.PI / 2)],
   ];
 }
@@ -53,7 +54,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     const shirt = w.accessory === 'coat' ? 0xffffff : w.shirt;
     set('legL', w.pants); set('legR', w.pants); set('armL', shirt); set('armR', shirt); set('body', shirt);
     set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('cap', 0xfcea8b); set('shadow', 0);
-    set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK);
+    set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK); set('mortar', INK); set('tassel', 0xfcea8b);
     for (const m of Object.values(meshes)) m.instanceColor.needsUpdate = true;
   }
   function resize() { for (const m of Object.values(meshes)) m.count = walkers.length; walkers.forEach((w, i) => paint(i, w)); }
@@ -103,6 +104,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     show(acc === 'glass', 'lens', i, tr(0.09, 0.2, 0.06));
     show(acc === 'glass', 'handle', i, tr(0.09, 0.15, 0.06));
     show(acc === 'helmet', 'helmet', i, tr(0, 0.3 + lift, 0));
+    show(acc === 'mortar', 'mortar', i, tr(0, 0.36, 0)); show(acc === 'mortar', 'tassel', i, tr(0.055, 0.34, 0.03));
     const ry = new THREE.Matrix4().makeRotationY(Math.PI / 2);
     show(bike, 'wheelF', i, tr(0, 0.01, 0.07), ry); show(bike, 'wheelB', i, tr(0, 0.01, -0.07), ry);
     W.compose(new THREE.Vector3(p.x, p.y + 0.005, p.z), q, new THREE.Vector3(ks, ks, ks)); meshes.shadow.setMatrixAt(i, W);

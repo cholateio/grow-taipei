@@ -1,5 +1,5 @@
-// 101（§5.2）：不是物品，反映全島進度。總等級 0–6 工地（吊車會動）、7–14 半成品、15–22 完工、23+ 點燈。
-// 晶片 Lv4 長出矽盾天線、Lv5 每 3 秒閃一圈淡藍光；燈泡 Lv4 做燈光秀。
+// 101（§5.2）：不是物品，反映全島進度。總等級 0–8 工地（吊車會動）、9–18 半成品、19–29 完工、30+ 點燈。
+// 晶片 Lv5 長出矽盾天線、Lv6 每 3 秒閃一圈淡藍光；燈泡 Lv5 做燈光秀。
 import { anchorWorld } from './anchors.js';
 
 export const id = 'tower';
@@ -7,7 +7,8 @@ export const id = 'tower';
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45;
 
-export function stageOf(total) { return total >= 23 ? 'lit' : total >= 15 ? 'full' : total >= 7 ? 'half' : 'site'; }
+// 41 級後門檻跟著放大（原本 7/15/23）
+export function stageOf(total) { return total >= 30 ? 'lit' : total >= 19 ? 'full' : total >= 9 ? 'half' : 'site'; }
 
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
 function body(stage) {
@@ -36,13 +37,13 @@ export function view(lv) {
   const at = anchorWorld('tower'), total = Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
   const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, parts } };
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55] };
-  if (lv.chip >= 4) {
+  if (lv.chip >= 5) {
     // 矽盾天線：塔頂的環
     const ring = { kind: 'torus', pos: [0, top, 0], scale: 1.2, rot: [Math.PI / 2, 0, 0], color: CREAM };
-    v['tower.antenna'] = lv.chip >= 5 ? { kind: 'pulse', at, parts: [{ ...ring, color: NEON_BLUE, glow: NEON_BLUE }, { kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE }] }
+    v['tower.antenna'] = lv.chip >= 6 ? { kind: 'pulse', at, parts: [{ ...ring, color: NEON_BLUE, glow: NEON_BLUE }, { kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE }] }
       : { kind: 'compound', at, parts: [ring] };
   }
-  if (lv.bulb >= 4) v['tower.show'] = { kind: 'lightshow', at, parts: Array.from({ length: 8 }, (_, i) => {
+  if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = 1.0 + (i % 4) * (top - 1.2) / 4;
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相
   }) };

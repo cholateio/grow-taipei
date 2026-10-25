@@ -58,4 +58,10 @@ test('scale multiplies the whole figure', () => {
   head.getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); const k0 = s.x;
   head.getMatrixAt(1, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.ok(Math.abs(s.x / k0 - 1.3) < 1e-6);
 });
-test('ACCESSORIES lists the seven kinds', () => assert.deepEqual(ACCESSORIES, ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike']));
+test('ACCESSORIES lists the eight kinds', () => assert.deepEqual(ACCESSORIES, ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike', 'mortar']));
+test('mortar board: a flat black square on the head, only on its wearer', () => {
+  const people = createPeople(THREE, { max: 2 }), m = new THREE.Matrix4(), s = new THREE.Vector3();
+  people.spawn({ stand: { x: 0, y: 0, z: 0, yaw: 0 }, accessory: 'mortar' }); people.spawn({ stand: { x: 1, y: 0, z: 0, yaw: 0 } }); people.update(0, 0);
+  const mesh = people.group.getObjectByName('people:mortar'); mesh.getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.ok(s.x > 0);
+  mesh.getMatrixAt(1, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.equal(s.x, 0);
+});

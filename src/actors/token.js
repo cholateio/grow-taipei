@@ -1,8 +1,9 @@
-// 代幣（§5.1）：捷運站 → 高架環狀線與列車 → 支線接到兩座衛星島、5 節車 → 霓虹無人列車。捷運淹水時站體變游泳池、列車停駛。
+// 代幣（§5.1）：捷運站 → 環狀線與 3 節列車 → 5 節 → 支線接到兩座衛星島 → 接駁車 → 霓虹無人列車。捷運淹水時站體變游泳池、列車停駛。
 // TRACK 與 trainPose 也給老鼠用（老鼠坐在車頂上）。
 import { anchorWorld } from './anchors.js';
 import { TOP, groundAt, axialToWorld, SATELLITES } from '../scene/hex.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
+import { createPathCursor } from '../scene/path.js';
 
 export const id = 'token';
 export const labelY = 1.0;
@@ -18,6 +19,13 @@ export function trainPose(t, i, { speed = 0.35 } = {}) {
 }
 
 const pylon = (x, z) => { const base = groundAt(x, z), h = TRACK.y - base; return { kind: 'cylinder', pos: [x, base + h / 2, z], scale: [0.12, h, 0.12], color: C.curb }; };
+
+// 支線的中心線（給接駁車走）：從環上離衛星島最近的點到島上
+function spurPath(kind) {
+  const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), d = Math.hypot(c.x, c.z), ux = c.x / d, uz = c.z / d;
+  const y0 = TRACK.y + 0.1, y1 = TOP - 0.2 + 0.2;
+  return [{ x: ux * TRACK.radius, y: y0, z: uz * TRACK.radius }, { x: ux * (d - 1.0), y: y1, z: uz * (d - 1.0) }];
+}
 
 // 環上離衛星島最近的點，用 8 段階梯狀的高架一路降到島上
 function spur(kind) {
@@ -52,13 +60,20 @@ export function view(lv, flags) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
     v['token.track'] = { kind: 'compound', at: origin, parts };
-    if (n >= 3) v['token.spurs'] = { kind: 'compound', at: origin, parts: [...spur('lighthouse'), ...spur('playground')] };
-    v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 4 };
+    if (n >= 4) v['token.spurs'] = { kind: 'compound', at: origin, parts: [...spur('lighthouse'), ...spur('playground')] };
+    if (n >= 5) v['token.shuttle'] = { kind: 'shuttle', at: origin, path: spurPath('lighthouse'), speed: flags.flooded ? 0 : 0.6 };
+    v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 6 };
   }
   return v;
 }
 
 export const builders = {
+  // 小島接駁車：一節黃色小車在支線上來回
+  shuttle(THREE, spec, ctx) {
+    const car = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'rbox', pos: [0, 0.14, 0], scale: [0.25, 0.22, 0.4], color: C.yellow }, { kind: 'box', pos: [0, 0.18, 0], scale: [0.26, 0.06, 0.32], color: C.white }] });
+    const object = new THREE.Group(), cursor = createPathCursor(spec.path, { loop: false }); object.add(car.object);
+    return { object, update(dt) { cursor.advance(dt * spec.speed); const p = cursor.locate(); car.object.position.set(p.x, p.y, p.z); car.object.rotation.y = p.yaw; }, dispose: car.dispose };
+  },
   // 列車：每節一個圓角車廂 + 白色窗帶，沿環狀線跑；霓虹列車整節發藍光
   train(THREE, spec, ctx) {
     const object = new THREE.Group(), body = spec.neon ? { color: C.neonBlue, glow: C.neonBlue } : { color: C.blue };

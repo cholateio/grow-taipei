@@ -2,6 +2,6 @@
 import { TIMES } from '../scene/daynight.js';
 
 export function worldEffects(lv, flags) {
-  const time = flags.blackout || lv.bulb >= 4 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
+  const time = flags.blackout || lv.bulb >= 5 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
   return { time, peopleVisible: lv.typhoon !== 2, glowScale: flags.blackout ? 0 : 1 };
 }

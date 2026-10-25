@@ -1,4 +1,4 @@
-// 燈泡（§5.1）：一盞路燈 → 五個低格的路都有燈、夜市兩攤 → 霓虹（粉藍交錯）→ 全島 LED（燈光秀在 101）。
+// 燈泡（§5.1）：一盞路燈 → 五個低格的路都有燈、夜市兩攤 → 霓虹（粉藍交錯）→ 夜市四攤＋霓虹招牌 → 全島 LED（燈光秀在 101）。
 // 大停電：所有燈熄（view 拿掉發光；app 另外把全島發光歸零）。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { axialToWorld, RING_R } from '../scene/hex.js';
@@ -34,7 +34,8 @@ export function view(lv, flags) {
       { kind: 'sphere', pos: [x + 0.2, 0.47, z + 0.22], scale: 0.07, ...(lit ? { color: C.warm, glow: C.warm } : { color: C.window }) },
     ];
     const market = [...stall(0, 0, C.coral), ...stall(0.6, 0.5, C.yellow)];
-    if (n >= 3) market.push({ kind: 'box', pos: [0.3, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...(lit ? { color: C.neonPink, glow: C.neonPink } : { color: C.window }) });
+    if (n >= 4) market.push(...stall(-0.6, 0.5, C.navy), ...stall(0, 1.0, C.coral));   // 夜市擴大到四攤
+    if (n >= 4) market.push({ kind: 'box', pos: [0.3, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...(lit ? { color: C.neonPink, glow: C.neonPink } : { color: C.window }) });
     v['bulb.market'] = { kind: 'compound', at: landmarkWorld('market'), parts: market };
   }
   return v;

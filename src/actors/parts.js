@@ -98,7 +98,26 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  const KINDS = { compound, people, glb, smoke };
+  // 煙火：60 顆小球一發，從中心炸開、重力下落、淡出，每 1.2 秒一發；不投影
+  function fireworks(spec) {
+    const N = 60, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
+    const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }), N);
+    mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
+    const dirs = Array.from({ length: N }, (_, i) => { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), a = i * 2.39996; return new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r); });
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+    return {
+      object,
+      update(dt, t) {
+        const k = (t % 1.2) / 1.2, burst = Math.floor(t / 1.2), s = 1.4 * Math.sqrt(k), fade = 1 - k;
+        dirs.forEach((d, i) => { mesh.setMatrixAt(i, m4.compose(p.copy(d).multiplyScalar(s).add(sc.set(0, -1.2 * k * k, 0)), q, sc.setScalar(fade + 0.05))); mesh.setColorAt(i, col.setHex(colors[(burst + i) % colors.length])); });
+        mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.material.opacity = fade;
+      },
+      dispose() { mesh.geometry.dispose(); mesh.material.dispose(); },
+    };
+  }
+
+  const KINDS = { compound, people, glb, smoke, fireworks };
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 

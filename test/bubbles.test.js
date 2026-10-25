@@ -36,3 +36,11 @@ test('flash resolves after FLASH, calls onPeak once at FLASH_PEAK, clear cancels
   flash.update(FLASH); await Promise.resolve(); assert.ok(done); assert.equal(group.children.length, 0);
   flash.at({ x: 0, y: 0, z: 0 }); flash.clear(); assert.equal(flash.count, 0);
 });
+
+test('flash delay: the flash waits hidden, counts at once, peaks at delay + FLASH_PEAK; clear still fires onPeak', () => {
+  const { group, flash } = setup(); const peaks = [];
+  flash.at({ x: 0, y: 0, z: 0 }, { delay: 0.3, onPeak: () => peaks.push('a') }); assert.equal(flash.count, 1); assert.equal(group.children[0].visible, false);
+  flash.update(0.3 + FLASH_PEAK - 0.05); assert.deepEqual(peaks, []); assert.equal(group.children[0].visible, true);
+  flash.update(0.1); assert.deepEqual(peaks, ['a']);
+  flash.at({ x: 0, y: 0, z: 0 }, { delay: 5, onPeak: () => peaks.push('b') }); flash.clear(); assert.deepEqual(peaks, ['a', 'b']);
+});

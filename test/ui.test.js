@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ICONS } from '../src/ui/icons.js';
+import { ICONS, BUBBLE_ICONS } from '../src/ui/icons.js';
 import { levelLabel, storageGet, storageSet } from '../src/ui/format.js';
 test('eight inline SVG icons with the shared viewBox and ink stroke', () => {
   assert.deepEqual(Object.keys(ICONS).sort(), ['baseball','boba','bulb','chip','milk','rat','token','typhoon']);
@@ -48,4 +48,10 @@ test('land() and reset() finish icons still flying, so the show is not held up',
   const p = slots.fly('milk', { x: 300, y: 200 }); assert.equal(document.body.children.length, 1);
   slots.land(); await p; assert.equal(document.body.children.length, 0);
   const q = slots.fly('chip', { x: 300, y: 200 }); slots.reset(); await q; assert.equal(document.body.children.length, 0);
+});
+
+// 泡泡圖框用的六個圖示：和物品圖示同一套 64 viewBox 白底墨線
+test('six bubble icons in the same SVG style', () => {
+  assert.deepEqual(Object.keys(BUBBLE_ICONS).sort(), ['dome','islet','lamp','mortar','school','train']);
+  for (const s of Object.values(BUBBLE_ICONS)) { assert.match(s, /^<svg/); assert.match(s, /viewBox="0 0 64 64"/); }
 });

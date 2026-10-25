@@ -1,0 +1,49 @@
+// GROW 風格的頭頂泡泡（！ …… ♥ ♪ ？、圖框、倒數 3 2 1）與「LEVEL UP」字樣，都是跟著頭走的 CSS2D 標籤。
+import { CSS2DObject } from '../../vendor/three/addons/renderers/CSS2DRenderer.js';
+import { ICONS, BUBBLE_ICONS } from '../ui/icons.js';
+
+export const BUBBLE_KINDS = ['！', '……', '♥', '♪', '？', '3', '2', '1'];
+const BUBBLE_DY = 0.25, LEVELUP_DY = 0.2, LEVELUP_DUR = 1.0;
+
+// 泡泡內容：符號放 span，圖框放 span.icon + SVG；不認得的種類直接丟錯（腳本寫錯要馬上看到）
+function bubbleHtml(kind) {
+  if (typeof kind === 'string') {
+    if (!BUBBLE_KINDS.includes(kind)) throw new Error(`bubble kind ${kind}`);
+    return `<span>${kind}</span>`;
+  }
+  const icon = ICONS[kind?.icon] ?? BUBBLE_ICONS[kind?.icon];
+  if (!icon) throw new Error(`bubble kind ${JSON.stringify(kind)}`);
+  return `<span class="icon">${icon}</span>`;
+}
+
+export function createBubbles(THREE, { group }) {
+  const items = [];
+  const place = it => { const p = it.head(); it.obj.position.set(p.x, p.y + it.dy, p.z); };
+  const drop = it => {
+    const i = items.indexOf(it); if (i < 0) return;
+    items.splice(i, 1); group.remove(it.obj); it.obj.element.remove(); it.resolve();
+  };
+  // 外層 div 交給 CSS2DRenderer 用 inline transform 定位，動畫只放在內層 span
+  function add(el, head, dur, dy) {
+    let resolve; const done = new Promise(r => { resolve = r; });
+    const it = { obj: new CSS2DObject(el), head, dur, dy, t: 0, resolve };
+    place(it); group.add(it.obj); items.push(it);
+    return { done, cancel: () => drop(it) };
+  }
+  function show(head, kind, dur) {
+    const html = bubbleHtml(kind);
+    const el = document.createElement('div'); el.className = 'bubble'; el.innerHTML = html;
+    return add(el, head, dur, BUBBLE_DY);
+  }
+  function levelUp(head, { text = 'LEVEL UP', down = false } = {}) {
+    const el = document.createElement('div'); el.className = 'levelup';
+    const span = document.createElement('span'); if (down) span.className = 'down'; span.textContent = text;
+    el.append(span);
+    return add(el, head, LEVELUP_DUR, LEVELUP_DY);
+  }
+  function update(dt) {
+    for (const it of [...items]) { it.t += dt; if (it.t >= it.dur) drop(it); else place(it); }
+  }
+  function clear() { for (const it of [...items]) drop(it); }
+  return { show, levelUp, update, clear, get count() { return items.length; } };
+}

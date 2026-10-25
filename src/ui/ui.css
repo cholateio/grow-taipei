@@ -30,14 +30,6 @@ button.primary:hover { background: #3a3333; }
 .slot.placed { opacity: .55; }
 .slot.placed .lv { opacity: 1; }
 .slots.busy .slot:not(.placed) { opacity: .8; }
-/* 等級一變那格跳一下（計畫 3.6） */
-.slot.bump { animation: slot-bump .45s cubic-bezier(.3,1.6,.5,1); }
-.slot.bump .lv { animation: lv-pop .45s ease-out; }
-@keyframes slot-bump { 0% { transform: scale(1); } 35% { transform: scale(1.16) translateY(-6px); } 100% { transform: scale(1); } }
-@keyframes lv-pop { 0% { transform: scale(.6); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
-/* 放置時從格子飛到島上的圖示 */
-.fly { position: fixed; width: 44px; height: 44px; border-radius: 50%; background: #fff; box-shadow: var(--shadow); display: grid; place-items: center; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); }
-.fly svg { width: 30px; height: 30px; }
 @media (max-width: 640px) {
   .slots { grid-template-columns: repeat(4, 64px); }
   .brand b { font-size: 20px; }
@@ -56,18 +48,21 @@ button.primary:hover { background: #3a3333; }
 @media (max-width: 640px) { .card.end { bottom: 196px; flex-direction: column; align-items: stretch; text-align: center; } }
 .card.error h2 { color: var(--ink); }
 
-/* 飄起來的等級字：升級珊瑚色往上飄，掉級灰色往下掉 */
-/* 外層只負責被 CSS2DRenderer 定位（不能有 transform 動畫），動畫在內層 .rise */
-.actor-float { pointer-events: none; }
-.actor-float .rise { display: block; color: var(--coral); font: 900 22px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 8px #fff; white-space: nowrap; animation: float-up 2.2s ease-out forwards; }
-.actor-float .rise.down { color: #7a6f68; animation-name: float-down; }
-@keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 12% { opacity: 1; transform: translateY(0) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-50px) scale(1); } }
-@keyframes float-down { 0% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(28px); } }
-
-/* 試作（老鼠回合）：東西出現前的白光、角色頭上的情緒泡泡 */
-.flash { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(#fff 30%, #fff8 60%, #fff0 70%); pointer-events: none; animation: flash .5s ease-out forwards; }
+/* 表演層（CSS2D 標籤）：外層只負責被 CSS2DRenderer 用 inline transform 定位，不能有 transform 動畫；動畫一律放內層 span */
+/* GROW 風格的頭頂泡泡：符號或圖框 */
+.bubble { pointer-events: none; transform: translateY(-10px); }
+.bubble span { display: inline-block; background: #fff; color: var(--ink); border-radius: 10px; padding: 2px 8px; font: 900 18px ui-monospace, monospace; box-shadow: 0 1px 4px #4a2a1440; white-space: nowrap; animation: bubble-pop .25s cubic-bezier(.3,1.6,.5,1); }
+.bubble .icon { padding: 4px; line-height: 0; }
+.bubble .icon svg { width: 28px; height: 28px; }
+@keyframes bubble-pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
+/* 升級的那個東西上方 1 秒的 LEVEL UP：黃字墨線描邊往上升；掉級灰字往下掉 */
+.levelup { pointer-events: none; }
+.levelup span { display: block; font: 900 26px ui-monospace, monospace; color: #fcea8b; -webkit-text-stroke: 1.5px #211d1d;
+  text-shadow: 1px 0 0 #211d1d, -1px 0 0 #211d1d, 0 1px 0 #211d1d, 0 -1px 0 #211d1d; white-space: nowrap; animation: levelup-rise 1s ease-out forwards; }
+.levelup span.down { color: #7a6f68; animation-name: levelup-fall; }
+@keyframes levelup-rise { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-24px); opacity: 0; } }
+@keyframes levelup-fall { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(24px); opacity: 0; } }
+/* 東西出現／消失處的白光（外層 div.flash 不能動 transform，放大動畫做在 ::after） */
+.flash { width: 10px; height: 10px; pointer-events: none; }
+.flash::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(#fff 30%, #fff8 60%, #fff0 70%); opacity: 0; animation: flash .5s ease-out forwards; }
 @keyframes flash { 0% { transform: scale(1); opacity: 0; } 30% { opacity: 1; } 100% { transform: scale(14); opacity: 0; } }
-.emote { pointer-events: none; transform: translateY(-10px); }
-.emote span { display: inline-block; background: #fff; color: var(--ink); border-radius: 10px; padding: 2px 8px; font: 900 18px ui-monospace, monospace; box-shadow: 0 1px 4px #4a2a1440; white-space: nowrap; animation: emote-pop .25s cubic-bezier(.3,1.6,.5,1); }
-.emote span.heart { color: var(--coral); }
-@keyframes emote-pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }

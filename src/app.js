@@ -89,9 +89,11 @@ export async function start({ params, loading }) {
   const uiRoot = document.getElementById('ui');
   const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
-  const director = createDirector({ reducedMotion: motion.matches || !!auto });
+  // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
+  const live = params.has('live');
+  const director = createDirector({ reducedMotion: motion.matches || (!!auto && !live) });
   if (auto) rig.setReducedMotion(true);
-  motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));
+  motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || (!!auto && !live)));
   // 全島效果：燈泡推動時間、颱風 Lv2 小人躲進室內、大停電熄燈
   const applyWorld = (lv, flags) => { const w = worldEffects(lv, flags); setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); };
   let slots;

@@ -81,6 +81,8 @@ test('a level change floats "Lv.n" above the item main part; instant shows nothi
   const { stage, scene, run } = setup();
   stage.apply(placed, { instant: false });
   assert.equal(floats(scene).length, 1); assert.equal(floats(scene)[0].element.textContent, 'Lv.1'); assert.equal(floats(scene)[0].element.className, 'actor-float');
+  // CSS2DRenderer 用 inline transform 定位外層；動畫必須放在內層 span，否則 CSS 動畫會蓋掉定位、字全部跑到左上角（錄影審查 2026-10-25）
+  assert.equal(floats(scene)[0].element.children[0].tagName, 'span'); assert.equal(floats(scene)[0].element.children[0].className, 'rise');
   assert.ok(Math.abs(floats(scene)[0].position.y - (at.y + 1)) < 1e-9, 'labelY above milk.main');
   stage.apply(grow(2), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.2');
   run(1.5); assert.equal(floats(scene).length, 0);
@@ -90,7 +92,7 @@ test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async
   const { stage, scene, run } = setup();
   await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
   stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
-  assert.equal(floats(scene)[0].element.className, 'actor-float down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
+  assert.equal(floats(scene)[0].element.className, 'actor-float'); assert.equal(floats(scene)[0].element.children[0].className, 'rise down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
   stage.apply(grow(spec.ITEMS.milk.max), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
 });
 test('items without a module still float their level at their anchor', async () => {

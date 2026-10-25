@@ -43,7 +43,9 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   const floats = [];
   function float(id, text, cls = '') {
     const p = headOf(id);
-    const el = document.createElement('div'); el.className = cls ? `actor-float ${cls}` : 'actor-float'; el.textContent = text;
+    // 外層由 CSS2DRenderer 用 inline transform 定位，動畫放內層 span（CSS 動畫會蓋掉 inline transform，字會全跑到左上角）
+    const el = document.createElement('div'); el.className = 'actor-float';
+    const inner = document.createElement('span'); inner.className = cls ? `rise ${cls}` : 'rise'; inner.textContent = text; el.append(inner);
     const obj = new CSS2DObject(el); obj.position.set(p.x, p.y, p.z); labelsGroup.add(obj);
     floats.push({ obj, t: 0 });
   }

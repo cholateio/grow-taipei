@@ -50,7 +50,8 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     const p = headOf(id);
     // 外層由 CSS2DRenderer 用 inline transform 定位，動畫放內層 span（CSS 動畫會蓋掉 inline transform，字會全跑到左上角）
     const el = document.createElement('div'); el.className = 'actor-float';
-    const inner = document.createElement('span'); inner.className = cls ? `rise ${cls}` : 'rise'; inner.textContent = text; el.append(inner);
+    // 飄字前面放該物品的圖示（ctx.icons），一看就知道是誰升級；101 沒有圖示
+    const inner = document.createElement('span'); inner.className = cls ? `rise ${cls}` : 'rise'; inner.innerHTML = (ctx.icons?.[id] ?? '') + text; el.append(inner);
     const obj = new CSS2DObject(el); obj.position.set(p.x, p.y, p.z); labelsGroup.add(obj);
     floats.push({ obj, t: 0 });
   }

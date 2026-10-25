@@ -22,3 +22,20 @@ test('the end card is a banner: title, line and restart, no level list (the item
   assert.doesNotMatch(el.textContent, /Lv\./); assert.equal(el.querySelector('.levels'), null);
   el.querySelector('button').listeners.click(); assert.ok(restarted); assert.equal(root.children.length, 0);
 });
+
+// 計畫 3.6：物品列把「操作」和「世界」接起來——升級時那格跳一下，放置時圖示飛到島上
+const slotItems = () => Object.entries(ICONS).map(([id, icon]) => ({ id, name: id, icon, max: 4 }));
+test('setLevel bumps the slot only when its label changes; reset clears it', async () => {
+  installFakeDom(); const { createSlots } = await import('../src/ui/slots.js');
+  const root = document.createElement('div'), slots = createSlots(root, { items: slotItems(), onPick() {} });
+  const btn = root.querySelector('.slots').children.find(b => b.dataset.id === 'milk');
+  slots.setLevel('milk', 1); assert.ok(btn.classList.contains('bump')); assert.equal(btn.querySelector('.lv').textContent, 'Lv.1');
+  btn.classList.remove('bump'); slots.setLevel('milk', 1); assert.ok(!btn.classList.contains('bump'), 'same level, no bump');
+  slots.setLevel('milk', 4); assert.ok(btn.classList.contains('bump') && btn.classList.contains('max'));
+  slots.reset(); assert.ok(!btn.classList.contains('bump')); assert.equal(btn.querySelector('.lv').textContent, '');
+});
+test('fly resolves at once when there is no target or no animation support', async () => {
+  installFakeDom(); const { createSlots } = await import('../src/ui/slots.js');
+  const slots = createSlots(document.createElement('div'), { items: slotItems(), onPick() {} });
+  await slots.fly('milk', null); await slots.fly('milk', { x: 10, y: 10 });
+});

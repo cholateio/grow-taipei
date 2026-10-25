@@ -172,3 +172,13 @@ test('headOf is exposed for the fly-in target', () => {
   const { stage } = setup([fakeMilk]);
   const h = stage.headOf('milk'); assert.ok(Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.z));
 });
+
+test('floats carry the item icon; 101 floats text only', async () => {
+  const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
+  const stage = createStage(THREE, { scene, spec, modules: [fakeMilk, tower], ctx: { people, assets: { spawn: async () => new THREE.Group() }, glow, icons: { milk: '<svg>milk</svg>' } } });
+  stage.apply(placed, { instant: false });
+  const inner = floats(scene).at(-1).element.children[0];
+  assert.match(inner._html, /^<svg>milk<\/svg>Lv\.1$/);
+  await stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 1, to: 9 } }, { instant: true });
+  stage.apply({ kind: 'settle' }, { instant: false }); assert.equal(floats(scene).at(-1).element.children[0]._html, '101 蓋一半');
+});

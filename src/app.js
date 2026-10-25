@@ -90,7 +90,7 @@ export async function start({ params, loading }) {
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
   const weather = { rain: 0 };   // 雨的濃度，全島效果每幀淡入後寫進來（typhoon.js 的 rain 讀它）
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather } });
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather, icons: ICONS } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
   // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
   const live = params.has('live');
@@ -104,9 +104,16 @@ export async function start({ params, loading }) {
   const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || (auto && !live)) { world = w; showWorld(w); } };
   const applyWorld = (lv, flags, { instant = false } = {}) => aimWorld(worldEffects(lv, flags, actors.meta), instant);
   let slots;
+  // 世界座標 → 螢幕座標（物品飛入的落點）；在畫面外就回 null，不飛
+  const projected = new THREE.Vector3();
+  const screenOf = p => {
+    projected.set(p.x, p.y, p.z).project(view.camera);
+    if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) return null;
+    return { x: (projected.x + 1) / 2 * innerWidth, y: (1 - projected.y) / 2 * innerHeight };
+  };
   const game = createGame({
     spec, engine, endings, director, actors,
-    ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
+    ui: { fly: id => slots.fly(id, screenOf(actors.headOf(id))), setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
     onFinished: (ending, state) => {
       aimWorld({ ...worldTarget, time: TIMES.night });

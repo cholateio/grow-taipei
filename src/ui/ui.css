@@ -30,6 +30,14 @@ button.primary:hover { background: #3a3333; }
 .slot.placed { opacity: .55; }
 .slot.placed .lv { opacity: 1; }
 .slots.busy .slot:not(.placed) { opacity: .8; }
+/* 等級一變那格跳一下（計畫 3.6） */
+.slot.bump { animation: slot-bump .45s cubic-bezier(.3,1.6,.5,1); }
+.slot.bump .lv { animation: lv-pop .45s ease-out; }
+@keyframes slot-bump { 0% { transform: scale(1); } 35% { transform: scale(1.16) translateY(-6px); } 100% { transform: scale(1); } }
+@keyframes lv-pop { 0% { transform: scale(.6); } 50% { transform: scale(1.35); } 100% { transform: scale(1); } }
+/* 放置時從格子飛到島上的圖示 */
+.fly { position: fixed; width: 44px; height: 44px; border-radius: 50%; background: #fff; box-shadow: var(--shadow); display: grid; place-items: center; pointer-events: none; z-index: 5; transform: translate(-50%, -50%); }
+.fly svg { width: 30px; height: 30px; }
 @media (max-width: 640px) {
   .slots { grid-template-columns: repeat(4, 64px); }
   .brand b { font-size: 20px; }
@@ -51,7 +59,8 @@ button.primary:hover { background: #3a3333; }
 /* 飄起來的等級字：升級珊瑚色往上飄，掉級灰色往下掉 */
 /* 外層只負責被 CSS2DRenderer 定位（不能有 transform 動畫），動畫在內層 .rise */
 .actor-float { pointer-events: none; }
-.actor-float .rise { display: block; color: var(--coral); font: 900 22px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 8px #fff; white-space: nowrap; animation: float-up 1.4s ease-out forwards; }
+.actor-float .rise { display: flex; align-items: center; gap: 4px; color: var(--coral); font: 900 22px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 8px #fff; white-space: nowrap; animation: float-up 1.4s ease-out forwards; }
+.actor-float .rise svg { width: 26px; height: 26px; flex: none; background: #fff; border-radius: 50%; padding: 2px; box-shadow: 0 1px 4px #4a2a1430; }
 .actor-float .rise.down { color: #7a6f68; animation-name: float-down; }
 @keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-46px) scale(1); } }
 @keyframes float-down { 0% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(28px); } }

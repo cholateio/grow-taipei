@@ -1,33 +1,63 @@
 // 燈泡（§5.1）：一盞路燈 → 五個低格的路都有燈、夜市兩攤 → 霓虹（粉藍交錯）→ 夜市四攤＋霓虹招牌 → 全島 LED（燈光秀在 101）。
 // 大停電：所有燈熄（view 拿掉發光；app 另外把全島發光歸零）。
+// 劇本（§8.3）：電工從 101 工地走來裝第一盞 → 沿主路一盞盞點燈、夜市開張 → 夜市霓虹、傍晚 → 島民來排隊 → 101 腳下全島 LED、入夜。
 import { anchorWorld, landmarkWorld } from './anchors.js';
-import { axialToWorld, RING_R } from '../scene/hex.js';
-import { C } from './palette.js';
+import { axialToWorld, cellTop, RING_R } from '../scene/hex.js';
+import { TIMES } from '../scene/daynight.js';
+import { C, offset } from './palette.js';
 
 export const id = 'bulb';
 export const labelY = 0.8;
-const LOW_CELLS = [[0, 0], [1, 0], [-1, 0], [0, 1], [-1, 1]];
+const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
+const SITE = offset(TOWER, 0.9, 0.6);     // 101 工地（電工從這裡出發）
+const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
+const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45, RUN = 4.6;
+// 格內方位角 deg 上、離格心 r 的點（y 是格面）
+function ringPoint(cell, deg, r) {
+  const c = axialToWorld(...cell), a = deg * Math.PI / 180;
+  return { x: c.x + Math.cos(a) * r, y: cellTop(cell), z: c.z + Math.sin(a) * r };
+}
+
+// 主路：五個低格的環路接成一圈（pointy-top：角在 30°+60°k、邊中點＝橋頭在 60°k）。
+// 從中心格西橋頭出發，走中心格南半邊 → 晶片格 → 捷運格 → 球場格 → 校舍格繞外圈，回到中心格。
+// 角往內收 0.05（離外側的路燈桿 0.17，不踩到；再收就會切進河濱公園、夜市的範圍）；橋頭和 island.js 的橋同一組端點。
+const TOUR = [
+  [[0, 0], [180, 150, 90, 30, 0]], [[1, 0], [180, 210, 270, 330, 30, 90, 120]], [[0, 1], [300, 330, 30, 90, 150, 180]],
+  [[-1, 1], [0, 30, 90, 150, 210, 240]], [[-1, 0], [60, 90, 150, 210, 270, 330, 0]],
+];
+export const ROAD = TOUR.flatMap(([cell, degs]) => degs.map(d => ringPoint(cell, d, d % 60 ? RING_R - 0.05 : RING_R * SQ3 / 2)));
+
+// 路燈：每個低格的 90°／210°／330° 角各一盞。燈都在路口：隔著水道的兩三盞是同一個路口，電工站在第一盞旁一站點完。
+// 路口照沿主路經過的順序排，鍵 bulb.lamps.<i> 就是攤平後的順序。
+const JUNCTIONS = [
+  [[[0, 0], 90], [[0, 1], 210], [[-1, 1], 330]],   // 中心格南角：三格交會
+  [[[1, 0], 210], [[0, 0], 330]], [[[1, 0], 330]], [[[1, 0], 90], [[0, 1], 330]], [[[0, 1], 90]], [[[-1, 1], 90]],
+  [[[-1, 0], 90], [[-1, 1], 210]],                  // 站在校舍格這側（球場格那個角被巨蛋擋在死角裡）
+  [[[-1, 0], 210]], [[[-1, 0], 330], [[0, 0], 210]],
+];
+const LAMPS = JUNCTIONS.flat();
+export const LAMP_POINTS = LAMPS.map(([cell, deg]) => ringPoint(cell, deg, LAMP_R));
+// 電工點燈時站的位置：燈往格心收 0.45（在走路格裡）
+export const lampApproach = i => { const [cell, deg] = LAMPS[i]; return ringPoint(cell, deg, LAMP_R - APPROACH); };
+// 每個路口的燈鍵號：[[0, 1, 2], [3, 4], [5], …]
+export const STOPS = JUNCTIONS.map((j, k) => j.map((_, i) => JUNCTIONS.slice(0, k).flat().length + i));
 
 function lamp(x, z, head) {
   return [{ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5, 0.06], color: C.ink }, { kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head }];
 }
 
 export function view(lv, flags) {
-  const n = lv.bulb, at = anchorWorld('bulb'), v = {};
+  const n = lv.bulb, at = AT, v = {};
   if (!n) return v;
   const lit = !flags.blackout, head = i => {
     const c = n >= 3 ? (i % 2 ? C.neonBlue : C.neonPink) : C.yellow;
     return lit ? { color: c, glow: c } : { color: C.window };
   };
-  v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)) };
+  v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)), footprint: { r: 0.15 } };
+  v['bulb.electrician'] = { kind: 'roster', at, n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5 } };
   if (n >= 2) {
-    const parts = [];
-    let i = 0;
-    for (const cell of LOW_CELLS) for (const deg of [90, 210, 330]) {
-      const c = axialToWorld(...cell), a = deg * Math.PI / 180, r = RING_R + 0.12;
-      parts.push(...lamp(c.x + Math.cos(a) * r - at.x, c.z + Math.sin(a) * r - at.z, head(++i)));
-    }
-    v['bulb.lamps'] = { kind: 'compound', at, parts, footprint: false };
+    // 一盞一個零件：Lv2 劇本沿路一盞盞白光點亮、大停電一盞盞熄
+    LAMP_POINTS.forEach((p, i) => { v[`bulb.lamps.${i}`] = { kind: 'compound', at: p, parts: lamp(0, 0, head(i + 1)), footprint: false }; });
     const stall = (x, z, roof) => [
       { kind: 'box', pos: [x, 0.22, z], scale: [0.5, 0.45, 0.4], color: C.wall },
       { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },
@@ -40,3 +70,56 @@ export function view(lv, flags) {
   }
   return v;
 }
+
+// ── 劇本（§8.3）──
+// 角色都是演到那一拍才找（回 null 那拍跳過）；once 找到第一次就記住，整段劇本同一組人。
+const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+const el = ctx => () => ctx.roster.members('bulb.electrician')[0] ?? null;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+// 離夜市最近的兩個島民（每段劇本自己記一組）
+const nearestPair = () => once(c => c.roster.members('landmarks.islanders').slice().sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
+
+export const script = {
+  // 電工從 101 工地走到路邊 → 敲 → 白光第一盞路燈 → 沿主路巡
+  placed(e, s, ctx) {
+    const { B } = ctx, m = el(ctx), k = 0.4 / dist(AT, { x: 0, z: 0 });   // 路燈往中心格格心收 0.4（中心格格心就是原點）
+    return [
+      B.apply(e, { only: ['bulb.electrician'], hold: ['bulb.electrician'] }), B.spawn('bulb.electrician', SITE),
+      B.walk(m, offset(AT, -AT.x * k, -AT.z * k)), B.gesture(m, 'knock'), B.apply(e), B.home(m),
+    ];
+  },
+  grow: {
+    // 整條路：電工小跑步沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮）→ 夜市兩攤白光。
+    // 從離他最近的那一站開始繞（他在主路上巡，人在哪就從哪開始）
+    2(e, s, ctx) {
+      const { B } = ctx, m = el(ctx), p = ctx.roster.members('bulb.electrician')[0]?.pos;
+      const k0 = p ? STOPS.reduce((b, g, k) => (dist(lampApproach(g[0]), p) < dist(lampApproach(STOPS[b][0]), p) ? k : b), 0) : 0;
+      const stops = STOPS.map((_, k) => STOPS[(k0 + k) % STOPS.length]);
+      const go = g => B.walk(m, lampApproach(g[0]), { speed: RUN }), light = g => B.apply(e, { only: g.map(i => `bulb.lamps.${i}`) });
+      return [
+        go(stops[0]), ...stops.slice(1).map((g, k) => B.together([go(g), light(stops[k])])), light(stops.at(-1)),
+        B.apply(e), B.home(m), B.levelUp('bulb'),
+      ];
+    },
+    // 霓虹、傍晚：電工走到夜市 → ♪ → 白光霓虹 → 天色淡入傍晚
+    3(e, s, ctx) {
+      const { B } = ctx, m = el(ctx);
+      return [B.walk(m, MARKET), B.bubble(m, '♪'), B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), B.levelUp('bulb')];
+    },
+    // 四攤：離夜市最近的兩個島民走去排隊 → 一起 ♥ → 白光多兩攤
+    4(e, s, ctx) {
+      const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET, 2, 0.7)[i];
+      return [
+        B.together([0, 1].map(i => B.walk(islander(i), slot(i)))), B.together([0, 1].map(i => B.bubble(islander(i), '♥'))),
+        B.apply(e), B.home([islander(0), islander(1)]), B.levelUp('bulb'),
+      ];
+    },
+    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ → 白光全島 LED、101 燈光秀 → 入夜
+    5(e, s, ctx) {
+      const { B } = ctx, m = el(ctx);
+      return [B.walk(m, FOOT), B.bubble(m, '！'), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
+    },
+  },
+  fx: () => null,   // 燈泡自己沒有 onLevel
+  rep: (s, ctx) => ctx.roster.members('bulb.electrician')[0] ?? null,
+};

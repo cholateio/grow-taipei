@@ -150,7 +150,7 @@ export function apply(e, { flash = true, only, hold } = {}) {
   let changed = [], fired = 0, t = 0;
   const opts = { ...(only && { only }), ...(hold && { hold }), deferred: flash };
   return {
-    kind: 'apply',
+    kind: 'apply', only,   // only 留在拍上給測試看（劇本套了哪些鍵、什麼順序）
     dur: () => (changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
     estimate: () => (flash ? FLASH : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一道白光
     start(ctx) {
@@ -190,7 +190,7 @@ export function camera(target) {
 }
 
 export function world(effects) {
-  return { kind: 'world', dur: 0, start(ctx) { ctx.world(effects, !!ctx.instant); } };
+  return { kind: 'world', dur: 0, effects, start(ctx) { ctx.world(effects, !!ctx.instant); } };
 }
 
 export function wait(s) { return { kind: 'wait', dur: s }; }

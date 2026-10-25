@@ -44,7 +44,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   function placeLabel(id) {
     const l = labels[id], mod = modules.find(m => m.id === id), v = views[id] ?? {};
     const key = `${id}.main` in v ? `${id}.main` : Object.keys(v)[0];
-    const p = key ? v[key].at : anchorWorld(id), y = key ? (mod.labelY ?? 1) : 0.6;
+    const p = key ? v[key].at : anchorWorld(id), y = key ? (v[key].labelY ?? mod.labelY ?? 1) : 0.6;
     l.obj.position.set(p.x, p.y + y, p.z);
     l.obj.visible = lv[id] > 0;
   }

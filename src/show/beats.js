@@ -22,17 +22,18 @@ const offsetOf = o => ({ dx: o?.dx ?? 0, dy: o?.dy ?? 0, dz: o?.dz ?? 0 });   //
 // 列車角速度：跟 token.js 的 view 一樣，淹水時停駛
 const trainSpeed = ctx => (ctx.stage.flags?.flooded ? 0 : TRAIN_SPEED);
 
-// 拍的目標：成員 → 它的頭；函數 → 演到這拍時才算；物品 id → 物品頭上；零件鍵（有 '.'）→ 零件頭上；{ head } → 原樣
+// 拍的目標：成員 → 它的頭；函數 → 演到這拍時才算（回空值 = 人還沒出來，回 null 讓拍跳過）；
+// 物品 id → 物品頭上；零件鍵（有 '.'）→ 零件頭上；{ head } → 原樣
 export function resolveTarget(t, ctx) {
-  if (typeof t === 'function') return resolveTarget(t(ctx), ctx);
+  if (typeof t === 'function') { const v = t(ctx); return v == null ? null : resolveTarget(v, ctx); }
   if (typeof t === 'string') return isPartKey(t) ? partHead(t, 0, ctx) : { head: () => ctx.stage.headOf(t) };
   if (t && typeof t.head === 'function') return t.pos ? { head: t.head, member: t } : t;
   throw new Error(`beat target ${JSON.stringify(t)}`);
 }
 function memberOf(who, ctx) {
-  const m = resolveTarget(who, ctx).member;
-  if (!m) throw new Error('beat needs a roster member');
-  return m;
+  const r = resolveTarget(who, ctx); if (!r) return null;
+  if (!r.member) throw new Error('beat needs a roster member');
+  return r.member;
 }
 const partOf = (key, ctx) => ctx.stage.partObject(key);
 
@@ -65,15 +66,16 @@ export function spawn(key, at) {
 export function walk(who, to, { speed } = {}) {
   let m = null, route = null, cursor = null, s = 0, total = 0, v = 0;
   const plan = ctx => {
-    const mm = memberOf(who, ctx), r = ctx.nav.route(mm.pos, call(to, ctx));
+    const mm = memberOf(who, ctx); if (!mm) return null;
+    const r = ctx.nav.route(mm.pos, call(to, ctx));
     return { mm, r, len: ctx.nav.routeLength(r), v: (speed ?? mm.speed) * (ctx.montage ? 2 : 1) };
   };
   return {
     kind: 'walk',
     dur: () => total / v,
-    estimate(ctx) { const p = plan(ctx); return p.len < 1e-6 ? 0 : p.len / p.v; },
+    estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : p.len / p.v; },
     start(ctx) {
-      const p = plan(ctx); m = p.mm; route = p.r; total = p.len; v = p.v; s = 0;
+      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0;
       ctx.roster.claim(m);
       if (total < 1e-6) return false;
       cursor = createPathCursor(route, { loop: false });
@@ -83,7 +85,12 @@ export function walk(who, to, { speed } = {}) {
       const ds = Math.min(dt * v, total - s); s += ds; cursor.advance(ds);
       ctx.roster.setPose(m, { ...cursor.locate(), walking: true });
     },
-    end(ctx) { ctx.roster.setPose(m, { ...route.at(-1), yaw: m.yaw, walking: false }); },
+    // 停在終點、面向最後一段的方向（游標停在終點時的朝向不可靠）
+    end(ctx) {
+      if (!m) return;
+      const [a, b] = route.length >= 2 ? route.slice(-2) : [], d = a ? Math.hypot(b.x - a.x, b.z - a.z) : 0;
+      ctx.roster.setPose(m, { ...route.at(-1), yaw: d > 1e-9 ? Math.atan2(b.x - a.x, b.z - a.z) : m.yaw, walking: false });
+    },
   };
 }
 
@@ -91,7 +98,7 @@ export function bubble(who, kind, dur = 1.2) {
   let handle = null;
   return {
     kind: 'bubble', dur,
-    start(ctx) { handle = ctx.bubbles.show(resolveTarget(who, ctx).head, kind, dur); },
+    start(ctx) { const r = resolveTarget(who, ctx); if (!r) return false; handle = ctx.bubbles.show(r.head, kind, dur); },
     end() { handle?.cancel(); handle = null; },
   };
 }
@@ -105,7 +112,8 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
     kind: 'gesture', dur,
     start(ctx) {
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; base = obj.scale.clone(); return; }
-      m = memberOf(who, ctx);
+      m = memberOf(who, ctx); if (!m) return false;
+      ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
       yaw = kind === 'look' && at ? Math.atan2(at.x - m.pos.x, at.z - m.pos.z) : undefined;
     },
     step(k) {
@@ -125,23 +133,33 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   };
 }
 
-// 套用事件：flash 時新零件先藏著，每個換掉的鍵依序（間隔 0.15 s）閃白光、最亮那一刻 commit；
-// 跳過時在 end 一次 commit。白光由這拍自己照時間放（不用 flash 的 delay），等著的才不會先算進畫面上的白光
+// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節
+function flashPoint({ key, at }, ctx) {
+  if (at && Math.abs(at.x) + Math.abs(at.z) >= 1e-6) return at;
+  if (key === 'token.train') return trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx) });
+  return ctx.stage.headOf(key.split('.')[0]);
+}
+
+// 套用事件：flash 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）閃白光、最亮那一刻 commit；
+// 名冊的鍵不閃（名冊自己在每個人身上閃），也不算進長度。跳過時在 end 一次 commit。
+// 白光由這拍自己照時間放（不用 flash 的 delay），等著的才不會先算進畫面上的白光
 export function apply(e, { flash = true, only, hold } = {}) {
   let changed = [], fired = 0, t = 0;
   const opts = { ...(only && { only }), ...(hold && { hold }), deferred: flash };
   return {
     kind: 'apply',
-    dur: () => (flash && changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
+    dur: () => (changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
     start(ctx) {
-      changed = ctx.stage.apply(e, opts).changed; fired = 0; t = 0;
-      if (!flash) return false;
+      const all = ctx.stage.apply(e, opts).changed; fired = 0; t = 0;
+      const pending = new Set(flash ? ctx.stage.pendingKeys() : []);
+      changed = all.filter(c => pending.has(c.key));
+      if (!changed.length) return false;
     },
     step(k, dt, ctx) {
       t += dt;
       while (fired < changed.length && t >= STAGGER * fired - 1e-9) {
-        const { key, at } = changed[fired++];
-        if (at) ctx.flash.at(at, { onPeak: () => ctx.stage.commit(key) }); else ctx.stage.commit(key);
+        const c = changed[fired++];
+        ctx.flash.at(flashPoint(c, ctx), { onPeak: () => ctx.stage.commit(c.key) });
       }
     },
     end(ctx) { ctx.stage.commitAll(); ctx.nav.setFootprints(ctx.stage.footprints()); },
@@ -152,7 +170,10 @@ export function levelUp(target, { text = 'LEVEL UP', down = false } = {}) {
   let handle = null;
   return {
     kind: 'levelUp', dur: 1.0, down,
-    start(ctx) { handle = ctx.bubbles.levelUp(resolveTarget(target, ctx).head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down }); },
+    start(ctx) {
+      const r = resolveTarget(target, ctx); if (!r) return false;
+      handle = ctx.bubbles.levelUp(r.head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down });
+    },
     end() { handle?.cancel(); handle = null; },
   };
 }
@@ -171,7 +192,7 @@ export function world(effects) {
 export function wait(s) { return { kind: 'wait', dur: s }; }
 
 export function home(who) {
-  return { kind: 'home', dur: 0, start(ctx) { for (const w of [].concat(who)) ctx.roster.home(memberOf(w, ctx)); } };
+  return { kind: 'home', dur: 0, start(ctx) { for (const w of [].concat(who)) { const m = memberOf(w, ctx); if (m) ctx.roster.home(m); } } };
 }
 
 // 零件位置 = 它原本的位置 + 偏移；目前的偏移記在 userData.showOffset，連續 move 才不會越疊越遠
@@ -262,12 +283,12 @@ export function jump(who, target, dur = 0.5) {
   let m = null, p0 = null;
   return {
     kind: 'jump', dur,
-    start(ctx) { m = memberOf(who, ctx); ctx.roster.claim(m); p0 = { ...m.pos }; },
+    start(ctx) { m = memberOf(who, ctx); if (!m) return false; ctx.roster.claim(m); p0 = { ...m.pos }; },
     step(k, dt, ctx) {
-      const q = target();
+      const q = target(ctx);
       ctx.roster.setPose(m, { x: lerp(p0.x, q.x, k), y: lerp(p0.y, q.y, k) + JUMP_H * Math.sin(Math.PI * k), z: lerp(p0.z, q.z, k), yaw: q.yaw });
     },
-    end(ctx) { ctx.roster.setPose(m, { ...target(), walking: false }); },
+    end(ctx) { if (m) ctx.roster.setPose(m, { ...target(ctx), walking: false }); },
   };
 }
 

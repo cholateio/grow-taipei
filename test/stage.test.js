@@ -90,7 +90,6 @@ test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async
   const { stage, scene, run } = setup();
   await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
   stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
-  run(0.4);   // 黑光點從老鼠飛過來、落地後才掉級
   assert.equal(floats(scene)[0].element.className, 'actor-float down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
   stage.apply(grow(spec.ITEMS.milk.max), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
 });
@@ -107,70 +106,25 @@ test('delta event updates the target item mirror and view; flags are mirrored', 
   await stage.apply({ kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'blackout', value: true }, lock: 'bulb' }, { instant: true });
   assert.equal(stage.flags.blackout, true);
 });
-// 看得見的因果（§7.2）：升級前先從 via 物品飛光點；扣級飛黑光點；等待的物品轉頭看它在等的東西
+// 使用者 2026-10-25：光點與轉頭拿掉（畫面太亂）。升級直接彈出；wait 事件畫面上什麼都不做
 const helper = { id: 'baseball', labelY: 1, view: lv => lv.baseball ? { 'baseball.main': { kind: 'compound', at: { x: -3, y: 0.65, z: 4 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xdb6a41 }] } } : {} };
-const sparks = scene => scene.getObjectByName('stage:sparks').children;
-test('a grow with via plays a spark from the helper before the target pops', async () => {
-  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const before = parts().length;
-  const p = stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false });
-  assert.equal(sparks(scene).length, 1); assert.ok(Math.abs(sparks(scene)[0].position.x - (-3)) < 1e-6, 'starts at the helper');
-  run(0.2); assert.equal(parts().length, before, 'target has not popped yet');
-  run(1.2); await p; assert.ok(parts().length > before, 'popped after the spark'); assert.equal(sparks(scene).length, 0);
-});
-test('spark falls back to the anchor when the via item has no parts (review focus 2)', async () => {
-  const { stage, scene, run } = setup();
-  await stage.apply(placed, { instant: true });
-  const { anchorWorld } = await import('../src/actors/anchors.js');
-  const p = stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['chip'] }, { instant: false });
-  assert.ok(Math.abs(sparks(scene)[0].position.x - anchorWorld('chip').x) < 1e-6); run(1.5); await p;
-});
-test('a knock-back flies a dark spark from the cause', async () => {
-  const { stage, scene, run } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
-  const p = stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
-  assert.equal(sparks(scene).length, 1); assert.equal(sparks(scene)[0].userData.dark, true); run(1.5); await p;
-});
-test('wait event turns the waiting item toward what it waits for and floats "…"; instant shows nothing (review focus 1)', async () => {
-  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const box = parts().find(o => Math.abs(o.position.x - at.x) < 1e-6 && Math.abs(o.position.z - at.z) < 1e-6);
-  const p = stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false });
-  run(0.3); assert.notEqual(box.rotation.y, 0, 'turned'); assert.ok(floats(scene).some(f => f.element.textContent === '…' && f.element.className.includes('wait')));
-  run(1.5); await p; assert.ok(Math.abs(box.rotation.y) < 1e-6, 'turned back');
-  const before = floats(scene).length; await stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: true });
-  assert.equal(floats(scene).length, before); assert.ok(Math.abs(box.rotation.y) < 1e-6);
-});
-test('reset clears sparks in flight', async () => {
-  const { stage, scene } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false }); stage.reset();
-  assert.equal(sparks(scene).length, 0);
-});
-test('an instant apply during a spark finishes it and pops at once', async () => {
+test('a grow with helpers pops at once, no sparks', async () => {
   const { stage, scene, parts } = setup([fakeMilk, helper]);
   await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
+  const before = parts().length;
   stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false });
-  await stage.apply(grow(3), { instant: true });
-  assert.equal(sparks(scene).length, 0); assert.ok(parts().every(o => Math.abs(o.scale.x - 1) < 1e-9));
+  assert.ok(parts().length > before, 'popped immediately'); assert.equal(scene.getObjectByName('stage:sparks'), undefined);
 });
-// 審查 #1：等待手勢只轉在物品錨點附近的零件（環狀線、全島路燈這種放在原點的零件不能跟著扭）
-test('wait gesture turns only parts anchored near the item, not origin-anchored spreads (review #1)', async () => {
-  const spread = { id: 'milk', labelY: 1, view: lv => lv.milk ? { 'milk.main': { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }] }, 'milk.ring': { kind: 'compound', at: { x: 9, y: 0, z: 9 }, parts: [{ kind: 'box', pos: [0, 0, 0], scale: 0.3, color: 0x5a88b2 }] } } : {} };
-  const { stage, parts, run } = setup([spread, helper]);
+test('a wait event changes nothing on screen', async () => {
+  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
   await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const ring = parts().find(o => o.position.x === 9);
-  stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false }); run(0.3);
-  assert.equal(ring.rotation.y, 0);
-});
-// 升級加成（颱風外送 +1）是亮光點；扣不動的扣級（1→1）沒有光點也不飄字
-test('a positive delta from a cause flies a bright spark; a no-op delta flies nothing and floats nothing', async () => {
-  const { stage, scene, run } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const p = stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 1, to: 2 } }, { instant: false });
-  assert.equal(sparks(scene)[0].userData.dark, false); run(1.5); await p;
   const n = floats(scene).length;
-  await stage.apply({ kind: 'fx', item: 'milk', cause: 'baseball', delta: { target: 'milk', from: 2, to: 2 } }, { instant: false });
-  assert.equal(sparks(scene).length, 0); assert.equal(floats(scene).length, n);
+  await stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false }); run(0.3);
+  assert.equal(floats(scene).length, n); assert.ok(parts().every(o => o.rotation.y === 0));
+});
+test('a no-op knock (1→1) floats nothing', async () => {
+  const { stage, scene } = setup([fakeMilk, helper]);
+  await stage.apply(placed, { instant: true }); const n = floats(scene).length;
+  await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false });
+  assert.equal(floats(scene).length, n);
 });

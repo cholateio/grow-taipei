@@ -85,14 +85,3 @@ test('fireworks: one InstancedMesh of 60 sparks that bursts out from the centre 
   const m = new THREE.Matrix4(), v = new THREE.Vector3(); p.update(0, 0.05); mesh.getMatrixAt(0, m); const r0 = v.setFromMatrixPosition(m).length();
   p.update(0, 0.5); mesh.getMatrixAt(0, m); assert.ok(v.setFromMatrixPosition(m).length() > r0, 'spreads out');
 });
-test('spark part flies from at to to in 0.35 s on an arc and reports done', () => {
-  const { f } = setup();
-  const p = f.build({ kind: 'spark', at: { x: 0, y: 1, z: 0 }, to: { x: 2, y: 1, z: 0 }, color: 0xfcea8b });
-  const ball = p.object.children[0], w = new THREE.Vector3();
-  p.update(0.175, 0); p.object.updateMatrixWorld(true); ball.getWorldPosition(w); assert.ok(w.y > 1.5, 'arcs up'); assert.equal(p.done, false);
-  p.update(0.2, 0); p.object.updateMatrixWorld(true); ball.getWorldPosition(w); assert.equal(p.done, true); assert.ok(Math.abs(w.x - 2) < 1e-6 && Math.abs(w.y - 1) < 1e-6);
-});
-test('a dark spark has no glow material registered', () => {
-  const { f, glow } = setup(); const before = glow.size;
-  f.build({ kind: 'spark', at, to: at, dark: true }); assert.equal(glow.size, before);
-});

@@ -34,9 +34,8 @@ test('abort ends the show at once: no further events, play resolves, not busy (r
   const again = d.play(ev, e => { log.push(e.kind); return Promise.resolve(); }); d.skip(); await again;   // 還能再用
   assert.deepEqual(log, ['placed', 'placed', 'grow', 'fx']);
 });
-test('wait events last 700 ms; a grow with helpers (via) gets 900 ms for the spark', async () => {
-  assert.equal(DURATIONS.wait, 700);
+test('wait events take no time; a grow takes DURATIONS.grow whether or not it had helpers', async () => {
   const waits = []; const d = createDirector({ wait: ms => { waits.push(ms); return Promise.resolve(); } });
-  await d.play([{ kind: 'grow', item: 'milk', via: ['baseball'] }, { kind: 'grow', item: 'milk', via: [] }, { kind: 'wait', item: 'milk', waits: [] }], () => Promise.resolve());
-  assert.deepEqual(waits, [900, DURATIONS.grow, 700]);
+  await d.play([{ kind: 'grow', item: 'milk', via: ['baseball'] }, { kind: 'wait', item: 'milk', waits: [] }, { kind: 'grow', item: 'milk', via: [] }], () => Promise.resolve());
+  assert.deepEqual(waits, [DURATIONS.grow, DURATIONS.grow]);
 });

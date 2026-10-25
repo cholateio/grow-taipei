@@ -6,7 +6,7 @@ import { createPartFactory } from './parts.js';
 import { anchorWorld } from './anchors.js';
 import { levelLabel } from '../ui/format.js';
 
-const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4, TURN = 0.6;
+const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4;
 const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
 
 export function diffParts(prev, next) {
@@ -21,9 +21,9 @@ export function diffParts(prev, next) {
 export function createStage(THREE, { scene, spec, modules, ctx }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   const factory = createPartFactory(THREE, { ...ctx, builders, THREE });
-  const root = new THREE.Group(), partsGroup = new THREE.Group(), labelsGroup = new THREE.Group(), puffsGroup = new THREE.Group(), sparksGroup = new THREE.Group();
-  root.name = 'stage'; partsGroup.name = 'stage:parts'; labelsGroup.name = 'stage:labels'; puffsGroup.name = 'stage:puffs'; sparksGroup.name = 'stage:sparks';
-  root.add(partsGroup, labelsGroup, puffsGroup, sparksGroup); scene.add(root);
+  const root = new THREE.Group(), partsGroup = new THREE.Group(), labelsGroup = new THREE.Group(), puffsGroup = new THREE.Group();
+  root.name = 'stage'; partsGroup.name = 'stage:parts'; labelsGroup.name = 'stage:labels'; puffsGroup.name = 'stage:puffs';
+  root.add(partsGroup, labelsGroup, puffsGroup); scene.add(root);
   const puffGeo = new THREE.IcosahedronGeometry(1, 0);
 
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {};
@@ -33,13 +33,13 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
 
   // 物品「頭上」的位置：主零件的 at + labelY；還沒有零件就用錨點
-  function headOf(id, k = 1) {
+  function headOf(id) {
     const mod = modules.find(m => m.id === id), v = views[id] ?? {};
     const key = `${id}.main` in v ? `${id}.main` : Object.keys(v)[0];
     const p = key ? v[key].at : anchorWorld(id), y = key ? (v[key].labelY ?? mod?.labelY ?? 1) : 0.6;
-    return { x: p.x, y: p.y + y * k, z: p.z };
+    return { x: p.x, y: p.y + y, z: p.z };
   }
-  // GROW 式：沒有常駐標籤，等級變化時在物件頭上飄一個「Lv.n」（掉級是灰色往下掉、等待是灰色「…」）
+  // GROW 式：沒有常駐標籤，等級變化時在物件頭上飄一個「Lv.n」（掉級是灰色往下掉）
   const floats = [];
   function float(id, text, cls = '') {
     const p = headOf(id);
@@ -48,41 +48,6 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     floats.push({ obj, t: 0 });
   }
 
-  // 因果光點：誰幫了誰（亮）、誰害了誰（黑）。最後一顆到達時在 update 裡同步呼叫 onArrive（接著變身），
-  // 這樣變身的彈出動畫和光點走同一個 update 節拍。被跳過／RESET 清掉時只 resolve、不變身。
-  const sparks = [];
-  function flySparks(pairs, onArrive) {
-    return new Promise(resolve => {
-      const batch = { left: pairs.length, onArrive, resolve };
-      for (const { from, to, dark } of pairs) {
-        const part = factory.build({ kind: 'spark', at: headOf(from, 0.6), to: headOf(to, 0.6), dark, color: dark ? 0x211d1d : 0xfcea8b });
-        sparksGroup.add(part.object); sparks.push({ part, batch });
-      }
-    });
-  }
-  function landSpark(s) {
-    s.part.dispose?.(); sparksGroup.remove(s.part.object);
-    if (--s.batch.left === 0) s.batch.resolve(s.batch.onArrive ? s.batch.onArrive() : undefined);
-  }
-  function clearSparks() { for (const s of sparks) { s.batch.onArrive = null; landSpark(s); } sparks.length = 0; }
-
-  // 等待：零件轉頭看它在等的物品，頭上一個灰色「…」
-  const turns = [];
-  function waitGesture(waits) {
-    const out = [];
-    for (const w of waits) {
-      const target = headOf(w.for[0]);
-      float(w.item, '…', 'wait');
-      // 只轉主零件：環狀線、全島路燈這種錨在別處的零件跟著轉會整片扭掉（審查 #1）
-      for (const [key, e] of live) {
-        if (key !== `${w.item}.main`) continue;
-        const o = e.part.object, yaw = Math.atan2(target.x - o.position.x, target.z - o.position.z);
-        out.push(new Promise(done => turns.push({ o, yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)) * 0.5, t: 0, done })));
-      }
-    }
-    return Promise.all(out);
-  }
-  function clearTurns() { for (const t of turns) { t.o.rotation.y = 0; t.done(); } turns.length = 0; }
   function clearFloats() { for (const f of floats) { labelsGroup.remove(f.obj); f.obj.element.remove(); } floats.length = 0; }
 
   function finish(entry) {
@@ -105,7 +70,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
 
   function sync(instant) {
     const waits = [];
-    if (instant) { for (const e of live.values()) finish(e); for (const e of [...leaving]) drop(e); clearPuffs(); clearSparks(); clearTurns(); }
+    if (instant) { for (const e of live.values()) finish(e); for (const e of [...leaving]) drop(e); clearPuffs(); }
     for (const mod of modules) {
       const next = mod.view(lv, flags), { add, remove } = diffParts(views[mod.id], next);
       for (const key of remove) {
@@ -144,26 +109,14 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       else if (e.kind === 'grow') lv = { ...lv, [e.item]: e.to };
       if (e.delta) lv = { ...lv, [e.delta.target]: e.delta.to };
       if (e.flag) flags = { ...flags, [e.flag.name]: e.flag.value };
-      if (e.kind === 'wait') return instant ? Promise.resolve() : waitGesture(e.waits).then(() => {});
-      const floatIt = () => {
-        if (instant) return;
+      // 等待事件不演（使用者 2026-10-25：光點與轉頭讓畫面太亂）；扣不動的扣級（1→1）也不演
+      if (e.kind === 'wait' || (e.delta && e.delta.from === e.delta.to && !e.lock && !e.flag)) return Promise.resolve();
+      const changed = sync(instant);
+      if (!instant) {
         if (e.kind === 'placed') float(target, 'Lv.1');
         else if (e.kind === 'grow') float(target, levelLabel(e.to, spec.ITEMS[target].max));
         else if (e.delta) float(target, levelLabel(e.delta.to, spec.ITEMS[target].max), e.delta.to < e.delta.from ? 'down' : '');
-      };
-      // 先飛光點（誰幫的、誰害的），到了才變身
-      const helpers = !instant && e.kind === 'grow' ? (e.via ?? []) : [];
-      // 別人造成的變化：扣級、鎖死是黑光點；加成（颱風外送 +1）是亮光點；扣不動（1→1）什麼都不演
-      const noop = e.delta && e.delta.from === e.delta.to && !e.lock && !e.flag;
-      if (noop) return Promise.resolve();
-      const hit = !instant && e.kind === 'fx' && e.cause && (e.delta || e.lock) ? (e.delta ? e.delta.target : e.lock) : null;
-      const dark = !!e.lock || (e.delta && e.delta.to < e.delta.from);
-      if (helpers.length || (hit && hit !== e.cause)) {
-        const pairs = helpers.length ? helpers.map(from => ({ from, to: target })) : [{ from: e.cause, to: hit, dark }];
-        return flySparks(pairs, () => { const changed = sync(false); floatIt(); return changed; }).then(() => {});
       }
-      const changed = sync(instant);
-      floatIt();
       // 純演出的事件（老鼠撞翻攤車、颱風假、卡住）：該物品的零件搖一搖
       if (!instant && (e.kind === 'stall' || (e.kind === 'fx' && !e.delta && !e.flag))) return Promise.all([changed, shake(e.item)]).then(() => {});
       return changed.then(() => {});
@@ -179,14 +132,6 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
         else o.rotation.z = Math.sin(a.t * Math.PI * 4) * 0.12 * (1 - a.t);
         if (a.t >= 1) { if (a.kind === 'shrink') drop(e); else finish(e); }
       }
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i]; s.part.update(dt, t);
-        if (s.part.done) { const b = s.part.object.children[0].position, o = s.part.object.position; puff({ x: o.x + b.x, y: o.y + b.y - 0.3, z: o.z + b.z }); sparks.splice(i, 1); landSpark(s); }
-      }
-      for (let i = turns.length - 1; i >= 0; i--) {
-        const tr = turns[i]; tr.t = Math.min(1, tr.t + dt / TURN); tr.o.rotation.y = tr.yaw * Math.sin(Math.PI * tr.t);
-        if (tr.t >= 1) { tr.o.rotation.y = 0; turns.splice(i, 1); tr.done(); }
-      }
       for (let i = floats.length - 1; i >= 0; i--) if ((floats[i].t += dt) >= FLOAT) { labelsGroup.remove(floats[i].obj); floats[i].obj.element.remove(); floats.splice(i, 1); }
       for (let i = puffs.length - 1; i >= 0; i--) {
         const p = puffs[i], u = (p.t += dt / PUFF);
@@ -198,7 +143,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     reset() {
       for (const e of live.values()) drop(e);
       for (const e of [...leaving]) drop(e);
-      live.clear(); clearSparks(); clearTurns(); clearPuffs(); clearFloats();
+      live.clear(); clearPuffs(); clearFloats();
       lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {};
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync(true);

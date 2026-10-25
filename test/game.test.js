@@ -59,3 +59,45 @@ test('after the eighth item the game plays CLOSING_TURNS extra growth turns befo
   assert.equal(plays, 8 + spec.CLOSING_TURNS); assert.equal(done.state.turn, 8 + spec.CLOSING_TURNS); assert.equal(done.ending.id, 'cyber');
   assert.equal(f.ui.busy.at(-1), false);
 });
+// 計畫 3.6：全島效果在事件當下、回合最後補 settle、放置時物品先從框裡飛出去
+test('onLevels is called per event with the levels so far, then once at turn end', async () => {
+  const f = fakes(), calls = []; const g = createGame({ spec, engine, endings, ...f, onFinished() {}, onLevels: (lv, flags, info) => calls.push({ lv: { ...lv }, info }) });
+  await g.pick('typhoon'); calls.length = 0; await g.pick('milk');   // 第 2 回合：颱風 1→2
+  const perEvent = calls.filter(c => c.info.event), end = calls.filter(c => c.info.turnEnd);
+  assert.equal(end.length, 1); assert.equal(calls.at(-1).info.turnEnd, true);
+  assert.equal(perEvent[0].info.event.kind, 'placed'); assert.equal(perEvent[0].lv.milk, 1);
+  const landing = perEvent.find(c => c.info.event.kind === 'grow' && c.info.event.item === 'typhoon');
+  assert.equal(landing.lv.typhoon, 2); assert.deepEqual(end[0].lv, g.state.lv);
+});
+test('settle is the last event of every turn', async () => {
+  const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  await g.pick('milk'); assert.equal(f.actors.applied.at(-1).kind, 'settle');
+  await g.pick('chip'); assert.equal(f.actors.applied.filter(e => e.kind === 'settle').length, 2);
+});
+test('placed flies from the slot before the actor pops; instant does not fly', async () => {
+  const f = fakes(), log = [];
+  f.ui.fly = id => { log.push(['fly', id]); return Promise.resolve(); };
+  f.actors.apply = e => { log.push([e.kind]); return Promise.resolve(); };
+  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: false }); };
+  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  await g.pick('milk'); assert.deepEqual(log.slice(0, 2), [['fly', 'milk'], ['placed']]);
+  const f2 = fakes(); let flew = 0; f2.ui.fly = () => { flew++; return Promise.resolve(); };
+  await createGame({ spec, engine, endings, ...f2, onFinished() {} }).pick('milk'); assert.equal(flew, 0);
+});
+test('the slot level updates when the pop starts, not after it finishes', async () => {
+  const f = fakes(); let release; const seen = [];
+  f.actors.apply = e => e.kind === 'placed' ? new Promise(r => { release = r; }) : Promise.resolve();
+  f.director.play = async (events, onEvent) => { const p = onEvent(events[0], { instant: false }); await new Promise(r => setTimeout(r, 0)); seen.push(f.ui.levels.milk); release(); await p; };
+  await createGame({ spec, engine, endings, ...f, onFinished() {} }).pick('milk');
+  assert.deepEqual(seen, [1]);
+});
+test('a reset during the fly-in stops the show before the pop', async () => {
+  const f = fakes(); let land; const applied = [];
+  f.ui.fly = () => new Promise(r => { land = r; });
+  f.actors.apply = e => { applied.push(e.kind); return Promise.resolve(); };
+  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: false }); };
+  f.director.abort = () => {};
+  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  const p = g.pick('milk'); await Promise.resolve(); g.reset(); land(); await p;
+  assert.deepEqual(applied, []);
+});

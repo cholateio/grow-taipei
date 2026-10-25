@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as spec from '../src/rules/spec.js';
-import { installFakeDom, bubbles } from './helpers/fakedom.js';
+import { installFakeDom } from './helpers/fakedom.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
@@ -60,7 +60,7 @@ test('reset mid-transition disposes everything (review focus 1)', async () => {
   const { stage, parts, people, run, scene } = setup();
   stage.apply(placed, { instant: false }); stage.apply(grow(2), { instant: false }); run(0.1);
   stage.reset();
-  assert.equal(parts().length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(stage.partKeys(), []);
+  assert.equal(parts().length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(stage.partKeys(), []); assert.equal(floats(scene).length, 0, 'floats cleared');
   assert.equal(stage.levelOf('milk'), 0);
   assert.equal(scene.getObjectByName('stage:puffs').children.length, 0, 'transition smoke cleared');
 });
@@ -75,19 +75,28 @@ test('fx without delta shakes the item parts and resolves after 0.6 s of updates
   stage.update(0.1, 0.1); assert.notEqual(parts()[0].rotation.z, 0);
   run(0.7); await new Promise(r => setTimeout(r, 0)); assert.ok(done); assert.equal(parts()[0].rotation.z, 0);
 });
-test('label pill shows the item number and name, hidden at lv 0, bubble survives a level change', async () => {
-  const { stage, scene } = setup();
-  const label = () => scene.getObjectByName('stage:labels').children.find(c => c.element.textContent.includes('鮮奶'));
-  assert.equal(label().visible, false); assert.match(label().element.textContent, /^01鮮奶/);
-  stage.apply(placed, { instant: false }); assert.equal(label().visible, true);
-  stage.apply(grow(2), { instant: false });
-  assert.ok(bubbles(label().element).some(b => b.textContent === '一箱鮮奶送到了'));
-  assert.ok(Math.abs(label().position.y - (at.y + 1)) < 1e-9, 'pill sits labelY above milk.main');
+// GROW 式：沒有常駐標籤，等級變化時物件頭上飄一個「Lv.n」就好
+const floats = scene => scene.getObjectByName('stage:labels').children;
+test('a level change floats "Lv.n" above the item main part; instant shows nothing; it is gone after 1.4 s', async () => {
+  const { stage, scene, run } = setup();
+  stage.apply(placed, { instant: false });
+  assert.equal(floats(scene).length, 1); assert.equal(floats(scene)[0].element.textContent, 'Lv.1'); assert.equal(floats(scene)[0].element.className, 'actor-float');
+  assert.ok(Math.abs(floats(scene)[0].position.y - (at.y + 1)) < 1e-9, 'labelY above milk.main');
+  stage.apply(grow(2), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.2');
+  run(1.5); assert.equal(floats(scene).length, 0);
+  await stage.apply(grow(3), { instant: true }); assert.equal(floats(scene).length, 0);
 });
-test('items without a module still get a pill at their anchor', async () => {
+test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async () => {
+  const { stage, scene } = setup();
+  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
+  stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
+  assert.equal(floats(scene)[0].element.className, 'actor-float down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
+  stage.apply(grow(4), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
+});
+test('items without a module still float their level at their anchor', async () => {
   const { stage, scene } = setup([]);
-  await stage.apply({ kind: 'placed', item: 'chip', to: 1 }, { instant: true });
-  assert.equal(scene.getObjectByName('stage:labels').children.find(c => c.element.textContent.includes('晶片')).visible, true);
+  stage.apply({ kind: 'placed', item: 'chip', to: 1 }, { instant: false });
+  assert.equal(floats(scene).length, 1); assert.ok(floats(scene)[0].position.x > 3, 'at the chip anchor');
 });
 test('delta event updates the target item mirror and view; flags are mirrored', async () => {
   const { stage, people } = setup();

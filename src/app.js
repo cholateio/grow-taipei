@@ -34,7 +34,6 @@ import * as token from './actors/token.js';
 import * as boba from './actors/boba.js';
 import * as typhoon from './actors/typhoon.js';
 import { worldEffects } from './actors/world.js';
-import { anchorWorld } from './actors/anchors.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
 
@@ -90,7 +89,8 @@ export async function start({ params, loading }) {
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
   const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon], ctx: { people, assets, glow: view.glow } });
-  const director = createDirector({ onFocus: e => rig.focus(anchorWorld(e.delta?.target ?? e.item)), reducedMotion: motion.matches || !!auto });
+  // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
+  const director = createDirector({ reducedMotion: motion.matches || !!auto });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));
   // 全島效果：燈泡推動時間、颱風 Lv2 小人躲進室內、大停電熄燈
@@ -102,15 +102,11 @@ export async function start({ params, loading }) {
     onLevels: applyWorld,
     onFinished: (ending, state) => {
       setTime(TIMES.night);
-      showEndCard(uiRoot, {
-        title: ending.title, line: endings.ENDINGS[ending.id].line,
-        levels: spec.ORDER.map(id => ({ name: spec.ITEMS[id].name, lv: state.lv[id], max: spec.ITEMS[id].max })),
-        onRestart: restart,
-      });
+      showEndCard(uiRoot, { title: ending.title, line: endings.ENDINGS[ending.id].line, onRestart: restart });
     },
   });
   function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags); rig.overview(); }
-  const pick = async id => { if (await game.pick(id)) rig.overview(); };
+  const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
   createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });

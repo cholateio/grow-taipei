@@ -40,11 +40,16 @@ button.primary:hover { background: #3a3333; }
 .card ol { text-align: left; margin: 0 0 16px; padding-left: 1.3em; line-height: 1.9; font-weight: 700; }
 .card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }
 .card .line { margin: 0 0 14px; }
-.card .levels { list-style: none; padding: 0; margin: 0 0 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; text-align: left; font-size: 14px; }
-.card .levels li { display: flex; justify-content: space-between; }
-.card .levels li.max b { background: var(--yellow); border-radius: 6px; padding: 0 5px; }
+/* 結局橫幅：貼在物品列上方，島還看得到 */
+.card.end { top: auto; bottom: 122px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; justify-content: space-between; gap: 18px; text-align: left; padding: 14px 22px; }
+.card.end h2 { margin: 2px 0 4px; font-size: 22px; }
+.card.end .line { margin: 0; font-size: 14px; }
+.card.end button { flex: none; }
+@media (max-width: 640px) { .card.end { bottom: 196px; flex-direction: column; align-items: stretch; text-align: center; } }
 .card.error h2 { color: var(--ink); }
 
-.actor-label { background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px #4a2a1414; white-space: nowrap; transform: translateY(-8px); }
-.actor-label b { color: var(--coral); font: 700 10px ui-monospace, monospace; margin-right: 5px; }
-.actor-bubble { position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 10px; padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+/* 飄起來的等級字：升級珊瑚色往上飄，掉級灰色往下掉 */
+.actor-float { color: var(--coral); font: 900 15px ui-monospace, monospace; text-shadow: 0 1px 0 #fff, 0 0 6px #fff; white-space: nowrap; pointer-events: none; animation: float-up 1.4s ease-out forwards; }
+.actor-float.down { color: #7a6f68; animation-name: float-down; }
+@keyframes float-up { 0% { opacity: 0; transform: translateY(6px) scale(.7); } 15% { opacity: 1; transform: translateY(0) scale(1.15); } 100% { opacity: 0; transform: translateY(-46px) scale(1); } }
+@keyframes float-down { 0% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(28px); } }

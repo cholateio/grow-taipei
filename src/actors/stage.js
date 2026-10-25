@@ -4,8 +4,9 @@
 import { CSS2DObject } from '../../vendor/three/addons/renderers/CSS2DRenderer.js';
 import { createPartFactory } from './parts.js';
 import { anchorWorld } from './anchors.js';
+import { levelLabel } from '../ui/format.js';
 
-const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6;
+const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4;
 const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
 
 export function diffParts(prev, next) {
@@ -31,29 +32,17 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   const puffs = [];
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
 
-  // 每個物品一個藥丸標籤：珊瑚色編號 + 名稱（§9.5）；故事氣泡掛在藥丸上
-  const labels = {};
-  spec.ORDER.forEach((id, i) => {
-    const el = document.createElement('div'); el.className = 'actor-label';
-    const num = document.createElement('b'), name = document.createElement('span');
-    num.textContent = String(i + 1).padStart(2, '0'); name.textContent = spec.ITEMS[id].name; el.append(num, name);
-    const obj = new CSS2DObject(el); obj.visible = false; labelsGroup.add(obj);
-    labels[id] = { obj, el };
-  });
-
-  function placeLabel(id) {
-    const l = labels[id], mod = modules.find(m => m.id === id), v = views[id] ?? {};
+  // GROW 式：沒有常駐標籤，等級變化時在物件頭上飄一個「Lv.n」（掉級是灰色往下掉）
+  const floats = [];
+  function float(id, text, down) {
+    const mod = modules.find(m => m.id === id), v = views[id] ?? {};
     const key = `${id}.main` in v ? `${id}.main` : Object.keys(v)[0];
     const p = key ? v[key].at : anchorWorld(id), y = key ? (v[key].labelY ?? mod.labelY ?? 1) : 0.6;
-    l.obj.position.set(p.x, p.y + y, p.z);
-    l.obj.visible = lv[id] > 0;
+    const el = document.createElement('div'); el.className = down ? 'actor-float down' : 'actor-float'; el.textContent = text;
+    const obj = new CSS2DObject(el); obj.position.set(p.x, p.y + y, p.z); labelsGroup.add(obj);
+    floats.push({ obj, t: 0 });
   }
-
-  function bubble(id, text, instant) {
-    if (instant || !text || !labels[id]) return;
-    const b = document.createElement('div'); b.className = 'actor-bubble'; b.textContent = text; labels[id].el.append(b);
-    setTimeout(() => b.remove(), 1200);
-  }
+  function clearFloats() { for (const f of floats) { labelsGroup.remove(f.obj); f.obj.element.remove(); } floats.length = 0; }
 
   function finish(entry) {
     const a = entry.anim; if (!a) return;
@@ -92,7 +81,6 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       }
       views[mod.id] = next;
     }
-    for (const id of spec.ORDER) placeLabel(id);
     return Promise.all(waits);
   }
 
@@ -115,8 +103,12 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       else if (e.kind === 'grow') lv = { ...lv, [e.item]: e.to };
       if (e.delta) lv = { ...lv, [e.delta.target]: e.delta.to };
       if (e.flag) flags = { ...flags, [e.flag.name]: e.flag.value };
-      bubble(target, e.story, instant);
       const changed = sync(instant);
+      if (!instant) {
+        if (e.kind === 'placed') float(target, 'Lv.1', false);
+        else if (e.kind === 'grow') float(target, levelLabel(e.to, spec.ITEMS[target].max), false);
+        else if (e.delta) float(target, levelLabel(e.delta.to, spec.ITEMS[target].max), e.delta.to < e.delta.from);
+      }
       // 純演出的事件（老鼠撞翻攤車、颱風假、卡住）：該物品的零件搖一搖
       if (!instant && (e.kind === 'stall' || (e.kind === 'fx' && !e.delta && !e.flag))) return Promise.all([changed, shake(e.item)]).then(() => {});
       return changed.then(() => {});
@@ -132,6 +124,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
         else o.rotation.z = Math.sin(a.t * Math.PI * 4) * 0.12 * (1 - a.t);
         if (a.t >= 1) { if (a.kind === 'shrink') drop(e); else finish(e); }
       }
+      for (let i = floats.length - 1; i >= 0; i--) if ((floats[i].t += dt) >= FLOAT) { labelsGroup.remove(floats[i].obj); floats[i].obj.element.remove(); floats.splice(i, 1); }
       for (let i = puffs.length - 1; i >= 0; i--) {
         const p = puffs[i], u = (p.t += dt / PUFF);
         p.m.position.addScaledVector(p.v, dt * (1 - Math.min(1, u)));
@@ -142,8 +135,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     reset() {
       for (const e of live.values()) drop(e);
       for (const e of [...leaving]) drop(e);
-      live.clear(); clearPuffs();
-      for (const l of Object.values(labels)) for (const c of [...l.el.children]) if (c.className === 'actor-bubble') c.remove();
+      live.clear(); clearPuffs(); clearFloats();
       lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {};
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync(true);

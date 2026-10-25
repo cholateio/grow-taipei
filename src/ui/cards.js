@@ -1,5 +1,4 @@
 // 卡片：怎麼玩、結局、錯誤，以及右上角的工具列。
-import { levelLabel } from './format.js';
 
 function card(root, cls, html) {
   root.querySelector(`.card.${cls}`)?.remove();
@@ -16,12 +15,10 @@ export function showHowTo(root, { onClose }) {
   return el;
 }
 
-export function showEndCard(root, { title, line, levels, onRestart }) {
+// 結局卡是物品列上方的一條橫幅，不蓋住島：玩家要看得到結局後的場景。等級已經在物品列上，不重複列。
+export function showEndCard(root, { title, line, onRestart }) {
   const el = card(root, 'end', `
-    <p class="eyebrow">THE END</p>
-    <h2>${title}</h2>
-    <p class="line">${line}</p>
-    <ul class="levels">${levels.map(l => `<li class="${l.lv >= l.max ? 'max' : ''}"><span>${l.name}</span><b>${levelLabel(l.lv, l.max)}</b></li>`).join('')}</ul>
+    <div class="text"><p class="eyebrow">THE END</p><h2>${title}</h2><p class="line">${line}</p></div>
     <button type="button" class="primary">再玩一次</button>`);
   el.querySelector('button').addEventListener('click', () => { el.remove(); onRestart?.(); });
   return el;

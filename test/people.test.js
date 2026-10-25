@@ -58,10 +58,39 @@ test('scale multiplies the whole figure', () => {
   head.getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); const k0 = s.x;
   head.getMatrixAt(1, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.ok(Math.abs(s.x / k0 - 1.3) < 1e-6);
 });
-test('ACCESSORIES lists the eight kinds', () => assert.deepEqual(ACCESSORIES, ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike', 'mortar']));
+test('ACCESSORIES lists the eleven kinds', () => assert.deepEqual(ACCESSORIES, ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike', 'mortar', 'vest', 'uniform', 'apron']));
 test('mortar board: a flat black square on the head, only on its wearer', () => {
   const people = createPeople(THREE, { max: 2 }), m = new THREE.Matrix4(), s = new THREE.Vector3();
   people.spawn({ stand: { x: 0, y: 0, z: 0, yaw: 0 }, accessory: 'mortar' }); people.spawn({ stand: { x: 1, y: 0, z: 0, yaw: 0 } }); people.update(0, 0);
   const mesh = people.group.getObjectByName('people:mortar'); mesh.getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.ok(s.x > 0);
   mesh.getMatrixAt(1, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); assert.equal(s.x, 0);
+});
+test('a controlled walker stays where setPose puts it and only swings legs while walking', () => {
+  const people = createPeople(THREE, { max: 4 }); const w = people.spawn({ controlled: true });
+  w.setPose({ x: 1, y: 0.65, z: 2, yaw: 0.5, walking: false }); people.update(0.5, 0.5); assert.deepEqual(w.pos, { x: 1, y: 0.65, z: 2 });
+  const m = new THREE.Matrix4(), e = new THREE.Euler(), q = new THREE.Quaternion();
+  const legRx = () => { people.group.getObjectByName('people:legL').getMatrixAt(0, m); m.decompose(new THREE.Vector3(), q, new THREE.Vector3()); return e.setFromQuaternion(q).x; };
+  const still = legRx(); w.setPose({ x: 1, y: 0.65, z: 2, yaw: 0.5, walking: true }); people.update(0.016, 0.7); assert.notEqual(legRx(), still);
+});
+test('new accessories vest, uniform and apron show only on their wearer; setAccessory swaps in place', () => {
+  const people = createPeople(THREE, { max: 4 }), m = new THREE.Matrix4(), s = new THREE.Vector3();
+  const scaleOf = (name, i) => { people.group.getObjectByName(name).getMatrixAt(i, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); return s.x; };
+  const a = people.spawn({ controlled: true, accessory: 'vest' }), b = people.spawn({ controlled: true, accessory: 'uniform' }), c = people.spawn({ controlled: true, accessory: 'apron' });
+  people.update(0.016, 0.016);
+  assert.ok(scaleOf('people:vest', 0) > 0 && scaleOf('people:vest', 1) === 0);
+  assert.ok(scaleOf('people:cap', 1) > 0 && scaleOf('people:cap', 0) === 0);
+  assert.ok(scaleOf('people:apron', 2) > 0 && scaleOf('people:apron', 0) === 0);
+  const col = new THREE.Color(); people.group.getObjectByName('people:cap').getColorAt(1, col); assert.equal(col.getHex(), 0x3f5a8a);
+  b.setAccessory('glass'); people.update(0.016, 0.03); assert.equal(scaleOf('people:cap', 1), 0); assert.ok(scaleOf('people:lens', 1) > 0);
+  assert.ok(ACCESSORIES.includes('vest') && ACCESSORIES.includes('uniform') && ACCESSORIES.includes('apron'));
+});
+test('gestures: knock leans the body, jump lifts it, look overrides yaw', () => {
+  const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0, y: 0, z: 0, yaw: 0, walking: false });
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  const bodyAt = () => { people.group.getObjectByName('people:body').getMatrixAt(0, m); m.decompose(p, q, new THREE.Vector3()); return { y: p.y, rx: e.setFromQuaternion(q).x, ry: e.y }; };
+  people.update(0.016, 0); const base = bodyAt();
+  w.gesture = { kind: 'knock', k: 0.125 }; people.update(0.016, 0); assert.ok(Math.abs(bodyAt().rx - base.rx) > 0.2);
+  w.gesture = { kind: 'jump', k: 0.25 }; people.update(0.016, 0); assert.ok(bodyAt().y - base.y > 0.09);
+  w.gesture = { kind: 'look', k: 0.5, yaw: 1.2 }; people.update(0.016, 0); assert.ok(Math.abs(bodyAt().ry - 1.2) < 1e-6);
+  w.gesture = null; people.update(0.016, 0); assert.ok(Math.abs(bodyAt().y - base.y) < 1e-9);
 });

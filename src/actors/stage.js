@@ -37,6 +37,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
   let seen = new WeakSet();        // 已經折進 lv / flags / meta 的事件（同一事件再 apply 只套剩下的零件）
+  const tilted = new Set();        // 被劇本撞歪的零件鍵（beats.js 的 tilt 記下、turn.js 下一回合開頭白光扶正）
 
   // 物品「頭上」的位置：主零件的 at + labelY；還沒有零件就用錨點
   function headOf(id) {
@@ -136,7 +137,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
     reset() {
       for (const e of live.values()) drop(e);
       for (const p of pending.values()) if (p.old) drop(p.old);
-      live.clear(); pending.clear(); roster?.reset?.();
+      live.clear(); pending.clear(); tilted.clear(); roster?.reset?.();
       lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; seen = new WeakSet();
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync();
@@ -149,5 +150,6 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
     get lv() { return lv; },
     get flags() { return flags; },
     partKeys: () => [...live.keys()],
+    tilted,
   };
 }

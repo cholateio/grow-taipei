@@ -236,12 +236,12 @@ export function scaleIn(key, { axis = 'y', dur = 0.8 } = {}) {
   };
 }
 
-// 零件歪掉（攤車被撞歪）；下一次該零件重建就回正
+// 零件歪掉（攤車被撞歪）；記在 stage.tilted，下一回合開頭 turn.js 白光扶正
 export function tilt(key, { rz = 0.25, dur = 0.3 } = {}) {
   let obj = null;
   return {
     kind: 'tilt', dur,
-    start(ctx) { obj = partOf(key, ctx); if (!obj) return false; },
+    start(ctx) { obj = partOf(key, ctx); if (!obj) return false; ctx.stage.tilted?.add(key); },
     step(k) { obj.rotation.z = rz * k; },
     end() { if (obj) obj.rotation.z = rz; },
   };

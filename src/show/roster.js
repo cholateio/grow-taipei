@@ -5,7 +5,8 @@
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
-// 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走。fidget 之後的任務才做；不認得的 home 先當成站在 spec.at。
+// 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
+// （老闆搖杯）。不認得的 home 先當成站在 spec.at。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt } from '../scene/hex.js';
@@ -16,6 +17,7 @@ export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5, STAGGER = 0.15;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下；同一次宣告依序閃的間隔
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
+const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
@@ -233,7 +235,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     return m;
   }
 
-  function claim(m) { m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; }
+  function claim(m) { still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; }
   function home(m) {
     m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
@@ -285,11 +287,21 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
       return;
     }
     const spot = spotOf(spec, m.i);
-    if (Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z) <= ARRIVE) { setPose(m, { ...spot, yaw: spot.yaw ?? m.yaw, walking: false }); return; }
+    if (Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z) <= ARRIVE) { setPose(m, { ...spot, yaw: spot.yaw ?? m.yaw, walking: false }); fidget(m, h, t); return; }
+    still(m);
     const path = nav.route(m.pos, spot), end = path.at(-1);
     if (end.x !== spot.x || end.z !== spot.z) path.push({ x: spot.x, y: spot.y ?? nav.groundY(spot.x, spot.z), z: spot.z });   // spot 可能在走路格外（屋頂、footprint 裡）
     go(m, path);
   }
+
+  // fidget：站定的 people 小人每 FIDGET_EVERY 秒做一次 FIDGET_DUR 秒的 gesture，其餘時間不動
+  function fidget(m, h, t) {
+    if (!h.fidget || !m.walker) return;
+    const ph = (((t + m.i * FIDGET_SHIFT) % FIDGET_EVERY) + FIDGET_EVERY) % FIDGET_EVERY, on = ph < FIDGET_DUR;
+    m.walker.gesture = on ? { kind: h.fidget, k: ph / FIDGET_DUR } : null; m.fidgeting = on;
+  }
+  // 離開站位或被劇本拿走：小動作立刻收掉（劇本自己的 gesture 不碰）
+  function still(m) { if (m.fidgeting) { m.walker.gesture = null; m.fidgeting = false; } }
 
   // path：不在折線上（剛被劇本放回來）就先走到折線上最近的一點，再從那裡沿線來回
   function onPath(m, h, dt) {

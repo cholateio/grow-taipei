@@ -237,3 +237,17 @@ test('a hidden leaver retires without a flash; a visible one still flashes', () 
   roster.hide(roster.members('k')[0]); roster.retire('k'); roster.flush();
   assert.equal(roster.members('k').length, 0); assert.equal(flash.count, 0, 'hidden leaver is silent');
 });
+test('stand members with fidget play a short gesture every 3 s and are still between', () => {
+  const { roster } = setup(), spot = { ...AT, yaw: 0 };
+  roster.declare('k', { kind: 'roster', at: AT, n: 2, home: { kind: 'stand', spots: [spot, { ...spot, x: spot.x + 0.4 }], fidget: 'wave' } });
+  const [a, b] = roster.members('k'), log = [];
+  for (let i = 0; i < 180; i++) { const t = i / 30; roster.update(1 / 30, t); log.push([a.walker.gesture?.kind ?? null, b.walker.gesture?.kind ?? null, a.walker.gesture?.k]); }
+  const on = j => log.filter(f => f[j] === 'wave').length / 30;
+  assert.ok(Math.abs(on(0) - 1.2) < 0.1 && Math.abs(on(1) - 1.2) < 0.1, `0.6 s every 3 s (${on(0)}, ${on(1)})`);
+  assert.ok(log.some(f => f[0] && !f[1]) || log.some(f => !f[0] && f[1]), 'phase-shifted per member');
+  assert.ok(log.filter(f => f[0]).every(f => f[2] >= 0 && f[2] <= 1));
+  // 劇本拿走就停手，日常不再擺
+  roster.claim(a); assert.equal(a.walker.gesture, null);
+  roster.declare('w', kids(1)); for (let i = 0; i < 90; i++) roster.update(1 / 30, i / 30);
+  assert.equal(roster.members('w')[0].walker.gesture, null, 'no fidget without the flag');
+});

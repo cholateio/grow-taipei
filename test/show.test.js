@@ -151,3 +151,27 @@ test('people hidden at their doors on the landing turn are all back out when the
   }
   assert.ok(landed);
 });
+
+// 老鼠撞歪攤車（§8.6「下回合白光扶正」）
+test('a knocked cart is righted with a flash at the start of the next turn', async () => {
+  const { show, run } = await headlessShow();
+  let s = engine.createState(spec), knocked = false;
+  for (const id of ['boba', 'rat', 'milk', 'chip', 'token']) {
+    const r = place(s, id); s = r.state;
+    const evs = [...r.events, { kind: 'settle' }];
+    if (knocked) {
+      const p = show.turn(evs), cart = show.stage.partObject('boba.main');
+      assert.ok(Math.abs(cart.rotation.z - 0.25) < 1e-9, 'still askew as the turn starts');
+      const at = show.flash.at, flashed = [];
+      show.flash.at = (q, o) => { flashed.push(q); return at(q, o); };
+      for (let i = 0; i < 30 && Math.abs(cart.rotation.z) > 0; i++) show.update(1 / 30, i / 30);
+      assert.equal(cart.rotation.z, 0, 'righted within the first second'); assert.ok(flashed.some(q => Math.hypot(q.x - cart.position.x, q.z - cart.position.z) < 1e-9), 'with a flash on the cart');
+      assert.equal(show.stage.partObject('milk.crate').rotation.z, 0, 'the tipped milk crate is righted too');
+      show.skip(); await p; break;
+    }
+    if (!r.events.some(e => e.cause === 'rat' && e.story?.includes('珍奶'))) { await run(evs, { instant: true }); continue; }
+    await run(evs); knocked = true;
+    assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'knocked at the end of the rat turn');
+  }
+  assert.ok(knocked);
+});

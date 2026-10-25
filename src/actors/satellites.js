@@ -8,7 +8,7 @@ import * as spec from '../rules/spec.js';
 
 export const id = 'satellites';
 const TOP_SAT = TOP - 0.2, GOLD = 0xe8c547;
-const island = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP_SAT, z: c.z }; };
+export const island = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP_SAT, z: c.z }; };
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
 const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 
@@ -23,9 +23,10 @@ export function view(lv, flags) {
   if (lv.token >= 5 && lv.milk >= 2) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: lv.milk >= 5 ? 'cap' : 'none', home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
   }
-  if (lv.boba >= 2) {
+  // 小森林島的觀光客跟著珍奶分店（Lv4）一起來：珍奶 Lv4 的劇本鏡頭移過去時白光出現（§8.7）
+  if (lv.boba >= 4) {
     const f = island('forest'), yaw = Math.atan2(-f.x, -f.z);   // 面向主島拍照
-    v['sat.forest'] = { kind: 'people', at: f, n: 2, accessory: 'suitcase', stand: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] };
+    v['sat.forest'] = { kind: 'roster', at: f, n: 2, accessory: 'suitcase', home: { kind: 'stand', spots: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] } };
   }
   if (lv.boba >= 4) v['sat.forestShop'] = { kind: 'compound', at: at('forest', 1.0, 0.9), parts: [
     { kind: 'box', pos: [0, 0.22, 0], scale: [0.45, 0.44, 0.35], color: C.wall }, { kind: 'hip', pos: [0, 0.55, 0], scale: [0.55, 0.2, 0.45], color: C.coral },

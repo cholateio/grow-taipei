@@ -133,3 +133,16 @@ test('fx scripts are looked up on the cause module and may return null to fall b
   // cause 模組沒有 fx 劇本（或 cause 是 'turn'）→ 預設
   assert.deepEqual(kindsOf(buildTurn([{ kind: 'after', item: 'turn', cause: 'turn', flag: { name: 'blackout', value: true } }], base(mods), ctx)), ['apply', 'apply', 'home', 'world']);
 });
+
+test('a part knocked askew last turn is righted with a flash at the start of this turn', () => {
+  const obj = { position: { x: 1, y: 0, z: 2 }, rotation: { z: 0.25 } }, flashes = [];
+  const ctx = fakeCtx(); ctx.stage.tilted = new Set(['boba.main']); ctx.stage.partObject = k => (k === 'boba.main' ? obj : null);
+  const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), ctx);
+  const [fix] = beats;
+  assert.equal(fix.kind, 'apply'); assert.ok(fix.dur > 0); assert.equal(beats[1].kind, 'mark');
+  fix.start({ ...ctx, flash: { at: (p, o) => { flashes.push(p); assert.equal(obj.rotation.z, 0.25, 'still askew until the peak'); o.onPeak(); } } });
+  assert.equal(flashes.length, 1); assert.equal(flashes[0], obj.position); assert.equal(obj.rotation.z, 0); assert.equal(ctx.stage.tilted.size, 0);
+  obj.rotation.z = 0.3; fix.end(ctx); assert.equal(obj.rotation.z, 0, 'end rights it too (skip)');
+  assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), ctx)[0].kind, 'mark', 'nothing askew → no beat');
+  assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), fakeCtx())[0].kind, 'mark', 'stages without tilted are fine');
+});

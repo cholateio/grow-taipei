@@ -3,11 +3,13 @@
 // 劇本查找：placed → 物品的 script.placed；grow → script.grow[to]；fx／after → 「造成它的」模組（e.cause）的 script.fx；
 //   stall → script.stall；settle → 101 的 script.settle；劇本回 null／undefined（或沒寫）就走預設劇本（§6.6）。
 // 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡白光補上（沒剩就 0 秒）。
+// 上一回合被撞歪的零件（stage.tilted）在回合一開頭白光扶正（§8.6「下回合白光扶正」）。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家，太長連走路也拿掉。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
+import { FLASH } from './flash.js';
 
 export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together'];
 const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.5;
@@ -44,6 +46,20 @@ function defaults(e) {
   return [B.apply(e, { flash: false })];
 }
 
+// 扶正：白光閃在零件上、最亮那一刻轉回來；跳過時 end 直接轉回來
+function upright(key) {
+  const fix = c => { const o = c.stage.partObject(key); if (o) o.rotation.z = 0; };
+  return {
+    kind: 'apply', dur: FLASH,
+    start(c) {
+      c.stage.tilted.delete(key);
+      const o = c.stage.partObject(key); if (!o || !o.rotation.z) return false;
+      c.flash.at(o.position, { onPeak: () => fix(c) });
+    },
+    end: fix,
+  };
+}
+
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
@@ -54,7 +70,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   ctx.montage = montage;
   const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
-  const out = montage ? COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR)) : [];
+  const out = [...(ctx.stage?.tilted ?? [])].map(upright);
+  if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR)));
 
   events.forEach((e, i) => {
     const prev = view; view = foldEvent(view, e);

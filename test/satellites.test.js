@@ -29,7 +29,7 @@ test('lighthouse lights at bulb 2, sweeps at bulb 3, dark in a blackout', () => 
   assert.equal(sat.view(lv({ bulb: 3 }), {})['sat.beam'].kind, 'beam');
   assert.equal(sat.view(lv({ bulb: 3 }), { blackout: true })['sat.lighthouse'], undefined);
 });
-test('playground kids come with the shuttle and need a school; forest tourists need a queue; the shop needs the chain', () => {
+test('playground kids come with the shuttle and need a school; forest tourists and the shop need the chain', () => {
   // 小孩是坐接駁車（代幣 Lv5）來的：代幣 Lv5 的劇本 hold 住名冊、在車旁 spawn
   assert.equal(sat.view(lv({ token: 4, milk: 3 }), {})['sat.playground'], undefined);
   assert.equal(sat.view(lv({ token: 5, milk: 1 }), {})['sat.playground'], undefined);
@@ -37,7 +37,7 @@ test('playground kids come with the shuttle and need a school; forest tourists n
   assert.deepEqual([kids.kind, kids.n, kids.accessory, kids.home.kind, kids.home.r], ['roster', 2, 'none', 'wander', 0.5]);
   assert.ok(Math.hypot(kids.home.at.x - c.x, kids.home.at.z - c.z) < 0.5, 'wanders on the playground island');
   assert.equal(sat.view(lv({ token: 5, milk: 5 }), {})['sat.playground'].accessory, 'cap');
-  assert.equal(sat.view(lv({ boba: 2 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forestShop'], undefined);
+  assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forestShop'], undefined);
   assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forestShop'].kind, 'compound');
 });
 test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), chest opens only when everything is MAX', () => {
@@ -55,7 +55,7 @@ test('every satellite part sits on its island (within R of the island centre) ex
   const centres = SATELLITES.map(s => axialToWorld(s.q, s.r));
   for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 4, chip: 3, rat: 3, bulb: 3 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
-    const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? [])];
+    const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
   }
 });

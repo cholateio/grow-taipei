@@ -8,8 +8,12 @@ import { levelLabel } from '../ui/format.js';
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { stageOf, STAGE_NAMES } from './tower.js';
 
-const POP = 0.6, SHRINK = 0.25, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4;
-const easeOutBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
+// 變身（計畫 3.6）：舊的先壓扁 ANTICIPATE 秒再縮掉、新的晚一拍彈出；同一事件多個新零件依序晚 STAGGER 秒。
+// 回彈依零件大小：小東西彈得多、整圈軌道幾乎不晃；煙的數量、大小、散開的範圍也跟著零件大小。
+const ANTICIPATE = 0.15, SHRINK = 0.2, POP = 0.55, STAGGER = 0.05, MAX_STAGGER = 0.3, SHAKE = 0.6, PUFF = 0.6, FLOAT = 1.4;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const easeOutBack = (x, c1) => 1 + (c1 + 1) * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+export const overshoot = r => clamp(2.2 - 0.25 * r, 0.15, 1.9);
 
 export function diffParts(prev, next) {
   const same = k => k in prev && k in next && JSON.stringify(prev[k]) === JSON.stringify(next[k]);
@@ -62,16 +66,26 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     const a = entry.anim; if (!a) return;
     entry.anim = null; entry.part.object.scale.setScalar(1); entry.part.object.rotation.z = 0; a.done();
   }
+  // 零件的大小：建好時量一次包圍盒（還沒載入的模型、共用小人系統的零件當小東西）
+  const box = new THREE.Box3(), boxSize = new THREE.Vector3();
+  function measure(object) {
+    box.setFromObject(object);
+    if (box.isEmpty()) return { r: 0.3, x: object.position.x, y: object.position.y, z: object.position.z };
+    box.getSize(boxSize); const c = box.getCenter(new THREE.Vector3());
+    return { r: boxSize.length() / 2, x: c.x, y: box.min.y, z: c.z };
+  }
   function drop(entry) {
     entry.anim?.done(); entry.anim = null;
     entry.part.dispose?.(); partsGroup.remove(entry.part.object); leaving.delete(entry);
   }
-  function puff(at) {
-    for (let i = 0; i < 3; i++) {
+  // 從零件底部冒一圈煙：n、大小、散開半徑都跟零件半徑 r 走
+  function puff({ r, x, y, z }) {
+    const n = clamp(Math.round(3 + 1.2 * r), 3, 10), size = Math.min(0.9, 0.15 + 0.12 * r), spread = Math.min(r * 0.6, 7), speed = Math.min(0.6 + 0.25 * r, 2.5);
+    for (let i = 0; i < n; i++) {
       const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }));
-      const a = i / 3 * Math.PI * 2;
-      m.position.set(at.x, at.y + 0.3, at.z); puffsGroup.add(m);
-      puffs.push({ m, t: 0, v: new THREE.Vector3(Math.cos(a) * 0.6, 0.5, Math.sin(a) * 0.6) });
+      const a = i / n * Math.PI * 2, cx = Math.cos(a), cz = Math.sin(a);
+      m.position.set(x + cx * spread, y + 0.2, z + cz * spread); m.scale.setScalar(size); puffsGroup.add(m);
+      puffs.push({ m, t: 0, size, v: new THREE.Vector3(cx * speed, 0.5 + 0.1 * speed, cz * speed) });
     }
   }
   function clearPuffs() { for (const p of puffs) { puffsGroup.remove(p.m); p.m.material.dispose(); } puffs.length = 0; }
@@ -79,21 +93,28 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   // 回傳 { done, added }：done 等所有新零件彈完，added 是這次換上的零件鍵（沒變就是空的）
   function sync(instant) {
     const waits = [], added = [];
+    let order = 0;   // 這次第幾個新零件（依序晚一點彈）
     if (instant) { for (const e of live.values()) finish(e); for (const e of [...leaving]) drop(e); clearPuffs(); }
     for (const mod of modules) {
       const next = mod.view(lv, flags, meta), { add, remove } = diffParts(views[mod.id], next);
       added.push(...add); if (remove.length && !add.length) added.push(...remove);
+      const replaced = new Set();
       for (const key of remove) {
         const e = live.get(key); if (!e) continue;
         live.delete(key); finish(e);
         if (instant) { drop(e); continue; }
-        leaving.add(e); puff(e.spec.at ?? e.part.object.position);
-        e.anim = { kind: 'shrink', t: 0, dur: SHRINK, done: () => {} };
+        leaving.add(e); puff(e.size); replaced.add(key);
+        e.anim = { kind: 'squash', t: 0, dur: ANTICIPATE, done: () => {} };
       }
       for (const key of add) {
         const part = factory.build(next[key]), e = { spec: next[key], part, anim: null };
-        partsGroup.add(part.object); live.set(key, e);
-        if (!instant) { part.object.scale.setScalar(1e-3); waits.push(new Promise(done => { e.anim = { kind: 'pop', t: 0, dur: POP, done }; })); }
+        partsGroup.add(part.object); live.set(key, e); e.size = measure(part.object);
+        if (instant) continue;
+        // 替換：等舊的壓扁完才彈；純新增：當場冒煙
+        const delay = (replaced.has(key) ? ANTICIPATE : 0) + Math.min(MAX_STAGGER, STAGGER * order++);
+        if (!replaced.has(key)) puff(e.size);
+        part.object.scale.setScalar(1e-3);
+        waits.push(new Promise(done => { e.anim = { kind: 'pop', t: 0, dur: POP, delay, c1: overshoot(e.size.r), done }; }));
       }
       views[mod.id] = next;
     }
@@ -142,18 +163,20 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       for (const e of [...live.values(), ...leaving]) {
         e.part.update?.(dt, t);
         const a = e.anim; if (!a) continue;
+        if (a.delay > 0) { a.delay -= dt; continue; }
         a.t = Math.min(1, a.t + dt / a.dur);
         const o = e.part.object;
-        if (a.kind === 'pop') o.scale.setScalar(Math.max(1e-3, easeOutBack(a.t)));
-        else if (a.kind === 'shrink') o.scale.setScalar(Math.max(1e-3, 1 - a.t));
+        if (a.kind === 'pop') o.scale.setScalar(Math.max(1e-3, easeOutBack(a.t, a.c1)));
+        else if (a.kind === 'squash') { const k = Math.sin(a.t * Math.PI / 2); o.scale.set(1 + 0.1 * k, 1 - 0.18 * k, 1 + 0.1 * k); }
+        else if (a.kind === 'shrink') { const k = Math.max(1e-3, 1 - a.t); o.scale.set(1.1 * k, 0.82 * k, 1.1 * k); }
         else o.rotation.z = Math.sin(a.t * Math.PI * 4) * 0.12 * (1 - a.t);
-        if (a.t >= 1) { if (a.kind === 'shrink') drop(e); else finish(e); }
+        if (a.t >= 1) { if (a.kind === 'squash') e.anim = { kind: 'shrink', t: 0, dur: SHRINK, done: a.done }; else if (a.kind === 'shrink') drop(e); else finish(e); }
       }
       for (let i = floats.length - 1; i >= 0; i--) if ((floats[i].t += dt) >= FLOAT) { labelsGroup.remove(floats[i].obj); floats[i].obj.element.remove(); floats.splice(i, 1); }
       for (let i = puffs.length - 1; i >= 0; i--) {
         const p = puffs[i], u = (p.t += dt / PUFF);
         p.m.position.addScaledVector(p.v, dt * (1 - Math.min(1, u)));
-        p.m.scale.setScalar(0.12 + u * 0.25); p.m.material.opacity = Math.max(0, 1 - u);
+        p.m.scale.setScalar(p.size * (1 + u * 1.5)); p.m.material.opacity = Math.max(0, 1 - u);
         if (u >= 1) { puffsGroup.remove(p.m); p.m.material.dispose(); puffs.splice(i, 1); }
       }
     },

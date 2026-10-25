@@ -47,7 +47,7 @@ test('a changed spec swaps the part: old shrinks away, new pops in', async () =>
   const { stage, parts, run } = setup();
   await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
   const oldBox = parts()[0]; const p = stage.apply(grow(3), { instant: false });
-  assert.ok(parts().includes(oldBox), 'old part lingers while shrinking'); run(0.7); await p;
+  assert.ok(parts().includes(oldBox), 'old part lingers while shrinking'); run(1.0); await p;
   assert.ok(!parts().includes(oldBox)); assert.equal(stage.partKeys().length, 3);
 });
 test('instant apply finishes pending transitions: every part at scale 1 (review focus 2)', async () => {
@@ -181,4 +181,29 @@ test('floats carry the item icon; 101 floats text only', async () => {
   assert.match(inner._html, /^<svg>milk<\/svg>Lv\.1$/);
   await stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 1, to: 9 } }, { instant: true });
   stage.apply({ kind: 'settle' }, { instant: false }); assert.equal(floats(scene).at(-1).element.children[0]._html, '101 蓋一半');
+});
+
+// 計畫 3.6：變身有預備動作（舊的先壓扁），大東西幾乎不晃、小東西彈得多，煙跟著零件大小
+test('a replaced part squashes before shrinking and the new one waits for it', async () => {
+  const { stage, parts, run } = setup();
+  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
+  const before = parts().slice(), oldBox = parts()[0], p = stage.apply(grow(3), { instant: false });
+  const newMain = parts().find(o => !before.includes(o));
+  stage.update(0.05, 0.05);
+  assert.ok(oldBox.scale.y < 1 && oldBox.scale.x > 1, 'squashed'); assert.ok(newMain.scale.x <= 1e-3, 'new waits');
+  run(1.0); await p; assert.ok(!parts().includes(oldBox)); assert.equal(newMain.scale.x, 1);
+});
+const sized = (key, scale) => ({ id: 'milk', view: lv => lv.milk ? { [key]: { kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'box', pos: [0, scale / 2, 0], scale, color: 0xffffff }] } } : {} });
+const peak = async scale => {
+  const { stage, parts, scene } = setup([sized('milk.main', scale)]);
+  stage.apply(placed, { instant: false }); const puffs = scene.getObjectByName('stage:puffs').children.length;
+  let max = 0; for (let t = 0; t < 1; t += 1 / 60) { stage.update(1 / 60, t); max = Math.max(max, parts()[0].scale.x); }
+  return { max, puffs };
+};
+test('big parts barely overshoot; small parts bounce', async () => {
+  assert.ok((await peak(20)).max < 1.03, 'ring-sized'); assert.ok((await peak(0.4)).max > 1.08, 'lamp-sized');
+});
+test('puff count grows with part size, and a brand-new part puffs too', async () => {
+  const small = await peak(0.4), big = await peak(20);
+  assert.equal(small.puffs, 3); assert.equal(big.puffs, 10);
 });

@@ -2,7 +2,7 @@
 // 純粹建構拍、不碰 three.js；拍真正演的時候才讀 ctx 裡的舞台、名冊、鏡頭（§6）。
 // 劇本查找：placed → 物品的 script.placed；grow → script.grow[to]；fx／after → 「造成它的」模組（e.cause）的 script.fx；
 //   stall → script.stall；settle → 101 的 script.settle；劇本回 null／undefined（或沒寫）就走預設劇本（§6.6）。
-// 每個事件的劇本後面都補一個 apply(e)：劇本沒套到的零件在這裡白光補上（沒剩就 0 秒）。
+// 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡白光補上（沒剩就 0 秒）。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家，太長連走路也拿掉。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld } from '../actors/anchors.js';
@@ -78,7 +78,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
     }
     if (montage) beats = keepOnly(beats, b => MONTAGE_KEEP.includes(b.kind));
-    out.push(...beats, B.apply(e));
+    // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數）
+    out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...beats, B.apply(e));
   });
 
   // 收尾：劇本手上的人回日常；全島效果照舞台最後的狀態瞄準（演到這拍才讀，跳過時 ctx.instant 讓它貼齊）

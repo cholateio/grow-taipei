@@ -35,14 +35,14 @@ export async function headlessShow({ modules = ALL, reducedMotion = false } = {}
   show.bubbles.show = (head, kind, dur) => { bubblesLog.push({ kind, at: head() }); return showBubble(head, kind, dur); };
   show.bubbles.levelUp = (head, opts = {}) => { bubblesLog.push({ text: opts.text ?? 'LEVEL UP', down: !!opts.down, at: head() }); return levelUp(head, opts); };
 
-  // 演一回合：instant 包在 reduced-motion 裡瞬間跑完回 0；否則每幀 update(1/30) 到 Promise resolve，回傳秒數
-  async function run(events, { montage = false, instant = false } = {}) {
+  // 演一回合（onMark 照傳給 show.turn）：instant 包在 reduced-motion 裡瞬間跑完回 0；否則每幀 update(1/30) 到 Promise resolve，回傳秒數
+  async function run(events, { montage = false, instant = false, onMark } = {}) {
     if (instant) {
       show.setReducedMotion(true);
-      try { await show.turn(events, { montage }); } finally { show.setReducedMotion(false); }
+      try { await show.turn(events, { montage, onMark }); } finally { show.setReducedMotion(false); }
       return 0;
     }
-    const p = show.turn(events, { montage });
+    const p = show.turn(events, { montage, onMark });
     let t = 0, done = false, err = null;
     p.then(() => { done = true; }, e => { done = true; err = e; });
     while (!done) {

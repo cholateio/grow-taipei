@@ -8,6 +8,7 @@
     "stats": "node src/solver/run.js",
     "tighten": "node src/solver/tighten.js",
     "solutions": "node tools/solutions.mjs",
+    "pace": "node tools/pace.mjs",
     "serve": "node tools/serve.mjs",
     "shot": "node tools/shot.mjs open= mid=auto=rat,typhoon,baseball,chip turn5=auto=rat,typhoon,baseball,chip,token storm=auto=typhoon,boba seven=auto=rat,typhoon,baseball,chip,token,milk,bulb end=auto=rat,typhoon,baseball,chip,token,milk,bulb,boba alien=auto=rat,typhoon,baseball,milk,token,chip,bulb,boba night=time=night phone=quality=low",
     "vendor": "bash tools/vendor.sh"

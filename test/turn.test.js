@@ -15,7 +15,9 @@ const fakeCtx = (extra = {}) => ({
 });
 const tower = { id: 'tower', view() {} };
 const base = (modules = [tower]) => ({ modules, spec, lv: { ...zero, chip: 1 }, flags: {}, meta: { total: 1, landing: false }, montage: false });
-const kindsOf = beats => beats.map(b => b.kind);
+// 每個事件劇本前的 mark 拍（0 秒，給 pace 工具量每個事件的秒數）不算在拍型清單裡
+const noMarks = beats => beats.filter(b => b.kind !== 'mark');
+const kindsOf = beats => noMarks(beats).map(b => b.kind);
 // 走路拍的長度用 nav 估：假成員 + 假 nav，每段路長 len
 const walker = { pos: { x: 0, y: 0, z: 0 }, speed: 1, head: () => ({ x: 0, y: 1, z: 0 }) };
 const navOf = len => ({ route: () => [{ x: 0, z: 0 }, { x: len, z: 0 }], routeLength: () => len });
@@ -23,9 +25,19 @@ const navOf = len => ({ route: () => [{ x: 0, z: 0 }, { x: len, z: 0 }], routeLe
 test('default scripts: placed → apply; grow → apply + levelUp; knock-back → LEVEL DOWN; the wait hint is one bubble', () => {
   // base()：lv chip 1、其他 0（所以 settle 的總等級 1 → 3 不跨 101 門檻，什麼都不演）
   const ctx = fakeCtx();
-  const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }, { kind: 'settle' }], base(), ctx);
-  const kinds = kindsOf(beats);
-  assert.deepEqual(kinds.filter(k => k !== 'apply'), ['levelUp', 'levelUp', 'bubble', 'home', 'world']);
+  const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }, { kind: 'settle' }];
+  const raw = buildTurn(events, base(), ctx);
+  // 每個事件的劇本前面各一個 0 秒 mark 拍，start 時把事件交給 ctx.onMark
+  const marks = raw.filter(b => b.kind === 'mark'), marked = [];
+  assert.equal(marks.length, events.length); assert.ok(marks.every(b => b.dur === 0));
+  for (const b of marks) b.start({ onMark: e => marked.push(e) });
+  assert.deepEqual(marked, events);
+  // mark 在每個事件最前面：第一拍就是 mark，之後每個 mark 前一拍都是上個事件補的 apply
+  raw.forEach((b, i) => { if (b.kind === 'mark' && i > 0) assert.equal(raw[i - 1].kind, 'apply'); });
+  assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-2).map(b => b.kind), ['home', 'world']);
+  assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
+  const beats = noMarks(raw), kinds = kindsOf(raw);
+  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['levelUp', 'levelUp', 'bubble', 'home', 'world']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
   // placed：預設 apply + 補的 apply；每個事件至少一個 apply
@@ -85,7 +97,7 @@ test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, 
   assert.deepEqual(kinds.slice(0, 3), ['bubble', 'bubble', 'bubble']);
   assert.deepEqual(beats.slice(0, 3).map(b => b.dur), [0.6, 0.6, 0.6]);
   assert.deepEqual(kinds.slice(3), ['walk', 'together', 'levelUp', 'apply', 'home', 'world']);
-  assert.deepEqual(kindsOf(beats[4].beats), ['walk']);
+  assert.deepEqual(kindsOf(noMarks(beats)[4].beats), ['walk']);
   assert.ok(estimateTurn(beats, short) <= MONTAGE_CAP);
   // 3-2-1 掛在 101 頭上
   let shown = [];
@@ -114,9 +126,9 @@ test('fx scripts are looked up on the cause module and may return null to fall b
   assert.deepEqual(kindsOf(buildTurn([{ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: 'nest', value: true } }], base(mods), ctx)), ['wait', 'apply', 'home', 'world']);
   // 回 null → 預設：正向 delta 升級、負向 LEVEL DOWN、沒有 delta 不閃白光
   const up = buildTurn([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 2 } }], base(mods), ctx);
-  assert.deepEqual(kindsOf(up), ['apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(up[1].down, false);
+  assert.deepEqual(kindsOf(up), ['apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(noMarks(up)[1].down, false);
   const down = buildTurn([{ kind: 'fx', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 1, to: 1 } }, { kind: 'after', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 2, to: 1 } }], base(mods), ctx);
-  assert.deepEqual(kindsOf(down), ['apply', 'apply', 'apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(down[3].down, true);
+  assert.deepEqual(kindsOf(down), ['apply', 'apply', 'apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(noMarks(down)[3].down, true);
   assert.deepEqual(calls, ['rat', 'rat', 'rat', 'rat']);
   // cause 模組沒有 fx 劇本（或 cause 是 'turn'）→ 預設
   assert.deepEqual(kindsOf(buildTurn([{ kind: 'after', item: 'turn', cause: 'turn', flag: { name: 'blackout', value: true } }], base(mods), ctx)), ['apply', 'apply', 'home', 'world']);

@@ -45,7 +45,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
 
   function turn(events, { montage = false, onMark } = {}) {
     if (timeline.busy) throw new Error('show busy');
-    ctx.instant = reduced; ctx.onMark = onMark; panned = false;
+    ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
     refresh();
     const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage }, ctx);
     const me = playing = {};

@@ -104,6 +104,21 @@ test('a part at the origin flashes over its item, the train over its head car', 
   assert.deepEqual([track.x, track.z], [1, 3], 'stage.headOf(token)');
   assert.ok(Math.abs(train.x - head.x) < 1e-9 && Math.abs(train.z - head.z) < 1e-9, 'train head car');
 });
+// 不是物品的零件在島心（衛星島的 sat.boats）：沒有頭可以掛白光，就不閃、不算時間，end 照樣 commit（審查 Minor 4）
+test('a non-item part at the origin gets no flash and adds no time, but still commits at the end', () => {
+  const { ctx, tl, stage, flash } = fake({ changed: [{ key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }, 'a'] });
+  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, 0.5, 'only a flashes');
+  tl.update(0.15); assert.equal(flash.count, 1);
+  tl.update(0.4); assert.deepEqual(stage.committed, ['a']); assert.ok(stage.committedAll); assert.equal(tl.currentKind, 'wait');
+  const alone = fake({ changed: [{ key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }] });
+  alone.tl.play([B.apply(ev), B.wait(0.1)], alone.ctx); alone.tl.update(0);
+  assert.equal(alone.tl.currentKind, 'wait'); assert.equal(alone.flash.count, 0); assert.ok(alone.stage.committedAll);
+});
+// 蒙太奇估長度：閃白光的 apply 至少一道白光（審查 Minor 2）
+test('apply estimates one flash when flashing and nothing without', () => {
+  const { ctx } = fake();
+  assert.equal(B.apply(ev).estimate(ctx), 0.5); assert.equal(B.apply(ev, { flash: false }).estimate(ctx), 0);
+});
 test('apply without flash is instant; only and hold are passed through', () => {
   const { ctx, tl, stage, flash } = fake({ changed: ['x'] });
   tl.play([B.apply(ev, { flash: false, only: ['x'], hold: ['y'] }), B.wait(0.1)], ctx); tl.update(0);

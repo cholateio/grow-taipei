@@ -100,7 +100,8 @@ test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, 
 
 test('estimateTurn adds numeric durs, uses estimate for function durs, and takes the longest child of together', () => {
   const ctx = fakeCtx({ nav: navOf(3) });
-  assert.equal(estimateTurn([B.wait(1), B.together([B.wait(2), B.wait(0.5)]), B.walk(walker, { x: 3, z: 0 }), B.apply({ kind: 'settle' })], ctx), 1 + 2 + 3);
+  assert.equal(estimateTurn([B.wait(1), B.together([B.wait(2), B.wait(0.5)]), B.walk(walker, { x: 3, z: 0 }), B.apply({ kind: 'settle' })], ctx), 1 + 2 + 3 + 0.5, 'a flashing apply counts one flash');
+  assert.equal(estimateTurn([B.apply({ kind: 'settle' }, { flash: false }), { kind: 'x', dur: () => 9 }], ctx), 0, 'function durs without estimate count 0');
 });
 
 test('fx scripts are looked up on the cause module and may return null to fall back', () => {

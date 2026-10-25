@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow } from './helpers/show.js';
+import { headlessShow, ALL } from './helpers/show.js';
+import { anchorWorld } from '../src/actors/anchors.js';
+import * as B from '../src/show/beats.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
@@ -93,4 +95,39 @@ test('turn while busy throws', async () => {
   assert.throws(() => show.turn([{ kind: 'settle' }]), /show busy/);
   show.skip(); await p;
   assert.equal(show.busy, false);
+});
+
+// 吊車的 footprint 擋的是塔架（at + offset），不是已經被主體擋住的 at（審查 Important 1）
+test('crane footprints block the mast, so nobody walks through it', async () => {
+  const { show, run } = await headlessShow();
+  const mast = (id, [dx, , dz]) => { const a = anchorWorld(id); return { x: a.x + dx, z: a.z + dz }; };
+  const tower = mast('tower', [0.75, 0, 0.55]), chip = mast('chip', [0.5, 0, -0.4]);
+  assert.equal(show.nav.walkable(tower.x, tower.z), false, '101 site crane from the start');
+  assert.equal(show.nav.walkable(chip.x, chip.z), true, 'no chip yet');
+  const r = place(engine.createState(spec), 'chip');
+  await run([...r.events, { kind: 'settle' }], { instant: true });
+  assert.ok(show.stage.partKeys().includes('chip.crane'));
+  assert.equal(show.nav.walkable(chip.x, chip.z), false, 'chip crane mast');
+});
+
+// 某一拍的 end 丟錯：跳過／RESET 照樣收到最終狀態，Promise reject（審查 Minor 3）
+test('skip and reset still snap when a beat throws in end', async () => {
+  const boom = () => ({ kind: 'boom', dur: 5, end() { throw new Error('boom'); } });
+  const milk = ALL.find(m => m.id === 'milk');
+  const modules = ALL.map(m => (m === milk ? { ...milk, script: { placed: e => [B.together([boom(), B.apply(e), B.levelUp('milk')])] } } : m));
+  const r = place(engine.createState(spec), 'milk'), events = [...r.events, { kind: 'settle' }];
+  const a = await headlessShow({ modules });
+  const p = a.show.turn(events); const rejected = assert.rejects(p, /boom/);
+  for (let t = 0; t < 0.1; t += 1 / 30) a.show.update(1 / 30, t);
+  assert.ok(a.show.stage.pendingKeys().length > 0 && a.show.bubbles.count > 0, 'mid-flash with a LEVEL UP up');
+  assert.throws(() => a.show.skip(), /boom/);
+  await rejected;
+  assert.equal(a.show.busy, false); assert.equal(a.show.stage.pendingKeys().length, 0); assert.equal(a.show.bubbles.count, 0); assert.equal(a.show.flash.count, 0);
+  assert.deepEqual(a.rig.log.at(-1), ['home', 0]);
+  const b = await headlessShow({ modules });
+  const q = b.show.turn(events); const rejectedB = assert.rejects(q, /boom/);
+  for (let t = 0; t < 0.1; t += 1 / 30) b.show.update(1 / 30, t);
+  assert.throws(() => b.show.reset(), /boom/);
+  await rejectedB;
+  assert.equal(b.show.stage.lv.milk, 0, 'stage reset ran'); assert.equal(b.show.stage.pendingKeys().length, 0); assert.equal(b.show.bubbles.count, 0);
 });

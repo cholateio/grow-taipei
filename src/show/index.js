@@ -34,6 +34,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
 
   function refresh() { nav.setFootprints(stage.footprints()); }
+  refresh();   // 開局的島民一出來就要繞開建築
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
     stage.commitAll(); roster.snap(); flash.clear(); bubbles.clear();
@@ -63,22 +64,22 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     if (!timeline.busy) return;
     ctx.instant = true;   // 鏡頭、全島效果的拍讀它：剩下的拍 start → end 都瞬間
     playing = null;
-    timeline.skip();
-    snap();
+    // 某一拍的 end 丟錯也要收到最終狀態（錯照樣往外丟，回合的 Promise 也會 reject）
+    try { timeline.skip(); } finally { snap(); }
   }
   function abort() {
     const was = timeline.busy;
     playing = null;
-    timeline.abort();
-    if (was) snap();
+    try { timeline.abort(); } finally { if (was) snap(); }
   }
 
   return {
     turn, skip, abort,
     reset() {
-      abort();
-      stage.reset();   // 舞台 reset 也清掉名冊
-      flash.clear(); bubbles.clear(); camRig.home(0); refresh();
+      try { abort(); } finally {
+        stage.reset();   // 舞台 reset 也清掉名冊
+        flash.clear(); bubbles.clear(); camRig.home(0); refresh();
+      }
     },
     update(dt, t) {
       ctx.now = t;

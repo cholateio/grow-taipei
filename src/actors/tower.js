@@ -39,7 +39,7 @@ function body(stage) {
 export function view(lv, flags, meta = {}) {
   const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
   const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + 0.6, parts } };
-  if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { r: 0.3 } };
+  if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.6, d: 0.6 } };   // footprint 擋塔架（at + offset）
   if (lv.chip >= 5) {
     // 矽盾天線：塔頂的環
     const ring = { kind: 'torus', pos: [0, top, 0], scale: 1.2, rot: [Math.PI / 2, 0, 0], color: CREAM };

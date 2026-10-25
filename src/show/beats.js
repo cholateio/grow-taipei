@@ -133,14 +133,15 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   };
 }
 
-// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節；
-// 不是物品的零件（衛星島的 sat.boats）沒有頭可以掛，就閃在 at
+// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節
+const atOrigin = at => !at || Math.abs(at.x) + Math.abs(at.z) < 1e-6;
 function flashPoint({ key, at }, ctx) {
-  if (at && Math.abs(at.x) + Math.abs(at.z) >= 1e-6) return at;
+  if (!atOrigin(at)) return at;
   if (key === 'token.train') return trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx) });
-  const owner = key.split('.')[0];
-  return owner in ANCHORS ? ctx.stage.headOf(owner) : (at ?? { x: 0, y: 0, z: 0 });
+  return ctx.stage.headOf(key.split('.')[0]);
 }
+// 在島心、又不是物品的零件（衛星島的 sat.boats）沒有地方掛白光：不閃、不算時間，end 照樣 commit
+const flashable = ({ key, at }) => !atOrigin(at) || key.split('.')[0] in ANCHORS;
 
 // 套用事件：flash 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）閃白光、最亮那一刻 commit；
 // 名冊的鍵不閃（名冊自己在每個人身上閃），也不算進長度。跳過時在 end 一次 commit。
@@ -151,10 +152,11 @@ export function apply(e, { flash = true, only, hold } = {}) {
   return {
     kind: 'apply',
     dur: () => (changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
+    estimate: () => (flash ? FLASH : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一道白光
     start(ctx) {
       const all = ctx.stage.apply(e, opts).changed; fired = 0; t = 0;
       const pending = new Set(flash ? ctx.stage.pendingKeys() : []);
-      changed = all.filter(c => pending.has(c.key));
+      changed = all.filter(c => pending.has(c.key) && flashable(c));
       if (!changed.length) return false;
     },
     step(k, dt, ctx) {

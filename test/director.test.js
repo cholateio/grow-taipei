@@ -39,3 +39,15 @@ test('wait events take no time; a grow takes DURATIONS.grow whether or not it ha
   await d.play([{ kind: 'grow', item: 'milk', via: ['baseball'] }, { kind: 'wait', item: 'milk', waits: [] }, { kind: 'grow', item: 'milk', via: [] }], () => Promise.resolve());
   assert.deepEqual(waits, [DURATIONS.grow, DURATIONS.grow]);
 });
+// 手感（計畫 3.6）：時間從事件開始算，動畫本身算在裡面；沒演東西的事件不等
+test('the timer starts with the event, before the actor finishes', async () => {
+  const log = []; const d = createDirector({ wait: ms => { log.push(['wait', ms]); return Promise.resolve(); } });
+  await d.play([{ kind: 'grow', item: 'milk' }], () => { log.push(['apply']); return new Promise(r => setTimeout(() => { log.push(['popped']); r(); }, 5)); });
+  assert.deepEqual(log, [['wait', DURATIONS.grow], ['apply'], ['popped']]);
+});
+test('an event that shows nothing does not wait', async () => {
+  const d = createDirector({ wait: () => new Promise(() => {}) });
+  await d.play([{ kind: 'settle' }, { kind: 'fx', item: 'milk' }], () => Promise.resolve(false));
+  assert.equal(d.busy, false);
+});
+test('settle has its own duration', () => { assert.equal(DURATIONS.settle, 900); assert.equal(DURATIONS.placed, 1100); });

@@ -99,16 +99,17 @@ export function createPartFactory(THREE, ctx) {
   }
 
   const KINDS = { compound, people, glb, smoke };
+  // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
+  const builderCtx = { ...ctx, build: s => build(s) };
 
-  return {
-    clay,
-    build(spec) {
-      const make = ctx.builders?.[spec.kind] ? s => ctx.builders[spec.kind](THREE, s, ctx) : KINDS[spec.kind];
-      if (!make) throw new Error(`unknown part kind ${spec.kind}`);
-      const part = make(spec);
-      const { x = 0, y = 0, z = 0 } = spec.at ?? {};
-      part.object.position.set(x, y, z);
-      return part;
-    },
-  };
+  function build(spec) {
+    const make = ctx.builders?.[spec.kind] ? s => ctx.builders[spec.kind](THREE, s, builderCtx) : KINDS[spec.kind];
+    if (!make) throw new Error(`unknown part kind ${spec.kind}`);
+    const part = make(spec);
+    const { x = 0, y = 0, z = 0 } = spec.at ?? {};
+    part.object.position.set(x, y, z);
+    return part;
+  }
+
+  return { clay, build };
 }

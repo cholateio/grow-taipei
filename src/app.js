@@ -24,6 +24,7 @@ import { storageGet, storageSet } from './ui/format.js';
 import { createDirector } from './director.js';
 import { createStage } from './actors/stage.js';
 import * as landmarks from './actors/landmarks.js';
+import * as tower from './actors/tower.js';
 import { anchorWorld } from './actors/anchors.js';
 import { createGame } from './game.js';
 
@@ -75,7 +76,7 @@ export async function start({ params, loading }) {
   // 介面、演員、導演、遊戲
   const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks], ctx: { people, assets, glow: view.glow } });
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower], ctx: { people, assets, glow: view.glow } });
   const director = createDirector({ onFocus: e => rig.focus(anchorWorld(e.delta?.target ?? e.item)), reducedMotion: motion.matches || !!auto });
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || !!auto));

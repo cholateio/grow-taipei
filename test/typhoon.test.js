@@ -94,7 +94,7 @@ test('blackout: the lamp stops go out one per apply in reverse road order, then 
   const kinds = beats.map(b => b.kind), w = beats.findIndex(b => b.kind === 'world');
   assert.deepEqual(beats[w].effects, { glowScale: 0 });
   assert.ok(kinds.indexOf('bubble') < w && w < kinds.lastIndexOf('apply'), 'lamps → ！ → glow 0 → crate');
-  assert.ok(beats.at(-2).kind === 'apply' && beats.at(-2).only.includes('milk.crate'));
+  assert.ok(beats.at(-2).kind === 'apply' && beats.at(-2).only === undefined, 'crate and everything left in one apply: nothing flashes after LEVEL DOWN');
   assert.equal(beats.at(-1).kind, 'levelUp'); assert.equal(beats.at(-1).down, true);
   assert.equal(typhoon.script.fx({ kind: 'fx', cause: 'typhoon', story: '別的事' }, { lv: lv({}), flags: {} }, fakeCtx()), null);
 });
@@ -230,4 +230,27 @@ test('skip during the door walks: everyone home and visible, world snapped to th
   assert.equal(show.stage.lv.typhoon, 2);
   const [w, instant] = worldLog.at(-1);
   assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.storm, 1);
+});
+
+// 颱風賴在巨蛋（棒球 ≥3 時 Lv3 長不出來，引擎沒有 stall 事件）：登陸回合過後，暴風雲停在巨蛋上空
+test('view: the lingering Lv2 storm sits over the dome once baseball ≥ 3 (not on the landing turn)', () => {
+  const dome = anchorWorld('baseball'), at = anchorWorld('typhoon'), near = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) < 1e-9;
+  assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3 }), {}, { landing: false })['typhoon.main'].at, dome));
+  assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3 }), {}, { landing: true })['typhoon.main'].at, at));
+  assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 2 }), {}, { landing: false })['typhoon.main'].at, at));
+  assert.ok(near(typhoon.view(lv({ typhoon: 1, baseball: 3 }), {}, {})['typhoon.main'].at, at));
+});
+test('after a landing turn with baseball ≥ 3, the next turn ends with the storm cloud over the dome', async () => {
+  const h = await headlessShow(), { show, run } = h, dome = anchorWorld('baseball');
+  const evs = await turnWith(run, BLACKOUT, landing);
+  await run(evs);
+  assert.ok(show.stage.lv.baseball >= 3);
+  const o0 = show.stage.partObject('typhoon.main').position; assert.ok(Math.hypot(o0.x - dome.x, o0.z - dome.z) > 1, 'landing turn: over the typhoon anchor');
+  const s = engine.createState(spec); let st = s;
+  for (const id of BLACKOUT) st = engine.place(st, id, spec).state;
+  const r = engine.place(st, 'chip', spec);
+  await run([...r.events, { kind: 'settle' }]);
+  assert.equal(show.stage.lv.typhoon, 2);
+  const o = show.stage.partObject('typhoon.main').position;
+  assert.ok(Math.hypot(o.x - dome.x, o.z - dome.z) < 1e-6, 'cloud over the dome');
 });

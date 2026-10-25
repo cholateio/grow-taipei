@@ -11,13 +11,17 @@ export const id = 'typhoon';
 export const labelY = 1.0;
 const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 
-export function view(lv) {
+// 颱風賴在巨蛋（§8.5）：棒球 ≥3 時 Lv3 長不出來（要棒球 ≤2），引擎也沒有 stall 事件——登陸回合過後，
+// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台白光換到那裡），玩家看得到它卡在什麼上面
+const lingers = (lv, meta) => lv.typhoon === 2 && lv.baseball >= 3 && !meta.landing;
+
+export function view(lv, flags, meta = {}) {
   const n = lv.typhoon, at = anchorWorld('typhoon'), v = {};
   if (!n) return v;
   if (n === 1) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, footprint: false, parts: [
     { kind: 'sphere', pos: [0, 4.5, 0], scale: 1.4, color: CLOUD }, { kind: 'sphere', pos: [0.8, 4.35, 0.1], scale: 1.0, color: CLOUD }, { kind: 'sphere', pos: [-0.75, 4.4, -0.1], scale: 0.9, color: CLOUD },
   ] };
-  else if (n === 2) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, spin: 0.5, footprint: false, parts: [
+  else if (n === 2) v['typhoon.main'] = { kind: 'cloud', at: lingers(lv, meta) ? anchorWorld('baseball') : at, labelY: 3.9, spin: 0.5, footprint: false, parts: [
     { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },
     ...Array.from({ length: 7 }, (_, i) => { const a = i / 7 * Math.PI * 2; return { kind: 'sphere', pos: [Math.cos(a) * 2.2, 4.4 + (i % 2) * 0.2, Math.sin(a) * 2.2], scale: 1.1 - (i % 3) * 0.12, color: STORM }; }),
   ] };
@@ -88,7 +92,6 @@ const AT = anchorWorld('typhoon'), DOME = anchorWorld('baseball'), GATE = offset
 const CLOUD_Y = 3.9, HURRY = 2.0, FLUSHED = 4.0;   // 雲頭上的泡泡高度；趕著躲雨的走路速度；老鼠被大水沖（兩倍速）
 const DOOR_MIN = 0.35;   // 算「建築」的 footprint 最小半寬（路燈 0.15、牛奶箱 0.3 不算門）
 const FLASH = 0.5;       // 白光長度（同 show/flash.js）
-const MILK_KEYS = ['milk.crate', 'milk.main', 'milk.flag', 'milk.gate'];   // 鮮奶掉級時會變的零件（牛奶箱先）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
@@ -132,14 +135,15 @@ function flashIn(key, at) {
 }
 const cloudHead = ctx => ctx.B.partHead('typhoon.main', CLOUD_Y, ctx);
 
-// 大停電：路燈從主路最後一站往回一站站熄 → 燈泡本身、夜市、燈塔、風車 → 101 頂 ！ → 全島發光歸零 → 牛奶箱變灰、LEVEL DOWN
+// 大停電：路燈從主路最後一站往回一站站熄 → 燈泡本身、夜市、燈塔、風車 → 101 頂 ！ → 全島發光歸零 →
+// 牛奶箱變灰（和剩下的零件同一次套用：鮮奶掉級的校舍等等，LEVEL DOWN 之後就沒有白光了）→ LEVEL DOWN
 function blackout(e, ctx) {
   const { B } = ctx, n = LAMP_STOPS.length;
   return [
     ...Array.from({ length: n }, (_, i) => B.apply(e, { only: [`bulb.lamps.${n - 1 - i}`] })),
     B.apply(e, { only: ['bulb.main', 'bulb.market', 'sat.lighthouse', 'sat.windmill'] }),
     B.bubble('tower', '！', 0.8), B.world({ glowScale: 0 }),
-    B.apply(e, { only: MILK_KEYS }), B.levelUp('milk', { down: true }),
+    B.apply(e), B.levelUp('milk', { down: true }),
   ];
 }
 // 捷運淹水：站務員從門裡出來 ！ → 站體白光變泳池、站務員原地換成泳客（staff 和 swimmers 同一次套用，不然 flush 會補出幽靈站務員）、列車停駛
@@ -206,7 +210,7 @@ export const script = {
     if (e.story?.includes('颱風假')) return [B.apply(e), B.bubble(B.partHead('milk.main', 1.2, ctx), '♪', 1.0)];
     return null;
   },
-  // 賴著不走：雲飄到巨蛋上空停著（move 的偏移留在零件上，Lv3 換零件才回原位）→ ……
+  // 賴著不走（stall 事件；現在的規則不會出，賴在巨蛋改由 view 的 lingers 處理）：雲飄到巨蛋上空停著（move 的偏移留在零件上）→ ……
   stall(e, s, ctx) {
     const { B } = ctx;
     return [B.move('typhoon.main', { to: { dx: DOME.x - AT.x, dy: 0, dz: DOME.z - AT.z }, dur: 2 }), B.bubble(cloudHead(ctx), '……', 1.0)];

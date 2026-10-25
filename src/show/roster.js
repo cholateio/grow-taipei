@@ -201,7 +201,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   function flush() {
     order = 0;
     for (const [key, g] of groups) {
-      for (const m of g.leaving) { flash.at(m.pos); destroy(m); }
+      for (const m of g.leaving) { if (!m.hidden) flash.at(m.pos); destroy(m); }   // 藏著的人（躲進門裡）已經不見了，不再閃
       g.leaving = [];
       if (g.retired && !g.held && !g.members.length) { groups.delete(key); continue; }
       if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) { const i = g.members.length; g.members.push(spawn(g, g.spec, i, homePose(g.spec, i), 'home', next())); }

@@ -225,3 +225,15 @@ test('showAll un-hides every member and puts them back on the ground', () => {
   assert.ok(ms.every(m => !m.hidden));
   for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
 });
+// 藏起來的人（颱風登陸躲進門裡）被退掉：已經在門口消失了，退場不再閃白光
+test('a hidden leaver retires without a flash; a visible one still flashes', () => {
+  const { roster, flash } = setup();
+  roster.declare('k', kids(2)); roster.flush(); flash.update(1); flash.clear();
+  const [a, b] = roster.members('k'); roster.hide(a);
+  roster.declare('k', kids(1)); roster.flush();
+  assert.ok(!roster.members('k').includes(b), 'the last member leaves first');
+  assert.equal(flash.count, 1, 'visible leaver flashes');
+  flash.clear();
+  roster.hide(roster.members('k')[0]); roster.retire('k'); roster.flush();
+  assert.equal(roster.members('k').length, 0); assert.equal(flash.count, 0, 'hidden leaver is silent');
+});

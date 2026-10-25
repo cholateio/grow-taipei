@@ -17,12 +17,12 @@ test('full games with the real modules leave no glow, walkers or models behind a
   const released = [], spawned = [];
   const assets = { spawn: async () => { const g = new THREE.Group(); spawned.push(g); return g; }, release: g => released.push(g) };
   const glow = createGlowRegistry(), people = createPeople(THREE, { max: 48 });
-  const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow } });
+  const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow }, roster: null });
   const base = { glow: glow.size, walkers: people.walkers.length };
   for (const order of SOLUTIONS) {
     let s = engine.createState(spec);
-    for (const id of order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); await new Promise(res => setTimeout(res, 0)); }
-    for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); }
+    for (const id of order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) stage.apply(e); await new Promise(res => setTimeout(res, 0)); }
+    for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) stage.apply(e); }
     stage.reset(); await new Promise(res => setTimeout(res, 0));
     assert.equal(glow.size, base.glow, order.join()); assert.equal(people.walkers.length, base.walkers);
   }

@@ -9,24 +9,24 @@ installFakeDom();
 const { createStage, diffParts } = await import('../src/actors/stage.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
-// 測試用的假鮮奶模組：lv1 一個箱子、lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
+// 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
+// （小孩只在 lv2：placed 之後直接 grow(3) 只換箱子、多一盞燈，分段套用與延後揭露的測試才好算）
 const fakeMilk = {
   id: 'milk', labelY: 1,
   view(lv) {
     const v = {};
     if (lv.milk >= 1) v['milk.main'] = { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: lv.milk >= 3 ? 0xdb6a41 : 0xfff8f4 }] };
-    if (lv.milk >= 2) v['milk.kids'] = { kind: 'people', at, n: 3, path: ringPath({ x: 0, z: 0 }, 0.5, 0.65), speed: 0.5 };
+    if (lv.milk === 2) v['milk.kids'] = { kind: 'people', at, n: 3, path: ringPath({ x: 0, z: 0 }, 0.5, 0.65), speed: 0.5 };
     if (lv.milk >= 3) v['milk.lamp'] = { kind: 'compound', at, parts: [{ kind: 'sphere', pos: [0, 1, 0], scale: 0.2, color: 0xfcea8b, glow: 0xfcea8b }] };
     return v;
   },
 };
-const setup = (modules = [fakeMilk]) => {
+const setup = (modules = [fakeMilk], roster = null) => {
   const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
   const assets = { spawn: async () => new THREE.Group() };
-  const stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow } });
+  const stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow }, roster });
   const parts = () => scene.getObjectByName('stage:parts').children;
-  const run = s => { for (let t = 0; t < s; t += 0.05) stage.update(0.05, t); };
-  return { scene, glow, people, stage, parts, run };
+  return { scene, glow, people, stage, parts };
 };
 const placed = { kind: 'placed', item: 'milk', to: 1, story: '一箱鮮奶送到了' };
 const grow = to => ({ kind: 'grow', item: 'milk', from: to - 1, to });
@@ -36,186 +36,125 @@ test('diffParts classifies added / removed / kept by spec equality', () => {
   assert.deepEqual(d, { add: ['a', 'c'], remove: ['a', 'b'], keep: [] });
   assert.deepEqual(diffParts({ a: { k: 1 } }, { a: { k: 1 } }), { add: [], remove: [], keep: ['a'] });
 });
-test('placed → main part pops in; grow → extra part added, the unchanged part object is kept', async () => {
-  const { stage, parts, run } = setup();
-  const p = stage.apply(placed, { instant: false }); assert.equal(parts().length, 1); assert.ok(parts()[0].scale.x < 0.05, 'starts small');
-  run(1.0); await p; assert.ok(Math.abs(parts()[0].scale.x - 1) < 1e-9);
-  const box = parts()[0]; const q = stage.apply(grow(2), { instant: false }); run(1.0); await q;
+test('apply is instant and reports changed keys; the same event applied again reports nothing', () => {
+  const { stage, parts } = setup();
+  const r = stage.apply(placed); assert.deepEqual(r.changed.map(c => c.key), ['milk.main']); assert.equal(r.changed[0].kind, 'add'); assert.equal(parts().length, 1); assert.equal(parts()[0].scale.x, 1);
+  assert.deepEqual(stage.apply(placed), { changed: [], rest: [] });
+  const g = stage.apply(grow(3)); assert.deepEqual(g.changed.map(c => c.key).sort(), ['milk.lamp', 'milk.main']); assert.equal(g.changed.find(c => c.key === 'milk.main').kind, 'replace');
+});
+test('only applies a subset now and the rest on the next apply of the same event', () => {
+  const { stage } = setup(); stage.apply(placed);
+  const r = stage.apply(grow(3), { only: ['milk.lamp'] }); assert.deepEqual(r.changed.map(c => c.key), ['milk.lamp']); assert.deepEqual(r.rest, ['milk.main']);
+  assert.equal(stage.lv.milk, 3, 'levels fold fully even when parts are held back');
+  const s = stage.apply(grow(3)); assert.deepEqual(s.changed.map(c => c.key), ['milk.main']); assert.deepEqual(s.rest, []);
+});
+test('deferred keeps the old part and hides the new until commit; commitAll reveals everything', () => {
+  const { stage, parts } = setup(); stage.apply(placed); const old = parts()[0];
+  const r = stage.apply(grow(3), { deferred: true });
+  assert.ok(parts().includes(old)); const fresh = parts().filter(o => o !== old); assert.ok(fresh.every(o => o.visible === false)); assert.deepEqual(stage.pendingKeys().sort(), ['milk.lamp', 'milk.main']);
+  stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
+  stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
+});
+test('roster parts go to the roster, not the factory; hold is passed through; removal retires', () => {
+  const calls = []; const roster = { declare: (k, s, o) => calls.push(['declare', k, s.n, !!o?.hold]), retire: k => calls.push(['retire', k]), syncAll() {}, reset() {} };
+  const mod = { id: 'milk', view: lv => lv.milk >= 2 ? { 'milk.kids': { kind: 'roster', at, n: lv.milk, home: { kind: 'wander', at, r: 1 } } } : {} };
+  const { stage } = setup([mod], roster); stage.apply(placed); stage.apply(grow(2), { hold: ['milk.kids'] }); stage.apply(grow(3));
+  assert.deepEqual(calls, [['declare', 'milk.kids', 2, true], ['declare', 'milk.kids', 3, false]]);
+  stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 3, to: 1 } }); assert.deepEqual(calls.at(-1), ['retire', 'milk.kids']);
+});
+test('footprints: declared circle, declared rect, auto bbox for compact compounds, none for wide ones or false', () => {
+  const mod = { id: 'milk', view: lv => lv.milk ? {
+    'milk.a': { kind: 'compound', at, footprint: { r: 0.4 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 1 }] },
+    'milk.b': { kind: 'compound', at: { ...at, x: 3 }, footprint: { w: 1, d: 0.5, z: -0.3 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 1 }] },
+    'milk.c': { kind: 'compound', at: { ...at, x: 6 }, parts: [{ kind: 'box', pos: [0, 0.5, 0], scale: [1, 1, 2], color: 1 }] },
+    'milk.d': { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.1, 0], scale: [6, 0.1, 6], color: 1 }] },
+    'milk.e': { kind: 'compound', at, footprint: false, parts: [{ kind: 'box', pos: [0, 0.1, 0], scale: 1, color: 1 }] },
+  } : {} };
+  const { stage } = setup([mod]); stage.apply(placed); const f = stage.footprints();
+  assert.deepEqual(f.find(x => x.r === 0.4), { x: at.x, z: at.z, r: 0.4 });
+  assert.deepEqual(f.find(x => x.w === 1), { x: at.x + 3, z: at.z - 0.3, w: 1, d: 0.5 });
+  const auto = f.find(x => Math.abs(x.x - (at.x + 6)) < 1e-6); assert.ok(Math.abs(auto.w - 0.9) < 1e-6 && Math.abs(auto.d - 1.8) < 1e-6);
+  assert.equal(f.length, 3);
+});
+test('grow adds the extra part and keeps the unchanged part object', () => {
+  const { stage, parts } = setup();
+  stage.apply(placed); const box = parts()[0];
+  assert.deepEqual(stage.apply(grow(2)).changed.map(c => c.key), ['milk.kids']);
   assert.ok(parts().includes(box)); assert.deepEqual(stage.partKeys().sort(), ['milk.kids', 'milk.main']);
 });
-test('a changed spec swaps the part: old shrinks away, new pops in', async () => {
-  const { stage, parts, run } = setup();
-  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
-  const oldBox = parts()[0]; const p = stage.apply(grow(3), { instant: false });
-  assert.ok(parts().includes(oldBox), 'old part lingers while shrinking'); run(1.0); await p;
-  assert.ok(!parts().includes(oldBox)); assert.equal(stage.partKeys().length, 3);
+test('a changed spec swaps the part at once', () => {
+  const { stage, parts } = setup();
+  stage.apply(placed); stage.apply(grow(2)); const oldBox = parts()[0];
+  stage.apply(grow(3));
+  assert.ok(!parts().includes(oldBox)); assert.deepEqual(stage.partKeys().sort(), ['milk.lamp', 'milk.main']); assert.equal(stage.partObject('milk.main').visible, true);
 });
-test('instant apply finishes pending transitions: every part at scale 1 (review focus 2)', async () => {
-  const { stage, parts, run } = setup();
-  stage.apply(placed, { instant: false }); run(0.1); stage.apply(grow(2), { instant: false }); run(0.1);
-  await stage.apply(grow(3), { instant: true });
-  assert.equal(parts().length, 3); assert.ok(parts().every(o => Math.abs(o.scale.x - 1) < 1e-9 && o.rotation.z === 0));
-});
-test('reset mid-transition disposes everything (review focus 1)', async () => {
-  const { stage, parts, people, run, scene } = setup();
-  stage.apply(placed, { instant: false }); stage.apply(grow(2), { instant: false }); run(0.1);
+// 舞台不再生任何 CSS2D 標籤（飄字改由演出層的泡泡出）
+const labels = scene => { const out = []; scene.traverse(o => { if (o.isCSS2DObject) out.push(o); }); return out; };
+test('reset disposes everything, pending parts included', () => {
+  const { stage, parts, people, scene } = setup();
+  stage.apply(placed); stage.apply(grow(2)); stage.apply(grow(3), { deferred: true });
   stage.reset();
-  assert.equal(parts().length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(stage.partKeys(), []); assert.equal(floats(scene).length, 0, 'floats cleared');
-  assert.equal(stage.levelOf('milk'), 0);
+  assert.equal(parts().length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(stage.partKeys(), []); assert.deepEqual(stage.pendingKeys(), []);
+  assert.equal(labels(scene).length, 0); assert.equal(stage.levelOf('milk'), 0);
 });
-test('glow registry returns to baseline after reset (review focus 5)', async () => {
+test('reset also resets the roster', () => {
+  let resets = 0; const roster = { declare() {}, retire() {}, reset() { resets++; } };
+  const { stage } = setup([fakeMilk], roster); stage.reset(); assert.equal(resets, 1);
+});
+test('glow registry returns to baseline after reset', () => {
   const { stage, glow } = setup(); const base = glow.size;
-  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true }); await stage.apply(grow(3), { instant: true });
+  stage.apply(placed); stage.apply(grow(2)); stage.apply(grow(3));
   assert.equal(glow.size, base + 1); stage.reset(); assert.equal(glow.size, base);
 });
-test('fx without delta shakes the item parts and resolves after 0.6 s of updates', async () => {
-  const { stage, parts, run } = setup(); await stage.apply(placed, { instant: true });
-  let done = false; stage.apply({ kind: 'fx', item: 'milk', cause: 'typhoon', story: '颱風假！' }, { instant: false }).then(() => { done = true; });
-  stage.update(0.1, 0.1); assert.notEqual(parts()[0].rotation.z, 0);
-  run(0.7); await new Promise(r => setTimeout(r, 0)); assert.ok(done); assert.equal(parts()[0].rotation.z, 0);
-});
-// GROW 式：沒有常駐標籤，等級變化時物件頭上飄一個「Lv.n」就好
-const floats = scene => scene.getObjectByName('stage:labels').children;
-test('a level change floats "Lv.n" above the item main part; instant shows nothing; it is gone after 2.2 s', async () => {
-  const { stage, scene, run } = setup();
-  stage.apply(placed, { instant: false });
-  assert.equal(floats(scene).length, 1); assert.equal(floats(scene)[0].element.textContent, 'Lv.1'); assert.equal(floats(scene)[0].element.className, 'actor-float');
-  // CSS2DRenderer 用 inline transform 定位外層；動畫必須放在內層 span，否則 CSS 動畫會蓋掉定位、字全部跑到左上角（錄影審查 2026-10-25）
-  assert.equal(floats(scene)[0].element.children[0].tagName, 'span'); assert.equal(floats(scene)[0].element.children[0].className, 'rise');
-  assert.ok(Math.abs(floats(scene)[0].position.y - (at.y + 1)) < 1e-9, 'labelY above milk.main');
-  stage.apply(grow(2), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.2');
-  run(1.5); assert.ok(floats(scene).length > 0, 'still rising at 1.5 s'); run(0.8); assert.equal(floats(scene).length, 0);
-  await stage.apply(grow(3), { instant: true }); assert.equal(floats(scene).length, 0);
-});
-test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async () => {
-  const { stage, scene, run } = setup();
-  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
-  stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
-  assert.equal(floats(scene)[0].element.className, 'actor-float'); assert.equal(floats(scene)[0].element.children[0].className, 'rise down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
-  stage.apply(grow(spec.ITEMS.milk.max), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
-});
-test('items without a module still float their level at their anchor', async () => {
-  const { stage, scene } = setup([]);
-  stage.apply({ kind: 'placed', item: 'chip', to: 1 }, { instant: false });
-  assert.equal(floats(scene).length, 1); assert.ok(floats(scene)[0].position.x > 3, 'at the chip anchor');
-});
-test('delta event updates the target item mirror and view; flags are mirrored', async () => {
+test('delta event updates the target item mirror and view; flags are mirrored', () => {
   const { stage, people } = setup();
-  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true }); assert.equal(people.walkers.length, 3);
-  await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: true });
-  assert.equal(stage.levelOf('milk'), 1); assert.equal(people.walkers.length, 0);
-  await stage.apply({ kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'blackout', value: true }, lock: 'bulb' }, { instant: true });
+  stage.apply(placed); stage.apply(grow(2)); assert.equal(people.walkers.length, 3);
+  const r = stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } });
+  assert.equal(stage.levelOf('milk'), 1); assert.equal(people.walkers.length, 0); assert.deepEqual(r.changed.map(c => [c.key, c.kind]), [['milk.kids', 'remove']]);
+  stage.apply({ kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'blackout', value: true }, lock: 'bulb' });
   assert.equal(stage.flags.blackout, true);
 });
-// 使用者 2026-10-25：光點與轉頭拿掉（畫面太亂）。升級直接彈出；wait 事件畫面上什麼都不做
 const helper = { id: 'baseball', labelY: 1, view: lv => lv.baseball ? { 'baseball.main': { kind: 'compound', at: { x: -3, y: 0.65, z: 4 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xdb6a41 }] } } : {} };
-test('a grow with helpers pops at once, no sparks', async () => {
-  const { stage, scene, parts } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const before = parts().length;
-  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2, via: ['baseball'] }, { instant: false });
-  assert.ok(parts().length > before, 'popped immediately'); assert.equal(scene.getObjectByName('stage:sparks'), undefined);
-});
-test('a wait event changes nothing on screen', async () => {
-  const { stage, scene, parts, run } = setup([fakeMilk, helper]);
-  await stage.apply({ kind: 'placed', item: 'baseball', to: 1 }, { instant: true }); await stage.apply(placed, { instant: true });
-  const n = floats(scene).length;
-  await stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }, { instant: false }); run(0.3);
-  assert.equal(floats(scene).length, n); assert.ok(parts().every(o => o.rotation.y === 0));
-});
-test('a no-op knock (1→1) floats nothing', async () => {
-  const { stage, scene } = setup([fakeMilk, helper]);
-  await stage.apply(placed, { instant: true }); const n = floats(scene).length;
-  await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false });
-  assert.equal(floats(scene).length, n);
+test('a wait event and a no-op knock (1→1) change nothing', () => {
+  const { stage, parts } = setup([fakeMilk, helper]);
+  stage.apply({ kind: 'placed', item: 'baseball', to: 1 }); stage.apply(placed);
+  const before = parts().slice();
+  assert.deepEqual(stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }), { changed: [], rest: [] });
+  assert.deepEqual(stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }), { changed: [], rest: [] });
+  assert.deepEqual(parts(), before);
 });
 
-// 計畫 3.6：101 不搭別人的事件跳階，回合最後的 settle 才跳，並在塔頂飄字
+// 計畫 3.6：101 不搭別人的事件跳階，回合最後的 settle 才跳（階段名稱改由 tower 劇本用泡泡出）
 const tower = await import('../src/actors/tower.js');
-test('grow events leave 101 alone until settle, which pops it and floats the stage name', async () => {
-  const { stage, scene, run } = setup([fakeMilk, tower]);
-  await stage.apply(placed, { instant: true });
-  for (let to = 2; to <= 6; to++) await stage.apply({ kind: 'grow', item: 'milk', from: to - 1, to }, { instant: true });
-  await stage.apply({ kind: 'placed', item: 'chip', to: 1 }, { instant: true });
-  await stage.apply({ kind: 'grow', item: 'chip', from: 1, to: 3 }, { instant: true });   // 總和 9
+test('grow events leave 101 alone until settle, which swaps it and floats nothing', () => {
+  const { stage, scene } = setup([fakeMilk, tower]);
+  stage.apply(placed);
+  for (let to = 2; to <= 6; to++) stage.apply({ kind: 'grow', item: 'milk', from: to - 1, to });
+  stage.apply({ kind: 'placed', item: 'chip', to: 1 });
+  stage.apply({ kind: 'grow', item: 'chip', from: 1, to: 3 });   // 總和 9
   assert.equal(stage.meta.total, 0); assert.ok(stage.partKeys().includes('tower.crane'));
-  const before = floats(scene).length, p = stage.apply({ kind: 'settle' }, { instant: false });
-  assert.equal(stage.meta.total, 9);
-  assert.equal(floats(scene).length, before + 1); assert.equal(floats(scene).at(-1).element.textContent, '101 蓋一半');
-  run(1.2); assert.notEqual(await p, false);
+  const r = stage.apply({ kind: 'settle' });
+  assert.equal(stage.meta.total, 9); assert.ok(r.changed.some(c => c.key === 'tower.main')); assert.equal(labels(scene).length, 0);
 });
-test('two thresholds in one turn pop once with the final stage name', async () => {
-  const { stage, scene } = setup([fakeMilk, tower]);
-  await stage.apply(placed, { instant: true });
-  await stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 1, to: 20 } }, { instant: true });
-  const before = floats(scene).length; stage.apply({ kind: 'settle' }, { instant: false });
-  assert.equal(floats(scene).length, before + 1); assert.equal(floats(scene).at(-1).element.textContent, '101 完工');
-});
-test('settle with nothing to change and wait events resolve false (the director will not wait)', async () => {
-  const { stage, scene } = setup([fakeMilk, tower]);
-  await stage.apply(placed, { instant: true });
-  const n = floats(scene).length;
-  assert.equal(await stage.apply({ kind: 'settle' }, { instant: false }), false); assert.equal(floats(scene).length, n);
-  assert.equal(await stage.apply({ kind: 'wait', item: 'milk', waits: [] }, { instant: false }), false);
-  assert.equal(await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false }), false);
+test('settle with nothing to change reports nothing', () => {
+  const { stage } = setup([fakeMilk, tower]);
+  stage.apply(placed);
+  assert.deepEqual(stage.apply({ kind: 'settle' }), { changed: [], rest: [] });
 });
 // 審查：登陸回合的「結束畫面」也要看得到人躲雨（跳過、reduced-motion 的人只看得到結束畫面），下一回合第一個事件才收
-test('the typhoon landing lasts through its turn end and clears on the next turn', async () => {
+test('the typhoon landing lasts through its turn end and clears on the next turn', () => {
   const { stage } = setup([fakeMilk]);
-  await stage.apply({ kind: 'placed', item: 'typhoon', to: 1 }, { instant: true });
-  await stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, { instant: true });
+  stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
+  stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 });
   assert.equal(stage.meta.landing, true);
-  await stage.apply({ kind: 'settle' }, { instant: true }); assert.equal(stage.meta.landing, true, 'still landing at rest');
-  await stage.apply(placed, { instant: true }); assert.equal(stage.meta.landing, false, 'next turn');
-  await stage.apply({ kind: 'settle' }, { instant: true }); assert.equal(stage.meta.landing, false);
+  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.landing, true, 'still landing at rest');
+  stage.apply(placed); assert.equal(stage.meta.landing, false, 'next turn');
+  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.landing, false);
 });
-test('a turn with nothing but settle also ends the landing', async () => {
+test('a turn with nothing but settle also ends the landing', () => {
   const { stage } = setup([fakeMilk]);
-  await stage.apply({ kind: 'placed', item: 'typhoon', to: 1 }, { instant: true });
-  await stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, { instant: true });
-  await stage.apply({ kind: 'settle' }, { instant: true }); await stage.apply({ kind: 'settle' }, { instant: true });
+  stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
+  stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 });
+  stage.apply({ kind: 'settle' }); stage.apply({ kind: 'settle' });
   assert.equal(stage.meta.landing, false);
-});
-test('headOf is exposed for the fly-in target', () => {
-  const { stage } = setup([fakeMilk]);
-  const h = stage.headOf('milk'); assert.ok(Number.isFinite(h.x) && Number.isFinite(h.y) && Number.isFinite(h.z));
-});
-
-// 使用者 2026-10-25：飄字前面不要物品圖示
-test('floats are text only, even when icons are available', async () => {
-  const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
-  const stage = createStage(THREE, { scene, spec, modules: [fakeMilk, tower], ctx: { people, assets: { spawn: async () => new THREE.Group() }, glow, icons: { milk: '<svg>milk</svg>' } } });
-  stage.apply(placed, { instant: false });
-  const inner = floats(scene).at(-1).element.children[0];
-  assert.doesNotMatch(inner._html ?? '', /svg/); assert.equal(inner.textContent, 'Lv.1');
-});
-// 計畫 3.6：變身有預備動作（舊的先壓扁），大東西幾乎不晃、小東西彈得多，煙跟著零件大小
-test('a replaced part squashes before shrinking and the new one waits for it', async () => {
-  const { stage, parts, run } = setup();
-  await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
-  const before = parts().slice(), oldBox = parts()[0], p = stage.apply(grow(3), { instant: false });
-  const newMain = parts().find(o => !before.includes(o));
-  stage.update(0.05, 0.05);
-  assert.ok(oldBox.scale.y < 1 && oldBox.scale.x > 1, 'squashed'); assert.ok(newMain.scale.x <= 1e-3, 'new waits');
-  run(1.0); await p; assert.ok(!parts().includes(oldBox)); assert.equal(newMain.scale.x, 1);
-});
-const sized = (key, scale) => ({ id: 'milk', view: lv => lv.milk ? { [key]: { kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'box', pos: [0, scale / 2, 0], scale, color: 0xffffff }] } } : {} });
-const peak = async scale => {
-  const { stage, parts, scene } = setup([sized('milk.main', scale)]);
-  stage.apply(placed, { instant: false });
-  let max = 0; for (let t = 0; t < 1; t += 1 / 60) { stage.update(1 / 60, t); max = Math.max(max, parts()[0].scale.x); }
-  return { max, smoke: scene.getObjectByName('stage:puffs') };
-};
-test('big parts barely overshoot; small parts bounce', async () => {
-  assert.ok((await peak(20)).max < 1.03, 'ring-sized'); assert.ok((await peak(0.4)).max > 1.08, 'lamp-sized');
-});
-// 使用者 2026-10-25：升級時不要白煙；彈出也放慢一點（Lv 動畫延長）
-test('level changes make no smoke', async () => {
-  assert.equal((await peak(0.4)).smoke, undefined); assert.equal((await peak(20)).smoke, undefined);
-});
-test('the pop takes about three quarters of a second', async () => {
-  const { stage, run } = setup(); let done = false;
-  stage.apply(placed, { instant: false }).then(() => { done = true; });
-  run(0.6); await new Promise(r => setTimeout(r, 0)); assert.equal(done, false);
-  run(0.3); await new Promise(r => setTimeout(r, 0)); assert.equal(done, true);
 });

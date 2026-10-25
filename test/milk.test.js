@@ -33,10 +33,10 @@ test('lv5 clock tower and caps; lv6 university with an arch gate and mortarboard
 test('knocking milk back from 6 removes the university and its graduates (review focus 3)', async () => {
   const scene = new THREE.Scene(), people = createPeople(THREE, { max: 8 });
   const stage = createStage(THREE, { scene, spec, modules: [milk], ctx: { people, assets: null, glow: createGlowRegistry() } });
-  await stage.apply({ kind: 'placed', item: 'milk', to: 1 }, { instant: true });
-  for (let n = 2; n <= 6; n++) await stage.apply({ kind: 'grow', item: 'milk', from: n - 1, to: n, via: [] }, { instant: true });
+  stage.apply({ kind: 'placed', item: 'milk', to: 1 });
+  for (let n = 2; n <= 6; n++) stage.apply({ kind: 'grow', item: 'milk', from: n - 1, to: n, via: [] });
   assert.ok(people.walkers.every(w => w.accessory === 'mortar'));
-  await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 6, to: 5 } }, { instant: true });
+  stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 6, to: 5 } });
   assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'));
   assert.ok(!stage.partKeys().includes('milk.gate'));
 });
@@ -64,9 +64,9 @@ test('typhoon Lv3 swaps the school roof colour', () => {
 test('milk 2→1 removes the kids and frees walkers (review focus 3)', async () => {
   const scene = new THREE.Scene(), people = createPeople(THREE, { max: 8 });
   const stage = createStage(THREE, { scene, spec, modules: [milk], ctx: { people, assets: null, glow: createGlowRegistry() } });
-  await stage.apply({ kind: 'placed', item: 'milk', to: 1 }, { instant: true }); await stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 }, { instant: true });
+  stage.apply({ kind: 'placed', item: 'milk', to: 1 }); stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 });
   assert.equal(people.walkers.length, 3);
-  await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: true });
+  stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } });
   assert.equal(people.walkers.length, 0);
 });
 test('every milk part stays inside the milk cell', () => {

@@ -60,8 +60,8 @@ test('satellites reset to the opening state (review focus 4)', async () => {
   const assets = { spawn: async () => new THREE.Group(), release() {} }, people = createPeople(THREE, { max: 48 });
   const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow: createGlowRegistry() } });
   let s = engine.createState(spec);
-  for (const id of stats(enumerate(spec), spec).full[0].order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); }
-  for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) await stage.apply(e, { instant: true }); }
+  for (const id of stats(enumerate(spec), spec).full[0].order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) stage.apply(e); }
+  for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) stage.apply(e); }
   assert.ok(stage.partKeys().includes('sat.forestShop'));
   stage.reset();
   assert.deepEqual(stage.partKeys().filter(k => k.startsWith('sat.')).sort(), ['sat.boats', 'sat.chest', 'sat.windmill']);

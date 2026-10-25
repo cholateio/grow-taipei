@@ -126,7 +126,7 @@ export async function start({ params, loading }) {
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
   createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
   // 演出中點畫面 = 跳過
-  view.renderer.domElement.addEventListener('click', () => { if (director.busy) director.skip(); });
+  view.renderer.domElement.addEventListener('click', () => { if (director.busy) { director.skip(); slots.land(); } });
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();

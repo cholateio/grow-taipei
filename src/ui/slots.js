@@ -18,7 +18,7 @@ export function createSlots(root, { items, onPick }) {
     buttons[it.id] = b; labels[it.id] = lv; nav.append(b);
   }
   root.append(nav);
-  const placed = new Set(), flying = new Set();
+  const placed = new Set(), flying = new Map();   // 飛行中的圖示 → 它的動畫
   const refresh = busy => { for (const [id, b] of Object.entries(buttons)) b.disabled = busy || placed.has(id); };
   return {
     setLevel(id, lv) {
@@ -35,15 +35,18 @@ export function createSlots(root, { items, onPick }) {
       el.className = 'fly'; el.innerHTML = icons[id];
       const x0 = from.left + from.width / 2, y0 = from.top + from.height / 2, dx = to.x - x0, dy = to.y - y0;
       Object.assign(el.style, { left: `${x0}px`, top: `${y0}px` });
-      document.body.append(el); flying.add(el);
+      document.body.append(el);
       const at = (k, lift, s) => `translate(calc(-50% + ${dx * k}px), calc(-50% + ${dy * k - lift}px)) scale(${s})`;
       const anim = el.animate([{ transform: at(0, 0, 1) }, { transform: at(0.5, 70, 1.25), offset: 0.45 }, { transform: at(1, 0, 0.55), opacity: 0.85 }],
         { duration: FLY_MS, easing: 'cubic-bezier(.35,.6,.45,1)' });
+      flying.set(el, anim);
       const done = () => { el.remove(); flying.delete(el); };
       return anim.finished.then(done, done);
     },
+    // 跳過／RESET：飛行中的圖示立刻落地，演出不被它卡住
+    land() { for (const anim of [...flying.values()]) anim.finish(); },
     reset() {
-      for (const el of flying) el.remove(); flying.clear();
+      this.land();
       placed.clear(); nav.classList.remove('busy');
       for (const [id, b] of Object.entries(buttons)) { b.classList.remove('placed', 'max', 'bump'); labels[id].textContent = ''; b.disabled = false; }
     },

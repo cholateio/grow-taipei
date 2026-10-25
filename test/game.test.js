@@ -101,3 +101,11 @@ test('a reset during the fly-in stops the show before the pop', async () => {
   const p = g.pick('milk'); await Promise.resolve(); g.reset(); land(); await p;
   assert.deepEqual(applied, []);
 });
+test('a skip during the fly-in lands the item instantly', async () => {
+  const f = fakes(); let skipped = false; const modes = [];
+  f.ui.fly = () => { skipped = true; return Promise.resolve(); };
+  f.actors.apply = (e, o) => { modes.push([e.kind, o.instant]); return Promise.resolve(); };
+  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { get instant() { return skipped; } }); };
+  await createGame({ spec, engine, endings, ...f, onFinished() {} }).pick('milk');
+  assert.deepEqual(modes[0], ['placed', true]);
+});

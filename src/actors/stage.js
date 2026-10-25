@@ -33,9 +33,10 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
   const puffGeo = new THREE.IcosahedronGeometry(1, 0);
 
   // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
-  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來）
+  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來，到下一回合開始）
   const META0 = { total: 0, landing: false };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
+  let landingStale = false;   // 登陸回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
   const live = new Map();          // key → { spec, part, anim }
   const leaving = new Set();       // 正在縮掉的舊零件
   const puffs = [];
@@ -137,11 +138,13 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
     // 回傳 Promise<boolean>：false = 畫面上什麼都沒變（導演就不等）
     apply(e, { instant = false } = {}) {
       const target = e.delta ? e.delta.target : e.item;
+      if (landingStale) { landingStale = false; meta = { ...meta, landing: false }; }
       ({ lv, flags } = foldEvent({ lv, flags }, e));
       if (landsTyphoon(e)) meta = { ...meta, landing: true };
       if (e.kind === 'settle') {
         const before = stageOf(meta.total);
-        meta = { total: Object.values(lv).reduce((a, b) => a + b, 0), landing: false };
+        landingStale = meta.landing;
+        meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0) };
         const { done, added } = sync(instant);
         if (!added.length) return Promise.resolve(false);
         if (!instant && stageOf(meta.total) !== before) float('tower', STAGE_NAMES[stageOf(meta.total)]);
@@ -184,7 +187,7 @@ export function createStage(THREE, { scene, spec, modules, ctx }) {
       for (const e of live.values()) drop(e);
       for (const e of [...leaving]) drop(e);
       live.clear(); clearPuffs(); clearFloats();
-      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0;
+      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; landingStale = false;
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync(true);
     },

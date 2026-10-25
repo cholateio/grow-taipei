@@ -51,3 +51,9 @@ test('an event that shows nothing does not wait', async () => {
   assert.equal(d.busy, false);
 });
 test('settle has its own duration', () => { assert.equal(DURATIONS.settle, 900); assert.equal(DURATIONS.placed, 1100); });
+// 審查：放置事件要先飛入，飛的途中按跳過，落地後要立刻套用（opts.instant 是活的）
+test('opts.instant turns true when skip happens during the event', async () => {
+  const d = createDirector({ wait: () => new Promise(() => {}) }); const seen = [];
+  await d.play([{ kind: 'placed', item: 'milk' }], async (e, o) => { seen.push(o.instant); d.skip(); seen.push(o.instant); });
+  assert.deepEqual(seen, [false, true]);
+});

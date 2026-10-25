@@ -39,3 +39,13 @@ test('fly resolves at once when there is no target or no animation support', asy
   const slots = createSlots(document.createElement('div'), { items: slotItems(), onPick() {} });
   await slots.fly('milk', null); await slots.fly('milk', { x: 10, y: 10 });
 });
+test('land() and reset() finish icons still flying, so the show is not held up', async () => {
+  installFakeDom(); const { createSlots } = await import('../src/ui/slots.js');
+  const anims = []; const realCreate = document.createElement;
+  document.createElement = tag => { const el = realCreate(tag); el.animate = () => { let done; const a = { finished: new Promise(r => { done = r; }), finish() { done(); } }; anims.push(a); return a; }; el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 72 }); return el; };
+  document.body = document.createElement('body');
+  const slots = createSlots(document.createElement('div'), { items: slotItems(), onPick() {} });
+  const p = slots.fly('milk', { x: 300, y: 200 }); assert.equal(document.body.children.length, 1);
+  slots.land(); await p; assert.equal(document.body.children.length, 0);
+  const q = slots.fly('chip', { x: 300, y: 200 }); slots.reset(); await q; assert.equal(document.body.children.length, 0);
+});

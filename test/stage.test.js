@@ -160,13 +160,22 @@ test('settle with nothing to change and wait events resolve false (the director 
   assert.equal(await stage.apply({ kind: 'wait', item: 'milk', waits: [] }, { instant: false }), false);
   assert.equal(await stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { instant: false }), false);
 });
-test('the typhoon landing sets meta.landing until settle', async () => {
+// 審查：登陸回合的「結束畫面」也要看得到人躲雨（跳過、reduced-motion 的人只看得到結束畫面），下一回合第一個事件才收
+test('the typhoon landing lasts through its turn end and clears on the next turn', async () => {
   const { stage } = setup([fakeMilk]);
   await stage.apply({ kind: 'placed', item: 'typhoon', to: 1 }, { instant: true });
   await stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, { instant: true });
   assert.equal(stage.meta.landing, true);
+  await stage.apply({ kind: 'settle' }, { instant: true }); assert.equal(stage.meta.landing, true, 'still landing at rest');
+  await stage.apply(placed, { instant: true }); assert.equal(stage.meta.landing, false, 'next turn');
   await stage.apply({ kind: 'settle' }, { instant: true }); assert.equal(stage.meta.landing, false);
-  await stage.apply({ kind: 'grow', item: 'typhoon', from: 2, to: 3 }, { instant: true }); assert.equal(stage.meta.landing, false);
+});
+test('a turn with nothing but settle also ends the landing', async () => {
+  const { stage } = setup([fakeMilk]);
+  await stage.apply({ kind: 'placed', item: 'typhoon', to: 1 }, { instant: true });
+  await stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, { instant: true });
+  await stage.apply({ kind: 'settle' }, { instant: true }); await stage.apply({ kind: 'settle' }, { instant: true });
+  assert.equal(stage.meta.landing, false);
 });
 test('headOf is exposed for the fly-in target', () => {
   const { stage } = setup([fakeMilk]);

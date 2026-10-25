@@ -15,7 +15,8 @@ export function createDirector({ wait = ms => new Promise(r => setTimeout(r, ms)
         const instant = reducedMotion || skipped;
         if (!instant) onFocus(e);
         const timer = !instant && DURATIONS[e.kind] !== 0 ? wait(DURATIONS[e.kind] ?? 600) : null;
-        const shown = await onEvent(e, { instant });
+        // opts.instant 是活的：事件演到一半（例如物品還在飛）按跳過，接下來的步驟立刻套用
+        const shown = await onEvent(e, { get instant() { return reducedMotion || skipped; } });
         if (timer && shown !== false) await Promise.race([timer, new Promise(r => { wake = r; if (skipped) r(); })]);
       }
     } finally { busy = false; aborted = false; wake = () => {}; }

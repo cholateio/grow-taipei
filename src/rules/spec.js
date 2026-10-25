@@ -17,24 +17,24 @@ const present = id => ({ present: id });
 
 export const ITEMS = {
   milk: {
-    name: '鮮奶', max: 4,
+    name: '鮮奶', max: 6,
     // 牛奶箱 → 小學 → 長高（自己長）→ 鐘塔：要有少棒隊；北士科廠房一開工老師全跳槽去當工程師，所以要趕在晶片升級前
-    up: { 2: age('milk', 1), 3: age('milk', 2), 4: and(min('baseball', 2), max('chip', 1)) },
+    up: { 2: age('milk', 1), 3: age('milk', 2), 4: and(min('baseball', 2), max('chip', 1)), 5: age('milk', 4), 6: age('milk', 5) },
   },
   chip: {
-    name: '晶片', max: 5,
+    name: '晶片', max: 6,
     // 工地 → 廠房 → 園區（自己長）→ 總部要有喝鮮奶長大的人才 → 颱風過後矽盾才經過考驗
-    up: { 2: age('chip', 1), 3: age('chip', 2), 4: min('milk', 3), 5: min('typhoon', 3) },
+    up: { 2: age('chip', 1), 3: age('chip', 2), 4: min('milk', 3), 5: min('typhoon', 3), 6: age('chip', 5) },
   },
   bulb: {
-    name: '燈泡', max: 4,
+    name: '燈泡', max: 5,
     // 路燈 → 整條路 → 霓虹（自己長）→ 大巨蛋開打夜場才全島 LED
-    up: { 2: age('bulb', 1), 3: age('bulb', 2), 4: min('baseball', 3) },
+    up: { 2: age('bulb', 1), 3: age('bulb', 2), 4: min('baseball', 3), 5: age('bulb', 4) },
   },
   token: {
-    name: '代幣', max: 4,
+    name: '代幣', max: 6,
     // 車站 → 列車 → 環狀線（自己長）→ 老鼠學會搭捷運之後沒人敢開車，改無人駕駛；但要趕在全島 LED 之前，不然電不夠
-    up: { 2: age('token', 1), 3: age('token', 2), 4: and(min('rat', 3), max('bulb', 3)) },
+    up: { 2: age('token', 1), 3: age('token', 2), 4: and(min('rat', 3), max('bulb', 3)), 5: age('token', 4), 6: age('token', 5) },
   },
   typhoon: {
     name: '颱風', max: 3,
@@ -51,9 +51,9 @@ export const ITEMS = {
     },
   },
   rat: {
-    name: '老鼠', max: 4,
+    name: '老鼠', max: 5,
     // 一隻 → 一窩：學校蓋好有人打掃就不生了，要趁牛奶箱還沒變學校 → 搭捷運：要有列車 → 分岔
-    up: { 2: and(age('rat', 1), max('milk', 1)), 3: and(age('rat', 2), min('token', 2)), 4: age('rat', 3) },
+    up: { 2: and(age('rat', 1), max('milk', 1)), 3: and(age('rat', 2), min('token', 2)), 4: age('rat', 3), 5: age('rat', 4) },
     onLevel: {
       2: [
         { when: present('milk'), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },
@@ -65,17 +65,17 @@ export const ITEMS = {
     },
   },
   boba: {
-    name: '珍奶', max: 3,
+    name: '珍奶', max: 4,
     // 攤車 → 排隊人龍（自己長）→ 廠房的工程師加班狂喝，攤車撐不住，升級成噴泉廣場
-    up: { 2: age('boba', 1), 3: min('chip', 2) },
+    up: { 2: age('boba', 1), 3: min('chip', 2), 4: age('boba', 3) },
     onLevel: {
       3: [{ when: max('milk', 1), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },
   },
   baseball: {
-    name: '棒球', max: 4,
+    name: '棒球', max: 6,
     // 沙地 → 大巨蛋：要趕在捷運通車前蓋（通車後交通評估就過不了）→ 捷運載觀眾開賽 → 燈光夠亮開演唱會
-    up: { 2: and(age('baseball', 1), max('token', 1)), 3: min('token', 2), 4: min('bulb', 3) },
+    up: { 2: and(age('baseball', 1), max('token', 1)), 3: min('token', 2), 4: min('bulb', 3), 5: age('baseball', 4), 6: age('baseball', 5) },
   },
 };
 
@@ -90,13 +90,13 @@ export const STORIES = {
     typhoon: '天邊飄來一朵烏雲', rat: '咦，有老鼠？', boba: '珍奶攤車來擺攤', baseball: '沙地球場整好了',
   },
   grow: {
-    milk: { 2: '小學蓋好，小朋友來喝鮮奶', 3: '喝鮮奶長高高', 4: '學校有鐘塔了' },
-    chip: { 2: '廠房冒煙，工程師上班', 3: '北士科園區成形', 4: '星群總部落成', 5: '矽盾待命' },
-    bulb: { 2: '整條路都亮了', 3: '霓虹招牌點起來', 4: '全島 LED 燈光秀' },
-    token: { 2: '列車開出來了', 3: '環狀線接到小島', 4: '無人駕駛霓虹列車' },
+    milk: { 2: '小學蓋好，小朋友來喝鮮奶', 3: '喝鮮奶長高高', 4: '校舍蓋到三層', 5: '鐘塔響了，少棒隊成軍', 6: '升格大學！' },
+    chip: { 2: '廠房冒煙，工程師上班', 3: '北士科園區成形', 4: '星群總部落成', 5: '101 長出矽盾天線', 6: '矽盾待命' },
+    bulb: { 2: '整條路都亮了', 3: '霓虹招牌點起來', 4: '夜市擴大到四攤', 5: '全島 LED 燈光秀' },
+    token: { 2: '環狀線通車', 3: '列車加到五節', 4: '支線接到小島', 5: '小島接駁車上路', 6: '無人駕駛霓虹列車' },
     typhoon: { 2: '颱風來了！全島檢查', 3: '雨過天晴，災後重建' },
-    rat: { 2: '老鼠生了一窩', 3: '老鼠學會搭捷運', 4: '老鼠的命運分岔了' },
-    boba: { 2: '排隊人龍出現', 3: '珍奶噴泉廣場' },
-    baseball: { 2: '大巨蛋蓋好了', 3: '比賽開打', 4: '演唱會之夜' },
+    rat: { 2: '老鼠生了一窩', 3: '老鼠學會搭捷運', 4: '老鼠的命運分岔了', 5: '老鼠的最終型態' },
+    boba: { 2: '排隊人龍出現', 3: '珍奶噴泉廣場', 4: '珍奶開到小島上' },
+    baseball: { 2: '木看台搭好了', 3: '大巨蛋蓋好了', 4: '比賽開打', 5: '演唱會之夜', 6: '跨年煙火' },
   },
 };

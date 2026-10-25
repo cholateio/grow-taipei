@@ -5,7 +5,7 @@ import { compile } from '../src/rules/conditions.js';
 
 test('eight items in fixed order with spec max levels', () => {
   assert.deepEqual(ORDER, ['milk','chip','bulb','token','typhoon','rat','boba','baseball']);
-  assert.deepEqual(ORDER.map(id => ITEMS[id].max), [4,5,4,4,3,4,3,4]);
+  assert.deepEqual(ORDER.map(id => ITEMS[id].max), [6,6,5,6,3,5,4,6]);   // 2026-10-25：41 級
   assert.deepEqual(ORDER.map(id => ITEMS[id].name), ['鮮奶','晶片','燈泡','代幣','颱風','老鼠','珍奶','棒球']);
 });
 test('every level 2..max has an explicit up condition that compiles', () => {

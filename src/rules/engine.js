@@ -5,6 +5,20 @@ import { compile } from './conditions.js';
 
 export const SCAN_LIMIT = 64;
 
+// 條件裡提到的其他物品（看得見的因果用：升級事件的 via、等待事件的 for）。age/always/flag 不算，自己不算，依 ORDER 排序。
+export function condDeps(cond, self, spec = defaultSpec) {
+  const found = new Set();
+  const walk = c => {
+    if (!c || typeof c !== 'object') return;
+    for (const key of ['minLevel', 'maxLevel']) if (key in c) found.add(c[key][0]);
+    for (const key of ['present', 'absent']) if (key in c) found.add(c[key]);
+    for (const key of ['and', 'or']) if (key in c) c[key].forEach(walk);
+    if ('ltPlus' in c) { found.add(c.ltPlus[0]); found.add(c.ltPlus[1]); }
+  };
+  walk(cond); found.delete(self);
+  return spec.ORDER.filter(id => found.has(id));
+}
+
 const compiled = new WeakMap();
 function rulesOf(spec) {
   if (compiled.has(spec)) return compiled.get(spec);
@@ -13,11 +27,11 @@ function rulesOf(spec) {
   const r = { ctx, items: {} };
   for (const id of spec.ORDER) {
     const it = spec.ITEMS[id];
-    const up = {};
-    for (const n in it.up) up[n] = compile(it.up[n], ctx);
+    const up = {}, deps = {};
+    for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = condDeps(it.up[n], id, spec); }
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, deps, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -104,11 +118,20 @@ function turn(state, id, spec, rules) {
       }
       if (!it.up[lv + 1](s)) continue;
       s.lv[k] = lv + 1; lastGrown = k; changed = true; grown.add(k);
-      events.push({ kind: 'grow', item: k, from: lv, to: lv + 1, story: spec.STORIES.grow[k][lv + 1] });
+      events.push({ kind: 'grow', item: k, from: lv, to: lv + 1, story: spec.STORIES.grow[k][lv + 1], via: it.deps[lv + 1] });
       for (const a of it.onLevel[lv + 1] || []) applyAction(s, a, 'fx', k, rules, events);
     }
     if (!changed) break;
   }
+
+  // 等不到別人的物品：整回合合成一個 wait 事件（剛放的、這回合升過的、卡在 stall 的不算）
+  const waits = [];
+  for (const k of spec.ORDER) {
+    const it = rules.items[k], lv = s.lv[k];
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k)) continue;
+    if (it.deps[lv + 1].length && !it.up[lv + 1](s)) waits.push({ item: k, for: it.deps[lv + 1] });
+  }
+  if (waits.length) events.push({ kind: 'wait', item: waits[0].item, waits });
 
   for (const a of rules.after) applyAction(s, a, 'after', id ?? 'turn', rules, events);
   return { state: s, events };

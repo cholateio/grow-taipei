@@ -91,7 +91,7 @@ test('a knocked-back level floats a falling grey label; MAX reads Lv.MAX', async
   await stage.apply(placed, { instant: true }); await stage.apply(grow(2), { instant: true });
   stage.apply({ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { instant: false });
   assert.equal(floats(scene)[0].element.className, 'actor-float down'); assert.equal(floats(scene)[0].element.textContent, 'Lv.1');
-  stage.apply(grow(4), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
+  stage.apply(grow(spec.ITEMS.milk.max), { instant: false }); assert.equal(floats(scene).at(-1).element.textContent, 'Lv.MAX');
 });
 test('items without a module still float their level at their anchor', async () => {
   const { stage, scene } = setup([]);

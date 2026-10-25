@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT } from '../src/rules/engine.js';
+import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT, condDeps } from '../src/rules/engine.js';
 
 // 迷你 spec：a 放了就自己每回合升；b 的 Lv2 需要 a>=2，Lv3 需要 a>=3（同回合連鎖）
 const mini = {
@@ -114,4 +114,41 @@ test('advance runs a growth turn without placing anything', () => {
   assert.equal(r.state.lv.a, 2); assert.equal(r.state.age.a, 1); assert.equal(r.state.turn, 2); assert.deepEqual(r.state.order, ['a']);
   assert.deepEqual(r.events.map(e => e.kind), ['grow', 'after']);
   assert.equal(advance(r.state, mini).state.lv.a, 3);
+});
+// 看得見的因果（§7.2）：升級事件標上 via；等不到別人的物品每回合合成一個 wait 事件
+const linked = {
+  ORDER: ['a', 'c', 'e', 'z'],
+  ITEMS: {
+    a: { name: 'A', max: 3, up: { 2: { age: ['a', 2] }, 3: { age: ['a', 3] } } },
+    c: { name: 'C', max: 2, up: { 2: { age: ['c', 5] } } },
+    e: { name: 'E', max: 3, up: { 2: { minLevel: ['a', 2] }, 3: { and: [{ age: ['e', 2] }, { maxLevel: ['c', 1] }] } } },
+    z: { name: 'Z', max: 1, up: {} },
+  },
+  AFTER_TURN: [], STORIES: { placed: { a: '', c: '', e: '', z: '' }, grow: { a: { 2: '', 3: '' }, c: { 2: '' }, e: { 2: '', 3: '' }, z: {} } },
+};
+test('condDeps lists the other items a condition mentions, in ORDER, without age/self', () => {
+  assert.deepEqual(condDeps({ and: [{ age: ['e', 2] }, { maxLevel: ['c', 1] }, { minLevel: ['a', 2] }, { present: 'e' }] }, 'e', linked), ['a', 'c']);
+  assert.deepEqual(condDeps({ always: true }, 'a', linked), []);
+  assert.deepEqual(condDeps({ or: [{ absent: 'c' }, { flag: 'x' }] }, 'a', linked), ['c']);
+});
+test('grow events carry via = the items their condition depends on', () => {
+  let s = place(createState(linked), 'a', linked).state; s = place(s, 'e', linked).state;   // a 還是 1（age 1）
+  const r = place(s, 'z', linked);                                                         // a → 2，同回合 e → 2（看 a）
+  const g = r.events.filter(e => e.kind === 'grow');
+  assert.deepEqual(g.map(e => [e.item, e.via]), [['a', []], ['e', ['a']]]);
+});
+test('wait is one grouped event per turn and absent when nothing waits', () => {
+  let s = place(createState(linked), 'a', linked).state;
+  let r = place(s, 'e', linked); assert.equal(r.events.filter(e => e.kind === 'wait').length, 0, 'freshly placed e does not wait yet');
+  r = place(r.state, 'c', linked);                                // a 到 2 了嗎？a age 2 → 2；e 同回合升 2 → 不等
+  assert.equal(r.events.filter(e => e.kind === 'wait').length, 0);
+  r = place(r.state, 'z', linked);                                // e 想升 3 需 age 2 且 c ≤ 1：c 是 1 → 成立，e 升 3；a 升 3
+  const st = r.state; assert.equal(st.lv.e, 3);
+  // 另一條路：先讓 c 長到 2 再看 e 在等 c
+  const blocked = { ...linked, ITEMS: { ...linked.ITEMS, c: { name: 'C', max: 2, up: { 2: { always: true } } } } };
+  let b = place(createState(blocked), 'c', blocked).state; b = place(b, 'e', blocked).state; b = place(b, 'a', blocked).state;   // c 2、e 1、a 剛放 1
+  const r2 = place(b, 'z', blocked);
+  const w = r2.events.filter(e => e.kind === 'wait');
+  assert.equal(w.length, 1); assert.deepEqual(w[0].waits.find(x => x.item === 'e'), { item: 'e', for: ['a'] });
+  assert.ok(!w[0].waits.some(x => x.item === 'z'), 'freshly placed z is not waiting');
 });

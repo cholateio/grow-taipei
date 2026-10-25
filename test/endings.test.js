@@ -49,7 +49,7 @@ test('deflect games light both typhoonDeflect and shieldDown, title card is the 
   assert.equal(resolve(s, spec).id, 'typhoonDeflect');
 });
 test('nothing satisfied and not all max → tryAgain', () => {
-  assert.equal(resolve(full({ lv: lv({ chip: 5 }) }), spec).id, 'tryAgain');
+  assert.equal(resolve(full({ lv: lv({ chip: spec.ITEMS.chip.max }) }), spec).id, 'tryAgain');
 });
 test('ENDINGS has ten entries with Chinese titles', () => {
   assert.equal(Object.keys(ENDINGS).length, 10);

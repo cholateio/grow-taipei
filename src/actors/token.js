@@ -1,5 +1,5 @@
 // 代幣（§5.1）：捷運站 → 環狀線與 3 節列車 → 5 節 → 支線接到兩座衛星島 → 接駁車 → 霓虹無人列車。捷運淹水時站體變游泳池、列車停駛。
-// TRACK 與 trainPose 也給老鼠用（老鼠坐在車頂上）。
+// TRACK 與 trainPose 也給老鼠用（老鼠坐在車頂上）。ctx.rail.offset 是共用的列車時鐘偏移（讓列車從站出發）。
 import { anchorWorld } from './anchors.js';
 import { TOP, groundAt, axialToWorld, SATELLITES } from '../scene/hex.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
@@ -86,7 +86,7 @@ export const builders = {
     });
     return {
       object,
-      update(dt, t) { cars.forEach((c, i) => { const p = trainPose(t, i, { speed: spec.speed }); c.object.position.set(p.x, p.y, p.z); c.object.rotation.y = p.yaw; }); },
+      update(dt, t) { const tt = t + (ctx.rail?.offset ?? 0); cars.forEach((c, i) => { const p = trainPose(tt, i, { speed: spec.speed }); c.object.position.set(p.x, p.y, p.z); c.object.rotation.y = p.yaw; }); },
       dispose() { for (const c of cars) c.dispose(); },
     };
   },

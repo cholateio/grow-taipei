@@ -74,7 +74,7 @@ export const builders = {
       update(dt, t) {
         subs.forEach((s, i) => {
           s.update?.(dt, t);
-          if (spec.train) { const p = trainPose(t, i % spec.train.cars, { speed: spec.train.speed }); s.object.position.set(p.x - at.x, p.y + 0.18 - at.y, p.z - at.z); s.object.rotation.y = p.yaw; }
+          if (spec.train) { const p = trainPose(t + (ctx.rail?.offset ?? 0), i % spec.train.cars, { speed: spec.train.speed }); s.object.position.set(p.x - at.x, p.y + 0.18 - at.y, p.z - at.z); s.object.rotation.y = p.yaw; }
           if (spec.wave) s.object.rotation.z = Math.sin(t * 3) * 0.15;
         });
       },

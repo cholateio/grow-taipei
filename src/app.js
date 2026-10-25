@@ -37,6 +37,7 @@ import * as satellites from './actors/satellites.js';
 import { worldEffects, stepWorld } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
+import { createRatTurn } from './spike/rat-turn.js';
 
 const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
@@ -87,14 +88,23 @@ export async function start({ params, loading }) {
   if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
 
   // 介面、演員、導演、遊戲
-  const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
+  // 【試作】?spike=rat：前五個物品瞬間放好，「放鮮奶」那一回合交給腳本導演演（&go 自動點、&warp=秒 先快轉）
+  const spike = params.get('spike');
+  const auto = spike === 'rat' ? ['rat', 'typhoon', 'baseball', 'chip', 'token'] : params.get('auto')?.split(',').filter(Boolean) ?? null;
   const uiRoot = document.getElementById('ui');
-  const weather = { rain: 0 };   // 雨的濃度，全島效果每幀淡入後寫進來（typhoon.js 的 rain 讀它）
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather } });
+  const weather = { rain: 0 }, rail = { offset: 0 };   // 雨的濃度（typhoon.js 的 rain 讀它）；列車時鐘偏移（讓列車從站出發）
+  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather, rail } });
   // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
   // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
   const live = params.has('live');
-  const director = createDirector({ reducedMotion: motion.matches || (!!auto && !live) });
+  const plain = createDirector({ reducedMotion: motion.matches || (!!auto && !live) });
+  const ratTurn = spike === 'rat' ? createRatTurn(THREE, { scene: view.scene, stage: actors, assets, rail, people }) : null;
+  // 試作：放鮮奶那回合走腳本導演，其他回合照舊
+  const director = !ratTurn ? plain : {
+    get busy() { return plain.busy || ratTurn.director.busy; },
+    play: (evs, cb) => (evs.some(e => e.kind === 'placed' && e.item === 'milk') ? ratTurn.director : plain).play(evs, cb),
+    skip() { plain.skip(); ratTurn.director.skip(); }, abort() { plain.abort(); ratTurn.director.abort(); }, setReducedMotion: f => plain.setReducedMotion(f),
+  };
   if (auto) rig.setReducedMotion(true);
   motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || (!!auto && !live)));
   // 全島效果：燈泡推動時間、颱風登陸小人躲進室內、大停電熄燈。在造成它的事件當下設目標，每幀約 1 秒淡過去；
@@ -130,17 +140,24 @@ export async function start({ params, loading }) {
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
-  let autoDone = false, reported = false;
-  view.renderer.setAnimationLoop(() => {
-    const dt = Math.min(clock.getDelta(), 0.08), t = clock.elapsedTime;
+  let autoDone = false, reported = false, elapsed = 0;
+  const frame = dt => {
+    const t = (elapsed += dt);
     const w = stepWorld(world, worldTarget, dt); if (w !== world) { world = w; showWorld(w); }
-    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t);
+    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t); ratTurn?.update(dt, t);
     if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
-    // 自動播放（截圖）時第 240 幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
+  };
+  view.renderer.setAnimationLoop(() => {
+    frame(Math.min(clock.getDelta(), 0.08));
     view.render();
     // 自動播放（截圖）演完後的第一幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
     if (autoDone && !reported) { reported = true; console.warn(`[grow] calls=${view.renderer.info.render.calls} tris=${view.renderer.info.render.triangles}`); }
   });
   loading.hidden = true;
-  if (auto) (async () => { for (const id of auto) await pick(id); autoDone = true; })();
+  if (auto) (async () => {
+    for (const id of auto) await pick(id);
+    // 試作：&go 自動放鮮奶，&warp=N 先快轉 N 秒（截圖用，每秒 30 格）
+    if (ratTurn && params.has('go')) { pick('milk'); for (let i = 0, n = Math.round((+params.get('warp') || 0) * 30); i < n; i++) frame(1 / 30); }
+    autoDone = true;
+  })();
 }

@@ -59,10 +59,10 @@ export function view(lv, flags) {
   if (n >= 2) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
-    v['token.track'] = { kind: 'compound', at: origin, parts };
-    if (n >= 4) v['token.spurs'] = { kind: 'compound', at: origin, parts: [...spur('lighthouse'), ...spur('playground')] };
-    if (n >= 5) v['token.shuttle'] = { kind: 'shuttle', at: origin, path: spurPath('lighthouse'), speed: flags.flooded ? 0 : 0.6 };
-    v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 6 };
+    v['token.track'] = { kind: 'compound', at: origin, parts, footprint: false };
+    if (n >= 4) v['token.spurs'] = { kind: 'compound', at: origin, footprint: false, parts: [...spur('lighthouse'), ...spur('playground')] };
+    if (n >= 5) v['token.shuttle'] = { kind: 'shuttle', at: origin, path: spurPath('lighthouse'), speed: flags.flooded ? 0 : 0.6, footprint: false };
+    v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 6, footprint: false };
   }
   return v;
 }

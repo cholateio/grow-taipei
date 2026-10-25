@@ -37,11 +37,11 @@ export function view(lv, flags) {
   }
   if (n >= 2) {
     v['baseball.players'] = { kind: 'people', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], stand: [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...offset(at, 0.45, 1.05), yaw: -Math.PI / 2 }] };
-    v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05] };
+    v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
     if (n >= 4) { const k = n >= 5 ? 6 : 4; v['baseball.crowd'] = { kind: 'people', at, n: k, stand: fans(at, k), shirt: SHIRTS }; }
   }
   // 跨年煙火：巨蛋上空循環放
-  if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral] };
+  if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };
   v['baseball.main'] = { kind: 'compound', at, parts };
   if (flags.domeRats) { const gate = offset(at, 0, 1.1); v['baseball.staff'] = { kind: 'people', at, n: 2, accessory: 'helmet', path: ringPath(gate, 0.6, gate.y), speed: 0.9 }; }
   // 鍵的順序：main 先（標籤掛在 main）

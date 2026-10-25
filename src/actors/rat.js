@@ -39,7 +39,7 @@ export function view(lv, flags) {
       : { 'rat.pack': rats({ at, tint: { Grey: 0xc0c8d0 }, antenna: true, loop: { path: ENGINEER_ROUTE, loop: false, speed: 0.6, phase: 0.1, step: 0.03 } }) };
     case 'alien': {
       const mutant = offset(spring, -0.75, 0.55, 0.05), v = { 'rat.main': rats({ at: mutant, n: 1, h: 0.5, anim: 'Idle', tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true }) };
-      if (lv.rat >= 5) v['rat.ufo'] = { kind: 'ufo', at: offset(mutant, 0, 0, 1.3) };   // 變異鼠加冕：頭上盤旋一艘小 UFO（鋪外星結局）
+      if (lv.rat >= 5) v['rat.ufo'] = { kind: 'ufo', at: offset(mutant, 0, 0, 1.3), footprint: false };   // 變異鼠加冕：頭上盤旋一艘小 UFO（鋪外星結局）
       return v;
     }
     case 'dome': { const gate = offset(anchorWorld('baseball'), 0, 1.1); return { 'rat.pack': rats({ at: gate, loop: { path: ringPath(gate, 0.9, gate.y), speed: 1.1, step: 0.2 } }) }; }

@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three/three.module.js';
-// 遊戲本體：場景 → 介面 → 導演 → 遊戲。由 main.js 動態載入，任何模組載入失敗都會落到 main.js 的錯誤畫面。
-// ?auto=a,b,c 自動依序放（截圖用）、?time=、?quality=、?simulateFail=webgl、?cam=
+// 遊戲本體：場景 → 介面 → 演出層 → 遊戲。由 main.js 動態載入，任何模組載入失敗都會落到 main.js 的錯誤畫面。
+// ?auto=a,b,c 自動依序放（截圖用；&live=1&warp=N 最後一個物品照常演 N 秒）、?time=、?quality=、?simulateFail=webgl、?cam=
 import { createRenderer, pickQuality, CENTER } from './scene/renderer.js';
 import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
@@ -9,7 +9,7 @@ import { SATELLITES } from './scene/hex.js';
 import { buildTerrain } from './scene/terrain.js';
 import { SimplexNoise } from '../vendor/three/addons/math/SimplexNoise.js';
 import { mulberry32 } from './scene/random.js';
-import { createPeople, ringPath, WALK_RADIUS } from './scene/people.js';
+import { createPeople, ringPath } from './scene/people.js';
 import { axialToWorld, cellTop, PLATEAU_CELLS, WATER_Y } from './scene/hex.js';
 import { createAssets } from './scene/assets.js';
 import { createCameraRig } from './scene/camera.js';
@@ -21,8 +21,7 @@ import { ICONS } from './ui/icons.js';
 import { createSlots } from './ui/slots.js';
 import { showHowTo, showEndCard, createTopBar } from './ui/cards.js';
 import { storageGet, storageSet } from './ui/format.js';
-import { createDirector } from './director.js';
-import { createStage } from './actors/stage.js';
+import { createShow } from './show/index.js';
 import * as landmarks from './actors/landmarks.js';
 import * as tower from './actors/tower.js';
 import * as milk from './actors/milk.js';
@@ -37,7 +36,6 @@ import * as satellites from './actors/satellites.js';
 import { worldEffects, stepWorld } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
-import { createRatTurn } from './spike/rat-turn.js';
 
 const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
@@ -54,11 +52,7 @@ export async function start({ params, loading }) {
   const terrain = buildTerrain(THREE, { noise2: (x, z) => simplex.noise(x, z), quality });
   view.scene.add(terrain.group);
   const people = createPeople(THREE);
-  view.scene.add(people.group);
-  for (const cell of [[0, 0], [-1, 1], [1, 0]]) for (let k = 0; k < 2; k++) {
-    const path = ringPath(axialToWorld(...cell), WALK_RADIUS, cellTop(cell));
-    people.spawn({ path: k ? [...path].reverse() : path, speed: 0.32 + k * 0.06, accessory: k ? 'cap' : 'none' });
-  }
+  view.scene.add(people.group);   // 島民六人是 landmarks.js 的名冊（演出層管）
   // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品）。海上的船是演員（satellites.js）。載入失敗不擋開機。
   const assets = createAssets(THREE);
   const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
@@ -87,56 +81,44 @@ export async function start({ params, loading }) {
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫
   if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
 
-  // 介面、演員、導演、遊戲
-  // 【試作】?spike=rat：前五個物品瞬間放好，「放鮮奶」那一回合交給腳本導演演（&go 自動點、&warp=秒 先快轉）
-  const spike = params.get('spike');
-  const auto = spike === 'rat' ? ['rat', 'typhoon', 'baseball', 'chip', 'token'] : params.get('auto')?.split(',').filter(Boolean) ?? null;
+  // 介面、演出層、遊戲
+  // ?auto 預設瞬間套用（截圖用）；加 &live=1 保留演出：前面的物品瞬間放好，最後一個照常演，&warp=N 先同步快轉 N 秒（每秒 30 格）
+  const auto = params.get('auto')?.split(',').filter(Boolean) ?? null;
+  const live = params.has('live');
+  const instantAuto = () => !!auto && !live;
   const uiRoot = document.getElementById('ui');
   const weather = { rain: 0 }, rail = { offset: 0 };   // 雨的濃度（typhoon.js 的 rain 讀它）；列車時鐘偏移（讓列車從站出發）
-  const actors = createStage(THREE, { scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites], ctx: { people, assets, glow: view.glow, weather, rail } });
-  // 演出不搶鏡頭：玩家要看得到全島的連鎖變化，鏡頭留給玩家自己轉（使用者 2026-10-25 決定）
-  // ?auto 預設瞬間套用（截圖用）；加 ?live=1 保留演出（除錯飄字、轉場用）
-  const live = params.has('live');
-  const plain = createDirector({ reducedMotion: motion.matches || (!!auto && !live) });
-  const ratTurn = spike === 'rat' ? createRatTurn(THREE, { scene: view.scene, stage: actors, assets, rail, people }) : null;
-  // 試作：放鮮奶那回合走腳本導演，其他回合照舊
-  const director = !ratTurn ? plain : {
-    get busy() { return plain.busy || ratTurn.director.busy; },
-    play: (evs, cb) => (evs.some(e => e.kind === 'placed' && e.item === 'milk') ? ratTurn.director : plain).play(evs, cb),
-    skip() { plain.skip(); ratTurn.director.skip(); }, abort() { plain.abort(); ratTurn.director.abort(); }, setReducedMotion: f => plain.setReducedMotion(f),
-  };
-  if (auto) rig.setReducedMotion(true);
-  motion.addEventListener?.('change', e => director.setReducedMotion(e.matches || (!!auto && !live)));
-  // 全島效果：燈泡推動時間、颱風登陸小人躲進室內、大停電熄燈。在造成它的事件當下設目標，每幀約 1 秒淡過去；
+  // 全島效果：燈泡推動時間、颱風登陸小人躲進室內、大停電熄燈。演出層的 world 拍設目標，每幀約 1 秒淡過去；
   // 跳過、reduced-motion、截圖、RESET 直接貼齊
   const showWorld = w => { setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); weather.rain = w.rain; };
   let world = { ...worldEffects(zeroLevels(), {}), time: TIMES[params.get('time')] ?? TIMES.day }, worldTarget = world;
-  const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || (auto && !live)) { world = w; showWorld(w); } };
-  const applyWorld = (lv, flags, { instant = false } = {}) => aimWorld(worldEffects(lv, flags, actors.meta), instant);
+  const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || instantAuto()) { world = w; showWorld(w); } };
+  const show = createShow(THREE, {
+    scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites],
+    ctx: { people, assets, glow: view.glow, weather, rail }, rig,
+    world: (effects, instant) => aimWorld({ ...worldTarget, ...effects }, instant),
+    reducedMotion: motion.matches || instantAuto(),
+  });
+  if (auto) rig.setReducedMotion(true);
+  motion.addEventListener?.('change', e => show.setReducedMotion(e.matches || instantAuto()));
+  const applyWorld = (lv, flags, { instant = false } = {}) => aimWorld(worldEffects(lv, flags, show.stage.meta), instant);
   let slots;
-  // 世界座標 → 螢幕座標（物品飛入的落點）；在畫面外就回 null，不飛
-  const projected = new THREE.Vector3();
-  const screenOf = p => {
-    projected.set(p.x, p.y, p.z).project(view.camera);
-    if (projected.z > 1 || Math.abs(projected.x) > 1 || Math.abs(projected.y) > 1) return null;
-    return { x: (projected.x + 1) / 2 * innerWidth, y: (1 - projected.y) / 2 * innerHeight };
-  };
   const game = createGame({
-    spec, engine, endings, director, actors,
-    ui: { fly: id => slots.fly(id, screenOf(actors.headOf(id))), setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
+    spec, engine, endings, show,
+    ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
     onFinished: (ending, state) => {
       aimWorld({ ...worldTarget, time: TIMES.night });
       showEndCard(uiRoot, { title: ending.title, line: endings.ENDINGS[ending.id].line, onRestart: restart });
     },
   });
-  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.overview(); }
+  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
   createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
   // 演出中點畫面 = 跳過
-  view.renderer.domElement.addEventListener('click', () => { if (director.busy) { director.skip(); slots.land(); } });
+  view.renderer.domElement.addEventListener('click', () => { if (show.busy) show.skip(); });
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
@@ -144,7 +126,7 @@ export async function start({ params, loading }) {
   const frame = dt => {
     const t = (elapsed += dt);
     const w = stepWorld(world, worldTarget, dt); if (w !== world) { world = w; showWorld(w); }
-    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); actors.update(dt, t); ratTurn?.update(dt, t);
+    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); show.update(dt, t);
     if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
   };
   view.renderer.setAnimationLoop(() => {
@@ -155,9 +137,14 @@ export async function start({ params, loading }) {
   });
   loading.hidden = true;
   if (auto) (async () => {
-    for (const id of auto) await pick(id);
-    // 試作：&go 自動放鮮奶，&warp=N 先快轉 N 秒（截圖用，每秒 30 格）
-    if (ratTurn && params.has('go')) { pick('milk'); for (let i = 0, n = Math.round((+params.get('warp') || 0) * 30); i < n; i++) frame(1 / 30); }
+    if (live && auto.length) {
+      // 前面的物品瞬間放好；最後一個照常演，同步快轉 warp 秒（截圖拍演出中的那一刻）
+      show.setReducedMotion(true);
+      for (const id of auto.slice(0, -1)) await pick(id);
+      show.setReducedMotion(motion.matches);
+      pick(auto.at(-1));
+      for (let i = 0, n = Math.round((+params.get('warp') || 0) * 30); i < n; i++) frame(1 / 30);
+    } else for (const id of auto) await pick(id);
     autoDone = true;
   })();
 }

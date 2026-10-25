@@ -6,11 +6,18 @@ import * as engine from '../src/rules/engine.js';
 import * as endings from '../src/rules/endings.js';
 import { enumerate, stats } from '../src/solver/run.js';
 const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 正解從求解器取，規則改了不用手改
+// 假演出層：turn 記下事件與選項、立刻 resolve
 function fakes() {
   const ui = { levels: {}, placed: [], busy: [], setLevel(id, lv) { this.levels[id] = lv; }, setPlaced(id) { this.placed.push(id); }, setBusy(f) { this.busy.push(f); }, reset() { this.levels = {}; this.placed = []; } };
-  const actors = { applied: [], apply(e) { this.applied.push(e); return Promise.resolve(); }, reset() { this.applied = []; } };
-  let busy = false; const director = { get busy() { return busy; }, async play(events, onEvent) { busy = true; for (const e of events) await onEvent(e, { instant: true }); busy = false; }, skip() {} };
-  return { ui, actors, director };
+  const show = { busy: false, turns: [], applied: [], aborted: 0, async turn(events, opts) { this.turns.push({ events, opts }); for (const e of events) this.applied.push(e); }, skip() {}, abort() { this.aborted++; }, reset() { this.applied = []; } };
+  return { ui, show };
+}
+// 可以手動放行的回合：busy 在 release 之前都是 true
+function holdTurns(show) {
+  let release = null;
+  show.turn = function (events, opts) { this.turns.push({ events, opts }); return new Promise(r => { release = () => { for (const e of events) this.applied.push(e); r(); }; }); };
+  Object.defineProperty(show, 'busy', { get: () => !!release, configurable: true });
+  return () => { const r = release; release = null; r(); };
 }
 test('a full solution order finishes with the cyber ending and MAX levels', async () => {
   const f = fakes(); let done = null;
@@ -23,89 +30,58 @@ test('ui levels track the engine after every pick, including delta-driven levels
   const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
   for (const id of ['bulb','boba','typhoon','milk']) { await g.pick(id); for (const k of spec.ORDER) if (g.state.lv[k] > 0) assert.equal(f.ui.levels[k], g.state.lv[k], `${k} after ${id}`); }
 });
+test('ui.setLevel is called only after the turn resolves', async () => {
+  const f = fakes(), release = holdTurns(f.show); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  const p = g.pick('milk'); await Promise.resolve();
+  assert.deepEqual(f.ui.levels, {}, 'nothing written while the turn plays'); assert.deepEqual(f.ui.placed, ['milk']); assert.deepEqual(f.ui.busy, [true]);
+  release(); await p;
+  assert.deepEqual(f.ui.levels, { milk: 1 }); assert.deepEqual(f.ui.busy, [true, false]);
+});
 test('double pick, pick while busy and pick after finish are ignored', async () => {
   const f = fakes(); let finished = 0; const g = createGame({ spec, engine, endings, ...f, onFinished() { finished++; } });
   await g.pick('milk'); assert.equal(await g.pick('milk'), false);
-  let release; f.director.play = (events, onEvent) => new Promise(r => { release = async () => { for (const e of events) await onEvent(e, { instant: true }); r(); }; });
-  Object.defineProperty(f.director, 'busy', { get: () => !!release });
-  const p = g.pick('chip'); assert.equal(await g.pick('bulb'), false); await release(); release = null; await p;
+  const turn = f.show.turn, release = holdTurns(f.show);
+  const p = g.pick('chip'); assert.equal(await g.pick('bulb'), false); release(); await p;
   assert.equal(g.state.lv.chip, 1); assert.equal(g.state.lv.bulb, 0);
-  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: true }); };
+  f.show.turn = turn; Object.defineProperty(f.show, 'busy', { value: false, writable: true });
   for (const id of ['bulb','token','typhoon','rat','boba','baseball']) await g.pick(id);
   assert.equal(finished, 1); assert.equal(await g.pick('milk'), false);
 });
-test('reset starts a new state and clears ui/actors', async () => {
+test('reset starts a new state and clears ui/show', async () => {
   const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
-  await g.pick('milk'); g.reset(); assert.equal(g.state.lv.milk, 0); assert.deepEqual(f.ui.placed, []); assert.deepEqual(f.actors.applied, []);
+  await g.pick('milk'); g.reset(); assert.equal(g.state.lv.milk, 0); assert.deepEqual(f.ui.placed, []); assert.deepEqual(f.show.applied, []);
+  assert.equal(f.show.aborted, 1); assert.equal(g.finished, false);
 });
 test('reset during a show: the old show cannot touch the new game, which is playable at once (review #3)', async () => {
-  const f = fakes(); let release = null, aborted = 0;
-  // 這個假導演故意不理 abort，確保遊戲自己也會擋掉舊演出的回呼
-  f.director.play = (events, onEvent) => new Promise(r => { release = async () => { for (const e of events) await onEvent(e, { instant: true }); r(); }; });
-  f.director.abort = () => { aborted++; };
-  Object.defineProperty(f.director, 'busy', { get: () => !!release });
-  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  // 這個假演出層 abort 時故意不結束回合，確保遊戲自己也會擋掉舊回合結束後的動作
+  const f = fakes(), release = holdTurns(f.show); let levels = 0;
+  const g = createGame({ spec, engine, endings, ...f, onFinished() {}, onLevels: () => { levels++; } });
   const p = g.pick('bulb'); g.reset();
-  assert.equal(aborted, 1);
-  const r = release; release = null; await r(); await p;
-  assert.equal(g.state.lv.bulb, 0); assert.deepEqual(f.ui.levels, {}); assert.deepEqual(f.actors.applied, []);
-  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: true }); };
-  assert.equal(await g.pick('milk'), true); assert.equal(g.state.lv.milk, 1);
+  assert.equal(f.show.aborted, 1);
+  release(); await p;
+  assert.equal(g.state.lv.bulb, 0); assert.deepEqual(f.ui.levels, {}); assert.equal(levels, 0); assert.deepEqual(f.ui.busy, [true]);
+  const t = fakes().show; f.show.turn = t.turn; Object.defineProperty(f.show, 'busy', { value: false, writable: true });
+  assert.equal(await g.pick('milk'), true); assert.equal(g.state.lv.milk, 1); assert.equal(f.ui.levels.milk, 1);
 });
 test('after the eighth item the game plays CLOSING_TURNS extra growth turns before finishing', async () => {
-  const f = fakes(); let plays = 0, done = null; const d = f.director, play = d.play.bind(d); d.play = (ev, cb) => { plays++; return play(ev, cb); };
+  const f = fakes(); let done = null;
   const g = createGame({ spec, engine, endings, ...f, onFinished: (ending, state) => { done = { ending, state }; } });
   for (const id of CYBER) await g.pick(id);
-  assert.equal(plays, 8 + spec.CLOSING_TURNS); assert.equal(done.state.turn, 8 + spec.CLOSING_TURNS); assert.equal(done.ending.id, 'cyber');
+  assert.equal(f.show.turns.length, 8 + spec.CLOSING_TURNS); assert.equal(done.state.turn, 8 + spec.CLOSING_TURNS); assert.equal(done.ending.id, 'cyber');
   assert.equal(f.ui.busy.at(-1), false);
 });
-// 計畫 3.6：全島效果在事件當下、回合最後補 settle、放置時物品先從框裡飛出去
-test('onLevels is called per event with the levels so far, then once at turn end', async () => {
+test('closing turns use montage: true', async () => {
+  const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
+  for (const id of CYBER) await g.pick(id);
+  assert.deepEqual(f.show.turns.map(t => !!t.opts?.montage), [...Array(8).fill(false), ...Array(spec.CLOSING_TURNS).fill(true)]);
+});
+test('onLevels is called once per turn, at turn end, with the engine state', async () => {
   const f = fakes(), calls = []; const g = createGame({ spec, engine, endings, ...f, onFinished() {}, onLevels: (lv, flags, info) => calls.push({ lv: { ...lv }, info }) });
-  await g.pick('typhoon'); calls.length = 0; await g.pick('milk');   // 第 2 回合：颱風 1→2
-  const perEvent = calls.filter(c => c.info.event), end = calls.filter(c => c.info.turnEnd);
-  assert.equal(end.length, 1); assert.equal(calls.at(-1).info.turnEnd, true);
-  assert.equal(perEvent[0].info.event.kind, 'placed'); assert.equal(perEvent[0].lv.milk, 1);
-  const landing = perEvent.find(c => c.info.event.kind === 'grow' && c.info.event.item === 'typhoon');
-  assert.equal(landing.lv.typhoon, 2); assert.deepEqual(end[0].lv, g.state.lv);
+  await g.pick('typhoon'); await g.pick('milk');
+  assert.equal(calls.length, 2); assert.ok(calls.every(c => c.info.turnEnd === true)); assert.deepEqual(calls.at(-1).lv, g.state.lv);
 });
 test('settle is the last event of every turn', async () => {
   const f = fakes(); const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
-  await g.pick('milk'); assert.equal(f.actors.applied.at(-1).kind, 'settle');
-  await g.pick('chip'); assert.equal(f.actors.applied.filter(e => e.kind === 'settle').length, 2);
-});
-test('placed flies from the slot before the actor pops; instant does not fly', async () => {
-  const f = fakes(), log = [];
-  f.ui.fly = id => { log.push(['fly', id]); return Promise.resolve(); };
-  f.actors.apply = e => { log.push([e.kind]); return Promise.resolve(); };
-  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: false }); };
-  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
-  await g.pick('milk'); assert.deepEqual(log.slice(0, 2), [['fly', 'milk'], ['placed']]);
-  const f2 = fakes(); let flew = 0; f2.ui.fly = () => { flew++; return Promise.resolve(); };
-  await createGame({ spec, engine, endings, ...f2, onFinished() {} }).pick('milk'); assert.equal(flew, 0);
-});
-test('the slot level updates when the pop starts, not after it finishes', async () => {
-  const f = fakes(); let release; const seen = [];
-  f.actors.apply = e => e.kind === 'placed' ? new Promise(r => { release = r; }) : Promise.resolve();
-  f.director.play = async (events, onEvent) => { const p = onEvent(events[0], { instant: false }); await new Promise(r => setTimeout(r, 0)); seen.push(f.ui.levels.milk); release(); await p; };
-  await createGame({ spec, engine, endings, ...f, onFinished() {} }).pick('milk');
-  assert.deepEqual(seen, [1]);
-});
-test('a reset during the fly-in stops the show before the pop', async () => {
-  const f = fakes(); let land; const applied = [];
-  f.ui.fly = () => new Promise(r => { land = r; });
-  f.actors.apply = e => { applied.push(e.kind); return Promise.resolve(); };
-  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { instant: false }); };
-  f.director.abort = () => {};
-  const g = createGame({ spec, engine, endings, ...f, onFinished() {} });
-  const p = g.pick('milk'); await Promise.resolve(); g.reset(); land(); await p;
-  assert.deepEqual(applied, []);
-});
-test('a skip during the fly-in lands the item instantly', async () => {
-  const f = fakes(); let skipped = false; const modes = [];
-  f.ui.fly = () => { skipped = true; return Promise.resolve(); };
-  f.actors.apply = (e, o) => { modes.push([e.kind, o.instant]); return Promise.resolve(); };
-  f.director.play = async (events, onEvent) => { for (const e of events) await onEvent(e, { get instant() { return skipped; } }); };
-  await createGame({ spec, engine, endings, ...f, onFinished() {} }).pick('milk');
-  assert.deepEqual(modes[0], ['placed', true]);
+  await g.pick('milk'); assert.equal(f.show.applied.at(-1).kind, 'settle');
+  await g.pick('chip'); assert.equal(f.show.applied.filter(e => e.kind === 'settle').length, 2);
 });

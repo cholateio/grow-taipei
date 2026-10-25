@@ -25,7 +25,6 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
     fit(a) { aspect = a; go(overviewPos(), home.clone(), 0); },
     // 回到全景框景
     home(ms = 1000) { go(overviewPos(), home.clone(), ms); },
-    overview(ms = 1000) { return this.home(ms); }, // 舊名，app.js 在 Task 9 前還在用
     // 平移：鏡頭與注視點同向移動 target − home，視角不變
     panTo(target, ms = 1000) {
       const t = v(target), delta = t.clone().sub(home);

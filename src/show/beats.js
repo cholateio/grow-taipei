@@ -5,7 +5,7 @@ import { together } from './timeline.js';
 import { FLASH } from './flash.js';
 import { SEATS } from './roster.js';
 import { trainPose } from '../actors/token.js';
-import { anchorWorld } from '../actors/anchors.js';
+import { anchorWorld, ANCHORS } from '../actors/anchors.js';
 import { createPathCursor } from '../scene/path.js';
 
 export { together };
@@ -133,11 +133,13 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   };
 }
 
-// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節
+// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節；
+// 不是物品的零件（衛星島的 sat.boats）沒有頭可以掛，就閃在 at
 function flashPoint({ key, at }, ctx) {
   if (at && Math.abs(at.x) + Math.abs(at.z) >= 1e-6) return at;
   if (key === 'token.train') return trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx) });
-  return ctx.stage.headOf(key.split('.')[0]);
+  const owner = key.split('.')[0];
+  return owner in ANCHORS ? ctx.stage.headOf(owner) : (at ?? { x: 0, y: 0, z: 0 });
 }
 
 // 套用事件：flash 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）閃白光、最亮那一刻 commit；
@@ -191,8 +193,9 @@ export function world(effects) {
 
 export function wait(s) { return { kind: 'wait', dur: s }; }
 
+// who：一個或一串目標；也可以是 ctx => 目標（或一串），演到這拍才算（turn.js 收尾：所有 script 成員）
 export function home(who) {
-  return { kind: 'home', dur: 0, start(ctx) { for (const w of [].concat(who)) { const m = memberOf(w, ctx); if (m) ctx.roster.home(m); } } };
+  return { kind: 'home', dur: 0, start(ctx) { for (const w of [].concat(call(who, ctx) ?? [])) { const m = memberOf(w, ctx); if (m) ctx.roster.home(m); } } };
 }
 
 // 零件位置 = 它原本的位置 + 偏移；目前的偏移記在 userData.showOffset，連續 move 才不會越疊越遠

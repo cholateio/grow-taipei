@@ -22,13 +22,13 @@ test('full games with the real modules leave no glow, walkers or models behind a
   const glow = createGlowRegistry(), people = createPeople(THREE, { max: 48 });
   const roster = createRoster(THREE, { people, assets, build: null, nav: createNav(), flash: createFlash(THREE, { group: new THREE.Group() }), rail: { offset: 0 } });
   const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow }, roster });
-  const base = { glow: glow.size, walkers: people.walkers.length };
+  const base = { glow: glow.size, walkers: people.walkers.length, roster: roster.count };   // 開局就有島民名冊（6 人）
   for (const order of SOLUTIONS) {
     let s = engine.createState(spec);
     for (const id of order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) stage.apply(e); await new Promise(res => setTimeout(res, 0)); }
     for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) stage.apply(e); }
     stage.reset(); await new Promise(res => setTimeout(res, 0));
-    assert.equal(glow.size, base.glow, order.join()); assert.equal(people.walkers.length, base.walkers); assert.equal(roster.count, 0);
+    assert.equal(glow.size, base.glow, order.join()); assert.equal(people.walkers.length, base.walkers); assert.equal(roster.count, base.roster);
   }
   assert.equal(released.length, spawned.length, 'every spawned model released');
 });

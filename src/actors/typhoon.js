@@ -12,16 +12,16 @@ const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 export function view(lv) {
   const n = lv.typhoon, at = anchorWorld('typhoon'), v = {};
   if (!n) return v;
-  if (n === 1) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, parts: [
+  if (n === 1) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, footprint: false, parts: [
     { kind: 'sphere', pos: [0, 4.5, 0], scale: 1.4, color: CLOUD }, { kind: 'sphere', pos: [0.8, 4.35, 0.1], scale: 1.0, color: CLOUD }, { kind: 'sphere', pos: [-0.75, 4.4, -0.1], scale: 0.9, color: CLOUD },
   ] };
-  else if (n === 2) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, spin: 0.5, parts: [
+  else if (n === 2) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, spin: 0.5, footprint: false, parts: [
     { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },
     ...Array.from({ length: 7 }, (_, i) => { const a = i / 7 * Math.PI * 2; return { kind: 'sphere', pos: [Math.cos(a) * 2.2, 4.4 + (i % 2) * 0.2, Math.sin(a) * 2.2], scale: 1.1 - (i % 3) * 0.12, color: STORM }; }),
   ] };
   else {
     // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山
-    v['typhoon.main'] = { kind: 'compound', at, shadow: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
+    v['typhoon.main'] = { kind: 'compound', at, shadow: false, footprint: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
     const park = landmarkWorld('park');
     v['typhoon.park'] = { kind: 'compound', at: park, parts: [
       { kind: 'box', pos: [0, 0.01, 0], scale: [1.1, 0.02, 0.3], rot: [0, 0.6, 0], color: C.sand },
@@ -31,8 +31,8 @@ export function view(lv) {
     ] };
   }
   if (n === 2) {
-    v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 } };
-    if (lv.boba >= 1) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 } };
+    v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
+    if (lv.boba >= 1) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
   }
   return v;
 }

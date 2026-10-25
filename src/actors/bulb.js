@@ -27,7 +27,7 @@ export function view(lv, flags) {
       const c = axialToWorld(...cell), a = deg * Math.PI / 180, r = RING_R + 0.12;
       parts.push(...lamp(c.x + Math.cos(a) * r - at.x, c.z + Math.sin(a) * r - at.z, head(++i)));
     }
-    v['bulb.lamps'] = { kind: 'compound', at, parts };
+    v['bulb.lamps'] = { kind: 'compound', at, parts, footprint: false };
     const stall = (x, z, roof) => [
       { kind: 'box', pos: [x, 0.22, z], scale: [0.5, 0.45, 0.4], color: C.wall },
       { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },

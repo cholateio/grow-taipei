@@ -1,4 +1,4 @@
-// 時間軸：把一串拍（beat）照順序演，由繪製迴圈每幀呼叫 update(dt) 推進（取代 director.js 的 Promise 等待）。
+// 時間軸：把一串拍（beat）照順序演，由繪製迴圈每幀呼叫 update(dt) 推進（取代舊導演的 Promise 等待）。
 // 不靠計時器，所以 Node 可以無頭模擬整局（pace 工具就是這樣量回合長度）。
 // 拍 = { kind, dur, start?(ctx), step?(k, dt, ctx), end?(ctx), estimate? }；dur 是數字或 ctx => 數字，start 之後才算。
 // start 回 false 或 dur ≤ 0 → 這拍沒東西演，直接 end、不佔時間，同一幀接著處理下一拍。
@@ -118,11 +118,11 @@ export function createTimeline({ reducedMotion = false } = {}) {
 }
 
 // 同時演好幾拍：長度取子拍最長的（函數 dur 在 start 時各自算），每個子拍用自己的 k 推進，到 1 就 end；
-// 被跳過時 end 會把還沒演完的子拍收掉。
+// 被跳過時 end 會把還沒演完的子拍收掉。beats 留在拍上，給 turn.js 估長度、蒙太奇過濾子拍。
 export function together(beats) {
   let live = [], dur = 0;
   return {
-    kind: 'together',
+    kind: 'together', beats,
     dur: () => dur,
     start(ctx) {
       live = []; dur = 0;

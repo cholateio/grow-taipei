@@ -37,7 +37,8 @@ export function createBubbles(THREE, { group }) {
   }
   function levelUp(head, { text = 'LEVEL UP', down = false } = {}) {
     const el = document.createElement('div'); el.className = 'levelup';
-    const span = document.createElement('span'); if (down) span.className = 'down'; span.textContent = text;
+    // 中文標籤（101 階段名）描邊細一點、不斜，否則筆畫糊成一團
+    const span = document.createElement('span'); span.className = [down ? 'down' : '', /[^\x00-\x7f]/.test(text) ? 'cjk' : ''].filter(Boolean).join(' '); span.textContent = text;
     el.append(span);
     return add(el, head, LEVELUP_DUR, LEVELUP_DY);
   }

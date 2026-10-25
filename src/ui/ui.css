@@ -57,9 +57,11 @@ button.primary:hover { background: #3a3333; }
 @keyframes bubble-pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
 /* 升級的那個東西上方 1 秒的 LEVEL UP：黃字墨線描邊往上升；掉級灰字往下掉 */
 .levelup { pointer-events: none; }
-.levelup span { display: block; font: 900 26px ui-monospace, monospace; color: #fcea8b; -webkit-text-stroke: 1.5px #211d1d;
+/* 字型：粗黑體斜體（使用者 2026-10-26 選 D；Arial Black 全平台都有），不用等寬字；大小跟著視窗高度走，4K 螢幕上才看得到 */
+.levelup span { display: block; font: italic 900 clamp(26px, 2.4vh, 44px)/1 "Arial Black", Impact, "Noto Sans TC", sans-serif; letter-spacing: .05em; color: #fcea8b; -webkit-text-stroke: 1.5px #211d1d;
   text-shadow: 1px 0 0 #211d1d, -1px 0 0 #211d1d, 0 1px 0 #211d1d, 0 -1px 0 #211d1d; white-space: nowrap; animation: levelup-rise 1s ease-out forwards; }
 .levelup span.down { color: #7a6f68; animation-name: levelup-fall; }
+.levelup span.cjk { font-style: normal; letter-spacing: 0; -webkit-text-stroke-width: 1px; }
 @keyframes levelup-rise { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-24px); opacity: 0; } }
 @keyframes levelup-fall { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(24px); opacity: 0; } }
 /* 東西出現／消失處的白光（外層 div.flash 不能動 transform，放大動畫做在 ::after） */

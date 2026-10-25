@@ -1,7 +1,6 @@
 // 棒球（§5.1）：沙地 → 木看台與兩個傳接球的球員 → 大巨蛋 → 比賽開打（頂縫透光、觀眾 4 人）→ 演唱會（藍色應援棒、觀眾 6 人）→ 跨年煙火。
-// 大巨蛋鼠災：兩個戴安全帽的工作人員繞著門口追老鼠。
+// 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
 import { anchorWorld } from './anchors.js';
-import { ringPath } from '../scene/people.js';
 import { C, offset } from './palette.js';
 
 export const id = 'baseball';
@@ -43,7 +42,8 @@ export function view(lv, flags) {
   // 跨年煙火：巨蛋上空循環放
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };
   v['baseball.main'] = { kind: 'compound', at, parts };
-  if (flags.domeRats) { const gate = offset(at, 0, 1.1); v['baseball.staff'] = { kind: 'people', at, n: 2, accessory: 'helmet', path: ringPath(gate, 0.6, gate.y), speed: 0.9 }; }
+  // 鼠災的工作人員：名冊，日常跟在最近的老鼠旁邊；颱風的劇本從巨蛋門口放他們出來
+  if (flags.domeRats) v['baseball.staff'] = { kind: 'roster', at: offset(at, 0, 1.1), n: 2, accessory: 'helmet', home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } };
   // 鍵的順序：main 先（標籤掛在 main）
   return { 'baseball.main': v['baseball.main'], ...v };
 }

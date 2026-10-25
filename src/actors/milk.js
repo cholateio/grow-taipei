@@ -8,6 +8,7 @@ export const id = 'milk';
 export const labelY = 1.4;
 
 const AT = anchorWorld('milk');
+const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（灰）
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
 const GATE = offset(AT, 0, 0.1);                      // 校門口（校舍正前方）
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
@@ -20,9 +21,11 @@ const kidsCenter = lv => (league(lv) ? offset(anchorWorld('baseball'), -1.15, 0.
 export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
+  // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本白光換上、LEVEL DOWN）
+  const spoiled = !!flags.blackout;
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [
-    { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: C.cream },
-    { kind: 'box', pos: [0, 0.3, 0], scale: [0.47, 0.08, 0.47], color: C.blue },
+    { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: spoiled ? SPOILED : C.cream },
+    { kind: 'box', pos: [0, 0.3, 0], scale: [0.47, 0.08, 0.47], color: spoiled ? SPOILED_BAND : C.blue },
   ] };
   const home = (lv.typhoon === 2 && !!meta.landing) || !!meta.bitten;
   // 一級蓋一層：Lv2 一層、Lv3 兩層、Lv4 起三層；Lv6 升格大學，校舍拉長

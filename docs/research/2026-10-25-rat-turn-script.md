@@ -36,7 +36,8 @@
 - 列車從捷運站「出發」（之前通車時列車憑空出現在環上某處）。
 - 觀眾是列車帶來的。
 
-## 試作怎麼看
+## 正式版怎麼看
 
-`http://127.0.0.1:8767/index.html?spike=rat` → 前五個物品瞬間放好，點「鮮奶」播這一回合。
-`&go` 自動點、`&warp=12` 先快轉 12 秒（截圖用）。試作是拋棄式的（`src/spike/`），確認手感後再依這個做法重寫演出層。
+`http://127.0.0.1:8767/index.html?auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=12` → 前五個物品瞬間放好，鮮奶這一回合照常演；`warp=N` 先同步快轉 N 秒（每秒 30 格），換秒數就能看別的時刻。
+`npm run shot` 的 `live-rat` 用 `warp=24`：那隻老鼠在捷運格島緣冒「……」等車。`?live` 時散步點用固定種子，同一個 warp 每次拍到同一刻。
+試作（`src/spike/`、`?spike=rat`）已經刪掉；正式版是演出層（`src/show/`，規格 `docs/superpowers/specs/2026-10-25-show-layer-design.md`）。

@@ -39,3 +39,29 @@ test('together runs sub-beats in parallel and lasts as long as the longest', () 
   tl.update(0.2); assert.ok(log.includes('a:end') && !log.includes('b:end'));
   tl.update(0.2); assert.ok(log.includes('b:end') && log.includes('c:end'));
 });
+test('a step that throws ends the beat, rejects play, rethrows, and leaves the timeline reusable', async () => {
+  log.length = 0; const tl = createTimeline(); const boom = new Error('boom');
+  const p = tl.play([{ ...beat('x', 1), step: k => { log.push(`x:${k.toFixed(2)}`); if (k > 0) throw boom; } }, beat('c', 0)], {});
+  const settled = p.then(() => 'resolved', e => e);
+  assert.throws(() => tl.update(0.1), /boom/); assert.equal(await settled, boom); assert.ok(!tl.busy);
+  assert.deepEqual(log, ['x:start', 'x:0.10', 'x:end']); assert.equal(tl.currentKind, null);
+  log.length = 0; const q = tl.play([beat('d', 0)], {}); tl.update(0); await q; assert.deepEqual(log, ['d:start', 'd:end']);
+});
+test('a start that throws mid-chain ends that beat once and never re-steps the finished one', async () => {
+  log.length = 0; const tl = createTimeline();
+  const p = tl.play([beat('a', 0.1), beat('x', 1, { start: () => { throw new Error('bad start'); } }), beat('c', 0.1)], {});
+  const settled = p.then(() => 'resolved', e => e.message);
+  assert.throws(() => tl.update(0.1), /bad start/); tl.update(0.1);
+  assert.equal(await settled, 'bad start'); assert.ok(!tl.busy);
+  assert.deepEqual(log, ['a:start', 'a:1.00', 'a:end', 'x:start', 'x:end']);
+});
+test('setReducedMotion(true) mid-play jumps straight to the end', async () => {
+  log.length = 0; const tl = createTimeline(); const p = tl.play([beat('a', 1), beat('b', 1)], {});
+  tl.update(0.1); tl.setReducedMotion(true); await p; tl.update(0.1);
+  assert.deepEqual(log, ['a:start', 'a:0.10', 'a:end', 'b:start', 'b:end']); assert.ok(!tl.busy);
+});
+test('a beat whose start skips its own timeline is ended once and the timeline is left idle', async () => {
+  log.length = 0; const tl = createTimeline(); const p = tl.play([beat('s', 1, { start: () => tl.skip() }), beat('b', 1)], {});
+  tl.update(0.1); await p; tl.update(0.1);
+  assert.deepEqual(log, ['s:start', 's:end', 'b:start', 'b:end']); assert.ok(!tl.busy); assert.equal(tl.currentKind, null);
+});

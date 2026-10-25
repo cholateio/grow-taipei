@@ -31,7 +31,7 @@ export function view(lv, flags) {
       'rat.pack': rats({ at, loop: { path: ringPath(at, 0.7, at.y), speed: 0.6, step: 0.2 } }),
     };
     case 'spring': return { 'rat.pack': rats({ at: spring, anim: 'Idle', spots: Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Math.PI * 2 + 0.3; return { ...offset(spring, Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.1), yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }; }) }) };
-    case 'train': return { 'rat.pack': rats({ at, h: 0.12, anim: 'Idle', train: { cars: lv.token >= 3 ? 5 : 3 } }) };
+    case 'train': return { 'rat.pack': rats({ at, h: 0.12, anim: 'Idle', train: { cars: lv.token >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35 } }) };
     case 'cyber': return { 'rat.pack': rats({ at, tint: { Grey: 0xc0c8d0 }, antenna: true, loop: { path: ENGINEER_ROUTE, loop: false, speed: 0.6, phase: 0.1, step: 0.03 } }) };
     case 'alien': return { 'rat.main': rats({ at: offset(spring, -0.75, 0.55, 0.05), n: 1, h: 0.5, anim: 'Idle', tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true }) };
     case 'dome': { const gate = offset(anchorWorld('baseball'), 0, 1.1); return { 'rat.pack': rats({ at: gate, loop: { path: ringPath(gate, 0.9, gate.y), speed: 1.1, step: 0.2 } }) }; }
@@ -41,14 +41,15 @@ export function view(lv, flags) {
 export const builders = {
   // 一群老鼠：沿路徑（loop）、站定點（spots）、或坐在列車車頂（train）
   rats(THREE, spec, ctx) {
-    const object = new THREE.Group(), at = spec.at;
+    const object = new THREE.Group(), at = spec.at, extras = [];
     const subs = Array.from({ length: spec.n }, (_, i) => {
       const spot = spec.spots?.[i];
       const sub = ctx.build({ kind: 'glb', at: spot ?? at, path: spec.path, h: spec.h, anim: spec.anim, tint: spec.tint, glow: spec.glow, ry: spot?.yaw ?? 0,
         ...(spec.loop ? { loop: { ...spec.loop, phase: (spec.loop.phase ?? 0) + i * (spec.loop.step ?? 0) } } : {}) });
       sub.object.position.sub(new THREE.Vector3(at.x, at.y, at.z));
-      if (spec.antenna) sub.object.add(ctx.build({ kind: 'compound', at: { x: 0, y: spec.h, z: 0 }, shadow: false, parts: [{ kind: 'cylinder', pos: [0, 0.04, 0], scale: [0.01, 0.08, 0.01], color: C.ink }, { kind: 'sphere', pos: [0, 0.09, 0], scale: 0.025, color: C.neonBlue, glow: C.neonBlue }] }).object);
-      if (spec.eye) sub.object.add(ctx.build({ kind: 'compound', at: { x: 0, y: spec.h * 0.78, z: spec.h * 0.32 }, shadow: false, parts: [{ kind: 'sphere', pos: [0, 0, 0], scale: [0.09, 0.09, 0.05], color: C.white }, { kind: 'sphere', pos: [0, 0, 0.02], scale: [0.04, 0.04, 0.03], color: C.ink }] }).object);
+      const extra = s => { const p = ctx.build(s); extras.push(p); sub.object.add(p.object); };
+      if (spec.antenna) extra({ kind: 'compound', at: { x: 0, y: spec.h, z: 0 }, shadow: false, parts: [{ kind: 'cylinder', pos: [0, 0.04, 0], scale: [0.01, 0.08, 0.01], color: C.ink }, { kind: 'sphere', pos: [0, 0.09, 0], scale: 0.025, color: C.neonBlue, glow: C.neonBlue }] });
+      if (spec.eye) extra({ kind: 'compound', at: { x: 0, y: spec.h * 0.78, z: spec.h * 0.32 }, shadow: false, parts: [{ kind: 'sphere', pos: [0, 0, 0], scale: [0.09, 0.09, 0.05], color: C.white }, { kind: 'sphere', pos: [0, 0, 0.02], scale: [0.04, 0.04, 0.03], color: C.ink }] });
       object.add(sub.object);
       return sub;
     });
@@ -57,11 +58,11 @@ export const builders = {
       update(dt, t) {
         subs.forEach((s, i) => {
           s.update?.(dt, t);
-          if (spec.train) { const p = trainPose(t, i % spec.train.cars); s.object.position.set(p.x - at.x, p.y + 0.18 - at.y, p.z - at.z); s.object.rotation.y = p.yaw; }
+          if (spec.train) { const p = trainPose(t, i % spec.train.cars, { speed: spec.train.speed }); s.object.position.set(p.x - at.x, p.y + 0.18 - at.y, p.z - at.z); s.object.rotation.y = p.yaw; }
           if (spec.wave) s.object.rotation.z = Math.sin(t * 3) * 0.15;
         });
       },
-      dispose() { for (const s of subs) s.dispose?.(); },
+      dispose() { for (const s of [...subs, ...extras]) s.dispose?.(); },
     };
   },
 };

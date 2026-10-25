@@ -50,3 +50,17 @@ test('rats builder spawns n models and moves them along the loop; train rats rid
   const w = new THREE.Vector3(); t.object.updateMatrixWorld(true); t.object.children[0].children[0].getWorldPosition(w);
   assert.ok(w.y > 2, 'up on the elevated train');
 });
+test('rats builder disposes its antennas and eyes: glow registry back to zero (review #1)', async () => {
+  const glow = createGlowRegistry(), assets = { spawn: async () => new THREE.Group() };
+  const f = createPartFactory(THREE, { glow, assets, builders: rat.builders });
+  for (const flags of [{ ratBranch: 'cyber' }, { ratBranch: 'alien' }]) {
+    const key = flags.ratBranch === 'cyber' ? 'rat.pack' : 'rat.main', p = f.build(rat.view(lv({ rat: 4 }), flags)[key]);
+    await new Promise(r => setTimeout(r, 0)); assert.ok(glow.size > 0 || flags.ratBranch === 'alien'); p.dispose(); assert.equal(glow.size, 0, flags.ratBranch);
+  }
+});
+test('rats on a flooded line sit still on the stopped train (review #3)', async () => {
+  const s = rat.view(lv({ rat: 3, token: 2 }), { flooded: true })['rat.pack']; assert.equal(s.train.speed, 0);
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), assets: { spawn: async () => new THREE.Group() }, builders: rat.builders });
+  const p = f.build(s); await new Promise(r => setTimeout(r, 0));
+  p.update(0.1, 1); const a = p.object.children[0].position.clone(); p.update(0.1, 7); assert.ok(a.distanceTo(p.object.children[0].position) < 1e-9);
+});

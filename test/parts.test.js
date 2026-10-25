@@ -71,3 +71,10 @@ test('createPathCursor walks a closed loop and bounces on an open path', () => {
   c.advance(4); assert.ok(Math.abs(c.locate().x - 1) < 1e-9 && Math.abs(c.locate().z - 0.5) < 1e-9, 'wraps after 4');
   const o = createPathCursor(sq.slice(0, 2), { loop: false }); o.advance(1.5); assert.ok(Math.abs(o.locate().x - 0.5) < 1e-9, 'bounced back');
 });
+test('glb part releases its model from the asset system on dispose, and releases a model that loads after dispose (review #2)', async () => {
+  const released = [], assets = { spawn: async () => new THREE.Group(), release: m => released.push(m) };
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), assets, builders: {} });
+  const a = f.build({ kind: 'glb', at, path: 'a.glb', h: 1 }); await new Promise(r => setTimeout(r, 0)); a.dispose();
+  const b = f.build({ kind: 'glb', at, path: 'b.glb', h: 1 }); b.dispose(); await new Promise(r => setTimeout(r, 0));
+  assert.equal(released.length, 2);
+});

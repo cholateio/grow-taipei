@@ -22,3 +22,12 @@ test('every assets/<source>/<pack>/ folder has a CC0 row in LICENSES.md, and the
   for (const src of ['kenney', 'quat']) for (const pack of readdirSync(`assets/${src}`)) assert.ok(lic.includes(`\`${src}/${pack}/\``), `${src}/${pack}`);
   for (const f of ['assets/quat/enemies/Rat.glb', 'assets/quat/animals/ShibaInu.glb']) assert.ok(existsSync(f), f);
 });
+test('assets.release stops and forgets the animation mixer and glow materials of a spawned model (review #2)', async () => {
+  const { createAssets } = await import('../src/scene/assets.js');
+  const clip = new THREE.AnimationClip('Rat_Walk', 1, [new THREE.NumberKeyframeTrack('.position[x]', [0, 1], [0, 1])]);
+  const loader = { load: (url, ok) => { const s = new THREE.Group(); s.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial({ name: 'Grey' }))); ok({ scene: s, animations: [clip] }); } };
+  const assets = createAssets(THREE, { loader });
+  const m = await assets.spawn('x.glb', { anim: 'walk', glow: { Grey: 0x5fcf7a } });
+  assert.equal(assets.mixerCount, 1); assert.equal(assets.glowMaterials.length, 1);
+  assets.release(m); assert.equal(assets.mixerCount, 0); assert.equal(assets.glowMaterials.length, 0);
+});

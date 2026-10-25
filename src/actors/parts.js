@@ -62,9 +62,9 @@ export function createPartFactory(THREE, ctx) {
     const cursor = spec.loop ? createPathCursor(spec.loop.path, { loop: spec.loop.loop ?? true }) : null;
     if (cursor && spec.loop.phase) cursor.advance(spec.loop.phase * cursor.total);
     ctx.assets.spawn(spec.path, { h: spec.h, anim: spec.anim, speed: spec.animSpeed, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 }).then(m => {
-      if (disposed) return;
+      if (disposed) { ctx.assets.release?.(m); return; }
       model = m; object.add(m);
-      m.traverse(o => { if (o.isMesh) for (const mt of [].concat(o.material)) if (mt.emissiveIntensity > 0) { ctx.glow.add(mt); mats.push(mt); } });
+      m.traverse(o => { if (o.isMesh) for (const mt of [].concat(o.material)) if (mt.emissiveIntensity > 0 && mt.emissive?.getHex()) { ctx.glow.add(mt); mats.push(mt); } });
       place();
     }).catch(err => console.warn('模型載入失敗', spec.path, err));
     const place = () => {
@@ -75,7 +75,7 @@ export function createPartFactory(THREE, ctx) {
     return {
       object,
       update(dt) { if (cursor) { cursor.advance(dt * spec.loop.speed); place(); } },
-      dispose() { disposed = true; for (const m of mats) ctx.glow.remove(m); },
+      dispose() { disposed = true; for (const m of mats) ctx.glow.remove(m); if (model) ctx.assets.release?.(model); },
     };
   }
 

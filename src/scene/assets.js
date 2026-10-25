@@ -19,8 +19,7 @@ export function convertMaterial(THREE, m, { tint = null, glow = null } = {}) {
   return out;
 }
 
-export function createAssets(THREE, { base = './assets/', draco = './vendor/three/draco/' } = {}) {
-  const loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath(draco));
+export function createAssets(THREE, { base = './assets/', draco = './vendor/three/draco/', loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath(draco)) } = {}) {
   const cache = new Map(), mixers = [], glowMaterials = [];
 
   function load(path) {
@@ -37,22 +36,32 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
   async function spawn(path, { x = 0, y = 0, z = 0, h = 1, ry = 0, anim = null, speed = 1, parent = null, tint = null, glow = null } = {}) {
     const src = await load(path), obj = SkeletonUtils.clone(src.scene);
     obj.scale.setScalar(normalizeHeight(measure(obj).getSize(new THREE.Vector3()), h));
-    const box = measure(obj), c = box.getCenter(new THREE.Vector3());
+    const box = measure(obj), c = box.getCenter(new THREE.Vector3()), mine = [];
     obj.position.set(-c.x, -box.min.y, -c.z);
     obj.traverse(o => {
       if (!o.isMesh) return;
       o.castShadow = o.receiveShadow = true;
-      const conv = m => { const n = convertMaterial(THREE, m, { tint, glow }); if (n.emissiveIntensity > 0 && n.emissive.getHex()) glowMaterials.push(n); return n; };
+      const conv = m => { const n = convertMaterial(THREE, m, { tint, glow }); if (n.emissiveIntensity > 0 && n.emissive.getHex()) { glowMaterials.push(n); mine.push(n); } return n; };
       o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
     });
     const holder = new THREE.Group(); holder.add(obj); holder.position.set(x, y, z); holder.rotation.y = ry;
     if (anim && src.animations.length) {
       const clip = src.animations.find(a => a.name.toLowerCase().includes(anim.toLowerCase())) ?? src.animations[0];
       const mixer = new THREE.AnimationMixer(obj); const act = mixer.clipAction(clip); act.timeScale = speed; act.play(); mixers.push(mixer);
+      holder.userData.mixer = mixer;
     }
+    holder.userData.glow = mine;
     parent?.add(holder);
     return holder;
   }
 
-  return { load, spawn, update: dt => { for (const m of mixers) m.update(dt); }, glowMaterials };
+  // 演員被換掉時放掉模型：停掉並移除它的動畫 mixer，發光材質也不再列管（否則每局都在累積）
+  function release(holder) {
+    const m = holder?.userData.mixer;
+    if (m) { m.stopAllAction(); const i = mixers.indexOf(m); if (i >= 0) mixers.splice(i, 1); }
+    for (const g of holder?.userData.glow ?? []) { const i = glowMaterials.indexOf(g); if (i >= 0) glowMaterials.splice(i, 1); }
+    holder?.removeFromParent();
+  }
+
+  return { load, spawn, release, update: dt => { for (const m of mixers) m.update(dt); }, glowMaterials, get mixerCount() { return mixers.length; } };
 }

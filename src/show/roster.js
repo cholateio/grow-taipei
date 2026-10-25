@@ -45,6 +45,7 @@ function extraSpecs(md, h) {
 export function createRoster(THREE, { people, assets, build = null, nav, flash, rail = { offset: 0 }, rnd = Math.random }) {
   const group = new THREE.Group(); group.name = 'roster:models';
   const groups = new Map();
+  const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
   let now = 0;   // 最近一次 update 的 t（home() 讓 ride 成員瞬間上車要用）
   let order = 0;   // 這次宣告裡第幾個閃的（每個晚 STAGGER 秒）
   const next = () => STAGGER * order++;
@@ -128,7 +129,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     m.head = () => ({ x: m.pos.x, y: m.pos.y + m.headY, z: m.pos.z });
     if (kind === 'people') m.walker = people.spawn({ controlled: true, shirt: spec.shirt, accessory: accOf(spec, i), scale });
     else { m.extras = []; m.dress = spec.model; load(m, spec.model); }
-    veil(m, delay);
+    veil(m, delay); fresh.add(m);
     return m;
   }
   function destroy(m) {
@@ -162,13 +163,19 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     g.members.forEach((m, i) => { m.i = i; restyle(m, spec, i); if (moved && m.mode === 'home') home(m); });   // 劇本手上的人不搶
     const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
-      const m = src.leaving.length ? src.leaving.pop() : src.members.pop();
+      const m = src.leaving.length ? src.leaving.pop() : take(src);
       m.key = g.key; m.i = g.members.length; m.trip = null; m.cursor = null; m.rest = 0; g.members.push(m);
       if (!restyle(m, spec, m.i)) veil(m, next());   // 換身分一定閃一下
     }
-    // 搬走後原名冊不夠它宣告的人數（工程師 2 → 3 的同一刻有一個變偵防師）：原名冊補人
-    if (src && !src.held && src.spec) while (src.members.length < src.spec.n) { const i = src.members.length; src.members.push(spawn(src, src.spec, i, homePose(src.spec, i), 'home', next())); }
     while (g.members.length < spec.n) { const i = g.members.length; g.members.push(spawn(g, spec, i, homePose(spec, i), 'home', next())); }
+  }
+
+  // 從來源名冊搬一個人：先挑這次之前就在的（最後一個），都是剛生的才搬剛生的；剩下的人重新編號
+  function take(src) {
+    let k = src.members.length - 1; while (k > 0 && fresh.has(src.members[k])) k--;
+    if (fresh.has(src.members[k])) k = src.members.length - 1;
+    const [m] = src.members.splice(k, 1); src.members.forEach((o, i) => { o.i = i; });
+    return m;
   }
 
   function declare(key, spec, { hold = false } = {}) {
@@ -179,12 +186,17 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     apply(g, spec);
   }
 
+  // 退人；換身分搬走人後不夠宣告人數的名冊（工程師 2 → 3 的同一刻有一個變偵防師）在這裡補——
+  // 等所有 declare／retire 都做完才補，被退掉的來源名冊就不會補出幽靈
   function flush() {
+    order = 0;
     for (const [key, g] of groups) {
       for (const m of g.leaving) { flash.at(m.pos); destroy(m); }
       g.leaving = [];
-      if (g.retired && !g.held && !g.members.length) groups.delete(key);
+      if (g.retired && !g.held && !g.members.length) { groups.delete(key); continue; }
+      if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) { const i = g.members.length; g.members.push(spawn(g, g.spec, i, homePose(g.spec, i), 'home', next())); }
     }
+    fresh.clear();
   }
 
   function retire(key) {
@@ -309,7 +321,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
 
   function reset() {
     for (const g of groups.values()) for (const m of [...g.members, ...g.leaving]) destroy(m);
-    groups.clear();
+    groups.clear(); fresh.clear();
   }
 
   const api = {

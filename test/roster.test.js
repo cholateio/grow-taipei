@@ -171,3 +171,29 @@ test('from tops the source roster back up to its declared n', () => {
   roster.declare('chip.engineers', kids(3)); roster.declare('chip.detective', { ...kids(1), accessory: 'glass', from: 'chip.engineers' }); roster.flush();
   assert.equal(roster.members('chip.engineers').length, 3); assert.equal(roster.members('chip.detective').length, 1);
 });
+// 審查修正（Task 12）：來源名冊同一次被退掉時，from 不能在來源補人（不留幽靈、不多閃）；兩種順序都一樣
+test('from with a source retired in the same sync leaves no ghosts and spawns nobody extra (both orders)', () => {
+  for (const targetFirst of [true, false]) {
+    const { roster, people, flash } = setup(); roster.declare('token.staff', kids(1)); flash.update(1); roster.flush();
+    const [staff] = roster.members('token.staff'), swim = { ...kids(1), accessory: 'glass', from: 'token.staff' };
+    const before = flash.count;
+    if (targetFirst) { roster.declare('token.swimmers', swim); roster.retire('token.staff'); } else { roster.retire('token.staff'); roster.declare('token.swimmers', swim); }
+    roster.flush();
+    assert.deepEqual(roster.members('token.swimmers'), [staff], `order ${targetFirst}: same person`);
+    assert.equal(people.walkers.length, 1, `order ${targetFirst}: no extra walker`);
+    assert.ok(!roster.keys().includes('token.staff'), `order ${targetFirst}: source group gone`);
+    assert.equal(flash.count - before, 1, `order ${targetFirst}: only the swap flash`);
+  }
+});
+// 審查併入（§5.2 同一個小人原地換）：換身分優先搬「這次宣告之前就在」的人，不搬剛補出來的
+test('from prefers a member who existed before this declaration', () => {
+  const { roster, people } = setup(); roster.declare('chip.engineers', kids(2)); roster.flush();
+  const originals = roster.members('chip.engineers'), at = originals.map(m => ({ ...m.pos }));
+  roster.declare('chip.engineers', kids(3)); roster.declare('chip.detective', { ...kids(1), accessory: 'glass', from: 'chip.engineers' });
+  const [d] = roster.members('chip.detective'); const k = originals.indexOf(d);
+  assert.ok(k >= 0, 'detective is one of the two originals'); assert.deepEqual(d.pos, at[k], 'swapped in place');
+  assert.equal(people.walkers.length, 3, 'one new engineer so far');
+  roster.flush();
+  assert.equal(roster.members('chip.engineers').length, 3); assert.equal(people.walkers.length, 4, 'engineers topped up at flush');
+  assert.deepEqual(roster.members('chip.engineers').map(m => m.i), [0, 1, 2]);
+});

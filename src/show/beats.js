@@ -262,23 +262,49 @@ export function trainDepart() {
 }
 
 // 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 3 倍）在 4 秒內進站，
-// 到站後停 3 秒（時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
-export function trainStop({ at = STATION_A } = {}) {
-  let k = 1, arrive = 0, t = 0;
+// 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
+// during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
+//   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
+const durOf = (b, ctx) => { const d = b.estimate ? b.estimate(ctx) : typeof b.dur === 'function' ? b.dur(ctx) : b.dur; return d > 0 ? d : 0; };
+export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [] } = {}) {
+  const subs = [].concat(during);
+  let k = 1, arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }
+  const open = (ctx, t0) => {
+    while (i < subs.length) {
+      const beat = subs[i++], shown = beat.start?.(ctx), d = shown === false ? 0 : (typeof beat.dur === 'function' ? beat.dur(ctx) : beat.dur);
+      if (d > 0) { cur = { beat, t0, dur: d }; return; }
+      beat.end?.(ctx);
+    }
+    cur = null;
+  };
   return {
     kind: 'trainStop',
-    dur: () => arrive + TRAIN_STOP,
+    dur: () => arrive + total,
     start(ctx) {
+      i = 0; cur = null;
       const speed = trainSpeed(ctx);
       if (!partOf('token.train', ctx) || !speed) return false;
       const a0 = (ctx.now + ctx.rail.offset) * speed, need = ((((at - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
       k = need <= TRAIN_ARRIVE ? 1 : Math.min(TRAIN_MAX_BOOST, need / TRAIN_ARRIVE);
       arrive = need / k; t = 0;
+      total = Math.max(stop, subs.reduce((a, b) => a + durOf(b, ctx), 0));
     },
     step(_k, dt, ctx) {
-      // 跨過到站那一刻的一幀拆成兩段，進站的部分加速、到站的部分停住
-      const run = Math.max(0, Math.min(dt, arrive - t)), held = dt - run;
+      // 跨過到站、開車那一刻的一幀拆開：進站的部分加速、停站的部分停住、之後照常
+      const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + stop - t - run));
       ctx.rail.offset += run * (k - 1) - held; t += dt;
+      if (t < arrive) return;
+      if (!cur && i === 0) open(ctx, arrive);
+      while (cur) {
+        const sk = Math.min(1, (t - cur.t0) / cur.dur);
+        cur.beat.step?.(sk, dt, ctx);
+        if (sk < 1) return;
+        const c = cur; c.beat.end?.(ctx); open(ctx, c.t0 + c.dur);
+      }
+    },
+    end(ctx) {
+      cur?.beat.end?.(ctx); cur = null;
+      while (i < subs.length) { const beat = subs[i++]; beat.start?.(ctx); beat.end?.(ctx); }
     },
   };
 }

@@ -159,6 +159,22 @@ test('trainStop speeds the clock up to 3× to arrive within 4 s, holds 3 s, then
   assert.ok(Math.abs(far.tl.currentDur - (1.9 * Math.PI / 0.35 / 3 + 3)) < 1e-6, 'capped at 3×');
   const none = fake({ parts: [] }); none.tl.play([B.trainStop(), B.wait(0.1)], none.ctx); none.tl.update(0); assert.equal(none.tl.currentKind, 'wait');
 });
+test('trainStop during: beats start at arrival in order; the train still leaves after stop; skip starts and ends them', () => {
+  const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
+  ctx.now = (STATION_A - 0.35) / 0.35;   // 差 0.35 rad → 1 s 到站
+  const log = [], sub = (name, dur) => ({ kind: name, dur, start: () => log.push(`${name}+`), end: () => log.push(`${name}-`) });
+  tl.play([B.trainStop({ stop: 1, during: [sub('a', 0.5), sub('b', 2)] })], ctx); tl.update(0);
+  assert.ok(Math.abs(tl.currentDur - (1 + 2.5)) < 1e-6, 'lasts until during is done');
+  const tick = () => { ctx.now += 0.1; tl.update(0.1); };
+  for (let i = 0; i < 9; i++) tick(); assert.deepEqual(log, [], 'nothing before arrival');
+  tick(); tick(); assert.deepEqual(log, ['a+']);
+  for (let i = 0; i < 5; i++) tick(); assert.deepEqual(log, ['a+', 'a-', 'b+']);
+  let o = rail.offset; tick(); assert.ok(Math.abs(rail.offset - (o - 0.1)) < 1e-6, 'held inside stop');
+  for (let i = 0; i < 5; i++) tick(); o = rail.offset; tick(); assert.ok(Math.abs(rail.offset - o) < 1e-6, 'running again after stop 1 s');
+  const s2 = fake({ parts: ['token.train'] }), log2 = []; s2.ctx.now = 3;
+  s2.tl.play([B.trainStop({ during: [{ kind: 'x', dur: 1, start: () => log2.push('x+'), end: () => log2.push('x-') }] })], s2.ctx); s2.tl.skip();
+  assert.deepEqual(log2, ['x+', 'x-']);
+});
 test('trainStop skipped changes nothing; trainDepart puts the head 0.6 rad behind the station', () => {
   const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 2; ctx.now = 10;
   tl.play([B.trainStop()], ctx); tl.skip(); assert.equal(rail.offset, 2);

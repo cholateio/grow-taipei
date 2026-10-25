@@ -107,12 +107,12 @@ export const script = {
       const { B } = ctx, kid = once(c => c.roster.members('milk.kids')[0] ?? c.roster.nearest('landmarks.islanders', GATE));
       return [B.walk(kid, GATE), B.bubble(kid, { icon: 'chip' }), B.bubble(eng(ctx, 0), '♥'), B.apply(e), B.home(kid), B.levelUp('chip')];
     },
-    // 天線（代幣 ≥3）：列車進站停下、工程師同時走到站前 → 敲（接箱子）→ 送到 101 腳下 → 白光天線
+    // 天線（代幣 ≥3）：工程師走到站前等 → 列車進站停下，一停就敲（接箱子）→ 不等車開就送去 101 腳下 → 白光天線
     5(e, s, ctx) {
       const { B } = ctx, e0 = eng(ctx, 0);
       return [
-        B.together([B.trainStop(), B.walk(e0, PLATFORM)]), B.gesture(e0, 'knock', 0.6),
-        B.walk(e0, FOOT), B.apply(e), B.home(e0), B.levelUp('chip'),
+        B.walk(e0, PLATFORM), B.trainStop({ during: [B.gesture(e0, 'knock', 0.6), B.walk(e0, FOOT)] }),
+        B.apply(e), B.home(e0), B.levelUp('chip'),
       ];
     },
     // 矽盾（颱風 Lv3）：工程師走到 101 腳下 → 轉頭看彩虹 → ！ → 天線開始脈衝

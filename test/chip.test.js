@@ -107,3 +107,20 @@ test('Lv5 with a train on the ring takes ≥ 7 s (trainStop)', async () => {
   assert.ok(h.show.stage.lv.token >= 3); checkChip(h, e, secs, n);
   assert.ok(secs >= 7, `${secs.toFixed(1)} s`); assert.notEqual(h.rail.offset, off0, 'train clock moved (stopped at the station)');
 });
+// 審查併入（§8.2 列車進站停下 → 工程師走到站前接箱子）：敲（接箱子）的時候列車還停在站前
+test('Lv5: the engineer knocks while the train is still held at the station', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h, update = show.update, knocks = [];
+    let last = null;
+    show.update = (dt, t) => {
+      const before = h.rail.offset; update(dt, t);
+      const knocking = show.roster.members('chip.engineers').some(m => m.walker?.gesture?.kind === 'knock');
+      if (knocking) knocks.push(h.rail.offset - before + dt);   // 停住時時鐘偏移跟時間等速倒退 → 0
+      last = knocking;
+    };
+    await liveAt(h, order, isChip(5));
+    assert.ok(knocks.length > 5, `knock frames ${knocks.length}`); assert.equal(last, false);
+    // 第一幀是到站那一幀（前半還在進站），之後每一幀車都停著
+    assert.ok(knocks.slice(1).every(d => Math.abs(d) < 1e-9), `train held during the knock (${order[0]}: ${knocks.map(d => d.toFixed(3)).join(' ')})`);
+  }
+});

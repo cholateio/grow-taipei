@@ -2,13 +2,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as rat from '../src/actors/rat.js';
+import * as milk from '../src/actors/milk.js';
+import * as sat from '../src/actors/satellites.js';
 import * as landmarks from '../src/actors/landmarks.js';
 import { ENGINEER_ROUTE } from '../src/actors/chip.js';
 import { TRACK } from '../src/actors/token.js';
-import { landmarkWorld } from '../src/actors/anchors.js';
+import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
+import { offset } from '../src/actors/palette.js';
+import { cellAt } from '../src/scene/hex.js';
 import { lv } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
+import * as spec from '../src/rules/spec.js';
+import * as engine from '../src/rules/engine.js';
+import { enumerate, stats } from '../src/solver/run.js';
+import { headlessShow, playItem } from './helpers/show.js';
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const RAT = 'quat/enemies/Rat.glb', AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
+const GATE = offset(anchorWorld('baseball'), 0, 1.1);
+const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 
 test('ratMode precedence: dome > alien > cyber > train > spring > nest > one', () => {
   assert.equal(rat.ratMode(lv({ rat: 1 }), {}), 'one');
@@ -24,48 +36,225 @@ test('rat lv4 without ratBranch falls back to plain rats (review focus 4)', () =
   assert.doesNotThrow(() => rat.view(lv({ rat: 4 }), {})); assert.equal(rat.ratMode(lv({ rat: 4 }), {}), 'spring');
   assert.equal(rat.ratMode(lv({ rat: 4, token: 3 }), {}), 'train');
 });
-test('every mode uses the Quaternius rat; a nest has five', () => {
-  for (const [l, f] of [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 2 }, {}], [{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 2 }, { domeRats: true }]]) {
-    const v = rat.view(lv(l), f), rats = Object.values(v).filter(s => s.kind === 'rats');
-    assert.ok(rats.length && rats.every(s => s.path === 'quat/enemies/Rat.glb'), JSON.stringify(l));
+
+// ── Task 16：老鼠全部改成名冊 rat.pack（§5.1：同一批老鼠上岸、生窩、上車、變身）──
+const MODES = [
+  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 2 }, {}, 5], [{ rat: 4 }, { ratBranch: 'cyber' }, 5],
+  [{ rat: 5 }, { ratBranch: 'cyber' }, 10], [{ rat: 4 }, { ratBranch: 'alien' }, 1], [{ rat: 5 }, { ratBranch: 'alien' }, 1], [{ rat: 2 }, { domeRats: true }, 5],
+];
+test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 5 → 10), walking anim, h 0.2 except the mutant', () => {
+  for (const [l, f, n] of MODES) {
+    const v = rat.view(lv(l), f), p = v['rat.pack'], what = JSON.stringify([l, f]);
+    assert.equal(p.kind, 'roster', what); assert.equal(p.n, n, what);
+    assert.deepEqual([p.model.path, p.model.anim], [RAT, 'Walk'], what);
+    assert.equal(p.model.h, f.ratBranch === 'alien' ? 0.5 : 0.2, what);
+    assert.ok(!Object.values(v).some(s => s.kind === 'rats'), `${what} no rats builder parts left`);
   }
-  assert.equal(rat.view(lv({ rat: 2 }), {})['rat.pack'].n, 5);
 });
-test('cyber rats are silver and follow the engineer route; alien rat is big, green, glowing, three-eyed at the spring', () => {
+test('view: home shapes — one/nest wander by the nest, spring stands in the pool, train rides, dome wanders at the gate', () => {
+  const one = rat.view(lv({ rat: 1 }), {})['rat.pack'];
+  assert.deepEqual(one.home, { kind: 'wander', at: AT, r: 0.7 });
+  const nest = rat.view(lv({ rat: 2 }), {});
+  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 });
+  assert.equal(nest['rat.main'].kind, 'compound'); assert.equal(nest['rat.main'].footprint, undefined, 'nest footprint is automatic');
+  assert.equal(rat.view(lv({ rat: 1 }), {})['rat.main'], undefined);
+  const spring = rat.view(lv({ rat: 3 }), {})['rat.pack'].home;
+  assert.equal(spring.kind, 'stand'); assert.equal(spring.spots.length, 5);
+  for (const s of spring.spots) { assert.ok(near(s, SPRING, 0.8)); assert.ok(Math.abs(s.y - (SPRING.y + 0.1)) < 1e-9); }
+  assert.deepEqual(rat.view(lv({ rat: 3, token: 2 }), {})['rat.pack'].home, { kind: 'ride', cars: 3, speed: 0.35 });
+  assert.deepEqual(rat.view(lv({ rat: 3, token: 3 }), { flooded: true })['rat.pack'].home, { kind: 'ride', cars: 5, speed: 0 });
+  assert.deepEqual(rat.view(lv({ rat: 2 }), { domeRats: true })['rat.pack'].home, { kind: 'wander', at: GATE, r: 0.9 });
+});
+test('view: cyber rats are grey with antennas on the engineer route, then ten wander round 101; the alien is a big green three-eyed waver with a UFO at Lv5', () => {
   const c = rat.view(lv({ rat: 4 }), { ratBranch: 'cyber' })['rat.pack'];
-  assert.equal(c.loop.path, ENGINEER_ROUTE); assert.equal(c.tint.Grey, 0xc0c8d0); assert.ok(c.antenna);
-  const a = rat.view(lv({ rat: 4 }), { ratBranch: 'alien' })['rat.main'], s = landmarkWorld('spring');
-  assert.ok(a.h >= 0.4); assert.equal(a.glow.Grey, 0x5fcf7a); assert.ok(a.eye && a.wave); assert.ok(Math.hypot(a.at.x - s.x, a.at.z - s.z) < 1.2);
+  assert.deepEqual(c.home, { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 });
+  assert.equal(c.model.tint.Grey, 0xc0c8d0); assert.ok(c.model.antenna);
+  const c5 = rat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['rat.pack'];
+  assert.deepEqual(c5.home, { kind: 'wander', at: TOWER, r: 1.3 }); assert.ok(c5.model.antenna);
+  const a = rat.view(lv({ rat: 4 }), { ratBranch: 'alien' }), m = a['rat.pack'];
+  assert.equal(m.model.glow.Grey, 0x5fcf7a); assert.equal(m.model.tint.Grey, 0x5fcf7a); assert.ok(m.model.eye && m.model.wave);
+  assert.equal(m.home.kind, 'stand'); assert.ok(near(m.home.spots[0], SPRING, 1.2));
+  assert.equal(a['rat.ufo'], undefined);
+  const u = rat.view(lv({ rat: 5 }), { ratBranch: 'alien' })['rat.ufo'];
+  assert.equal(u.kind, 'ufo'); assert.equal(u.footprint, false); assert.ok(near(u.at, m.home.spots[0], 1e-6));
 });
 test('rats bathing turn the hot spring green-ish; rats on the train do not', () => {
   const water = v => v['landmarks.spring'].parts[1].color;
   assert.notEqual(water(landmarks.view(lv({ rat: 3 }), {})), water(landmarks.view(lv({}), {})));
   assert.equal(water(landmarks.view(lv({ rat: 3, token: 2 }), {})), water(landmarks.view(lv({}), {})));
 });
-test('rats builder spawns n models and moves them along the loop; train rats ride the roof', async () => {
-  const assets = { spawn: async (p, o) => new THREE.Group() };
+test('rats builder (kept for the two rats on the rocks islet) spawns a model on each spot', async () => {
+  const assets = { spawn: async () => new THREE.Group() };
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), assets, builders: rat.builders });
-  const p = f.build(rat.view(lv({ rat: 2 }), {})['rat.pack']); await new Promise(r => setTimeout(r, 0));
-  assert.equal(p.object.children.length, 5);
-  const t = f.build(rat.view(lv({ rat: 3, token: 2 }), {})['rat.pack']); await new Promise(r => setTimeout(r, 0)); t.update(0.1, 2);
-  const w = new THREE.Vector3(); t.object.updateMatrixWorld(true); t.object.children[0].children[0].getWorldPosition(w);
-  assert.ok(w.y > TRACK.y, 'up on the train roof');
+  const s = sat.view(lv({ rat: 3 }), {})['sat.rocks'], p = f.build(s); await new Promise(r => setTimeout(r, 0));
+  assert.equal(p.object.children.length, 2);
+  const w = new THREE.Vector3(); p.object.updateMatrixWorld(true); p.object.children[0].children[0].getWorldPosition(w);
+  assert.ok(near(w, s.spots[0], 1e-6)); p.dispose();
 });
-test('rats builder disposes its antennas and eyes: glow registry back to zero (review #1)', async () => {
-  const glow = createGlowRegistry(), assets = { spawn: async () => new THREE.Group() };
-  const f = createPartFactory(THREE, { glow, assets, builders: rat.builders });
-  for (const flags of [{ ratBranch: 'cyber' }, { ratBranch: 'alien' }]) {
-    const key = flags.ratBranch === 'cyber' ? 'rat.pack' : 'rat.main', p = f.build(rat.view(lv({ rat: 4 }), flags)[key]);
-    await new Promise(r => setTimeout(r, 0)); assert.ok(glow.size > 0 || flags.ratBranch === 'alien'); p.dispose(); assert.equal(glow.size, 0, flags.ratBranch);
+test('milk crate tips over (lying on its side, milk spilled) on the bite turn', () => {
+  const up = milk.view(lv({ milk: 2 }), {})['milk.crate'], down = milk.view(lv({ milk: 2 }), {}, { bitten: true })['milk.crate'];
+  assert.notDeepEqual(down, up); assert.ok(down.parts.some(p => p.spill), 'spilled milk');
+  assert.deepEqual(down.footprint, up.footprint);
+});
+test('script: placed, grow 2–5, fx and rep exist', () => {
+  assert.ok(rat.script?.placed && [2, 3, 4, 5].every(n => rat.script.grow[n]) && rat.script.fx && rat.script.rep);
+});
+
+// ── 劇本（§8.6）──
+const KEYS = ['rat.pack', 'chip.detective'];
+const isRat = to => e => e.kind === 'grow' && e.item === 'rat' && e.to === to;
+// 照 order 把整局瞬間演到 pred 命中的那個事件，那個事件單獨 live 演；回傳 { e, secs, n }（n = 演之前的泡泡數）
+async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) {
+  let s = engine.createState(spec);
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    if (whole && r.events.some(pred)) { const n = bubblesLog.length; return { events: r.events, secs: await run([...r.events, { kind: 'settle' }]), n }; }
+    for (const e of r.events) {
+      if (!whole && pred(e)) { const n = bubblesLog.length; return { e, secs: await run([e]), n }; }
+      await run([e], { instant: true });
+    }
+    await run([{ kind: 'settle' }], { instant: true });
+  }
+  throw new Error('event not found');
+}
+// 秒數範圍（§8.6 的目標秒數上下放寬）：Lv3 搭捷運 10–18；Lv4／Lv5 依分岔
+const RANGE = { 1: [3, 7], 2: [3, 10], 3: [10, 18], cyber4: [6, 16], alien4: [5, 14], cyber5: [3, 10], alien5: [3, 8] };
+function checkRat({ show, bubblesLog }, e, secs, n) {
+  const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
+  const [lo, hi] = RANGE[lvl >= 4 ? `${branch}${lvl}` : lvl];
+  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
+  if (e.kind === 'grow') {
+    const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('rat');
+    assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over rat`);
+  }
+  for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
+  const rats = show.roster.members('rat.pack');
+  assert.equal(rats.length, rat.view(show.stage.lv, show.stage.flags)['rat.pack'].n, `${what} rat count`);
+  if (lvl === 3) {
+    assert.equal(rat.view(show.stage.lv, show.stage.flags)['rat.pack'].home.kind, 'ride');
+    for (const m of rats) assert.ok(Math.abs(m.pos.y - (TRACK.y + 0.18)) < 1e-6 && Math.abs(Math.hypot(m.pos.x, m.pos.z) - TRACK.radius) < 0.2, `${what} rat ${m.i} on the roof`);
+    for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) assert.ok(Math.hypot(rats[i].pos.x - rats[j].pos.x, rats[i].pos.z - rats[j].pos.z) >= 0.2, `${what} rats ${i}/${j} apart`);
+    assert.ok(bubblesLog.slice(n).some(b => b.kind === '……'), `${what} waits at the shore`);
+  }
+  if (lvl === 4 && branch === 'cyber') assert.ok(rats.every(m => m.dress.antenna && m.dress.tint.Grey === 0xc0c8d0), `${what} robot rats`);
+  if (lvl === 4 && branch === 'alien') assert.ok(rats[0].dress.h === 0.5 && rats[0].dress.eye, `${what} mutant`);
+  if (lvl === 5 && branch === 'alien') { const u = show.stage.partObject('rat.ufo'); assert.ok(u && Math.abs(u.userData.showOffset.dy) < 1e-9, `${what} UFO landed`); }
+}
+
+// 穿牆測試：劇本 walk 拍每一幀（setPose walking:true）老鼠都在走路格上，從水裡／車頂救上岸的第一段之外不能離開走路格，
+// 任何時候都不能在建築 footprint 裡
+function watchWalls(h) {
+  const { show } = h, setPose = show.roster.setPose, bad = [], onGrid = new Map();
+  let frames = 0;
+  // 走路格 0.3 一格：footprint 邊上半格對角（≈0.22）以內算格子的解析度，再進去才算穿進建築
+  const TOL = 0.22, inside = (x, z) => show.stage.footprints().some(f => (f.r != null ? Math.hypot(x - f.x, z - f.z) < f.r - TOL : Math.abs(x - f.x) < f.w / 2 - TOL && Math.abs(z - f.z) < f.d / 2 - TOL));
+  show.roster.setPose = (m, p) => {
+    if (m.key === 'rat.pack') {
+      if (!p.walking) onGrid.delete(m);
+      else if (cellAt(p.x, p.z)) {
+        frames++;
+        const ok = show.nav.walkable(p.x, p.z);
+        if (ok) onGrid.set(m, true);
+        else if (onGrid.get(m)) bad.push(`left the grid at ${p.x.toFixed(2)},${p.z.toFixed(2)}`);
+        if (inside(p.x, p.z)) bad.push(`inside a footprint at ${p.x.toFixed(2)},${p.z.toFixed(2)}`);
+      }
+    }
+    return setPose(m, p);
+  };
+  return { bad, get frames() { return frames; } };
+}
+
+test('scripts: every rat level in both solutions plays in range, ends with LEVEL UP on the rats, everyone home; rats never walk through buildings', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show, run, bubblesLog } = h, walls = watchWalls(h);
+    let n = 0;
+    const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
+    const seen = new Set();
+    await playItem(show, tracked, order, 'rat', (e, secs) => { seen.add(e.kind === 'grow' ? e.to : 1); checkRat(h, e, secs, n); });
+    assert.deepEqual([...seen].sort(), [1, 2, 3, 4, 5], `rat events seen: ${[...seen]}`);
+    assert.ok(walls.frames > 100, `walk frames ${walls.frames}`); assert.deepEqual(walls.bad, [], order.join(' '));
+    show.reset(); assert.equal(show.roster.members('rat.pack').length, 0);
   }
 });
-test('rats on a flooded line sit still on the stopped train (review #3)', async () => {
-  const s = rat.view(lv({ rat: 3, token: 2 }), { flooded: true })['rat.pack']; assert.equal(s.train.speed, 0);
-  const f = createPartFactory(THREE, { glow: createGlowRegistry(), assets: { spawn: async () => new THREE.Group() }, builders: rat.builders });
-  const p = f.build(s); await new Promise(r => setTimeout(r, 0));
-  p.update(0.1, 1); const a = p.object.children[0].position.clone(); p.update(0.1, 7); assert.ok(a.distanceTo(p.object.children[0].position) < 1e-9);
+test('reset releases every rat model', async () => {
+  const h = await headlessShow();
+  await liveAt(h, SOLUTIONS[1], isRat(5));
+  assert.equal(h.show.roster.members('rat.pack').length, 10);
+  const holders = h.show.roster.members('rat.pack').map(m => m.holder);
+  h.show.reset();
+  assert.ok(holders.every(g => h.assets.released.includes(g)), 'every rat holder released'); assert.equal(h.show.roster.group.children.length, 0);
 });
-test('rat lv5 final forms: a ten-rat cyber army circling 101; the alien rat gets a hovering UFO', () => {
-  const c = rat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['rat.pack'], a = rat.view(lv({ rat: 5 }), { ratBranch: 'alien' });
-  assert.equal(c.n, 10); assert.equal(a['rat.ufo'].kind, 'ufo'); assert.equal(rat.view(lv({ rat: 4 }), { ratBranch: 'alien' })['rat.ufo'], undefined);
+test('Lv3 train: one rat boards at the station, the other four at the nest-side shore while the train is held', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, boards = [];
+  let prev = null;
+  show.update = (dt, t) => {
+    const before = h.rail.offset; update(dt, t);
+    const held = Math.abs(h.rail.offset - before + dt) < 1e-9, roof = show.roster.members('rat.pack').map(m => Math.abs(m.pos.y - (TRACK.y + 0.18)) < 1e-6);
+    if (prev) roof.forEach((r, i) => { if (r && !prev[i]) boards.push({ i, held, a: Math.atan2(show.roster.members('rat.pack')[i].pos.z, show.roster.members('rat.pack')[i].pos.x) }); });
+    prev = roof;
+  };
+  const { e, secs, n } = await liveAt(h, SOLUTIONS[0], isRat(3));
+  checkRat(h, e, secs, n);
+  assert.deepEqual(boards.map(b => b.i), [0, 1, 2, 3, 4], 'rat 0 first, then the rest in order');
+  assert.ok(boards.every(b => b.held), 'each rat lands while the train is held');
+  const station = Math.atan2(anchorWorld('token').z, anchorWorld('token').x), nest = Math.atan2(AT.z, AT.x);
+  assert.ok(Math.abs(boards[0].a - station) < 0.25, 'rat 0 boards by the station');
+  assert.ok(boards.slice(1).every(b => Math.abs(b.a - nest) < 0.3), 'the rest board by the nest');
+});
+test('Lv3 spring (token < 2): five rats walk up to the hot spring and ♥', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h;
+  await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
+  const n = bubblesLog.length, e = { kind: 'grow', item: 'rat', from: 2, to: 3 }, secs = await run([e]);
+  assert.ok(secs >= 4 && secs <= 14, `${secs.toFixed(1)} s`);
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 5); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
+  for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
+  for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
+});
+// 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合（引擎：鮮奶 Lv1 被咬不掉級），名冊都是演到才找
+test('the nest turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
+  const { events, secs, n } = await liveAt(h, ['boba', 'rat', 'milk', 'chip', 'token'], isRat(2), { whole: true });
+  assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');
+  assert.ok(secs >= 8 && secs <= 30, `${secs.toFixed(1)} s`);
+  assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'cart knocked askew');
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 1);
+  for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
+  assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 20);
+});
+// 鮮奶真的被咬掉級（引擎現在不會出：老鼠生窩要鮮奶 ≤1；堆出狀態直接演事件）：箱子翻倒、小學生跑回校舍、LEVEL DOWN
+test('a bite that costs milk a level: crate tips, kids ！ run to the school gate and vanish quietly, LEVEL DOWN', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h;
+  let st = engine.createState(spec);
+  for (const id of ['rat', 'typhoon', 'milk', 'chip']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.lv.milk, 2); assert.equal(show.roster.members('milk.kids').length, 3);
+  const hidden = [], hide = show.roster.hide; show.roster.hide = m => { hidden.push(m.key); return hide(m); };
+  const n = bubblesLog.length, crate = show.stage.partObject('milk.crate');
+  const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 }, story: '老鼠咬破鮮奶箱' }]);
+  assert.ok(secs >= 4 && secs <= 14, `${secs.toFixed(1)} s`);
+  assert.notEqual(show.stage.partObject('milk.crate'), crate, 'crate rebuilt tipped');
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 4, 'rat ！ and three kids ！');
+  assert.deepEqual(hidden, ['milk.kids', 'milk.kids', 'milk.kids'], 'kids hide at the gate');
+  assert.equal(show.roster.members('milk.kids').length, 0);
+  const last = bubblesLog.at(-1), m = show.stage.headOf('milk');
+  assert.equal(last.text, 'LEVEL DOWN'); assert.ok(Math.hypot(last.at.x - m.x, last.at.z - m.z) < 0.3);
+  for (const r of show.roster.members('rat.pack')) assert.equal(r.mode, 'home');
+});
+// 鼠災（颱風劇本）：真的老鼠被沖到巨蛋門口，兩個工作人員出來追
+test('typhoon dome rats: the real rats are flushed to the dome gate and the staff follow them', async () => {
+  const h = await headlessShow(), { show } = h, walls = watchWalls(h);
+  const { events } = await liveAt(h, ['rat', 'baseball', 'chip', 'milk', 'typhoon', 'bulb'], e => e.flag?.name === 'domeRats', { whole: true });
+  assert.ok(events.some(e => e.flag?.name === 'domeRats'));
+  const rats = show.roster.members('rat.pack'), staff = show.roster.members('baseball.staff');
+  assert.equal(rats.length, 5); assert.equal(staff.length, 2);
+  for (const m of rats) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, GATE, 1.5), `rat ${m.i} by the gate`); }
+  for (const m of staff) assert.ok(near(m.pos, GATE, 2), 'staff at the gate');
+  for (let i = 0; i < 90; i++) show.update(1 / 30, 200 + i / 30);
+  for (const m of staff) assert.ok(rats.some(r => near(r.pos, m.pos, 1.2)), 'staff stay with the rats');
+  assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 10);
+});
+test('rep is the first rat', async () => {
+  const h = await headlessShow();
+  await h.run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'settle' }], { instant: true });
+  assert.equal(rat.script.rep({}, h.show), h.show.roster.members('rat.pack')[0]);
 });

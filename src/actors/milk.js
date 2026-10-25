@@ -22,10 +22,13 @@ export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
   // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本白光換上、LEVEL DOWN）
-  const spoiled = !!flags.blackout;
+  // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合白光扶正）
+  const spoiled = !!flags.blackout, tipped = !!meta.bitten;
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [
     { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: spoiled ? SPOILED : C.cream },
-    { kind: 'box', pos: [0, 0.3, 0], scale: [0.47, 0.08, 0.47], color: spoiled ? SPOILED_BAND : C.blue },
+    tipped ? { kind: 'box', pos: [-0.075, 0.225, 0], scale: [0.08, 0.47, 0.47], color: spoiled ? SPOILED_BAND : C.blue }
+      : { kind: 'box', pos: [0, 0.3, 0], scale: [0.47, 0.08, 0.47], color: spoiled ? SPOILED_BAND : C.blue },
+    ...(tipped ? [{ kind: 'cylinder', pos: [0.38, 0.01, 0.05], scale: [0.4, 0.02, 0.28], color: C.white, spill: true }] : []),
   ] };
   const home = (lv.typhoon === 2 && !!meta.landing) || !!meta.bitten;
   // 一級蓋一層：Lv2 一層、Lv3 兩層、Lv4 起三層；Lv6 升格大學，校舍拉長

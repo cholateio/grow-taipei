@@ -5,6 +5,11 @@ import * as tower from '../src/actors/tower.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
+import { B } from '../src/show/beats.js';
+import * as spec from '../src/rules/spec.js';
+import * as engine from '../src/rules/engine.js';
+import { enumerate, stats } from '../src/solver/run.js';
+import { headlessShow } from './helpers/show.js';
 const zero = { milk: 0, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: 0, boba: 0, baseball: 0 };
 const lvOf = (total, extra = {}) => { const caps = { milk: 6, baseball: 6, token: 6, rat: 5, boba: 4, chip: 6, bulb: 5 }, out = { ...zero }; let left = total; for (const id in caps) { out[id] = Math.min(caps[id], left); left -= out[id]; } return { ...out, ...extra }; };
 const tiers = v => v['tower.main'].parts.filter(p => p.kind === 'frustum4').length;
@@ -54,4 +59,65 @@ test('view uses meta.total when given; stage names for the float', () => {
   assert.equal(tiers(tower.view(lvOf(20), {})), 10);
   assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' });
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
+});
+
+// ── settle 劇本（§8.9）：跨門檻才演——工人（沒有就島民）走到 101 腳下敲門、白光跳階、頭上寫階段名 ──
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
+// 假名冊：members 照 key 給；home 記下被叫回家的人
+const fakeRoster = groups => { const homed = []; return { homed, members: k => groups[k] ?? [], claim() {}, home: m => homed.push(m) }; };
+const person = (name, x, z, hidden = false) => ({ name, pos: { x, y: 0, z }, hidden, head: () => ({ x, y: 1, z }) });
+const labelOf = beats => {
+  let text = null; const ctx = { stage: { headOf: () => ({ x: 0, y: 0, z: 0 }) }, bubbles: { levelUp: (h, o) => { text = o.text; return { cancel() {} }; } } };
+  beats.find(b => b.kind === 'levelUp').start(ctx); return text;
+};
+
+test('settle crossing 8→9 yields walk + knock + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→18 yield nothing', () => {
+  const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
+  const beats = tower.script.settle(e, { total: 9, prevTotal: 8 }, ctx);
+  assert.deepEqual(beats.map(b => b.kind), ['walk', 'gesture', 'apply', 'levelUp', 'home']);
+  assert.equal(labelOf(beats), '101 蓋一半');
+  assert.deepEqual(tower.script.settle(e, { total: 8, prevTotal: 8 }, ctx), []);
+  assert.deepEqual(tower.script.settle(e, { total: 18, prevTotal: 9 }, ctx), []);
+  assert.equal(labelOf(tower.script.settle(e, { total: 21, prevTotal: 16 }, ctx)), '101 完工');
+  assert.equal(labelOf(tower.script.settle(e, { total: 33, prevTotal: 27 }, ctx)), '101 點燈');
+});
+
+test('settle hero: the worker if visible, else the nearest visible islander to the tower foot (looked up when the beat plays)', () => {
+  const foot = anchorWorld('tower'), e = { kind: 'settle' }, s = { total: 9, prevTotal: 8 };
+  const hero = groups => { const roster = fakeRoster({}), ctx = { B, roster }; const beats = tower.script.settle(e, s, ctx); roster.members = k => groups[k] ?? []; beats.at(-1).start(ctx); return roster.homed[0]?.name; };
+  const near = person('near', foot.x + 1, foot.z), far = person('far', foot.x + 6, foot.z), hid = person('hid', foot.x + 0.9, foot.z + 0.3, true);
+  assert.equal(hero({ 'chip.worker': [person('worker', 0, 0)], 'landmarks.islanders': [near] }), 'worker');
+  assert.equal(hero({ 'chip.worker': [person('worker', 0, 0, true)], 'landmarks.islanders': [far, hid, near] }), 'near');
+  assert.equal(hero({}), undefined, 'nobody around → the beats skip');
+});
+
+// 照正解放完 order（再 advance closing 回合）：只有最後一回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡
+async function liveTurn(h, order, { closing = 0 } = {}) {
+  let s = engine.createState(spec);
+  const turns = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: closing }, () => st => engine.advance(st, spec))];
+  for (let i = 0; i < turns.length; i++) {
+    const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i >= order.length;
+    if (i + 1 < turns.length) { await h.run(events, { instant: true, montage }); continue; }
+    const n0 = h.bubblesLog.length; let mark = null;
+    const secs = await h.run(events, { montage, onMark: e => { if (e.kind === 'settle') mark = h.show.elapsed; } });
+    return { settleSecs: secs - mark, bubbles: h.bubblesLog.slice(n0) };
+  }
+}
+const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
+const nearHead = (show, at) => { const h = show.stage.headOf('tower'); assert.ok(Math.hypot(at.x - h.x, at.z - h.z) < 0.5, 'label over the tower'); };
+
+test('headless: the turn crossing 8→11 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
+  const h = await headlessShow(), order = SOLUTIONS[0];
+  const before = await liveTurn(h, order.slice(0, 4));
+  assert.ok(before.settleSecs < 0.05, `no crossing → no time (${before.settleSecs})`);
+  h.show.reset();
+  const t = await liveTurn(h, order.slice(0, 5));
+  assert.equal(t.bubbles.at(-1).text, '101 蓋一半'); nearHead(h.show, t.bubbles.at(-1).at);
+  assert.ok(t.settleSecs >= 4 && t.settleSecs <= 8, `settle ${t.settleSecs.toFixed(2)} s`);
+  allHome(h.show); assert.equal(h.show.stage.meta.total, 11);
+});
+
+test('headless: the first closing montage turn crossing into 點燈 still shows the label', async () => {
+  const h = await headlessShow(), t = await liveTurn(h, SOLUTIONS[0], { closing: 1 });
+  assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });

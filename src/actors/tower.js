@@ -1,11 +1,14 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級 0–8 工地（吊車會動）、9–18 半成品、19–29 完工、30+ 點燈。
 // 晶片 Lv5 長出矽盾天線、Lv6 每 3 秒閃一圈淡藍光；燈泡 Lv5 做燈光秀。
+// 劇本（§8.9）：回合最後的 settle 跨門檻時，工人（沒有就島民）走到 101 腳下敲門 → 白光跳階 → 頭上寫階段名。
 import { anchorWorld } from './anchors.js';
+import { offset } from './palette.js';
 
 export const id = 'tower';
 
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45;
+const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
 
 export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
 
@@ -79,5 +82,23 @@ export const builders = {
   lightshow(THREE, spec, ctx) {
     const part = ctx.build({ ...spec, kind: 'compound', at: { x: 0, y: 0, z: 0 } });
     return { ...part, update(dt, t) { part.materials.forEach((m, i) => m.emissive.setHSL((t / 4 + i / 8) % 1, 1, 0.55)); } };
+  },
+};
+
+// ── 劇本（§8.9）──
+// 角色演到那一拍才找（劇本在回合開始就整串建好，那時誰在哪還不準）；once 找到第一次就記住，整段同一個人。
+// 颱風登陸回合躲起來（hidden）的人不算。
+const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const visible = (ctx, key) => (ctx.roster.members(key) ?? []).filter(m => !m.hidden);
+const heroAt = (ctx, p) => visible(ctx, 'chip.worker')[0] ?? visible(ctx, 'landmarks.islanders').sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0];
+
+export const script = {
+  // 沒跨門檻：0 拍、不佔時間（turn.js 之後補的 apply 照樣套用 settle 的其他變化）
+  settle(e, s, ctx) {
+    const stage = stageOf(s.total);
+    if (stage === stageOf(s.prevTotal)) return [];
+    const { B } = ctx, hero = once(c => heroAt(c, FOOT));
+    return [B.walk(hero, FOOT), B.gesture(hero, 'knock'), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero)];
   },
 };

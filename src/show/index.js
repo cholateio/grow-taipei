@@ -11,14 +11,15 @@ import { B } from './beats.js';
 import { createStage } from '../actors/stage.js';
 import { worldEffects } from '../actors/world.js';
 
-export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world, reducedMotion = false }) {
+// rnd：走路格散步點、名冊停頓用的亂數（測試與 tools/pace.mjs 傳固定種子，秒數每次一樣）
+export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world, reducedMotion = false, rnd = Math.random }) {
   const { people, assets, glow, weather, rail } = parts;
-  const nav = createNav();
+  const nav = createNav({ rnd });
   const labels = new THREE.Group(); labels.name = 'show:labels'; scene.add(labels);
   const flash = createFlash(THREE, { group: labels }), bubbles = createBubbles(THREE, { group: labels });
   // 名冊先建：模型成員的天線／眼睛要用舞台的零件工廠，等舞台建好才用得到（載入模型是非同步的，那時舞台早就在了）
   let stage = null;
-  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, flash, rail });
+  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, flash, rail, rnd });
   scene.add(roster.group);
   stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster });
   flash.clear();   // 開局的島民不用白光揭露，直接站在島上

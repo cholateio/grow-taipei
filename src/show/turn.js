@@ -12,7 +12,7 @@ import { B, together } from './beats.js';
 import { FLASH } from './flash.js';
 
 export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together'];
-const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.5;
+const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.2;
 
 const sum = lv => Object.values(lv).reduce((a, b) => a + b, 0);
 

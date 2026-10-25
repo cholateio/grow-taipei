@@ -104,7 +104,7 @@ export const script = {
       B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.apply(e, { only: ['boba.main'], flash: false }),
       B.together([B.spawn('boba.owner', start), cartIn()]),
       B.together([w, push(w)]),
-      B.apply(e), B.bubble(owner, '♪'), B.home(owner),
+      B.apply(e), B.bubble(owner, '♪', 0.9), B.home(owner),
     ];
   },
   grow: {

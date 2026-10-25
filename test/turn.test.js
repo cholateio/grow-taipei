@@ -51,7 +51,7 @@ test('only the last wait event of a turn shows the hint; the hint target falls b
   const w = item => ({ kind: 'wait', item, waits: [{ item, for: ['baseball', 'milk'] }] });
   const beats = buildTurn([w('chip'), w('bulb')], base(), ctx);
   const bubbles = beats.filter(b => b.kind === 'bubble');
-  assert.equal(bubbles.length, 1); assert.equal(bubbles[0].dur, 1.5);
+  assert.equal(bubbles.length, 1); assert.equal(bubbles[0].dur, 1.2);
   // 沒有 rep 劇本 → 找離 bulb 錨點最近的島民；泡泡內容是第一個缺的幫手的圖框
   let shown = null;
   bubbles[0].start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });

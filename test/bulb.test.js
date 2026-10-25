@@ -93,16 +93,16 @@ const onlys = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).fla
 const E = to => ({ kind: 'grow', item: 'bulb', to });
 // only 可能是 ctx => 鍵（演到才算）：用假 ctx 解開
 const applies = (beats, ctx) => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => (typeof b.only === 'function' ? b.only(ctx) : b.only));
-const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 1 ? ['bulb.market', 'sat.lighthouse'] : [])]);
-test('grow 2 lights the stops one by one along the road (posts with the first; market and lighthouse with the last)', () => {
+const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market', 'sat.lighthouse'] : [])]);
+test('grow 2 lights the stops one by one along the road (posts with the first; market and lighthouse while he walks the last leg)', () => {
   const s = { lv: lv({ bulb: 2 }), flags: {} };
   const c0 = fakeCtx(); assert.deepEqual(applies(bulb.script.grow[2](E(2), s, c0), c0), stopOrder(0));
   // 電工在半路上：從他最近的那站開始，沿路繞一圈（順序照樣沿路）；第 9 盞是第 5 站
   const p = bulb.lampApproach(9), c9 = fakeCtx({ pos: p, head: () => p }), got = applies(bulb.script.grow[2](E(2), s, c9), c9);
   assert.ok(bulb.LAMP_STOPS[5].includes(9)); assert.deepEqual(got, stopOrder(5));
-  // 直接找 walk 的速度：快走 2.4，不衝刺
+  // 直接找 walk 的速度：快走 2.8（節奏驗收的裁定），不衝刺
   assert.ok(flat(bulb.script.grow[2](E(2), s, fakeCtx())).filter(b => b.kind === 'walk').length === N_STOPS);
-  assert.equal(bulb.LIGHTING_SPEED, 2.4);
+  assert.equal(bulb.LIGHTING_SPEED, 2.8);
 });
 test('world beats: Lv3 fades to dusk, Lv5 to night', () => {
   const worlds = n => bulb.script.grow[n](E(n), { lv: lv({ bulb: n }), flags: {} }, fakeCtx()).filter(b => b.kind === 'world').map(b => b.effects);
@@ -124,7 +124,7 @@ async function liveAt({ run, bubblesLog }, order, pred) {
   throw new Error('event not found');
 }
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
-const MAX_SECS = { 1: 8, 2: 22, 3: 10, 4: 10, 5: 10 };   // Lv2 電工快走繞全島一圈（實測 19–19.7 s；回合 8–45 s 由 pace 管）
+const MAX_SECS = { 1: 8, 2: 19, 3: 10, 4: 10, 5: 10 };   // Lv2 電工快走（2.8）繞全島一圈（實測 15–17.5 s；回合 8–45 s 由 pace 管）
 function checkBulb({ show, bubblesLog }, e, secs, n) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1;
   assert.ok(secs >= 3 && secs <= MAX_SECS[to], `${what} took ${secs.toFixed(1)}s`);

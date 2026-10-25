@@ -17,6 +17,7 @@ export const STATION_A = Math.atan2(STATION.z, STATION.x);   // 捷運站對島�
 const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, RIDE_Y = 0.18, TRAIN_HEAD_Y = 0.5, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
 
 const lerp = (a, b, k) => a + (b - a) * k;
+const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));   // 從角 a 轉到 b 的最短轉角
 const call = (v, ctx) => (typeof v === 'function' ? v(ctx) : v);
 const isPartKey = t => typeof t === 'string' && t.includes('.');
 const offsetOf = o => ({ dx: o?.dx ?? 0, dy: o?.dy ?? 0, dz: o?.dz ?? 0 });   // move 的 from／to 可以寫 0
@@ -123,6 +124,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
       if (obj) { obj.scale.copy(base).multiplyScalar(1 + PUFF * Math.sin(Math.PI * k)); return; }
       if (m.walker) { m.walker.gesture = yaw === undefined ? { kind, k } : { kind, k, yaw }; return; }
       if (!m.holder) return;
+      if (kind === 'look' && yaw !== undefined) m.holder.rotation.y = m.yaw + turnBy(m.yaw, yaw) * k;   // 模型：慢慢轉過去
       if (kind === 'sniff') m.holder.rotation.y = m.yaw + 0.3 * Math.sin(k * TWO_PI * 2);
       if (kind === 'jump') m.holder.position.y = m.pos.y + HOP_H * Math.sin(Math.PI * k);
     },

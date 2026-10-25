@@ -6,6 +6,7 @@ import * as engine from '../../src/rules/engine.js';
 import { installFakeDom } from './fakedom.js';
 import { createGlowRegistry } from '../../src/scene/glow.js';
 import { createPeople } from '../../src/scene/people.js';
+import { mulberry32 } from '../../src/scene/random.js';
 
 installFakeDom();
 const { createShow } = await import('../../src/show/index.js');
@@ -14,7 +15,8 @@ export const ALL = await Promise.all(IDS.map(id => import(`../../src/actors/${id
 
 const DT = 1 / 30, LIMIT = 120;
 
-export async function headlessShow({ modules = ALL, reducedMotion = false } = {}) {
+// seed：名冊與走路格的亂數種子，同一個種子每次演出的秒數一模一樣
+export async function headlessShow({ modules = ALL, reducedMotion = false, seed = 21 } = {}) {
   const spawned = [], released = [];
   const assets = {
     spawned, released,
@@ -29,7 +31,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false } = {}
   const scene = new THREE.Scene(); scene.add(people.group);
   const show = createShow(THREE, {
     scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail },
-    rig, world: (effects, instant) => worldLog.push([effects, instant]), reducedMotion,
+    rig, world: (effects, instant) => worldLog.push([effects, instant]), reducedMotion, rnd: mulberry32(seed),
   });
   // 每次 bubbles.show／levelUp 記下 { kind | text, at }（at = 出現那一刻頭上的位置）
   const { show: showBubble, levelUp } = show.bubbles;

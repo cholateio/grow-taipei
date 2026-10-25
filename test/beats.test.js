@@ -237,6 +237,9 @@ test('gesture drives the walker gesture for people, the holder for models, the p
   tl.play([B.gesture(rat, 'jump', 1)], ctx); tl.update(0); assert.ok(roster.claimed.includes(rat), 'claimed so the idle pose leaves it alone'); tl.update(0.5); assert.ok(Math.abs(rat.holder.position.y - 2.4) < 1e-9); assert.equal(rat.holder.position.x, 0);
   tl.skip(); assert.equal(rat.holder.position.y, 2);
   tl.play([B.gesture(rat, 'sniff')], ctx); tl.update(0); tl.update(1.5 / 8); assert.ok(Math.abs(rat.holder.rotation.y - 1.3) < 1e-9); tl.skip(); assert.equal(rat.holder.rotation.y, 1);
+  // 模型 look：慢慢轉向目標（最短轉角），演完一直朝那邊
+  tl.play([B.gesture(rat, 'look', { at: { x: 0, y: 2, z: -1 } })], ctx); tl.update(0); tl.update(0.3);
+  assert.ok(Math.abs(rat.holder.rotation.y - (1 + (Math.PI - 1) / 2)) < 1e-9, 'halfway round'); tl.skip(); assert.ok(Math.abs(rat.yaw - Math.PI) < 1e-9);
   const cloud = objects.get('typhoon.main');
   tl.play([B.gesture('typhoon.main', 'puff')], ctx); tl.update(0); tl.update(0.4); assert.ok(Math.abs(cloud.scale.x - 1.15) < 1e-9);
   tl.skip(); assert.equal(cloud.scale.x, 1);

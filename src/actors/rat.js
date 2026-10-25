@@ -93,8 +93,9 @@ const shoreAt = a => c => c.nav.nearestWalkable({ x: Math.cos(a) * 7.0, z: Math.
 const bearing = p => Math.atan2(p.z, p.x);
 const NEST_A = bearing(AT), PARK = offset(anchorWorld('chip'), -0.5, 1.2), PARK_A = bearing(PARK), SPRING_A = bearing(SPRING);
 const SHORE = shoreAt(bearing(anchorWorld('token'))), NEST_SHORE = shoreAt(NEST_A), PARK_SHORE = shoreAt(PARK_A), SPRING_SHORE = shoreAt(SPRING_A);
-const LANDING = offset(GATE, 1.6, 1.2);   // 巨蛋格的岸邊（水裡）：第一隻老鼠從這裡爬上來
-const NEAR_DOME = offset(DOME, 1.2, 1.4);
+const LANDING = offset(DOME, 2.0, 2.05);   // 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來
+const BEACH = offset(DOME, 0.25, 2.15);    // 沿岸往南角走一段（第一段）
+const NEAR_DOME = offset(DOME, -0.9, 1.0); // 再沿岸往巨蛋走一小段（第二段，停在巨蛋西南）
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const JUMP = 0.5, HOP = 0.15, FOLLOW = 0.3;   // 跳一次的秒數、依序跳車的間隔、排隊跟著走的出發間隔
 // 列車停到 n 隻依序跳完（再多停 0.2 s 落地），跳的時候車不動
@@ -141,10 +142,15 @@ function crash(e, ctx) {
 }
 
 export const script = {
-  // 一隻老鼠從巨蛋格的岸邊爬上來 → 走到巨蛋附近 → 聞一聞 → ？ → 窩旁晃
+  // 一隻老鼠從巨蛋格的岸邊爬上來 → …… 喘口氣 → 聞一聞 → 張望 101 → 沿岸走一段 → 看見巨蛋 ！ → 再往巨蛋走一小段 → 聞一聞 → ？ → 窩旁晃
   placed(e, s, ctx) {
     const { B } = ctx, r0 = rat(0);
-    return [B.apply(e, { hold: [KEY] }), B.spawn(KEY, LANDING), B.walk(r0, NEAR_DOME), B.gesture(r0, 'sniff'), B.bubble(r0, '？'), B.home(r0)];
+    return [
+      B.apply(e, { hold: [KEY] }), B.spawn(KEY, LANDING), B.walk(r0, c => c.nav.nearestWalkable(LANDING)),   // 從水裡爬上岸
+      B.bubble(r0, '……'), B.gesture(r0, 'sniff'),
+      B.gesture(r0, 'look', { at: TOWER }), B.walk(r0, BEACH), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8),
+      B.walk(r0, NEAR_DOME), B.gesture(r0, 'sniff'), B.bubble(r0, '？', 1.5), B.home(r0),
+    ];
   },
   grow: {
     // 一窩：♥ → 白光鼠窩 → 四隻從窩邊跑出來 → 窩旁晃
@@ -223,7 +229,7 @@ export const script = {
         // 小 UFO 從天上降下停在變異鼠頭上 → ♥
         return [
           B.apply(e, { only: ['rat.ufo'], flash: false }), B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 }),
-          B.bubble(r0, '♥'), B.levelUp('rat'),
+          B.bubble(r0, '♥', 0.9), B.levelUp('rat'),
         ];
       }
       return null;

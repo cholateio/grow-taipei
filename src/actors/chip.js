@@ -11,7 +11,8 @@ const AT = anchorWorld('chip'), TOWER = anchorWorld('tower');
 const DOOR = offset(AT, -0.3, 0.75);              // 廠門（工程師通勤的起點）
 const SITE = offset(TOWER, 0.9, 0.6);             // 101 工地（工人從這裡走過來）
 const FOOT = offset(TOWER, 0.95, 0.25);           // 101 腳下（通勤的終點）
-const GATE = offset(AT, -0.5, 1.2);               // 園區門口
+const KID_GATE = offset(AT, -1.5, 0.6);           // 園區西側門口（總部那回合小學生從中心格過橋來，停在這裡）
+const BRIDGE_END = offset(AT, -3.0, 0.2);         // 中心格那頭的橋口（小學生走到這裡才開始冒圖框）
 const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前
 const RAINBOW = offset(anchorWorld('typhoon'), 0.6, -5.2); // 彩虹（台地後面，颱風 Lv3 起）
 // 工程師上下班：廠門 → 橋 → 101 腳下（開放路徑，走到底折返）
@@ -98,14 +99,17 @@ export const script = {
       const { B } = ctx, door = i => c => c.nav.slots(DOOR, 2, 0.25)[i];
       return [
         B.together([B.walk(eng(ctx, 0), door(0)), B.walk(eng(ctx, 1), door(1))]),
-        B.bubble(eng(ctx, 0), '♪'), B.apply(e), ...detective(ctx, s),
+        B.bubble(eng(ctx, 0), '♪', 0.9), B.apply(e), ...detective(ctx, s),
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 總部（鮮奶 ≥3）：長高的小學生走到園區門口 → 圖框「晶片」→ 工程師 ♥ → 白光總部
+    // 總部（鮮奶 ≥3）：長高的小學生（離園區最近的那個）過橋走到園區西側門口，最後一段邊走邊冒圖框「晶片」→ 工程師 ♥ → 白光總部
     4(e, s, ctx) {
-      const { B } = ctx, kid = once(c => c.roster.members('milk.kids')[0] ?? c.roster.nearest('landmarks.islanders', GATE));
-      return [B.walk(kid, GATE), B.bubble(kid, { icon: 'chip' }), B.bubble(eng(ctx, 0), '♥'), B.apply(e), B.home(kid), B.levelUp('chip')];
+      const { B } = ctx, kid = once(c => (c.roster.members('milk.kids').length ? c.roster.nearest('milk.kids', KID_GATE) : c.roster.nearest('landmarks.islanders', KID_GATE)));
+      return [
+        B.walk(kid, BRIDGE_END), B.together([B.walk(kid, KID_GATE), B.bubble(kid, { icon: 'chip' }, 1.0)]),
+        B.bubble(eng(ctx, 0), '♥', 0.9), B.apply(e), B.home(kid), B.levelUp('chip'),
+      ];
     },
     // 天線（代幣 ≥3）：工程師走到站前等 → 列車進站停下，一停就敲（接箱子）→ 不等車開就送去 101 腳下 → 白光天線
     5(e, s, ctx) {

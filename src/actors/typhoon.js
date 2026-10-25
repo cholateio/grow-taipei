@@ -171,7 +171,7 @@ export const script = {
   // 烏雲從台地後面飄進來停在島上空 → ……
   placed(e, s, ctx) {
     const { B } = ctx;
-    return [B.apply(e, { flash: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 3 }), B.bubble(cloudHead(ctx), '……', 1.0)];
+    return [B.apply(e, { flash: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 4 }), B.bubble(cloudHead(ctx), '……', 1.5)];
   },
   grow: {
     // 登陸：雲鼓脹 → 白光變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→

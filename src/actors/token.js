@@ -144,7 +144,7 @@ export const script = {
     4(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
-        B.bubble(st, '……'), B.bubble(st, { icon: 'islet' }), B.camera(LIGHTHOUSE),
+        B.bubble(st, '……', 0.9), B.bubble(st, { icon: 'islet' }, 0.9), B.camera(LIGHTHOUSE),
         ...Array.from({ length: SPUR_PARTS }, (_, i) => B.apply(e, { only: [`token.spur.lighthouse.${i}`, `token.spur.playground.${i}`] })),
         B.camera('home'), B.levelUp('token'),
       ];

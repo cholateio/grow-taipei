@@ -128,7 +128,8 @@ test('placed: an islander walks to home plate and round the four bases; each bas
     if (m && m.mode !== 'home') { runner = m; BASES.forEach((b, i) => { if (near(m.pos, b, 0.15) && visits.at(-1) !== i) visits.push(i); }); }
   };
   await liveAt(h, SOLUTIONS[0], e => e.kind === 'placed' && e.item === 'baseball');
-  assert.deepEqual(visits, [0, 1, 2, 3, 0], 'home → 1st → 2nd → 3rd → home');
+  // 走向本壘的路上可能先經過三壘：從第一次到本壘算起
+  assert.deepEqual(visits.slice(visits.indexOf(0)), [0, 1, 2, 3, 0], `home → 1st → 2nd → 3rd → home: ${visits}`);
   assert.ok(shown.length === 4 && shown.every((t, i) => i === 0 || t > shown[i - 1] + 0.3), `lines appear one by one: ${shown}`);
   assert.equal(runner.mode, 'home');
 });

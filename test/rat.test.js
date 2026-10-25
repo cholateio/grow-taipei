@@ -118,8 +118,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
   }
   throw new Error('event not found');
 }
-// 秒數範圍（§8.6 的目標秒數上下放寬）：Lv3 搭捷運 10–18；Lv4／Lv5 依分岔
-const RANGE = { 1: [3, 7], 2: [3, 10], 3: [10, 18], cyber4: [6, 16], alien4: [5, 14], cyber5: [3, 10], alien5: [3, 8] };
+// 秒數範圍（§8.6 的目標秒數上下放寬）：放置是第 1 回合，一隻老鼠演滿 8–13 s（§4.4）；Lv3 搭捷運 10–18；Lv4／Lv5 依分岔
+const RANGE = { 1: [8, 13], 2: [3, 10], 3: [10, 18], cyber4: [6, 16], alien4: [5, 14], cyber5: [3, 10], alien5: [3, 8] };
 function checkRat({ show, bubblesLog }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
   const [lo, hi] = RANGE[lvl >= 4 ? `${branch}${lvl}` : lvl];

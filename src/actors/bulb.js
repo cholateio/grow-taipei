@@ -12,7 +12,7 @@ const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkW
 const SITE = offset(TOWER, 0.9, 0.6);     // 101 工地（電工從這裡出發）
 const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
 const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
-export const LIGHTING_SPEED = 2.4;   // 點燈這段電工快走（一般走路 1.6）
+export const LIGHTING_SPEED = 2.8;   // 點燈這段電工快走（一般走路 1.6；2.4 → 2.8 是節奏驗收的裁定，見規格 §12）
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）
 function ringPoint(cell, deg, r) {
   const c = axialToWorld(...cell), a = deg * Math.PI / 180;
@@ -108,9 +108,10 @@ export const script = {
       const order = once(c => rotationFrom(c.roster.members('bulb.electrician')[0]?.pos));
       const stop = i => c => order(c)[i];
       const go = i => B.walk(m, c => lampApproach(LAMP_STOPS[stop(i)(c)][0]), { speed: LIGHTING_SPEED });
-      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 1 ? ['bulb.market', 'sat.lighthouse'] : [])] });
+      // 夜市兩攤、燈塔島的燈在走最後一段時跟上一站一起亮（他快到了，夜市先開張）；到了最後一站點完燈就 LEVEL UP
+      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 2 ? ['bulb.market', 'sat.lighthouse'] : [])] });
       return [
-        go(0), ...Array.from({ length: n - 1 }, (_, i) => B.together([go(i + 1), light(i)])), light(n - 1),   // 最後一站、夜市兩攤、燈塔島的燈同一拍依序閃（LEVEL UP 之後不再有白光）
+        go(0), ...Array.from({ length: n - 1 }, (_, i) => B.together([go(i + 1), light(i)])), light(n - 1),
         B.home(m), B.levelUp('bulb'),
       ];
     },

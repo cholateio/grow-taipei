@@ -15,6 +15,7 @@ const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 const POLE = offset(AT, 0.75, 0.95);                  // 旗桿
 const PARK = offset(anchorWorld('chip'), -0.3, 0.75); // 園區門口（工程師通勤的起點）
 const league = lv => lv.milk >= 5 && lv.baseball >= 2;
+const DOME_SIDE = offset(anchorWorld('baseball'), 1.3, 0.75);   // 巨蛋東側門前（Lv5 劇本小學生停下來和球員打招呼的地方）
 // 小孩日常的中心：少棒隊在巨蛋旁的空地練球（門口留給球員和觀眾），否則在操場
 const kidsCenter = lv => (league(lv) ? offset(anchorWorld('baseball'), -1.15, 0.75) : PLAY);
 
@@ -95,15 +96,16 @@ export const script = {
         B.gesture(kid(ctx, 0), 'jump'), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
       ];
     },
-    // 長高：一起去牛奶箱喝奶、各 ♥ → 白光變高 1.3、校舍加一層 → 跑回操場
+    // 長高：一起去牛奶箱喝奶、各 ♥ → 白光變高 1.3、校舍加一層 → 跑回操場（同時 LEVEL UP）
     3(e, s, ctx) {
       const { B } = ctx;
       return [
         B.together(KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(CRATE, 3, 0.55)[i]))),
-        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 1))),
+        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e),
-        B.together(KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(PLAY, 3, 0.45)[i]))),
-        B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
+        // 跑回操場的同時鮮奶頭上 LEVEL UP
+        B.together([...KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(PLAY, 3, 0.45)[i])), B.levelUp('milk')]),
+        B.home(c => c.roster.members('milk.kids')),
       ];
     },
     // 升旗：一個小學生走到旗桿 → ！ → 旗子沿旗桿升上去 → 校舍白光加層
@@ -116,22 +118,23 @@ export const script = {
         B.gesture(k0, 'wave'), B.apply(e), B.home(k0), B.levelUp('milk'),
       ];
     },
-    // 鐘塔、少棒：白光換棒球帽 → 一起走到巨蛋旁空地 → 球員 ♪ → 鐘塔白光
+    // 鐘塔、少棒：白光換棒球帽 → 一起過橋走到巨蛋旁 → 跳起來、球員 ♪ → 鐘塔白光 → 回家（自己走到空地練球）
+    // 有球場時先停在巨蛋東側門前（球員看得到；繞到西南空地的最後一段交給日常，不算進回合）
     5(e, s, ctx) {
-      const { B } = ctx, centre = kidsCenter(s.lv), player = () => ctx.roster.members('baseball.players')?.[0] ?? null;
+      const { B } = ctx, centre = league(s.lv) ? DOME_SIDE : kidsCenter(s.lv), player = () => ctx.roster.members('baseball.players')?.[0] ?? null;
       return [
-        B.apply(e, { only: ['milk.kids'] }), B.wait(0.6),
+        B.apply(e, { only: ['milk.kids'] }), B.wait(0.3),
         B.together(KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, 0.4)[i]))),
-        B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.bubble(player, '♪'), B.apply(e), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
+        B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'jump')), B.bubble(player, '♪', 0.9)]),   // 小學生跳起來、球員 ♪ 同一拍
+        B.apply(e), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
       ];
     },
-    // 大學：一個工程師從園區走到校門口 → …… → 圖框「學士帽」→ 白光：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
+    // 大學：一個工程師（通勤路上離校門最近的那個）走到校門口 → …… → 圖框「學士帽」→ 白光：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
     6(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
-      const engineer = once(c => c.roster.members('chip.engineers')?.[0] ?? c.roster.nearest('landmarks.islanders', GATE));
+      const engineer = once(c => (c.roster.members('chip.engineers').length ? c.roster.nearest('chip.engineers', GATE) : c.roster.nearest('landmarks.islanders', GATE)));
       return [
-        B.walk(engineer, offset(GATE, 0.35, 0.25)), B.bubble(engineer, '……'), B.bubble(engineer, { icon: 'mortar' }),
+        B.walk(engineer, offset(GATE, 0.35, 0.25)), B.bubble(engineer, '……', 1.0), B.bubble(engineer, { icon: 'mortar' }, 1.0),
         B.apply(e),
         // 兩人出發走回園區的同時，鮮奶頭上 LEVEL UP（不然要等他們橫越全島才標）
         B.together([B.walk(engineer, PARK), B.walk(k0, offset(PARK, 0.3, 0.1)), B.levelUp('milk')]),

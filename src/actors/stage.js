@@ -137,6 +137,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
       sync();
     },
     headOf,
+    build: spec => factory.build(spec),   // 名冊用它做模型成員的天線／眼睛
     partObject: key => live.get(key)?.part.object ?? null,   // 試作用：直接操作零件（藏起來、換時機露出）
     levelOf: id => lv[id],
     get meta() { return meta; },

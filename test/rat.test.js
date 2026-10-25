@@ -218,6 +218,7 @@ test('the nest turn with both reactions plays live: a rat goes to the crate, ano
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');
   assert.ok(secs >= 8 && secs <= 30, `${secs.toFixed(1)} s`);
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'cart knocked askew');
+  assert.ok(Math.abs(show.stage.partObject('milk.crate').rotation.z - 0.35) < 1e-9, 'the bite that costs nothing still tips the crate');
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 1);
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
   assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 20);
@@ -257,4 +258,28 @@ test('rep is the first rat', async () => {
   const h = await headlessShow();
   await h.run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'settle' }], { instant: true });
   assert.equal(rat.script.rep({}, h.show), h.show.roster.members('rat.pack')[0]);
+});
+// 審查 Important 1：軍團回合石堆小島的兩隻老鼠跟著同一次套用收掉（骨架動畫 ≤ 12），LEVEL UP 之後不再有白光
+test('cyber Lv5: the rocks-islet rats go with the army apply, before LEVEL UP; no flash after LEVEL UP', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, at = show.flash.at, levelUp = show.bubbles.levelUp, flashes = [];
+  let rocksAtLevelUp = null;
+  show.flash.at = (p, o) => { flashes.push(bubblesLog.length); return at(p, o); };
+  show.bubbles.levelUp = (head, o) => { rocksAtLevelUp = show.stage.partKeys().includes('sat.rocks') || show.stage.pendingKeys().includes('sat.rocks'); return levelUp(head, o); };
+  const { e, secs, n } = await liveAt(h, SOLUTIONS.find(o => o.indexOf('chip') < o.indexOf('milk')), isRat(5));
+  assert.equal(show.stage.flags.ratBranch, 'cyber'); checkRat(h, e, secs, n);
+  assert.equal(rocksAtLevelUp, false, 'sat.rocks gone before LEVEL UP');
+  const lu = bubblesLog.findIndex((b, i) => i >= n && b.text === 'LEVEL UP');
+  assert.ok(flashes.every(k => k <= lu), `no flash after LEVEL UP (${flashes} vs ${lu})`);
+});
+// 審查 Important 2：老鼠排成一列跟著偵防師走：每隻晚 0.3 s 出發
+test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apart', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, setPose = show.roster.setPose, starts = new Map();
+  let now = 0, icon = false;
+  show.update = (dt, t) => { now += dt; icon ||= bubblesLog.some(b => b.kind?.icon === 'chip'); update(dt, t); };
+  show.roster.setPose = (m, p) => { if (icon && m.key === 'rat.pack' && p.walking && !starts.has(m)) starts.set(m, now); return setPose(m, p); };
+  const { e, secs, n } = await liveAt(h, SOLUTIONS.find(o => o.indexOf('chip') < o.indexOf('milk')), isRat(4));
+  checkRat(h, e, secs, n);
+  const t = [...starts.values()].sort((a, b) => a - b);
+  assert.equal(t.length, 5);
+  for (let i = 1; i < 5; i++) assert.ok(t[i] - t[i - 1] >= 0.25, `starts ${t.map(x => x.toFixed(2))}`);
 });

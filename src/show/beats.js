@@ -64,8 +64,9 @@ export function spawn(key, at) {
   return beat;
 }
 
-export function walk(who, to, { speed } = {}) {
-  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0;
+// delay：拍開始時就把人拿到劇本手上（原地站著），delay 秒後才出發（一群人排成一列跟著走）
+export function walk(who, to, { speed, delay = 0 } = {}) {
+  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0;
   const plan = ctx => {
     const mm = memberOf(who, ctx); if (!mm) return null;
     const r = ctx.nav.route(mm.pos, call(to, ctx));
@@ -73,15 +74,16 @@ export function walk(who, to, { speed } = {}) {
   };
   return {
     kind: 'walk',
-    dur: () => total / v,
-    estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : p.len / p.v; },
+    dur: () => delay + total / v,
+    estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : delay + p.len / p.v; },
     start(ctx) {
-      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0;
+      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0; idle = delay;
       ctx.roster.claim(m);
       if (total < 1e-6) return false;
       cursor = createPathCursor(route, { loop: false });
     },
     step(k, dt, ctx) {
+      if (idle > 0) { const used = Math.min(idle, dt); idle -= used; dt -= used; if (dt <= 0) return; }
       // 開放路徑的游標走過頭會折返，所以只推到終點為止
       const ds = Math.min(dt * v, total - s); s += ds; cursor.advance(ds);
       ctx.roster.setPose(m, { ...cursor.locate(), walking: true });

@@ -96,7 +96,7 @@ const SHORE = shoreAt(bearing(anchorWorld('token'))), NEST_SHORE = shoreAt(NEST_
 const LANDING = offset(GATE, 1.6, 1.2);   // 巨蛋格的岸邊（水裡）：第一隻老鼠從這裡爬上來
 const NEAR_DOME = offset(DOME, 1.2, 1.4);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
-const JUMP = 0.5, HOP = 0.15;   // 跳一次的秒數、依序跳車的間隔
+const JUMP = 0.5, HOP = 0.15, FOLLOW = 0.3;   // 跳一次的秒數、依序跳車的間隔、排隊跟著走的出發間隔
 // 列車停到 n 隻依序跳完（再多停 0.2 s 落地），跳的時候車不動
 const hold = n => n * JUMP + (n - 1) * HOP + 0.2;
 // 分岔（spec.js 老鼠 onLevel 4：晶片 ≥3 → 賽博）。分岔旗標是 grow 之後的 fx 事件才帶來的，grow 4 的劇本先用一個同值的 fx 事件
@@ -118,13 +118,14 @@ function hopOff(B, s, ids, at, centre, r) {
   return [B.trainStop({ at, stop: hold(ids.length), during: ids.flatMap((i, k) => [B.jump(rat(i), c => spots(c)[k], JUMP), ...(k < ids.length - 1 ? [B.wait(HOP)] : [])]) })];
 }
 
-// 咬鮮奶：一隻走到牛奶箱 → 聞一聞 → ！ → 箱子白光翻倒（只有真的掉級才翻；引擎裡被咬時鮮奶都還是 Lv1，不掉級）
+// 咬鮮奶：一隻走到牛奶箱 → 聞一聞 → ！ → 箱子翻倒（真的掉級才白光換成側躺；引擎裡被咬時鮮奶都還是 Lv1，不掉級，只撞歪）
 //   → 小學生 ！ 跑回校門口躲進去 → LEVEL DOWN
 function bite(e, ctx) {
   const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), KIDS = [0, 1, 2], down = e.delta.to < e.delta.from;
   return [
     B.walk(r, offset(CRATE, 0.45, 0.2), { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
-    B.apply(e, { only: ['milk.crate'] }),
+    // 沒掉級（引擎裡一定是這樣）：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：白光換成翻倒的箱子
+    down ? B.apply(e, { only: ['milk.crate'] }) : B.tilt('milk.crate', { rz: 0.35, dur: 0.3 }),
     B.together(KIDS.map(i => B.bubble(kid(i), '！', 0.8))),
     B.together(KIDS.map(i => B.walk(kid(i), SCHOOL_GATE))), ...KIDS.map(i => hide(kid(i))),
     B.apply(e), B.home(r), ...(down ? [B.levelUp('milk', { down: true })] : []),
@@ -143,7 +144,7 @@ export const script = {
   // 一隻老鼠從巨蛋格的岸邊爬上來 → 走到巨蛋附近 → 聞一聞 → ？ → 窩旁晃
   placed(e, s, ctx) {
     const { B } = ctx, r0 = rat(0);
-    return [B.apply(e, { hold: [KEY] }), B.spawn(KEY, LANDING), B.walk(r0, NEAR_DOME, { speed: 1.2 }), B.gesture(r0, 'sniff'), B.bubble(r0, '？'), B.home(r0)];
+    return [B.apply(e, { hold: [KEY] }), B.spawn(KEY, LANDING), B.walk(r0, NEAR_DOME), B.gesture(r0, 'sniff'), B.bubble(r0, '？'), B.home(r0)];
   },
   grow: {
     // 一窩：♥ → 白光鼠窩 → 四隻從窩邊跑出來 → 窩旁晃
@@ -194,7 +195,8 @@ export const script = {
         return [
           B.together([B.walk(detective, PARK_SHORE), ...hopOff(B, s, ids, PARK_A, PARK_SHORE, 0.35)]),
           B.bubble(detective, '！'), B.bubble(detective, { icon: 'chip' }),
-          B.together([B.walk(detective, offset(PARK, 0.5, 0.5)), ...ids.map(i => B.walk(rat(i), c => gate(c)[i]))]),
+          // 排成一列跟著他：每隻晚 0.3 s 出發
+          B.together([B.walk(detective, offset(PARK, 0.5, 0.5)), ...ids.map(i => B.walk(rat(i), c => gate(c)[i], { delay: FOLLOW * (i + 1) }))]),
           ...transform, B.wait(0.8), B.home(c => [...RATS(c), detective(c)].filter(Boolean)), B.levelUp('rat'),
         ];
       }
@@ -211,7 +213,8 @@ export const script = {
         // 軍團：白光補到 10 隻 → 列隊走到 101 腳下 → 繞 101
         const ids = Array.from({ length: 10 }, (_, i) => i), slots = once(c => c.nav.slots(TOWER, 10, 1.3));
         return [
-          B.apply(e, { only: [KEY] }),   // 新的五隻依序白光出現（名冊自己閃），一出來就跟著列隊
+          // 新的五隻依序白光出現（名冊自己閃），一出來就跟著列隊；石堆小島的兩隻同時收掉（骨架動畫 ≤ 12，LEVEL UP 之後不再閃）
+          B.apply(e, { only: [KEY, 'sat.rocks'] }),
           B.together(ids.map(i => B.walk(rat(i), c => slots(c)[i]))),
           B.home(RATS), B.levelUp('rat'),
         ];

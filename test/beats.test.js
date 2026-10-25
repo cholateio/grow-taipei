@@ -77,6 +77,15 @@ test('walk at double speed in montage; an empty route takes no time', () => {
   const still = fake({ pos: c([0, 0]) }); still.tl.play([B.walk(still.member, c([0, 0])), B.wait(0.1)], still.ctx); still.tl.update(0);
   assert.equal(still.tl.currentKind, 'wait'); assert.ok(!still.member.walking);
 });
+test('walk { delay } stands still (claimed) for the delay, then walks; dur and estimate include the delay', () => {
+  const { ctx, tl, member } = fake({ pos: c([-1, 1]) }); const to = c([-1, 0]), p0 = { ...member.pos };
+  const len = ctx.nav.routeLength(ctx.nav.route(c([-1, 1]), to)), w = B.walk(member, to, { delay: 0.3 });
+  assert.ok(Math.abs(w.estimate(ctx) - (0.3 + len / 1.6)) < 1e-6);
+  tl.play([w], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - (0.3 + len / 1.6)) < 1e-6); assert.equal(member.mode, 'script');
+  tl.update(0.2); assert.deepEqual(member.pos, p0); assert.ok(!member.walking, 'still waiting');
+  tl.update(0.3); assert.ok(member.walking && Math.abs(Math.hypot(member.pos.x - p0.x, member.pos.z - p0.z) - 0.2 * 1.6) < 0.05, 'walked only the time past the delay');
+  tl.skip(); assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6 && !member.walking);
+});
 test('apply with flash defers the stage change and commits each key at the flash peak, 0.15 s apart', () => {
   const { ctx, tl, stage, flash } = fake({ changed: ['a', 'b'] });
   tl.play([B.apply(ev)], ctx); tl.update(0); assert.deepEqual(stage.calls[0], ['apply', ev, { deferred: true }]); assert.equal(flash.count, 1);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
-import { createKit, KINDS, GLOW } from '../src/scene/kit.js';
+import { createKit, KINDS, GLOW, makeGeometry } from '../src/scene/kit.js';
 import { mulberry32 } from '../src/scene/random.js';
 
 test('mulberry32 is deterministic and in [0,1)', () => {
@@ -39,4 +39,8 @@ test('every kind builds a geometry with positions', () => {
   for (const k of KINDS) kit.part(k, { pos: [0, 0, 0], scale: 1, color: 0x888888 });
   const g = kit.build(); assert.equal(g.children.length, KINDS.length);
   for (const m of g.children) assert.ok(m.geometry.attributes.position.count > 0);
+});
+test('frustum and rail kinds exist and makeGeometry is exported for dynamic parts', () => {
+  assert.ok(KINDS.includes('frustum') && KINDS.includes('rail'));
+  assert.ok(makeGeometry(THREE, 'frustum').isBufferGeometry); assert.ok(makeGeometry(THREE, 'rail').isBufferGeometry);
 });

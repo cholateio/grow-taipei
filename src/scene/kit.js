@@ -3,12 +3,12 @@
 import { RoundedBoxGeometry } from '../../vendor/three/addons/geometries/RoundedBoxGeometry.js';
 import { mulberry32 } from './random.js';
 
-export const KINDS = ['box', 'rbox', 'cylinder', 'cone', 'cone6', 'sphere', 'ico', 'dome', 'torus', 'prism', 'hip', 'leaf', 'trunk', 'glowbox', 'glowsphere'];
+export const KINDS = ['box', 'rbox', 'cylinder', 'cone', 'cone6', 'sphere', 'ico', 'dome', 'torus', 'prism', 'hip', 'leaf', 'trunk', 'frustum', 'rail', 'glowbox', 'glowsphere'];
 export const GLOW = 0xffc777;
 const GLOW_KINDS = new Set(['glowbox', 'glowsphere']);
 const JITTER = 0.0072;   // 每個 instance 縮放 ±0.72%，防 z-fighting
 
-function makeGeometry(THREE, kind) {
+export function makeGeometry(THREE, kind) {
   switch (kind) {
     case 'box': case 'glowbox': return new THREE.BoxGeometry(1, 1, 1);
     case 'rbox': return new RoundedBoxGeometry(1, 1, 1, 2, 0.12);
@@ -23,6 +23,8 @@ function makeGeometry(THREE, kind) {
     // 四坡屋頂：底面剛好是軸對齊的 1×1 正方形，任意 w×d 縮放都還是乾淨的長方形
     case 'hip': return new THREE.ConeGeometry(0.5, 1, 4).rotateY(Math.PI / 4).scale(Math.SQRT2, 1, Math.SQRT2);
     case 'trunk': return new THREE.CylinderGeometry(0.32, 0.5, 1, 9);
+    case 'frustum': return new THREE.CylinderGeometry(0.3, 0.5, 1, 10);          // 火山、101 的節
+    case 'rail': return new THREE.TorusGeometry(0.5, 0.012, 4, 64);              // 高架軌道（直徑 1，用 scale 放大）
     case 'leaf': {
       // 抖動過的多面體樹葉團；用位置做雜湊，共用頂點抖得一樣，不會裂開
       const g = new THREE.IcosahedronGeometry(0.5, 1), p = g.attributes.position, v = new THREE.Vector3();

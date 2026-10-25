@@ -1,5 +1,6 @@
 // 大頭 chibi 小人（政策島提示詞 §6）：高約 0.35、頭占 40%。每種零件一個 InstancedMesh，每幀重算矩陣。
 import { mulberry32 } from './random.js';
+import { measurePath, locateOnPath } from './path.js';
 
 export const SHIRTS = [0xdb6a41, 0x5a88b2, 0xf2b5c6, 0x8db86f, 0xfcea8b, 0xffffff, 0x3f5a8a, 0xe8b04a];
 export const ACCESSORIES = ['none', 'cap', 'coat', 'suitcase', 'glass'];
@@ -49,27 +50,21 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
   }
   function resize() { for (const m of Object.values(meshes)) m.count = walkers.length; walkers.forEach((w, i) => paint(i, w)); }
 
-  function measure(path) {
-    const lens = [0];
-    for (let i = 1; i <= path.length; i++) { const a = path[i - 1], b = path[i % path.length]; lens.push(lens[i - 1] + Math.hypot(b.x - a.x, b.z - a.z)); }
-    return lens;
-  }
-
   function spawn({ path, speed = 0.35, shirt = SHIRTS[Math.floor(rnd() * SHIRTS.length)], accessory = 'none', loop = true }) {
     if (walkers.length >= max) throw new Error(`people: max ${max} reached`);
-    const w = { id: nextId++, path, lens: measure(path), s: rnd() * 10, dir: 1, speed, shirt, pants: PANTS[Math.floor(rnd() * PANTS.length)], accessory, loop, phase: rnd(), pos: { ...path[0] } };
+    const lens = measurePath(path, loop);
+    // 開放路徑的起點要落在路徑上，否則每幀都會在終點來回翻方向卡住
+    const w = { id: nextId++, path, lens, s: rnd() * (loop ? 10 : lens.at(-1)), dir: 1, speed, shirt, pants: PANTS[Math.floor(rnd() * PANTS.length)], accessory, loop, phase: rnd(), pos: { ...path[0] } };
     w.remove = () => { const i = walkers.indexOf(w); if (i >= 0) { walkers.splice(i, 1); resize(); } };
-    w.setPath = p => { w.path = p; w.lens = measure(p); w.s = 0; };
+    w.setPath = p => { w.path = p; w.lens = measurePath(p, w.loop); w.s = 0; };
     walkers.push(w); resize(); place(w, 0);
     return w;
   }
 
   function locate(w) {
-    const total = w.lens.at(-1), n = w.path.length;
-    let s = w.loop ? ((w.s % total) + total) % total : Math.min(total, Math.max(0, w.s));
-    let i = 0; while (i < n - 1 && w.lens[i + 1] < s) i++;
-    const a = w.path[i], b = w.path[(i + 1) % n], t = (s - w.lens[i]) / (w.lens[i + 1] - w.lens[i] || 1);
-    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, yaw: Math.atan2(b.x - a.x, b.z - a.z) + (w.dir < 0 ? Math.PI : 0) };
+    const p = locateOnPath(w.path, w.lens, w.s, w.loop);
+    if (w.dir < 0) p.yaw += Math.PI;
+    return p;
   }
 
   const W = new THREE.Matrix4(), M = new THREE.Matrix4(), T = new THREE.Matrix4(), Rm = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
@@ -97,7 +92,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     const k = Math.min(1.45, Math.max(1, cameraDistance / 20));
     for (const w of walkers) {
       w.s += w.speed * dt * w.dir;
-      if (!w.loop && (w.s <= 0 || w.s >= w.lens.at(-1))) w.dir *= -1;
+      if (!w.loop) { const total = w.lens.at(-1); if (w.s >= total) { w.s = total; w.dir = -1; } else if (w.s <= 0) { w.s = 0; w.dir = 1; } }
       place(w, t, k);
     }
     for (const m of Object.values(meshes)) m.instanceMatrix.needsUpdate = true;

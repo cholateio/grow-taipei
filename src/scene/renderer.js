@@ -3,6 +3,7 @@ import { CSS2DRenderer } from '../../vendor/three/addons/renderers/CSS2DRenderer
 import { sample, sunDirection } from './daynight.js';
 import { createSky } from './sky.js';
 import { createWater } from './water.js';
+import { createGlowRegistry } from './glow.js';
 
 const PIXEL_RATIO = { high: 1.75, medium: 1.4, low: 1 };
 const SHADOW_MAP = { high: 2048, medium: 1024, low: 0 };
@@ -40,7 +41,7 @@ export function createRenderer(THREE, { canvas, labelsEl, quality = 'high' }) {
 
   const sky = createSky(THREE), water = createWater(THREE);
   scene.add(sky.mesh, water.mesh);
-  const glows = [];
+  const glow = createGlowRegistry();
 
   function setTime(minute) {
     const s = sample(minute), dir = sunDirection(minute);
@@ -49,7 +50,7 @@ export function createRenderer(THREE, { canvas, labelsEl, quality = 'high' }) {
     hemi.color.setHex(s.hemiSky); hemi.groundColor.setHex(s.hemiGround); hemi.intensity = s.hemiI;
     scene.fog.color.setHex(s.horizon);
     sky.setTime(s, dir); water.setTime(s);
-    for (const m of glows) m.emissiveIntensity = s.night * 3.2;
+    glow.setNight(s.night);
     return s;
   }
 
@@ -60,8 +61,8 @@ export function createRenderer(THREE, { canvas, labelsEl, quality = 'high' }) {
   }
 
   return {
-    renderer, scene, camera, labels, sun, hemi, fill, sky, water, setTime, resize,
-    addGlow: materials => glows.push(...materials),
+    renderer, scene, camera, labels, sun, hemi, fill, sky, water, setTime, resize, glow,
+    addGlow: materials => materials.forEach(m => glow.add(m)),
     render() { renderer.render(scene, camera); labels.render(scene, camera); },
   };
 }

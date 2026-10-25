@@ -6,7 +6,8 @@ import { C, roofColor, rebuilt, offset } from './palette.js';
 
 export const id = 'token';
 export const labelY = 1.0;
-export const TRACK = { radius: 6.6, y: TOP + 1.35 };
+// 環狀線沿著主島外圍的水道繞（像淡水線沿河），橋墩立在水裡；放低、放外面才不會擋住島上的東西
+export const TRACK = { radius: 8.3, y: TOP - 0.25 };   // 比島面低：從前面看只會切到島的側壁，不會切到建築
 const GAP = 0.6;   // 車廂間距（弧長）
 const POOL = 0xa4d4da;
 
@@ -21,7 +22,7 @@ const pylon = (x, z) => { const base = groundAt(x, z), h = TRACK.y - base; retur
 // 環上離衛星島最近的點，用 8 段階梯狀的高架一路降到島上
 function spur(kind) {
   const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), d = Math.hypot(c.x, c.z), ux = c.x / d, uz = c.z / d;
-  const from = TRACK.radius, to = d - 1.0, y0 = TRACK.y, y1 = TOP - 0.2 + 0.3, parts = [], seg = (to - from) / 8;
+  const from = TRACK.radius, to = d - 1.0, y0 = TRACK.y, y1 = TOP - 0.2 + 0.1, parts = [], seg = (to - from) / 8;
   for (let i = 0; i < 8; i++) {
     const r = from + seg * (i + 0.5), y = y0 + (y1 - y0) * (i + 0.5) / 8;
     parts.push({ kind: 'box', pos: [ux * r, y, uz * r], scale: [0.3, 0.08, seg * 1.05], rot: [0, Math.atan2(ux, uz), 0], color: C.cream });

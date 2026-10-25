@@ -41,3 +41,10 @@ test('train builder: cars follow trainPose and glow when neon', () => {
   assert.equal(p.object.children.length, 5); const want = token.trainPose(3, 0);
   assert.ok(Math.abs(p.object.children[0].position.x - want.x) < 1e-9); assert.ok(glow.size > 0);
 });
+test('the ring line runs in the water channel outside the main island, below the old roof-cutting height', async () => {
+  const { SPACING, R, SATELLITES, axialToWorld, groundAt, WATER_Y, TOP } = await import('../src/scene/hex.js');
+  const mainReach = Math.sqrt(3) * SPACING + R, satInner = Math.min(...SATELLITES.map(s => { const c = axialToWorld(s.q, s.r); return Math.hypot(c.x, c.z); })) - R;
+  assert.ok(token.TRACK.radius > mainReach + 0.5 && token.TRACK.radius < satInner - 0.3, `${token.TRACK.radius} between ${mainReach} and ${satInner}`);
+  assert.ok(token.TRACK.y <= TOP + 0.6);
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; assert.equal(groundAt(Math.cos(a) * token.TRACK.radius, Math.sin(a) * token.TRACK.radius), WATER_Y); }
+});

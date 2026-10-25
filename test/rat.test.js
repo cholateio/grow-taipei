@@ -4,6 +4,7 @@ import * as THREE from '../vendor/three/three.module.js';
 import * as rat from '../src/actors/rat.js';
 import * as landmarks from '../src/actors/landmarks.js';
 import { ENGINEER_ROUTE } from '../src/actors/chip.js';
+import { TRACK } from '../src/actors/token.js';
 import { landmarkWorld } from '../src/actors/anchors.js';
 import { lv } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
@@ -48,7 +49,7 @@ test('rats builder spawns n models and moves them along the loop; train rats rid
   assert.equal(p.object.children.length, 5);
   const t = f.build(rat.view(lv({ rat: 3, token: 2 }), {})['rat.pack']); await new Promise(r => setTimeout(r, 0)); t.update(0.1, 2);
   const w = new THREE.Vector3(); t.object.updateMatrixWorld(true); t.object.children[0].children[0].getWorldPosition(w);
-  assert.ok(w.y > 2, 'up on the elevated train');
+  assert.ok(w.y > TRACK.y, 'up on the train roof');
 });
 test('rats builder disposes its antennas and eyes: glow registry back to zero (review #1)', async () => {
   const glow = createGlowRegistry(), assets = { spawn: async () => new THREE.Group() };

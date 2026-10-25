@@ -113,14 +113,13 @@ function crowd(B, fn) {
     end(c) { inner?.end(c); inner = null; },
   };
 }
-// 走到門口就躲進去（藏起來；跳過時 end 一樣藏，名冊 snap 會全部露出來）
+// 走到門口就躲進去（藏起來，整回合躲著；下一回合開始 show.turn 會 showAll，跳過時 snap 也會全部露出來）
 function toDoor(B, m) {
   const w = B.walk(m, c => nearestDoor(c, m.pos), { speed: HURRY }), end = w.end;
   w.end = c => { end(c); c.roster.hide(m); };
   return w;
 }
-// 名冊成員露出來（0 秒）：全島 peopleVisible 關掉之後把各自的 hidden 收掉——下一回合人回到街上靠全島效果，
-// 沒有別人會再幫他們 show（hidden 留著就一直看不到）
+// 名冊成員露出來（0 秒）：躲進門裡的人出來演自己的戲（淹水的站務員、換身分後的泳客）
 const reveal = who => ({ kind: 'unhide', dur: 0, start(c) { for (const m of who(c) ?? []) c.roster.show(m); return false; } });
 // 外送機車：登陸時先建好藏著（零件鍵 0 秒），外送那一拍才在攤車白光、最亮時露出來
 function flashIn(key, at) {
@@ -143,13 +142,13 @@ function blackout(e, ctx) {
     B.apply(e, { only: MILK_KEYS }), B.levelUp('milk', { down: true }),
   ];
 }
-// 捷運淹水：站務員 ！ → 站體白光變泳池、站務員原地換成泳客（staff 和 swimmers 同一次套用，不然 flush 會補出幽靈站務員）、列車停駛
+// 捷運淹水：站務員從門裡出來 ！ → 站體白光變泳池、站務員原地換成泳客（staff 和 swimmers 同一次套用，不然 flush 會補出幽靈站務員）、列車停駛
 function flooded(e, ctx) {
-  const { B } = ctx, st = once(c => c.roster.members('token.staff').find(m => !m.hidden) ?? null);
+  const { B } = ctx, st = once(c => c.roster.members('token.staff')[0] ?? null);   // 他登陸時躲起來了：不濾 hidden
   return [
-    B.bubble(st, '！', 0.8),
+    reveal(c => [].concat(st(c) ?? [])), B.bubble(st, '！', 0.8),
     B.apply(e, { only: ['token.main', 'token.swimmers', 'token.staff', 'token.train', 'token.shuttle'] }),
-    reveal(c => c.roster.members('token.swimmers')),   // 保險：hidden 跟著成員走，換身分前還藏著的站務員變泳客後也要露出來
+    reveal(c => c.roster.members('token.swimmers')),   // hidden 跟著成員走：保險起見泳客全部露出來
   ];
 }
 // 大巨蛋鼠災：老鼠們被大水沖到巨蛋門口（兩倍速）→ 兩個工作人員從巨蛋門口出來追
@@ -171,7 +170,7 @@ export const script = {
     return [B.apply(e, { flash: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 3 }), B.bubble(cloudHead(ctx), '……', 1.0)];
   },
   grow: {
-    // 登陸：雲鼓脹 → 白光變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口躲進去 → 人都不見了 →
+    // 登陸：雲鼓脹 → 白光變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
     // 船消失、風車狂轉（外送機車先建好藏著，等外送那一拍）→ LEVEL UP。全島檢查是之後的 fx 事件
     2(e, s, ctx) {
       const { B } = ctx, cast = once(c => everyone(c));
@@ -180,19 +179,19 @@ export const script = {
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
         crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))),
         crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m))),   // 衛星島上的人不走（走路格只有主島）
-        B.world({ peopleVisible: false }), reveal(cast),
         B.apply(e, { only: ['typhoon.scooter'], flash: false }), B.hideParts('typhoon.scooter'),
         B.apply(e), B.levelUp('typhoon'),
       ];
     },
     // 雨過天晴：雲、雨、機車白光散掉 → 天晴 → 彩虹從台地後升起 → 河濱公園 → 小人一起 ♪ 回日常 → 屋頂依序換色 → LEVEL UP
+    // （人在回合開始時已經 showAll 出來了）
     3(e, s, ctx) {
       const { B } = ctx;
       return [
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
         B.apply(e, { only: ['typhoon.rainbow'], flash: false }), B.scaleIn('typhoon.rainbow', { dur: 1.5 }),
         B.apply(e, { only: ['typhoon.park'] }),
-        B.world({ peopleVisible: true }), crowd(B, c => everyone(c).map(m => B.bubble(m, '♪', 1.0))), B.home(everyone),
+        crowd(B, c => everyone(c).map(m => B.bubble(m, '♪', 1.0))), B.home(everyone),
         B.apply(e), B.levelUp('typhoon'),
       ];
     },

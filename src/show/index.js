@@ -37,7 +37,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   refresh();   // 開局的島民一出來就要繞開建築
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
-    stage.commitAll(); roster.snap(); flash.clear(); bubbles.clear();
+    stage.commitAll(); roster.showAll(); roster.snap(); flash.clear(); bubbles.clear();
     if (home) camRig.home(0);
     refresh();
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
@@ -46,6 +46,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   function turn(events, { montage = false, onMark } = {}) {
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
+    roster.showAll();   // 上一回合躲進門裡的人（颱風登陸）這回合回到街上
     refresh();
     const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage }, ctx);
     const me = playing = {};

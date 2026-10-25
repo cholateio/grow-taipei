@@ -109,7 +109,9 @@ function checkTyphoon({ show, bubblesLog }, e, secs, n) {
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over typhoon`);
   }
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
-  assert.ok(people(show).every(m => !m.hidden), `${what} nobody left hidden`);
+  // 登陸那回合島上的人躲在門裡到回合結束；其他時候沒有人藏著
+  if (to === 2) assert.ok(people(show).filter(m => cellAt(m.pos.x, m.pos.z)).length === 0 || people(show).some(m => m.hidden), `${what} people indoors`);
+  else assert.ok(people(show).every(m => !m.hidden), `${what} nobody hidden`);
 }
 test('scripts: typhoon placed / Lv2 / Lv3 in both solutions play within budget, LEVEL UP on the typhoon, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -141,19 +143,18 @@ async function playLanding(h, evs) {
   const reacts = evs.filter(e => e.kind === 'fx' && e.cause === 'typhoon').map(e => e.flag?.name ?? e.delta?.target ?? e.story);
   const before = Array.from({ length: N_STOPS }, (_, k) => show.stage.partObject(`bulb.lamps.${k}`)), lamps = [], update = show.update;
   show.update = (dt, t) => { update(dt, t); before.forEach((o, k) => { const now = show.stage.partObject(`bulb.lamps.${k}`); if (o && !lamps.includes(k) && now !== o && now?.visible) lamps.push(k); }); };
-  // world 拍收到 peopleVisible:false 那一刻：島上的人都已走到門口停下、被藏起來
-  const w0 = worldLog.length, push = worldLog.push.bind(worldLog);
-  let atDoors = null;
-  worldLog.push = (...a) => { if (a[0][0].peopleVisible === false && !a[0][1] && atDoors === null) atDoors = people(show).filter(m => cellAt(m.pos.x, m.pos.z)).every(m => m.hidden && !m.walking); return push(...a); };
+  // 每個人是走到門口停下那一刻才藏起來（不是整群一起關掉）；記下藏的時候在不在走、離門口多遠
+  const w0 = worldLog.length, hide = show.roster.hide, hides = [];
+  show.roster.hide = m => { hides.push({ m, walking: m.walking }); return hide(m); };
   const n = bubblesLog.length, marks = [];
   let secs;
-  try { secs = await run(evs, { onMark: e => marks.push([e, show.elapsed]) }); } finally { show.update = update; worldLog.push = push; }
+  try { secs = await run(evs, { onMark: e => marks.push([e, show.elapsed]) }); } finally { show.update = update; show.roster.hide = hide; }
   const i0 = marks.findIndex(([e]) => landing(e)), i1 = marks.findLastIndex(([e]) => e.kind === 'fx' && e.cause === 'typhoon');
   const seg = (marks[i1 + 1]?.[1] ?? secs) - marks[i0][1];
   const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
-  const storm = live.findIndex(w => w.storm === 1), hide = live.findIndex(w => w.peopleVisible === false);
-  assert.ok(storm >= 0 && hide > storm, `world order ${JSON.stringify(live)}`);
-  assert.equal(atDoors, true, 'people hidden only after they reach the doors');
+  assert.ok(live.some(w => w.storm === 1 && w.rain === 1), `storm world ${JSON.stringify(live)}`);
+  assert.ok(live.every(w => w.peopleVisible !== false), 'the whole people group is never switched off');
+  assert.ok(hides.length > 0 && hides.every(h => !h.walking), 'people hidden only once they stop at a door');
   const bubbles = bubblesLog.slice(n);
   if (reacts.includes('blackout')) {
     assert.ok(live.some(w => w.glowScale === 0));
@@ -163,11 +164,15 @@ async function playLanding(h, evs) {
   if (reacts.includes('flooded')) {
     assert.equal(show.roster.members('token.staff').length, 0); assert.equal(show.roster.members('token.swimmers').length, 2);
     assert.ok(show.roster.members('token.swimmers').every(m => !m.hidden), 'swimmers shown');
+    assert.ok(bubbles.some(b => b.kind === '！' && Math.hypot(b.at.x - anchorWorld('token').x, b.at.z - anchorWorld('token').z) < 2.5), 'staff ！ by the station');
   }
-  if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
+  if (reacts.includes('domeRats')) { const st = show.roster.members('baseball.staff'); assert.equal(st.length, 2); assert.ok(st.every(m => !m.hidden), 'dome staff visible'); }
+  // 其他島上的人整回合躲著（淹水的站務員／泳客、巨蛋工作人員除外）
+  const out = new Set(['token.swimmers', 'baseball.staff']);
+  assert.ok(hides.filter(h => !out.has(h.m.key) && !h.m.gone).every(h => h.m.hidden), 'people stay indoors for the rest of the turn');
   if (reacts.includes('boba')) assert.ok(show.stage.partObject('typhoon.scooter')?.visible, 'delivery scooter revealed');
   if (reacts.some(k => k.includes('颱風假'))) assert.ok(bubbles.some(b => b.kind === '♪'), 'typhoon-day ♪');
-  for (const k of show.roster.keys()) for (const m of show.roster.members(k)) { assert.equal(m.mode, 'home', k); assert.equal(m.hidden, false, k); }
+  for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
   assert.equal(show.stage.lv.typhoon, 2);
   return { reacts, secs, seg, lamps };
 }
@@ -193,12 +198,14 @@ test('landing with all five reactions (crafted state) live as one turn: 12–25 
   assert.ok(seg >= 12 && seg <= 25, `landing + reactions took ${seg.toFixed(1)}s (turn ${secs.toFixed(1)}s)`);
   assert.deepEqual(lamps, Array.from({ length: N_STOPS }, (_, i) => N_STOPS - 1 - i), 'one stop per apply, reverse road order');
 });
-test('Lv3 ends with people visible again (world peopleVisible: true) and the rainbow standing', async () => {
+test('Lv3: the sky clears, nobody is hidden, and the rainbow is standing', async () => {
   const h = await headlessShow(), { show, run, worldLog } = h, order = SOLUTIONS[0];
   const evs = await turnWith(run, order, e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 3);
   const w0 = worldLog.length; await run(evs);
   const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
-  assert.ok(live.findIndex(w => w.storm === 0) < live.findIndex(w => w.peopleVisible === true), JSON.stringify(live));
+  assert.ok(live.some(w => w.storm === 0 && w.rain === 0), JSON.stringify(live));
+  assert.ok(live.every(w => !('peopleVisible' in w) || w.peopleVisible), 'no people switch in the script');
+  assert.ok(people(show).every(m => !m.hidden));
   assert.equal(show.stage.partObject('typhoon.main'), null);
   assert.equal(show.stage.partObject('typhoon.rainbow').scale.y, 1);
 });
@@ -222,5 +229,5 @@ test('skip during the door walks: everyone home and visible, world snapped to th
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) { assert.equal(m.mode, 'home', k); assert.equal(m.hidden, false, k); }
   assert.equal(show.stage.lv.typhoon, 2);
   const [w, instant] = worldLog.at(-1);
-  assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.peopleVisible, false);
+  assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.storm, 1);
 });

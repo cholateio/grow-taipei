@@ -242,6 +242,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); veil(m); }
   function hide(m) { m.hidden = true; place(m); }
   function show(m) { m.hidden = false; place(m); }
+  // 全部露出來：hidden 只在一回合裡有效（颱風登陸躲進門裡），下一回合開始、跳過、RESET 都收掉
+  function showAll() { for (const g of groups.values()) for (const m of g.members) if (m.hidden) show(m); }
 
   // 跳過（§4.3 立刻到最終狀態）：先套用 hold 住的宣告，再讓每個人（劇本手上的、還在走的都算）瞬間到家、停下、露出來
   function snap() {
@@ -337,7 +339,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   }
 
   const api = {
-    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, snap, update, reset,
+    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, showAll, snap, update, reset,
     members: key => [...(groups.get(key)?.members ?? [])],
     nearest(key, p) {
       let best = null, bestD = Infinity;

@@ -131,3 +131,23 @@ test('skip and reset still snap when a beat throws in end', async () => {
   await rejectedB;
   assert.equal(b.show.stage.lv.milk, 0, 'stage reset ran'); assert.equal(b.show.stage.pendingKeys().length, 0); assert.equal(b.show.bubbles.count, 0);
 });
+
+// 颱風登陸那回合：每個人走到門口各自藏起來、整回合藏著；下一回合一開始全部露出來（§8.5「登陸後的回合：人在街上」）
+test('people hidden at their doors on the landing turn are all back out when the next turn starts', async () => {
+  const { show, run } = await headlessShow();
+  let s = engine.createState(spec), landed = false;
+  for (const id of SOLUTIONS[0]) {
+    const r = place(s, id); s = r.state;
+    const evs = [...r.events, { kind: 'settle' }];
+    if (landed) {
+      const p = show.turn(evs);
+      for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.hidden, false, k);
+      show.skip(); await p; break;
+    }
+    if (!r.events.some(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2)) { await run(evs, { instant: true }); continue; }
+    await run(evs); landed = true;
+    const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
+    assert.ok(hidden.length > 0, 'somebody is still hidden at the end of the landing turn');
+  }
+  assert.ok(landed);
+});

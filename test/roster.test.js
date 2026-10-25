@@ -213,3 +213,15 @@ test('a wander home off the main island loops around a ring instead of being pul
   assert.ok(near(ms[0]));
   roster.claim(ms[1]); roster.setPose(ms[1], { x: c.x, y: 0.45, z: c.z + 1 }); roster.snap(); assert.ok(near(ms[1]));
 });
+
+// 颱風登陸：每個人在門口各自藏起來，到下一回合開始（或跳過）才一起露出來
+test('showAll un-hides every member and puts them back on the ground', () => {
+  const { roster, flash } = setup();
+  roster.declare('k', kids(3)); roster.flush(); flash.update(1);   // 白光過了：都露出來了
+  const ms = roster.members('k'); ms.forEach(m => roster.hide(m));
+  assert.ok(ms.every(m => m.walker.pose.y < -1), 'hidden under the sea');
+  assert.ok(ms.every(m => m.hidden));
+  roster.showAll();
+  assert.ok(ms.every(m => !m.hidden));
+  for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
+});

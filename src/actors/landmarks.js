@@ -1,11 +1,9 @@
 // 北側台地的常駐地標：陽明山（火山，山口冒煙）與北投溫泉（池子、小澡堂、蒸氣）。開局就在（§4.1）。
-import { landmarkWorld } from './anchors.js';
-import { axialToWorld, cellTop } from '../scene/hex.js';
+import { landmarkWorld, cellCentre } from './anchors.js';
 
 export const id = 'landmarks';
 
-// 島民六人：一個名冊，中心格、[-1,1]、[1,0] 三格輪流當家（第 i 人用 home.at[i % 3]），各格兩人一戴帽一不戴
-const cellCentre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
+// 島民三人（§13.4 背景減量，原本六人）：一個名冊，中心格、[-1,1]、[1,0] 三格各住一人（第 i 人用 home.at[i % 3]）
 const HOMES = [[0, 0], [-1, 1], [1, 0]].map(cellCentre);
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
@@ -35,6 +33,6 @@ export function view(lv = {}) {
       ],
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
-    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: 6, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: 1.8 } },
+    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: 3, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: 1.8 } },
   };
 }

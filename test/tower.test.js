@@ -99,7 +99,8 @@ async function liveTurn(h, order, { closing = 0 } = {}) {
     const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i >= order.length;
     if (i + 1 < turns.length) { await h.run(events, { instant: true, montage }); continue; }
     const n0 = h.bubblesLog.length; let mark = null;
-    const secs = await h.run(events, { montage, onMark: e => { if (e.kind === 'settle') mark = h.show.elapsed; } });
+    // 劇本秒數（不含鏡頭 focus 拍）：settle 那一段 = 回合結束 − settle 開始
+    const secs = await h.run(events, { montage, onMark: e => { if (e.kind === 'settle') mark = h.scriptElapsed(); } });
     return { settleSecs: secs - mark, bubbles: h.bubblesLog.slice(n0) };
   }
 }

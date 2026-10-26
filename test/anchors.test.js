@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHORS, anchorWorld, LANDMARKS, landmarkWorld, routeBetween } from '../src/actors/anchors.js';
+import { ANCHORS, anchorWorld, LANDMARKS, landmarkWorld, routeBetween, cellOf, cellCentre } from '../src/actors/anchors.js';
 import { MAIN_CELLS, axialToWorld, RING_R, cellTop, PLATEAU_TOP, TOP, edgeMidpoint } from '../src/scene/hex.js';
 import { ORDER } from '../src/rules/spec.js';
 test('every item and the tower have an anchor inside the walking ring of a main-island cell', () => {
@@ -25,4 +25,11 @@ test('routeBetween goes door → bridge head A → bridge head B → destination
   assert.equal(r.length, 4); assert.equal(r[0].y, TOP); assert.equal(r[3].y, TOP);
   const { a, b } = edgeMidpoint([1, 0], [0, 0], RING_R * Math.sqrt(3) / 2); assert.ok(Math.abs(r[1].x - a.x) < 1e-9); assert.ok(Math.abs(r[2].x - b.x) < 1e-9);
   assert.throws(() => routeBetween([1, 0], { x: 0, z: 0 }, [-1, 0], { x: 0, z: 0 }), /adjacent/);
+});
+// 鏡頭跟主線（§13.1）：物品與 101 所在的格子、格子的中心（地面高度）
+test('cellOf gives the hex cell of an item or the tower; cellCentre is that cell on the ground', () => {
+  assert.deepEqual(cellOf('milk'), [-1, 0]); assert.deepEqual(cellOf('tower'), [0, 0]); assert.deepEqual(cellOf('baseball'), [-1, 1]);
+  assert.equal(cellOf('turn'), null); assert.equal(cellOf(undefined), null);
+  const c = cellOf('milk'); c[0] = 9; assert.deepEqual(cellOf('milk'), [-1, 0], 'a copy, not the table');
+  const w = axialToWorld(1, -1); assert.deepEqual(cellCentre([1, -1]), { x: w.x, y: PLATEAU_TOP, z: w.z });
 });

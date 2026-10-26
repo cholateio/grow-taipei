@@ -4,14 +4,17 @@
 //   stall → script.stall；settle → 101 的 script.settle；劇本回 null／undefined（或沒寫）就走預設劇本（§6.6）。
 // 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡閃白補上（沒剩就 0 秒）。
 // 上一回合被撞歪的零件（stage.tilted）在回合一開頭閃白扶正（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
-// 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家，太長連走路也拿掉。
+// 鏡頭跟主線（§13.1）：有東西演的事件，劇本前面先 focus 到事件的格子（同一格連續不重複），不同物品之間先空 GAP 秒；
+//   劇本第一拍自己就是 focus 的不補；回合最後 focus('home') 回全景、名冊全部恢復日常。
+// 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
 import { foldEvent } from '../rules/engine.js';
-import { anchorWorld } from '../actors/anchors.js';
+import { anchorWorld, cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
 
-export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together'];
+export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'];
+export const GAP = 0.6;   // 不同物品的事件之間空幾秒（§13.1）
 const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.2;
 
 const sum = lv => Object.values(lv).reduce((a, b) => a + b, 0);
@@ -25,6 +28,12 @@ export function estimateTurn(beats, ctx) {
   };
   return beats.reduce((t, b) => t + one(b), 0);
 }
+
+// 有沒有一拍（together 裡也算）符合 f
+const some = (beats, f) => beats.some(b => f(b) || (b.kind === 'together' && b.beats && some(b.beats, f)));
+// 有東西演：除了不閃白的套用（瞬間換上、沒有畫面）以外還有別的拍
+const shows = beats => some(beats, b => b.kind !== 'together' && !(b.kind === 'apply' && b.blink === false));
+const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
 
 // 只留 keep(拍) 為真的拍；together 裡面也過濾，過濾完空了就整個拿掉
 function keepOnly(beats, keep) {
@@ -70,6 +79,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   ctx.montage = montage;
   const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
+  let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   const out = [...(ctx.stage?.tilted ?? [])].map(upright);
   if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR)));
 
@@ -96,14 +106,26 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
     }
     if (montage) beats = keepOnly(beats, b => MONTAGE_KEEP.includes(b.kind));
-    // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數）
-    out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...beats, B.apply(e));
+    // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101
+    const lead = [];
+    if (e.kind !== 'wait' && shows(beats)) {
+      const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
+      if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));
+      const own = beats[0]?.kind === 'focus';
+      if (!own && cell && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
+      // 劇本自己動了鏡頭（focus、舊的 camera 拍）：不知道停在哪，下一個事件一定重新平移
+      if (some(beats, b => b.kind === 'focus' || b.kind === 'camera')) lastCell = null;
+      lastItem = item;
+    }
+    // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
+    out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...lead, ...beats, B.apply(e));
   });
 
-  // 收尾：劇本手上的人回日常；全島效果照舞台最後的狀態瞄準（演到這拍才讀，跳過時 ctx.instant 讓它貼齊）
+  // 收尾：劇本手上的人回日常；全島效果照舞台最後的狀態瞄準（演到這拍才讀，跳過時 ctx.instant 讓它貼齊）；
+  // 最後回全景（名冊全部恢復日常；玩家拖過鏡頭也照回）
   out.push(B.home(c => scriptMembers(c.roster)), {
     kind: 'world', dur: 0,
     start(c) { c.world(worldEffects(c.stage.lv, c.stage.flags, c.stage.meta), !!c.instant); },
-  });
+  }, B.focus('home'));
   return montage && estimateTurn(out, ctx) > MONTAGE_CAP ? keepOnly(out, b => b.kind !== 'walk') : out;
 }

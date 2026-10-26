@@ -1,13 +1,13 @@
 // 節奏報表：無頭模擬兩條正解，一回合一回合（8 次放置 + 倒數三回合）演完，印每回合秒數。
 //   npm run pace              印表
 //   node tools/pace.mjs --verbose   多印每回合每個事件的秒數（mark 拍之間的 elapsed 差值）
-//   node tools/pace.mjs --check     任一回合 < 8 s 或 > 45 s、倒數回合 > 20 s 就列出並 exit 1
+//   node tools/pace.mjs --check     任一回合 < 8 s 或 > 50 s、倒數回合 > 22 s 就列出並 exit 1
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow } from '../test/helpers/show.js';
 
-const MIN = 8, MAX = 45, CLOSING_MAX = 20;
+const MIN = 8, MAX = 50, CLOSING_MAX = 22;   // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45／20 → 50／22
 const args = new Set(process.argv.slice(2));
 const verbose = args.has('--verbose'), check = args.has('--check');
 const name = id => spec.ITEMS[id].name;
@@ -27,7 +27,8 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
     const r = kind === 'place' ? place(state, id, spec) : advance(state, spec); state = r.state;
     const events = [...r.events, { kind: 'settle' }];
     const marks = [];   // [事件, 開演那一刻的 elapsed]
-    const secs = await run(events, { montage: kind === 'advance', onMark: e => marks.push([e, show.elapsed]) });
+    await run(events, { montage: kind === 'advance', onMark: e => marks.push([e, show.elapsed]) });
+    const secs = show.elapsed;   // 整回合（含鏡頭平移、空拍、回全景）
     total += secs;
     const k = i - order.length + 1;   // 倒數第幾回合（放置回合 ≤ 0）
     const head = kind === 'place' ? `${i + 1} ${name(id)}` : `倒數 ${k}`;

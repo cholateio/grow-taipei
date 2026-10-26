@@ -1,6 +1,6 @@
 // 演出層入口：把走路格、閃白、泡泡、名冊、舞台、時間軸接起來，給遊戲一個 show.turn(events) 演一整回合。
 // 每幀 update(dt, t) 推進；跳過、reduced-motion、RESET 一律立刻到最終狀態（§4.3）：
-//   舞台全部 commit、名冊每個人瞬間到家、閃白與泡泡收掉、鏡頭回全景、全島效果貼齊。
+//   舞台全部 commit、名冊每個人瞬間到家、閃白與泡泡收掉、鏡頭回全景、名冊全部恢復日常、全島效果貼齊。
 import { createNav } from './nav.js';
 import { createBlink } from './blink.js';
 import { createBubbles } from './bubbles.js';
@@ -23,11 +23,15 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   scene.add(roster.group);
   stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster, blink });
 
-  // 鏡頭：拍會平移；記住這回合有沒有離開全景，reduced-motion 回合結束才知道要不要拉回來
+  // 鏡頭：拍會平移／拉近；記住這回合有沒有離開全景，reduced-motion 回合結束才知道要不要拉回來。
+  // 玩家拖過鏡頭（grabbed）focus 拍就跳過；回合開始 release 放開記號（§13.1，計畫 3.8 R4）
   let panned = false;
   const camRig = {
     panTo(t, ms) { panned = true; rig.panTo(t, ms); },
+    focus(t, opts) { panned = true; return rig.focus(t, opts); },
     home(ms) { panned = false; rig.home(ms); },
+    get grabbed() { return !!rig.grabbed; },
+    release() { rig.release?.(); },
   };
   const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
   const timeline = createTimeline({ reducedMotion });
@@ -39,7 +43,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   refresh(); roster.snap(); blink.clear();
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
-    stage.commitAll(); roster.showAll(); roster.snap(); blink.clear(); bubbles.clear();
+    stage.commitAll(); roster.showAll(); roster.snap(); roster.setFocus(null); blink.clear(); bubbles.clear();
     if (home) camRig.home(0);
     refresh();
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
@@ -48,6 +52,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   function turn(events, { montage = false, onMark } = {}) {
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
+    camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
     roster.showAll();   // 上一回合躲進門裡的人（颱風登陸）這回合回到街上
     refresh();
     const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage }, ctx);
@@ -57,8 +62,8 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
       if (playing !== me) return;   // 已經跳過／中止／RESET：那邊已經收好了
       playing = null;
       if (ctx.instant) { snap({ home: panned }); return; }   // reduced-motion：瞬間演完；鏡頭只在拍移動過時才拉回
-      // 照常演完：把還沒 commit 的換上、hold 住的名冊套用、走路格跟著新零件
-      stage.commitAll(); roster.syncAll(); refresh();
+      // 照常演完：把還沒 commit 的換上、hold 住的名冊套用、走路格跟著新零件；名冊全部恢復日常（某一拍丟錯沒演到 focus('home') 也一樣）
+      stage.commitAll(); roster.syncAll(); roster.setFocus(null); refresh();
     };
     return done.then(end, err => { end(); throw err; });
   }
@@ -80,8 +85,8 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     turn, skip, abort,
     reset() {
       try { abort(); } finally {
-        stage.reset();   // 舞台 reset 也清掉名冊
-        blink.clear(); bubbles.clear(); camRig.home(0); refresh();
+        stage.reset();   // 舞台 reset 也清掉名冊（連焦點一起）
+        roster.setFocus(null); blink.clear(); bubbles.clear(); camRig.home(0); refresh();
       }
     },
     update(dt, t) {
@@ -99,6 +104,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     },
     get busy() { return timeline.busy; },
     get elapsed() { return timeline.elapsed; },
+    get currentKind() { return timeline.currentKind; },   // 正在演哪一種拍（測試把鏡頭 focus 的秒數從劇本秒數扣掉）
     stage, roster, nav, bubbles, blink,
   };
 }

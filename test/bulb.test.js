@@ -165,12 +165,14 @@ test('grow 2 live: the stops light up one at a time in road order (cyclic from w
     assert.ok(first.every((k, i) => !i || k === (first[i - 1] + 1) % N_STOPS), `stop order ${first}`);
   }
 });
+// 排隊的那一刻（兩個 ♥ 冒出來時）兩人都在夜市旁；演完回日常後會走開（回合最後回全景那 1 秒也在走）
 test('Lv4: the two nearest islanders queue at the market', async () => {
-  const h = await headlessShow(), { show } = h, m = landmarkWorld('market');
-  const { e } = await liveAt(h, SOLUTIONS[0], isBulb(4));
+  const h = await headlessShow(), m = landmarkWorld('market');
+  const { e, n } = await liveAt(h, SOLUTIONS[0], isBulb(4));
   assert.equal(e.to, 4);
-  const near2 = show.roster.members('landmarks.islanders').filter(p => Math.hypot(p.pos.x - m.x, p.pos.z - m.z) < 1.6);
-  assert.ok(near2.length >= 2, `islanders by the market: ${near2.length}`);
+  const hearts = h.bubblesLog.slice(n).filter(b => b.kind === '♥');
+  assert.equal(hearts.length, 2);
+  assert.ok(hearts.every(b => Math.hypot(b.at.x - m.x, b.at.z - m.z) < 1.6), `islanders by the market: ${hearts.map(b => Math.hypot(b.at.x - m.x, b.at.z - m.z).toFixed(2))}`);
 });
 // 自動 footprint 是包圍盒 ×0.9（斜放的零件會鼓出去），所以每個 footprint 先內縮 0.25（一個小人的寬）再比
 test('ROAD clears the core of every footprint at the end of both solutions', async () => {
@@ -199,6 +201,8 @@ test('grow 2 picks its first stop from where the electrician is when the walk st
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
   // 整回合 live 演（珍奶放置、鮮奶、晶片的劇本都在燈泡前面），電工在那段時間照常巡路
+  // （名冊焦點關掉：§13.4 焦點格外的人會站著，這裡要的是「他在別的劇本演的時候走開了」）
+  show.roster.setFocus = () => {};
   let atBuild = null, atWalk = null;
   const scripted = bulb.script.grow[2];
   bulb.script.grow[2] = (e, s2, ctx) => {

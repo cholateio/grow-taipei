@@ -7,6 +7,9 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, ALL } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
+import * as THREE from '../vendor/three/three.module.js';
+import { createCameraRig, overviewDistance } from '../src/scene/camera.js';
+import { cellCentre } from '../src/actors/anchors.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
@@ -118,7 +121,7 @@ test('skip and reset still snap when a beat throws in end', async () => {
   const r = place(engine.createState(spec), 'milk'), events = [...r.events, { kind: 'settle' }];
   const a = await headlessShow({ modules });
   const p = a.show.turn(events); const rejected = assert.rejects(p, /boom/);
-  for (let t = 0; t < 0.1; t += 1 / 30) a.show.update(1 / 30, t);
+  for (let t = 0; t < 0.9; t += 1 / 30) a.show.update(1 / 30, t);   // 前 0.8 秒是鏡頭平移到鮮奶那一格的拍
   assert.ok((a.show.stage.pendingKeys().length > 0 || a.show.blink.count > 0) && a.show.bubbles.count > 0, 'mid-blink with a LEVEL UP up');
   assert.throws(() => a.show.skip(), /boom/);
   await rejected;
@@ -126,7 +129,7 @@ test('skip and reset still snap when a beat throws in end', async () => {
   assert.deepEqual(a.rig.log.at(-1), ['home', 0]);
   const b = await headlessShow({ modules });
   const q = b.show.turn(events); const rejectedB = assert.rejects(q, /boom/);
-  for (let t = 0; t < 0.1; t += 1 / 30) b.show.update(1 / 30, t);
+  for (let t = 0; t < 0.9; t += 1 / 30) b.show.update(1 / 30, t);
   assert.throws(() => b.show.reset(), /boom/);
   await rejectedB;
   assert.equal(b.show.stage.lv.milk, 0, 'stage reset ran'); assert.equal(b.show.stage.pendingKeys().length, 0); assert.equal(b.show.bubbles.count, 0);
@@ -200,4 +203,75 @@ test('the wait hint on a landing turn hangs over the building when its owner is 
   assert.ok(hint, 'the wait hint showed');
   const head = show.stage.headOf('boba');
   assert.ok(Math.hypot(hint.at.x - head.x, hint.at.z - head.z) < 1e-6 && Math.abs(hint.at.y - head.y) < 1e-6, `hint at (${hint.at.x.toFixed(2)}, ${hint.at.y.toFixed(2)}, ${hint.at.z.toFixed(2)})`);
+});
+
+// 真的鏡頭 rig（16:9 全景），記下每次 focus／home；step 一幀推演出層與鏡頭
+function realRig() {
+  const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() {} };
+  const rig = createCameraRig({ THREE, camera, controls }), calls = [];
+  rig.fit(16 / 9);
+  const { focus, home } = rig;
+  rig.focus = (t, o) => { calls.push(['focus', t, o]); return focus(t, o); };
+  rig.home = ms => { calls.push(['home', ms]); return home(ms); };
+  const atHome = () => controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-6 && Math.abs(camera.position.distanceTo(controls.target) - overviewDistance(16 / 9)) < 1e-6;
+  return { rig, camera, controls, calls, atHome };
+}
+const near = (v, p) => Math.hypot(v.x - p.x, v.y - p.y, v.z - p.z) < 1e-6;
+
+test('skip during a focus pan ends with the rig at home and the next turn pans again (review focus 1)', async () => {
+  const cam = realRig(), { show, run } = await headlessShow({ rig: cam.rig });
+  const r = place(engine.createState(spec), 'milk');
+  const p = show.turn([...r.events, { kind: 'settle' }]);
+  let t = 0;
+  for (; t < 5 && !(cam.rig.flying && cam.calls.some(c => c[0] === 'focus')); t += 1 / 30) { show.update(1 / 30, t); cam.rig.update(1 / 30); }
+  assert.ok(cam.rig.flying, 'mid-pan'); assert.deepEqual(cam.calls[0][2], { zoom: 0.6, ms: 1000 });
+  show.skip(); await p;
+  cam.rig.update(1 / 30);
+  assert.equal(cam.rig.flying, false); assert.ok(cam.atHome(), 'back at the overview at once');
+  // 下一回合照常平移拉近（晶片那一格）
+  const before = cam.calls.length, r2 = place(r.state, 'chip'), chip = cellCentre([1, 0]);
+  const q = show.turn([...r2.events, { kind: 'settle' }]);
+  let reached = false;
+  for (t = 0; t < 60 && show.busy; t += 1 / 30) { show.update(1 / 30, t); cam.rig.update(1 / 30); reached ||= near(cam.controls.target, chip); await Promise.resolve(); }
+  await q;
+  assert.ok(cam.calls.slice(before).some(c => c[0] === 'focus' && c[2].ms === 1000), 'the next turn pans');
+  assert.ok(reached, 'the camera reached the chip cell'); assert.deepEqual(cam.calls.at(-1), ['home', 1000]);
+});
+
+test('after the player grabs the camera, no focus moves the rig for the rest of the turn (review focus 2)', async () => {
+  // 鮮奶、晶片之後放燈泡：這回合有好幾個物品的事件（不拖的話鏡頭會平移好幾次）
+  const setup = async () => {
+    const cam = realRig(), h = await headlessShow({ rig: cam.rig });
+    let s = engine.createState(spec);
+    for (const id of ['milk', 'chip']) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+    const r = place(s, 'bulb');
+    cam.calls.length = 0;
+    return { cam, ...h, events: [...r.events, { kind: 'settle' }], state: r.state };
+  };
+  const ref = await setup();
+  await ref.run(ref.events);
+  assert.ok(ref.cam.calls.filter(c => c[0] === 'focus').length >= 2, 'without a grab the turn pans more than once');
+  const { cam, show, run, events, state } = await setup();
+  const p = show.turn(events);
+  let t = 0;
+  for (; t < 5 && !cam.calls.some(c => c[0] === 'focus'); t += 1 / 30) { show.update(1 / 30, t); cam.rig.update(1 / 30); }
+  for (let i = 0; i < 6; i++) { show.update(1 / 30, t); cam.rig.update(1 / 30); t += 1 / 30; }
+  cam.rig.cancel();   // 玩家按下滑鼠：停在半路
+  const held = cam.controls.target.clone(), pos = cam.camera.position.clone();
+  let homed = false;
+  while (show.busy && t < 60) {
+    show.update(1 / 30, t); cam.rig.update(1 / 30); t += 1 / 30;
+    homed ||= cam.calls.at(-1)[0] === 'home';
+    if (!homed) assert.ok(cam.controls.target.distanceTo(held) < 1e-9 && cam.camera.position.distanceTo(pos) < 1e-9, `the camera stays where the player left it (${t.toFixed(2)} s)`);
+    await Promise.resolve();
+  }
+  await p;
+  assert.equal(cam.calls.filter(c => c[0] === 'focus').length, 1, 'no focus after the grab');
+  assert.deepEqual(cam.calls.at(-1), ['home', 1000], 'the turn still ends at the overview'); assert.equal(cam.rig.grabbed, false);
+  // 回合之間拖一下：下一回合照樣跟著主線（R4）
+  for (let i = 0; i < 40; i++) cam.rig.update(1 / 30);
+  cam.rig.cancel(); cam.calls.length = 0;
+  const r2 = place(state, 'token');
+  await run([...r2.events, { kind: 'settle' }]);
+  assert.ok(cam.calls.some(c => c[0] === 'focus'), 'a grab between turns does not stop the next turn');
 });

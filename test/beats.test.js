@@ -9,7 +9,7 @@ import { axialToWorld, cellTop } from '../src/scene/hex.js';
 import { createPeople } from '../src/scene/people.js';
 import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
-const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, partHead } = await import('../src/show/beats.js');
+const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, partHead } = await import('../src/show/beats.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 const ev = { kind: 'grow', item: 'milk' };
@@ -27,6 +27,7 @@ function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
     home: m => { m.mode = 'home'; roster.homed.push(m); },
     setPose: (m, { x, y, z, yaw = m.yaw, walking = false }) => { m.pos = { x, y: y ?? nav.groundY(x, z), z }; m.yaw = yaw; m.walking = walking; },
     spawnHeld: (key, at) => { const m = { ...member, key, pos: { ...at }, mode: 'script' }; m.head = () => ({ ...m.pos }); roster.spawned = m; return m; },
+    focus: [], setFocus: cells => roster.focus.push(cells),
   };
   const objects = new Map(parts.map(k => [k, new THREE.Group()]));
   const stage = {
@@ -50,7 +51,10 @@ function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
     levelUp: (head, opts) => { bubbles.levels.push({ head, opts }); return { done: Promise.resolve(), cancel: () => bubbles.cancelled++ }; },
   };
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 4 }) });
-  const rig = { calls: [], panTo: (p, ms) => rig.calls.push(['panTo', p, ms]), home: ms => rig.calls.push(['home', ms]) };
+  const rig = {
+    calls: [], grabbed: false, panTo: (p, ms) => rig.calls.push(['panTo', p, ms]), home: ms => rig.calls.push(['home', ms]),
+    focus: (p, opts) => rig.calls.push(['focus', p, opts]),
+  };
   const rail = { offset: 0 }, worlds = [];
   const ctx = { stage, roster, nav, bubbles, blink, rig, rail, world: (e, instant) => worlds.push([e, instant]), montage: false, instant: false, now: 0, B, worlds };
   const inner = createTimeline(), tl = Object.create(inner);
@@ -243,6 +247,29 @@ test('camera home/pan and world pass through to rig and ctx.world; instant camer
   tl.update(1); assert.deepEqual(rig.calls[1], ['home', 1000]); tl.skip();
   ctx.instant = true; tl.play([B.camera(p), B.world({ storm: true })], ctx); tl.skip();
   assert.deepEqual(rig.calls[2], ['panTo', p, 0]); assert.deepEqual(ctx.worlds, [[{ storm: true }, true]]);
+});
+// §13.1 鏡頭跟主線：focus 平移拉近到格子中心 1 秒、名冊只讓那一格的人做日常；拖過鏡頭就跳過（0 秒）；home 一定回全景
+test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and narrows the roster focus; grabbed skips it; home always runs', () => {
+  const { ctx, tl, rig, roster } = fake();
+  tl.play([B.focus([1, 0])], ctx); tl.update(0);
+  assert.equal(FOCUS_BEAT, 0.8); assert.equal(tl.currentDur, FOCUS_BEAT); assert.deepEqual(rig.calls[0], ['focus', c([1, 0]), { zoom: 0.6, ms: 1000 }]); assert.deepEqual(roster.focus, [[[1, 0]]]);
+  tl.skip();
+  // 點：格子由點算；zoom 照傳
+  const p = { x: c([0, 1]).x + 0.5, y: 0.65, z: c([0, 1]).z };
+  tl.play([B.focus(p, { zoom: 0.8 })], ctx); tl.update(0);
+  assert.deepEqual(rig.calls[1], ['focus', p, { zoom: 0.8, ms: 1000 }]); assert.deepEqual(roster.focus.at(-1), [[0, 1]]); tl.skip();
+  // 物品 id：那個物品的格子
+  tl.play([B.focus('baseball')], ctx); tl.update(0); assert.deepEqual(rig.calls[2], ['focus', c([-1, 1]), { zoom: 0.6, ms: 1000 }]); tl.skip();
+  // 拖過鏡頭：不動、不佔時間（名冊焦點照樣跟著主線）
+  rig.grabbed = true; let ended = false;
+  tl.play([B.focus([0, 0])], ctx).then(() => { ended = true; }); tl.update(0);
+  assert.equal(rig.calls.length, 3); assert.equal(tl.busy, false); assert.deepEqual(roster.focus.at(-1), [[0, 0]]);
+  // home：拖過也照回，名冊全部恢復；不佔時間（鏡頭在回合結束後自己飛完）
+  tl.play([B.focus('home')], ctx); tl.update(0);
+  assert.equal(tl.busy, false); assert.deepEqual(rig.calls[3], ['home', 1000]); assert.equal(roster.focus.at(-1), null);
+  ctx.instant = true; rig.grabbed = false; tl.play([B.focus([0, 0]), B.focus('home')], ctx); tl.skip();
+  assert.deepEqual(rig.calls.slice(4), [['focus', c([0, 0]), { zoom: 0.6, ms: 0 }], ['home', 0]], 'instant uses 0 ms');
+  return Promise.resolve().then(() => assert.ok(ended));
 });
 // §13.2：spawn 不閃、不佔時間（之後由 walk 帶進場）
 test('spawn takes a held member out at once without a blink; home hands members back to the roster', () => {

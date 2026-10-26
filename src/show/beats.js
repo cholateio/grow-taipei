@@ -5,7 +5,8 @@ import { together } from './timeline.js';
 import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';
 import { trainPose } from '../actors/token.js';
-import { anchorWorld } from '../actors/anchors.js';
+import { anchorWorld, cellOf, cellCentre } from '../actors/anchors.js';
+import { worldToAxial } from '../scene/hex.js';
 import { createPathCursor } from '../scene/path.js';
 
 export { together };
@@ -146,7 +147,7 @@ export function apply(e, { blink = true, only, hold } = {}) {
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
   const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: blink }; };
   return {
-    kind: 'apply', only,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）
+    kind: 'apply', only, blink,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）；blink 給 turn.js 判斷有沒有東西演
     dur: () => (keys.length ? BLINK + STAGGER * (keys.length - 1) : 0),
     estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
@@ -179,6 +180,27 @@ export function camera(target) {
   return {
     kind: 'camera', dur: 1.0,
     start(ctx) { const ms = ctx.instant ? 0 : 1000; if (target === 'home') ctx.rig.home(ms); else ctx.rig.panTo(target, ms); },
+  };
+}
+
+// 鏡頭跟主線（§13.1）：target 是格子 [q, r]（平移到格子中心）、物品 id（那個物品的格子）或點 { x, y, z }；
+// 1 秒平移＋拉近到全景距離 × zoom，名冊只讓那一格的人做日常（§13.4）。玩家拖過鏡頭 → 不動、不佔時間。
+// 拍只佔 FOCUS_BEAT 秒：easeInOut 最後 0.2 秒只剩 3% 的路，劇本先接著演（節奏門檻 50 s，計畫 3.8 Task 3）。
+// 'home'：回全景、名冊全部恢復；拖過也照回（清掉拖過的記號）。不佔時間：回合最後沒有別的要演，鏡頭在回合結束後自己飛完
+export const FOCUS_BEAT = 0.8;
+export function focus(target, { zoom = 0.6 } = {}) {
+  return {
+    kind: 'focus', dur: target === 'home' ? 0 : FOCUS_BEAT, target,
+    start(ctx) {
+      const ms = ctx.instant ? 0 : 1000;
+      if (target === 'home') { ctx.roster.setFocus(null); ctx.rig.home(ms); return; }
+      // 點：格子用軸座標反算（衛星島也有自己的格子）
+      const cell = Array.isArray(target) ? target : typeof target === 'string' ? cellOf(target) : worldToAxial(target.x, target.z);
+      if (!cell) return false;
+      ctx.roster.setFocus([cell]);
+      const point = Array.isArray(target) || typeof target === 'string' ? cellCentre(cell) : target;
+      return ctx.rig.grabbed ? false : ctx.rig.focus(point, { zoom, ms });
+    },
   };
 }
 
@@ -317,6 +339,6 @@ export function jump(who, target, dur = 0.5) {
 }
 
 export const B = {
-  spawn, walk, bubble, gesture, apply, levelUp, camera, world, wait, home, together, move, scaleIn,
+  spawn, walk, bubble, gesture, apply, levelUp, camera, focus, world, wait, home, together, move, scaleIn,
   hideParts, showParts, trainDepart, trainStop, trainHead, seat, jump, tilt, partHead,
 };

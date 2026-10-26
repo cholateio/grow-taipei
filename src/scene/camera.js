@@ -40,6 +40,8 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
       go(t.clone().addScaledVector(dir.normalize(), overviewDistance(aspect) * zoom), t, ms);
     },
     cancel() { flight = null; grabbed = true; },
+    // 回合開始放開拖過的記號（不動鏡頭）：回合之間拖一下不影響下一回合跟主線
+    release() { grabbed = false; },
     update(dt) {
       if (flight) {
         flight.t += dt * 1000;

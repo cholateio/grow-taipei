@@ -7,9 +7,11 @@
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
+// setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
+//   其他人走完手上這一趟就站著；劇本手上的人、走回站位的人照樣動；ride、follow 不受限。null = 全部恢復。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
-import { cellAt } from '../scene/hex.js';
+import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 
@@ -52,6 +54,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const groups = new Map();
   const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
   let now = 0;   // 最近一次 update 的 t（home() 讓 ride 成員瞬間上車要用）
+  let focus = null;   // 焦點格 [[q, r], …]；null = 全部的人都做日常
 
   const pause = () => 0.5 + rnd();
   // 成員照哪份宣告過日常：hold 中先照待套用的（劇本 spawnHeld 出來的人回家要回新家）
@@ -275,15 +278,25 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }
     setPose(m, { ...trip.cursor.locate(), walking: true });
   }
+  // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看人現在在哪一格（軸座標，衛星島也算一格）
+  function inFocus(m, spec) {
+    if (!focus) return true;
+    const h = spec.home ?? {}, p = h.kind === 'wander' ? wanderHome(spec, m.i).at : h.kind === 'path' ? m.pos : spotOf(spec, m.i);
+    const [q, r] = worldToAxial(p.x, p.z);
+    return focus.some(c => c[0] === q && c[1] === r);
+  }
+  // 不在焦點：停在原地（沿線走的游標留著，恢復時接著走）
+  function halt(m) { if (m.walking) setPose(m, { ...m.pos, walking: false }); }
+
   function idle(m, spec, dt, t) {
     const h = spec.home ?? {};
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
-    if (h.kind === 'path') { onPath(m, h, dt); return; }
     if (h.kind === 'follow') { follow(m, h, dt); return; }
     const ring = h.kind === 'wander' ? ringHome(spec, m.i) : null;
-    if (ring) { onPath(m, ring, dt); return; }
+    if (h.kind === 'path' || ring) { if (m.trip || inFocus(m, spec)) onPath(m, ring ?? h, dt); else halt(m); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
+      if (!inFocus(m, spec)) return;
       if ((m.rest -= dt) > 0) return;
       const { at, r } = wanderHome(spec, m.i);
       go(m, nav.route(m.pos, nav.wander(at, r)));
@@ -291,7 +304,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       return;
     }
     const spot = spotOf(spec, m.i);
-    if (Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z) <= ARRIVE) { setPose(m, { ...spot, yaw: spot.yaw ?? m.yaw, walking: false }); fidget(m, h, t); return; }
+    if (Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z) <= ARRIVE) { setPose(m, { ...spot, yaw: spot.yaw ?? m.yaw, walking: false }); if (inFocus(m, spec)) fidget(m, h, t); else still(m); return; }
     still(m);
     const path = nav.route(m.pos, spot), end = path.at(-1);
     if (end.x !== spot.x || end.z !== spot.z) path.push({ x: spot.x, y: spot.y ?? nav.groundY(spot.x, spot.z), z: spot.z });   // spot 可能在走路格外（屋頂、footprint 裡）
@@ -351,11 +364,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   function reset() {
     for (const g of groups.values()) for (const m of [...g.members, ...g.leaving]) destroy(m);
-    groups.clear(); fresh.clear();
+    groups.clear(); fresh.clear(); focus = null;
   }
+  function setFocus(cells) { focus = cells ? cells.map(c => [c[0], c[1]]) : null; }
 
   const api = {
-    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, showAll, snap, update, reset,
+    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
     // visible：藏起來的人（颱風登陸躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {

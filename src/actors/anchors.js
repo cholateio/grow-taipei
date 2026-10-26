@@ -17,6 +17,9 @@ export const LANDMARKS = {
 const toWorld = a => { const c = axialToWorld(...a.cell); return { x: c.x + a.dx, y: cellTop(a.cell), z: c.z + a.dz }; };
 export const anchorWorld = id => toWorld(ANCHORS[id]);
 export const landmarkWorld = name => toWorld(LANDMARKS[name]);
+// 物品（或 'tower'）所在的格子 [q, r]，不認得的 id（'turn'）回 null；格子中心（地面高度）——鏡頭跟主線平移的目標（§13.1）
+export const cellOf = id => (ANCHORS[id] ? [...ANCHORS[id].cell] : null);
+export const cellCentre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
 
 // 相鄰兩格之間的步行路線：起點 → A 的橋頭 → B 的橋頭 → 終點（橋的位置和 island.js 一樣）
 export function routeBetween(cellA, pA, cellB, pB) {

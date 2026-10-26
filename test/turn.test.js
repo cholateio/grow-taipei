@@ -34,14 +34,15 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.deepEqual(marked, events);
   // mark 在每個事件最前面：第一拍就是 mark，之後每個 mark 前一拍都是上個事件補的 apply
   raw.forEach((b, i) => { if (b.kind === 'mark' && i > 0) assert.equal(raw[i - 1].kind, 'apply'); });
-  assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-2).map(b => b.kind), ['home', 'world']);
+  assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-3).map(b => b.kind), ['home', 'world', 'focus']);
   assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
   const beats = noMarks(raw), kinds = kindsOf(raw);
-  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['levelUp', 'levelUp', 'bubble', 'home', 'world']);
+  // 每個有東西演的事件前面平移過去（不同物品之間空 0.6 s）；等待事件不平移；回合最後回全景
+  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'bubble', 'wait', 'focus', 'home', 'world', 'focus']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
-  // placed：預設 apply + 補的 apply；每個事件至少一個 apply
-  assert.deepEqual(kinds.slice(0, 2), ['apply', 'apply']);
+  // placed：平移 + 預設 apply + 補的 apply；每個事件至少一個 apply
+  assert.deepEqual(kinds.slice(0, 3), ['focus', 'apply', 'apply']);
   assert.equal(kinds.filter(k => k === 'apply').length, 2 + 2 + 2 + 2 + 2);
 });
 
@@ -80,21 +81,22 @@ test('a module script replaces the default and still gets a trailing apply', () 
   const e = { kind: 'grow', item: 'chip', from: 1, to: 2 };
   const beats = buildTurn([e], base([tower, chip]), ctx);
   const kinds = kindsOf(beats);
-  assert.deepEqual(kinds, ['wait', 'apply', 'home', 'world']);
+  assert.deepEqual(kinds, ['focus', 'wait', 'apply', 'home', 'world', 'focus']);
   // s：這個事件套用後的等級；prev 是套用前；total／prevTotal 是總等級
   assert.equal(seen.length, 1); assert.equal(seen[0].e, e); assert.equal(seen[0].ctx, ctx);
   assert.equal(seen[0].s.lv.chip, 2); assert.equal(seen[0].s.prev.lv.chip, 1); assert.equal(seen[0].s.total, 2); assert.equal(seen[0].s.prevTotal, 1);
   // 其他等級沒有劇本 → 預設
-  assert.deepEqual(kindsOf(buildTurn([{ kind: 'grow', item: 'chip', from: 2, to: 3 }], base([tower, chip]), ctx)), ['apply', 'levelUp', 'apply', 'home', 'world']);
+  assert.deepEqual(kindsOf(buildTurn([{ kind: 'grow', item: 'chip', from: 2, to: 3 }], base([tower, chip]), ctx)), ['focus', 'apply', 'levelUp', 'apply', 'home', 'world', 'focus']);
   // settle：交給 tower.script.settle，s.total 是結算後的總等級、prevTotal 是上次結算的
   let settled = null;
   const t2 = { id: 'tower', view() {}, script: { settle: (ev, s) => { settled = s; return []; } } };
-  assert.deepEqual(kindsOf(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'settle' }], base([t2]), ctx)), ['apply', 'apply', 'apply', 'home', 'world']);
+  // settle 沒有拍：不平移
+  assert.deepEqual(kindsOf(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'settle' }], base([t2]), ctx)), ['focus', 'apply', 'apply', 'apply', 'home', 'world', 'focus']);
   assert.equal(settled.total, 2); assert.equal(settled.prevTotal, 1);
 });
 
-test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, and drops walks when over 20 s', () => {
-  assert.equal(MONTAGE_CAP, 20); assert.deepEqual(MONTAGE_KEEP, ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together']);
+test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bubbles, and drops walks when over 20 s', () => {
+  assert.equal(MONTAGE_CAP, 20); assert.deepEqual(MONTAGE_KEEP, ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus']);
   const script = len => ({ placed: (e, s, ctx) => [ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.bubble(walker, '！'), ctx.B.gesture(walker, 'wave'), ctx.B.together([ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.wait(2)]), ctx.B.together([ctx.B.wait(1)]), ctx.B.levelUp('milk')] });
   const milk = len => ({ id: 'milk', view() {}, script: script(len) });
   const e = { kind: 'placed', item: 'milk', to: 1 };
@@ -105,8 +107,8 @@ test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, 
   const kinds = kindsOf(beats);
   assert.deepEqual(kinds.slice(0, 3), ['bubble', 'bubble', 'bubble']);
   assert.deepEqual(beats.slice(0, 3).map(b => b.dur), [0.6, 0.6, 0.6]);
-  assert.deepEqual(kinds.slice(3), ['walk', 'together', 'levelUp', 'apply', 'home', 'world']);
-  assert.deepEqual(kindsOf(noMarks(beats)[4].beats), ['walk']);
+  assert.deepEqual(kinds.slice(3), ['focus', 'walk', 'together', 'levelUp', 'apply', 'home', 'world', 'focus']);
+  assert.deepEqual(kindsOf(noMarks(beats)[5].beats), ['walk']);
   assert.ok(estimateTurn(beats, short) <= MONTAGE_CAP);
   // 3-2-1 掛在 101 頭上
   let shown = [];
@@ -115,7 +117,7 @@ test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, 
   // 長路程（每段 30 單位，蒙太奇走路兩倍速 → 15 s × 2 > 20 s）：連 walk 也拿掉
   const far = fakeCtx({ nav: navOf(30) });
   const long = buildTurn([e], { ...base([tower, milk(30)]), montage: true }, far);
-  assert.deepEqual(kindsOf(long).slice(3), ['levelUp', 'apply', 'home', 'world']);
+  assert.deepEqual(kindsOf(long).slice(3), ['focus', 'levelUp', 'apply', 'home', 'world', 'focus']);
   assert.ok(estimateTurn(long, far) <= MONTAGE_CAP);
 });
 
@@ -132,15 +134,16 @@ test('fx scripts are looked up on the cause module and may return null to fall b
   const ctx = fakeCtx();
   const mods = [tower, rat, milk];
   // 有劇本 → 用劇本
-  assert.deepEqual(kindsOf(buildTurn([{ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: 'nest', value: true } }], base(mods), ctx)), ['wait', 'apply', 'home', 'world']);
+  assert.deepEqual(kindsOf(buildTurn([{ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: 'nest', value: true } }], base(mods), ctx)), ['focus', 'wait', 'apply', 'home', 'world', 'focus']);
   // 回 null → 預設：正向 delta 升級、負向 LEVEL DOWN、沒有 delta 不閃白
   const up = buildTurn([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 2 } }], base(mods), ctx);
-  assert.deepEqual(kindsOf(up), ['apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(noMarks(up)[1].down, false);
+  assert.deepEqual(kindsOf(up), ['focus', 'apply', 'levelUp', 'apply', 'home', 'world', 'focus']); assert.equal(noMarks(up)[2].down, false);
   const down = buildTurn([{ kind: 'fx', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 1, to: 1 } }, { kind: 'after', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 2, to: 1 } }], base(mods), ctx);
-  assert.deepEqual(kindsOf(down), ['apply', 'apply', 'apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(noMarks(down)[3].down, true);
+  // 不閃白的套用（等級沒變）沒東西演：不平移
+  assert.deepEqual(kindsOf(down), ['apply', 'apply', 'focus', 'apply', 'levelUp', 'apply', 'home', 'world', 'focus']); assert.equal(noMarks(down)[4].down, true);
   assert.deepEqual(calls, ['rat', 'rat', 'rat', 'rat']);
   // cause 模組沒有 fx 劇本（或 cause 是 'turn'）→ 預設
-  assert.deepEqual(kindsOf(buildTurn([{ kind: 'after', item: 'turn', cause: 'turn', flag: { name: 'blackout', value: true } }], base(mods), ctx)), ['apply', 'apply', 'home', 'world']);
+  assert.deepEqual(kindsOf(buildTurn([{ kind: 'after', item: 'turn', cause: 'turn', flag: { name: 'blackout', value: true } }], base(mods), ctx)), ['apply', 'apply', 'home', 'world', 'focus']);
 });
 
 test('a part knocked askew last turn is righted with a blink at the start of this turn', () => {
@@ -154,4 +157,41 @@ test('a part knocked askew last turn is righted with a blink at the start of thi
   obj.rotation.z = 0.3; fix.end(ctx); assert.equal(obj.rotation.z, 0, 'end rights it too (skip)');
   assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), ctx)[0].kind, 'mark', 'nothing askew → no beat');
   assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), fakeCtx())[0].kind, 'mark', 'stages without tilted are fine');
+});
+
+// §13.1 鏡頭跟主線
+const quietTower = { id: 'tower', view() {}, script: { settle: () => [] } };   // 跟真的 101 一樣：沒跨門檻 0 拍
+const focusTargets = beats => noMarks(beats).filter(b => b.kind === 'focus').map(b => b.target);
+test('buildTurn inserts a focus before each event, skips repeats on the same cell, waits 0.6 s between items, and returns home last', () => {
+  const ctx = fakeCtx();
+  const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'settle' }];
+  const beats = buildTurn(events, base([quietTower]), ctx), kinds = kindsOf(beats).filter(k => k !== 'apply');
+  assert.deepEqual(kinds, ['focus', 'levelUp', 'wait', 'focus', 'levelUp', 'home', 'world', 'focus']);
+  assert.deepEqual(focusTargets(beats), [[-1, 0], [1, 0], 'home']);
+  assert.equal(noMarks(beats).find(b => b.kind === 'wait').dur, 0.6);
+  // 平移在 mark 後面（pace 量到的事件秒數包含平移與空拍）
+  const raw = beats.map(b => b.kind), chip = raw.indexOf('wait');
+  assert.equal(raw[chip - 1], 'mark'); assert.equal(raw[chip + 1], 'focus');
+  // 同一格的不同物品（燈泡、颱風都在中心格）：空 0.6 s，但不再平移
+  const same = buildTurn([{ kind: 'placed', item: 'bulb', to: 1 }, { kind: 'placed', item: 'typhoon', to: 1 }], base([quietTower]), ctx);
+  assert.deepEqual(kindsOf(same).filter(k => k !== 'apply'), ['focus', 'wait', 'home', 'world', 'focus']);
+  // 101 跨門檻（settle 有拍）：平移到 101 那一格
+  const loud = { id: 'tower', view() {}, script: { settle: (e, s, c) => [c.B.levelUp('tower')] } };
+  assert.deepEqual(focusTargets(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'settle' }], base([loud]), ctx)), [[-1, 0], [0, 0], 'home']);
+});
+
+test('a script whose first beat is a focus is not given a default one', () => {
+  const milk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.focus([0, 1]), c.B.wait(1)] } };
+  const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }], base([quietTower, milk]), fakeCtx());
+  assert.deepEqual(kindsOf(beats).filter(k => k !== 'apply'), ['focus', 'wait', 'focus', 'levelUp', 'home', 'world', 'focus']);
+  // 劇本把鏡頭帶走了：同一個物品的下一個事件重新平移回來（同物品不空拍）
+  assert.deepEqual(focusTargets(beats), [[0, 1], [-1, 0], 'home']);
+});
+
+test('focus beats set the roster focus cells; the final home focus clears them', () => {
+  const set = [], ctx = fakeCtx({ instant: false, rig: { grabbed: false, focus() {}, home() {} } });
+  ctx.roster.setFocus = cells => set.push(cells);
+  const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'placed', item: 'chip', to: 1 }], base([quietTower]), ctx);
+  for (const b of noMarks(beats)) if (b.kind === 'focus') b.start(ctx);
+  assert.deepEqual(set, [[[-1, 0]], [[1, 0]], null]);
 });

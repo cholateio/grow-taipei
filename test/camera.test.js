@@ -36,3 +36,10 @@ test('cancel marks the rig grabbed; home clears it; focus while grabbed does not
   assert.equal(rig.grabbed, true); const mid = controls.target.clone(); rig.focus({ x: -4, y: 0, z: 0 }); rig.update(1); assert.ok(controls.target.distanceTo(mid) < 1e-9);
   rig.home(0); assert.equal(rig.grabbed, false);
 });
+// 回合開始放開「拖過」的記號，但鏡頭留在玩家拖到的地方（計畫 3.8 R4）
+test('release clears grabbed without moving the camera', () => {
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); rig.cancel();
+  const pos = camera.position.clone(), target = controls.target.clone();
+  rig.release(); assert.equal(rig.grabbed, false); assert.equal(rig.flying, false);
+  rig.update(1); assert.ok(camera.position.distanceTo(pos) < 1e-9); assert.ok(controls.target.distanceTo(target) < 1e-9);
+});

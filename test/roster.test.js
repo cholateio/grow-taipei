@@ -7,6 +7,7 @@ import { createNav } from '../src/show/nav.js';
 import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
+import { axialToWorld, cellTop } from '../src/scene/hex.js';
 installFakeDom();
 const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
 
@@ -268,4 +269,30 @@ test('a stand home with rescue stands at the nearest walkable point when its spo
   for (let i = 0; i < 300; i++) roster.update(1 / 30, i / 30);
   assert.ok(Math.hypot(m.pos.x - want.x, m.pos.z - want.z) < 0.1 && nav.walkable(m.pos.x, m.pos.z), 'rescued out of the footprint');
   roster.snap(); assert.ok(nav.walkable(m.pos.x, m.pos.z), 'snap rescues too');
+});
+// §13.4 背景減量：演出中只有焦點格裡的人做日常（wander 挑新目標、stand 小動作），其他人站著；劇本手上的人照樣動；null = 全部
+test('setFocus limits idle wandering and fidgets to members whose home cell is in focus; scripted members still move; null frees everyone', () => {
+  const { roster } = setup();
+  const centre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
+  roster.declare('w', { kind: 'roster', at: centre([0, 0]), n: 2, home: { kind: 'wander', at: [centre([0, 0]), centre([-1, 0])], r: 1.0 } });
+  const spot = { ...centre([0, 1]), yaw: 0 };
+  roster.declare('s', { kind: 'roster', at: spot, n: 1, home: { kind: 'stand', spots: [spot], fidget: 'wave' } });
+  roster.declare('x', { kind: 'roster', at: centre([1, 0]), n: 1, home: { kind: 'wander', at: centre([1, 0]), r: 1.0 } });
+  const [a, b] = roster.members('w'), [st] = roster.members('s'), [x] = roster.members('x');
+  roster.claim(x);   // 劇本手上：不在焦點格也要動
+  roster.setFocus([[0, 0]]);
+  const at = m => ({ ...m.pos }), moved = (m, p) => Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 1e-6;
+  const pa = at(a), pb = at(b), px = at(x); let fidgeted = false;
+  for (let i = 0; i < 180; i++) {
+    roster.update(1 / 30, i / 30); fidgeted ||= !!st.walker.gesture;
+    if (i < 30) roster.setPose(x, { x: x.pos.x + 0.01, z: x.pos.z, walking: true });
+  }
+  assert.ok(moved(a, pa), 'the focused cell wanders'); assert.ok(!moved(b, pb), 'outside the focus stands still'); assert.equal(b.walking, false);
+  assert.equal(fidgeted, false, 'no fidget outside the focus'); assert.ok(Math.abs(x.pos.x - px.x - 0.3) < 1e-6, 'a scripted member is moved as told');
+  roster.setFocus([[0, 1]]); fidgeted = false;
+  for (let i = 0; i < 120; i++) { roster.update(1 / 30, 6 + i / 30); fidgeted ||= !!st.walker.gesture; }
+  assert.ok(fidgeted, 'the stand member fidgets once its cell is in focus');
+  roster.setFocus(null);
+  for (let i = 0; i < 180; i++) roster.update(1 / 30, 10 + i / 30);
+  assert.ok(moved(b, pb), 'null frees everyone');
 });

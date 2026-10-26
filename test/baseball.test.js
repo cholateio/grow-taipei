@@ -190,7 +190,8 @@ test('Lv6: the boba queue walks to the dome gate, fireworks, everyone ♪, and t
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♪').length >= 2 + 6 + q.length);
   for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
   const boba = await import('../src/actors/boba.js'), spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;
-  q.forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.15), `tourist ${i} back in line`));
+  // 站位間距 0.22 < 0.25：站著的人沿 x 滑開（§13.3），十人一排的兩端離站位約 0.15
+  q.forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.2), `tourist ${i} back in line`));
 });
 // 兩個事件以上的回合整段 live：島民、球員、工人都是演到才找
 test('the Lv2 turn plays whole and live: everyone ends at home', async () => {

@@ -171,20 +171,26 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   }
 
   // 站著的人太近（< SEPARATION）：只沿 x 錯開（不往鏡頭縱深推，§13.3），各退一半；寫回 m.pos，回傳被推過的人。
-  // 一串人擠在一起時推一次可能又撞到下一個，最多來回推 STAND_PASSES 輪（每次多推 1e-6，浮點誤差不會讓下一幀又推）
-  function separateStanding(members) {
-    const moved = new Set();
+  // 一串人擠在一起時推一次可能又撞到下一個，最多來回推 STAND_PASSES 輪（每次多推 1e-6，浮點誤差不會讓下一幀又推）。
+  // maxStep：這一次每人最多移動多少（每幀呼叫時傳走路速度 × dt，錯開是滑過去的、不瞬移；沒到的下一幀接著推）
+  function separateStanding(members, maxStep = Infinity) {
+    const xs = members.map(m => m.pos.x);
     for (let pass = 0; pass < STAND_PASSES; pass++) {
       let pushed = false;
       for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) {
-        const p = members[i].pos, q = members[j].pos, dx = q.x - p.x, dz = q.z - p.z;
+        const dx = xs[j] - xs[i], dz = members[j].pos.z - members[i].pos.z;
         if (Math.abs(dz) >= SEPARATION || Math.hypot(dx, dz) >= SEPARATION - 1e-9) continue;
         const need = Math.sqrt(SEPARATION * SEPARATION - dz * dz) + 1e-6, dir = dx < 0 ? -1 : 1, push = (need - Math.abs(dx)) / 2;
-        p.x -= dir * push; q.x += dir * push; moved.add(members[i]); moved.add(members[j]); pushed = true;
+        xs[i] -= dir * push; xs[j] += dir * push; pushed = true;
       }
       if (!pushed) break;
     }
-    return [...moved];
+    const moved = [];
+    members.forEach((m, i) => {
+      const d = xs[i] - m.pos.x; if (d === 0) return;
+      m.pos.x += Math.max(-maxStep, Math.min(maxStep, d)); moved.push(m);
+    });
+    return moved;
   }
 
   // 格子裡離 awayFrom 最遠、而且從 awayFrom 走得到的點（名冊成員出場的預設入口，§13.2：落在格子邊上）。

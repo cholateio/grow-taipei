@@ -149,8 +149,8 @@ test('Lv3: every queue spot is outside the fountain and walkable once the footpr
     assert.ok(show.nav.walkable(p.x, p.z), `spot ${i} walkable`);
   }
   for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
-  // 站位間距 0.22 < 0.25：站著的人沿 x 錯開（§13.3），十人一排的兩端各離站位約 0.135
-  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, q.home.spots[i], 0.15), `tourist ${i} in line`));
+  // 站位間距 0.22 < 0.25：站著的人沿 x 滑開（§13.3），十人一排的兩端離站位約 0.15（偏哪邊看誰先到）
+  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, q.home.spots[i], 0.2), `tourist ${i} in line`));
 });
 test('Lv2: six tourists come from the pier side and stand in the queue', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, pier = offset(AT, 1.6, 1.4), firsts = new Map();

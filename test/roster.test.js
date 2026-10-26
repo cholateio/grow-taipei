@@ -362,7 +362,7 @@ test('a changed stand layout makes existing members walk, never respawn (same me
   roster.setFocus([[-1, 0]]);
   roster.declare('k', stand(B)); roster.flush();
   assert.deepEqual(roster.members('k'), ms, 'same member objects'); assert.equal(people.walkers.length, count, 'nobody new'); assert.deepEqual(blink.log, []);
-  run(roster, 2); ms.forEach((m, i) => { assert.ok(gap(m.pos, A[i]) < 0.05, 'not teleported'); assert.ok(m.walking); });
+  run(roster, 2); ms.forEach((m, i) => { assert.ok(gap(m.pos, A[i]) <= 1.6 / 30 + 1e-6, 'not teleported (one frame at walking speed)'); assert.ok(m.walking); });
   run(roster, 90, 1); ms.forEach((m, i) => assert.ok(gap(m.pos, B[i]) < 0.05, 'walked to the new spot'));
   // wander 的家搬了：焦點在別格也走過去（同一個人、不閃）
   const W = { x: Q.x + 1.2, y: Q.y, z: Q.z - 0.6 };
@@ -404,11 +404,56 @@ test('leavers walk to their entry point and are removed on arrival; snap removes
   roster.setFocus([[-1, 0]]);
   roster.declare('k', queue(2, QENTRY[0])); roster.flush();
   assert.deepEqual(roster.members('k'), [a, b]); assert.equal(roster.count, 2); assert.equal(people.walkers.length, 3, 'the leaver is still walking out');
-  run(roster, 1); assert.ok(c.walking && gap(c.pos, QSPOTS[2]) < 0.05);
+  run(roster, 1); assert.ok(c.walking && gap(c.pos, QSPOTS[2]) <= 1.6 / 30 + 1e-6, 'walks, not teleported');
   run(roster, 240, 1); assert.ok(c.gone && gap(c.pos, QENTRY[0]) < 0.05, 'removed at the entry'); assert.equal(people.walkers.length, 2);
   roster.retire('k'); roster.flush(); assert.ok(!roster.keys().includes('k')); assert.equal(people.walkers.length, 2, 'retired: walking out');
   run(roster, 5, 9); assert.ok(a.walking && !a.gone);
   roster.snap(); assert.ok(a.gone && b.gone); assert.equal(people.walkers.length, 0, 'snap removes walkers-out at once');
   roster.declare('h', queue(1)); roster.snap(); const [h] = roster.members('h'); roster.hide(h); roster.retire('h'); roster.flush();
   assert.ok(h.gone); assert.equal(people.walkers.length, 0); assert.deepEqual(blink.log, []);
+});
+// 審查修正（Task 4 第 1 輪）
+// 1. 走出去的人不再歸劇本：快取著他的劇本 claim／home／setPose 都不算數，他照樣走回入口、到了才拿掉
+test('claim, home and setPose on a walking-out leaver are no-ops: it keeps walking out and is removed at the entry', () => {
+  for (const act of ['claim', 'home', 'setPose']) {
+    const { roster, people } = setup(); roster.declare('k', queue(3, QENTRY[0])); roster.snap(); const [, , m] = roster.members('k');
+    roster.declare('k', queue(2, QENTRY[0])); roster.flush(); run(roster, 3);
+    const before = { ...m.pos };
+    if (act === 'setPose') roster.setPose(m, { x: Q.x, y: Q.y, z: Q.z, walking: true }); else roster[act](m);
+    assert.deepEqual(m.pos, before, `${act}: not moved by the script`);
+    assert.doesNotThrow(() => run(roster, 2, 1), act);
+    assert.ok(m.walking && m.mode === 'exit', `${act}: still walking out`);
+    run(roster, 30 * 4, 2); assert.ok(m.gone && gap(m.pos, QENTRY[0]) < 0.05, `${act}: removed at the entry`); assert.equal(people.walkers.length, 2);
+  }
+});
+// 2. 一個站位擠很多人：錯開是滑過去的（每幀不超過走路速度），不會推開又走回來
+test('eight members on one spot spread out smoothly: no standing member moves more than walking speed × dt in a frame', () => {
+  const { roster } = setup(), spot = QSPOTS[1];
+  roster.declare('k', { kind: 'roster', at: Q, n: 8, home: { kind: 'stand', spots: [spot] } }); roster.snap();
+  const ms = roster.members('k'); let maxMove = 0, walked = 0;
+  for (let i = 0; i < 180; i++) {
+    const p = ms.map(m => ({ ...m.pos })); roster.update(1 / 30, i / 30);
+    ms.forEach((m, j) => { maxMove = Math.max(maxMove, gap(m.pos, p[j])); if (m.walking) walked++; });
+  }
+  assert.ok(maxMove <= 1.6 / 30 + 1e-6, `max per-frame move ${maxMove.toFixed(4)}`); assert.equal(walked, 0, 'nobody walks back to the spot');
+  for (let a = 0; a < 8; a++) for (let b = a + 1; b < 8; b++) assert.ok(gap(ms[a].pos, ms[b].pos) >= 0.25 - 1e-9, `${a}-${b} apart`);
+  assert.ok(ms.every(m => m.pos.z === spot.z));
+});
+// 3. 進場、退場是有目的的走路：小人 1.6（日常散步才是 0.5）
+test('walk-ins and walk-outs use the walking speed (1.6), not the wander speed', () => {
+  const { roster } = setup(); roster.declare('k', queue(1, QENTRY[0])); const [m] = roster.members('k'), d = gap(QENTRY[0], QSPOTS[0]);
+  run(roster, Math.ceil(30 * (d / 1.6 + 0.3))); assert.ok(gap(m.pos, QSPOTS[0]) < 0.05, `walked in at 1.6 (${gap(m.pos, QSPOTS[0]).toFixed(2)} left)`);
+  roster.retire('k'); roster.flush(); run(roster, Math.ceil(30 * (d / 1.6 + 0.3)), 5); assert.ok(m.gone, 'walked out at 1.6');
+});
+// 4. 退場途中又要回人數：把還在走出去的人叫回來，不從入口生新的
+test('a layout that re-adds a member while a leaver of the same key is walking out turns that leaver around', () => {
+  const { roster, people } = setup(); roster.declare('k', queue(3, QENTRY[0])); roster.snap(); const [, , m] = roster.members('k');
+  roster.declare('k', queue(2, QENTRY[0])); roster.flush(); run(roster, 10);
+  roster.declare('k', queue(3, QENTRY[0])); roster.flush();
+  assert.equal(roster.members('k')[2], m, 'the same leaver comes back'); assert.equal(people.walkers.length, 3, 'nobody new'); assert.ok(!m.gone && m.mode === 'home');
+  roster.setFocus([[-1, 0]]); run(roster, 30 * 3, 1);
+  assert.ok(gap(m.pos, QSPOTS[2]) < 0.05 && !m.gone, 'walked back to its spot'); assert.equal(people.walkers.length, 3);
+  // 退掉整個名冊再宣告回來也一樣
+  roster.retire('k'); roster.flush(); run(roster, 5, 4); roster.declare('k', queue(3, QENTRY[0])); roster.flush();
+  assert.equal(people.walkers.length, 3); assert.ok(roster.members('k').every(x => !x.gone));
 });

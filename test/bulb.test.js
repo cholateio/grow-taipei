@@ -9,7 +9,7 @@ import { createNav } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
 import * as sat from '../src/actors/satellites.js';
 import * as chip from '../src/actors/chip.js';
@@ -140,14 +140,14 @@ async function liveAt({ run, bubblesLog }, order, pred) {
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
 // 物品 v2 §6：一級 3–5 s；Lv2 點最近三站＋其餘一站站亮 ≤ 8 s（裁決）；
 // ◆ Lv7（離岸風電）、Lv9（全島霓虹）6–10 s——含鏡頭平移與回全景的整段（show.elapsed，裁決 R8）
-const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [3, 10] : [3, SCRIPT_MAX]);
+const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [3, KEY_MAX] : [3, SCRIPT_MAX]);
 const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
 const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
 function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1, [lo, hi] = BUDGET(to);
   (timing[to] ??= []).push(+secs.toFixed(1));
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
-  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('bulb');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);
@@ -457,10 +457,11 @@ test('Lv7 live: the electrician walks to the station, rides the train out to the
     assert.ok(maxWalk <= 0.15, `${what}: no teleport off the train (max step ${maxWalk.toFixed(3)})`);
     assert.ok(maxRide <= 0.5, `${what}: no teleport on the train (max step ${maxRide.toFixed(3)})`);
     assert.ok(firstBuild !== null && firstSpin !== null && firstSpin > firstBuild, `${what}: blades turn after the switch (${firstBuild}, ${firstSpin})`);
-    assert.ok(firstLight !== null && firstLight >= firstSpin + 0.9, `${what}: lighthouse lights in the settled overview after the turbine (${firstSpin}, ${firstLight})`);
+    // 裁決 R17（◆ ≤ 8 s）：全景只停 0.1 s 燈塔就亮（原 ≥ 0.9 s 等鏡頭停好）
+    assert.ok(firstLight !== null && firstLight >= firstSpin + 0.1, `${what}: lighthouse lights on the way to the overview after the turbine (${firstSpin}, ${firstLight})`);
     const [m] = show.roster.members('bulb.electrician'); assert.ok(onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
     assert.ok(show.roster.members('sat.keeper').length === 1, 'the keeper comes with the light');
-    assert.ok(secs <= 10, `${what}: ${secs.toFixed(2)} s`);
+    assert.ok(secs <= KEY_MAX, `${what}: ${secs.toFixed(2)} s`);
   }
 });
 // 最壞的列車位置（審稿第 1 輪）：車頭剛開過站 0.05 rad（倒車回來接他），和剛過倒車上限（要往前繞四分之三圈）——整段 ≤ 10 s

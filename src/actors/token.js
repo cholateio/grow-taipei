@@ -284,7 +284,7 @@ export const script = {
   placed(e, s, ctx) {
     const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT));
     // 站牌閃白的同時他就出發；♪ 0.8 → 0.6。代幣格不住島民（人數預算，裁決 R16），人是從鄰格走來的：走路 0.5–4 秒不等，
-    // 走路那段至少 2.5 秒（近的時候在月台前多等一下），整級 3–5 秒（例外表 SCRIPT_EXCEPT 'token 1'）
+    // 走路那段至少 2.5 秒（近的時候在月台前多等一下），整級 3–6 秒（例外表 SCRIPT_EXCEPT 'token 1'）
     return [B.together([B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.wait(2.5)]), B.bubble(islander, '♪', 0.6), B.home(islander)];
   },
   grow: {
@@ -329,7 +329,8 @@ export const script = {
       return [
         B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: keys, blink: false }),
-        B.together([...keys.map(k => B.scaleIn(k, { axis: 'z', dur: 0.8 })), B.trainStop({ spur: 'windmill', stop: 0.4, during: [B.focus('home', { hold: 2.0 })] })]),
+        // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）
+        B.together([...keys.map(k => B.scaleIn(k, { axis: 'z', dur: 0.8 })), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 2.0, back: Math.PI / 2, during: [B.focus('home', { hold: 1.0 })] })]),
         B.apply(e), B.levelUp('token'),
       ];
     },
@@ -363,7 +364,7 @@ export const script = {
     // ◆ 飛天車：回全景 → 三台懸浮車從海上飛進來、繞 101 一圈、停到車站屋頂 → 全景定格 → LEVEL UP
     10(e, s, ctx) {
       const { B } = ctx;
-      return [B.focus('home'), B.apply(e, { only: CAR_KEYS, blink: false }), fly(), B.apply(e), B.focus('home', { hold: 2.0 }), B.levelUp('token')];
+      return [B.focus('home'), B.apply(e, { only: CAR_KEYS, blink: false }), fly(), B.apply(e), B.focus('home', { hold: 1.2 }), B.levelUp('token')];   // 停 2.0 → 1.2（裁決 R17 ◆ ≤ 8 s）
     },
   },
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）

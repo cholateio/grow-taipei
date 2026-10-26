@@ -218,9 +218,10 @@ export const script = {
       const { B } = ctx, front = c => frontOf(AT, FRONT_R, c.nav);
       const w = once(c => shown('baseball.players')(c).sort((a, b) => dist(a.pos, front(c)) - dist(b.pos, front(c)))[0] ?? nearestIslander(c, front(c)));
       return [
-        B.bubble(player(0), '……', 0.8), B.bubble(player(0), { icon: 'dome' }, 0.9),
-        B.walk(w, front), B.gesture(w, 'build', 1.2, { at: AT }), B.gesture(w, 'build', 1.2, { at: AT }), B.apply(e), B.home(w),
-        B.focus('home', { hold: 1.4 }), B.levelUp('baseball'),
+        // 裁決 R17 ◆ ≤ 8 s：泡泡 0.8／0.9 → 0.6／0.7、鋤頭 1.2 → 0.9、全景停 1.4 → 1.0
+        B.bubble(player(0), '……', 0.6), B.bubble(player(0), { icon: 'dome' }, 0.7),
+        B.walk(w, front), B.gesture(w, 'build', 0.9, { at: AT }), B.gesture(w, 'build', 0.9, { at: AT }), B.apply(e), B.home(w),
+        B.focus('home', { hold: 1.0 }), B.levelUp('baseball'),
       ];
     },
     // 開打：三個觀眾從捷運站那座橋的橋頭走來（剛下車）→ 走到門口 → 閃白頂縫透光、一起 ♪

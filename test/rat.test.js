@@ -16,7 +16,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, solo, SCRIPT_MAX } from './helpers/show.js';
+import { headlessShow, playItem, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 賽博那條（老鼠在 Lv4 分岔成機器鼠）
 const ALIEN = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;   // 外星那條（變異鼠，Lv5 要颱風 ≥2）
@@ -208,8 +208,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
 const KEY_LV = [4, 5];
 function checkRat({ show, bubblesLog }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
-  assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
-  if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
+  assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
+  if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('rat');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over rat`);
@@ -372,7 +372,7 @@ test('cyber Lv5: the rocks-islet rats go with the army apply, before LEVEL UP; n
   assert.ok(blinks.length > 0 && blinks.every(k => k <= lu), `no blink after LEVEL UP (${blinks} vs ${lu})`);
 });
 // 審查 Important 2：老鼠排成一列跟著偵防師走：每隻晚 0.3 s 出發
-test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apart', async () => {
+test('cyber Lv4: the rats set off for the park one after another, ≥ 0.12 s apart (FOLLOW 0.15, R17)', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, setPose = show.roster.setPose, starts = new Map();
   let now = 0, icon = false;
   show.update = (dt, t) => { now += dt; icon ||= bubblesLog.some(b => b.kind?.icon === 'chip'); update(dt, t); };
@@ -381,7 +381,7 @@ test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apa
   checkRat(h, e, secs, n);
   const t = [...starts.values()].sort((a, b) => a - b);
   assert.equal(t.length, 5);
-  for (let i = 1; i < 5; i++) assert.ok(t[i] - t[i - 1] >= 0.25, `starts ${t.map(x => x.toFixed(2))}`);
+  for (let i = 1; i < 5; i++) assert.ok(t[i] - t[i - 1] >= 0.12, `starts ${t.map(x => x.toFixed(2))}`);
 });
 
 // ── 計畫 3.8 Task 7：入口點、鏡頭焦點 ──

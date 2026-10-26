@@ -402,10 +402,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const blocked = Math.hypot(trip.last.x - m.pos.x, trip.last.z - m.pos.z) > trip.speed * dt + 2 * ARRIVE;
       m.trip = null; m.side = 0; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
     }
-    setPose(m, { ...sidestep(m, trip.cursor.locate(), trip.speed * dt), walking: true });
+    setPose(m, { ...sidestep(m, trip.cursor.locate(), Math.max(trip.speed, m.speed) * dt), walking: true });
   }
   // 正面擦身（任務 12）：前方 YIELD_LOOK 內有人擋著（走著或站著都算）就往旁邊讓開再走過去（nav.yieldOffset），
-  // 橫移每幀最多 speed × dt（不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
+  // 橫移每幀最多走路速度 × dt（散步慢，讓路照一般走路的速度；不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
   function sidestep(m, c, max) {
     const others = [];
     for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone) others.push(o.pos);

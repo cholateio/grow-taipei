@@ -12,7 +12,7 @@ import { ROOFS, roofColor, C } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
@@ -178,10 +178,10 @@ test('scripts: every milk event in both solutions plays 3–5 s (◆ Lv7 / Lv10 
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      const [lo, hi] = to === 7 || to === 10 ? [3, 10] : [3, SCRIPT_MAX];
+      const [lo, hi] = to === 7 || to === 10 ? [3, KEY_MAX] : [3, SCRIPT_MAX];
       assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs.toFixed(2)}s`);
       // ◆（§6「8–10 秒」= 上限 10、軟下限 6，控制者裁決）：含鏡頭平移與回全景定格的整段 6–10 s
-      if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
+      if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.at(-1), head = show.stage.headOf('milk');
         assert.equal(last.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - head.x, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');

@@ -121,10 +121,10 @@ const NEST_SHORE = shoreAt(NEST_A), PARK_SHORE = shoreAt(PARK_A), SPRING_SHORE =
 // 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來（颱風 Lv3 的堤防在這裡留缺口，typhoon.js）
 export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
-const JUMP = 0.5, FOLLOW = 0.3, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
+const JUMP = 0.5, FOLLOW = 0.15, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
-// （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05）
-const TRAIN_IN = 1.3, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
+// （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
+const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
 // 分岔（spec.js 老鼠 onLevel 4 的 ratBranch：條件照規則資料編譯，跟引擎同一個判斷，不寫死門檻）。分岔旗標是 grow 之後的 fx 事件才帶來的，
 // grow 4 的劇本先用一個同值的 fx 事件套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
 const BRANCH = ITEMS.rat.onLevel[4].find(a => a.branch).branch, BRANCH_TEST = compile(BRANCH.when, {});
@@ -223,17 +223,16 @@ export const script = {
         const gate = once(c => c.nav.slots(PARK, 5, 0.6));
         return [
           B.focus('chip'), B.together([B.walk(detective, PARK_SHORE), ...hopOff(B, s, ids, PARK_A, PARK_SHORE, 0.35)]),
-          B.bubble(detective, { icon: 'chip' }, 1.0),
-          // 排成一列跟著他：每隻晚 0.3 s 出發
-          B.together([B.walk(detective, offset(PARK, 0.5, 0.5)), ...ids.map(i => B.walk(rat(i), c => gate(c)[i], { delay: FOLLOW * (i + 1) }))]),
-          ...transform, B.wait(0.5), B.home(c => [...RATS(c), detective(c)].filter(Boolean)), B.levelUp('rat'),
+          // 排成一列跟著他（每隻晚 FOLLOW 秒出發），他一邊走一邊冒圖框「晶片」（裁決 R17 ◆ ≤ 8 s）
+          B.together([B.bubble(detective, { icon: 'chip' }, 0.8), B.walk(detective, offset(PARK, 0.5, 0.5)), ...ids.map(i => B.walk(rat(i), c => gate(c)[i], { delay: FOLLOW * (i + 1) }))]),
+          ...transform, B.wait(0.2), B.home(c => [...RATS(c), detective(c)].filter(Boolean)), B.levelUp('rat'),
         ];
       }
       // 外星：一隻在溫泉那側跳下車、走到溫泉邊 …… → 閃白變異（放大、綠光、三眼；其餘的閃白後拿掉）→ 對天揮手 → ？（鏡頭對著溫泉格）
       return [
         B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1),
-        B.walk(r0, MUTANT), B.bubble(r0, '……', 0.9),
-        ...transform, B.home(r0), B.wait(0.5), B.bubble(r0, '？', 0.9), B.levelUp('rat'),
+        B.walk(r0, MUTANT), B.bubble(r0, '……', 0.7),
+        ...transform, B.home(r0), B.wait(0.2), B.together([B.bubble(r0, '？', 0.8), B.levelUp('rat')]),   // 裁決 R17 ◆ ≤ 8 s：？ 跟 LEVEL UP 一起
       ];
     },
     // ◆ 最終型態：回全景定格再 LEVEL UP
@@ -246,8 +245,8 @@ export const script = {
           // 新的五隻從園區門口（入口）走出來、不閃，一出來就跟著列隊；石堆小島的兩隻同時閃白收掉（骨架動畫 ≤ 12，LEVEL UP 之後不再閃）
           B.focus('tower'), B.apply(e, { only: [KEY, 'sat.rocks'] }),
           B.together(ids.map(i => B.walk(rat(i), c => slots(c)[i]))),
-          B.home(RATS), B.focus('home', { hold: 1.0 }), B.apply(e, { only: ['rat.king'] }), B.bubble('rat.king', '！', 0.9),
-          B.apply(e), B.levelUp('rat'),
+          B.home(RATS), B.focus('home', { hold: 0.6 }), B.apply(e, { only: ['rat.king'] }), B.bubble('rat.king', '！', 0.6),
+          B.together([B.apply(e), B.levelUp('rat')]),   // 裁決 R17 ◆ ≤ 8 s
         ];
       }
       if (ratMode(s.lv, s.flags) === 'alien') {

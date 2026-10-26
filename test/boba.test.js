@@ -14,7 +14,7 @@ import { diffParts } from '../src/actors/stage.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
 import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
@@ -202,8 +202,8 @@ test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 
     const seen = [];
     await playItem(show, tracked, order, 'boba', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
-      if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
+      assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
+      if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('boba');
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over boba`);

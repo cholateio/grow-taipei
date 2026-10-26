@@ -1,8 +1,9 @@
 // 棒球（物品 v2 §4.8，max 8）：沙地 → 木看台（Kenney Racing Kit grandStand ×2）與兩個傳接球的球員
 //   → ◆ 大巨蛋（Kenney Space Kit hangar_roundA，要趕在捷運通車到離島前）→ 比賽開打（頂縫透光、觀眾 3 人）
 //   → 演唱會（藍色應援棒、圓頂飾條發光、觀眾 4 人＋草皮 1 人）→ 跨年煙火（珍奶的觀光客 2 人來看）
-//   → 大巨蛋擴建（hangar_roundB 更高的圓頂、外牆 LED 帶、觀眾 6 人）→ ◆ 巨蛋捷運站直通（環狀線上一座月台接到巨蛋門口，觀眾從列車下來）。
-// 人數預算（使用者 2026-10-26）：觀眾 Lv4 3、Lv5 4、Lv7 6，草皮 1；球員 2；跨年來看煙火的觀光客 ≤ 2。
+//   → 大巨蛋擴建（hangar_roundB 更高的圓頂、外牆 LED 帶、觀眾 5 人）→ ◆ 巨蛋捷運站直通（環狀線上一座月台接到巨蛋門口，兩個觀眾從列車下來）。
+// 人數預算（使用者 2026-10-26；裁決 R13 一格 ≤ 8 人：球員 2＋草皮 1＋觀眾 ≤ 5，老鼠與鼠災工作人員不算）：觀眾 Lv4 3、Lv5 4、Lv7 5；
+// 跨年來看煙火的觀光客 ≤ 2。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
 // 劇本（§6）：一級 3–5 秒；◆ Lv3、Lv8 6–10 秒、最後回全景定格。
 import { anchorWorld, frontOf } from './anchors.js';
@@ -53,7 +54,7 @@ export const LAWN = offset(AT, 1.7, -0.7), LAWN_R = 0.6;
 export const STICKS = Array.from({ length: 8 }, (_, i) => { const a = i / 8 * Math.PI * 2; return [Math.cos(a) * 1.3, Math.sin(a) * 1.1]; });
 
 // 觀眾站在巨蛋門前的弧線上（半徑 1.75）：六個位置，正中間留一條走道給球員。人少的時候從靠走道的兩個開始往外補
-// （同一批人加人不換位置）：3 人 = 走道兩側＋西邊一個、4 人左右對稱、6 人全滿
+// （同一批人加人不換位置）：3 人 = 走道兩側＋西邊一個、4 人左右對稱、5 人再補西端（東端那個位置留空）
 function arc(at, n) {
   return Array.from({ length: n }, (_, i) => {
     const t = i / (n - 1) - 0.5, a = t * 1.7 + Math.sign(t) * 0.25, r = 1.75, x = Math.sin(a) * r, z = Math.cos(a) * r;
@@ -61,7 +62,7 @@ function arc(at, n) {
   });
 }
 const ARC = arc(AT, 6), ORDER = [2, 3, 1, 4, 0, 5];
-export const crowdN = n => (n >= 7 ? 6 : n >= 5 ? 4 : n >= 4 ? 3 : 0);
+export const crowdN = n => (n >= 7 ? 5 : n >= 5 ? 4 : n >= 4 ? 3 : 0);
 // 第 i 個觀眾的站位（i 依加入的順序）
 export const fanSpots = n => ORDER.slice(0, n).map(k => ARC[k]);
 
@@ -71,11 +72,14 @@ const GATE = offset(AT, 0, 1.1);
 export const DOME_STOP = Math.atan2(GATE.z, GATE.x);
 const U = { x: Math.cos(DOME_STOP), z: Math.sin(DOME_STOP) };
 const ringAt = (r, side = 0, y = 0) => ({ x: U.x * r - U.z * side, y, z: U.z * r + U.x * side });
-const DECK_IN = 6.75, DECK_OUT = TRACK.radius - 0.28, DECK_Y = AT.y - 0.06;
-// 下車的地方：月台靠軌道那頭，三個人並排
-export const RIDE_OFF = [-0.15, 0, 0.15].map(s => ringAt(DECK_OUT - 0.12, s, DECK_Y + 0.03));
-// 直通之後一半的觀眾坐新線來：Lv8 門口留走道兩側和西邊三個人，另外三個位置換成從月台下車的人（站務那三個走回捷運站）
-export const RIDER_SPOTS = ORDER.slice(3).map(k => ARC[k]);
+// 月台外緣（DECK_OUT + 0.1）離車廂側面 ≥ 0.1：最寬的車廂（Kenney 地鐵、高鐵，高 0.3，載入器量的包圍盒）半寬約 0.13
+const DECK_IN = 6.75, DECK_OUT = TRACK.radius - 0.35, DECK_Y = AT.y - 0.06;
+// 下車的地方：月台靠軌道那頭，兩個人並排
+export const RIDE_OFF = [-0.1, 0.1].map(s => ringAt(DECK_OUT - 0.12, s, DECK_Y + 0.03));
+// 直通之後兩個觀眾坐新線來：Lv8 門口留走道兩側和西邊三個人，Lv7 的另外兩個走回捷運站，空出來的兩個位置給從月台下車的人。
+// 下車的人先走到門口正前方（球員兩側之外、弧線之內）停下歡呼，那兩個觀眾等他們到了、全景定格之後才走（不像同一批人交叉換位）
+export const RIDER_SPOTS = ORDER.slice(3, 5).map(k => ARC[k]);
+export const RIDER_WAIT = [-0.2, 0.2].map(x => offset(AT, x, 1.45));
 function platformParts() {
   const at = ringAt((DECK_IN + DECK_OUT) / 2), len = DECK_OUT - DECK_IN + 0.2, ry = Math.atan2(U.x, U.z), rel = p => [p.x - at.x, p.y, p.z - at.z];
   const yaw = { rot: [0, ry, 0] };
@@ -126,10 +130,10 @@ export function view(lv, flags = {}) {
   if (n >= 2) {
     v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
     v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
-    // 觀眾：Lv8 一半是坐新線來的（baseball.riders），門口的名冊留前三個人
+    // 觀眾：Lv8 兩個是坐新線來的（baseball.riders），門口的名冊留前三個人
     const fans = n >= 8 ? 3 : crowdN(n);
     if (fans) v['baseball.crowd'] = { kind: 'roster', at, n: fans, shirt: SHIRTS, home: { kind: 'stand', spots: fanSpots(fans), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
-    if (n >= 8) v['baseball.riders'] = { kind: 'roster', at, n: 3, shirt: SHIRTS.slice(5), home: { kind: 'stand', spots: RIDER_SPOTS, fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
+    if (n >= 8) v['baseball.riders'] = { kind: 'roster', at, n: 2, shirt: SHIRTS.slice(5), home: { kind: 'stand', spots: RIDER_SPOTS, fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
     // 演唱會起多一個觀眾在巨蛋東北邊的草皮散步（§14.3）；從月台走來
     if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 1, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: LAWN_R, entry: CROWD_ENTRY } };
   }
@@ -180,7 +184,7 @@ const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const player = i => c => shown('baseball.players')(c)[i] ?? null;
 const fansAll = c => [...shown('baseball.crowd')(c), ...shown('baseball.riders')(c), ...shown('baseball.lawn')(c)];
 const fan = i => c => fansAll(c)[i] ?? null;
-const ALL_FANS = 7;   // 觀眾最多 6 人＋草皮 1 人
+const ALL_FANS = 6;   // 觀眾最多 5 人＋草皮 1 人
 const cheer = (B, dur = 0.9) => B.together(Array.from({ length: ALL_FANS }, (_, i) => B.bubble(fan(i), '♪', dur)));
 // 列車在巨蛋站最多趕這麼久進站（車頭剛開過不到四分之一圈就倒車回來）、停多久
 const STOP_WITHIN = 2.0, STOP_BACK = Math.PI / 2, STOP_FOR = 0.6;
@@ -249,15 +253,16 @@ export const script = {
       const { B } = ctx;
       return [B.bubble(player(0), '！', 0.8), B.apply(e), cheer(B), B.levelUp('baseball')];
     },
-    // ◆ 巨蛋捷運站直通（代幣 ≥8）：鏡頭對著巨蛋格 → 月台閃白出現 → 列車進巨蛋站停下，三個觀眾從列車下來（門口另外三個觀眾走回捷運站）→
-    //   沿月台、磚道走到門口 → 回全景定格 → 大家 ♪ → LEVEL UP
+    // ◆ 巨蛋捷運站直通（代幣 ≥8）：鏡頭對著巨蛋格 → 月台閃白出現 → 列車進巨蛋站停下，兩個觀眾從列車下來 →
+    //   沿月台、磚道走到門口正前方 → 回全景定格、大家 ♪ → 這時 Lv7 的兩個觀眾才走回捷運站（套用觀眾 5 → 3），
+    //   下車的兩個人在背景走到他們空出來的位置 → LEVEL UP
     8(e, s, ctx) {
       const { B } = ctx, sp = RIDE_OFF.map(p => B.spawn('baseball.riders', p));
       return [
         B.focus('baseball'),
-        B.apply(e, { only: ['baseball.platform', 'baseball.crowd', 'baseball.riders'], hold: ['baseball.riders'] }),
+        B.apply(e, { only: ['baseball.platform', 'baseball.riders'], hold: ['baseball.riders'] }),
         B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, back: STOP_BACK, stop: STOP_FOR, during: sp }),
-        B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_SPOTS[i], { delay: i * 0.2 }))),
+        B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_WAIT[i], { delay: i * 0.2 }))),
         B.together([B.focus('home', { hold: 1.0 }), cheer(B, 1.0)]),
         B.apply(e), B.home(shown('baseball.riders')), B.levelUp('baseball'),
       ];

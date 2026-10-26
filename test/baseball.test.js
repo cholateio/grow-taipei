@@ -52,12 +52,15 @@ test('Lv2 stands are Racing Kit grandstands; the dome is hangar_roundA at Lv3–
   for (const c of Object.values(s.models[0].tint)) assert.ok(PALETTE.has(c));
 });
 // 人數預算（使用者 2026-10-26）：觀眾 Lv4 3、Lv5 4、Lv7 6（Lv8 一半坐新線來，合計照樣 6）、草皮 1；球員 2
-test('people budget: fans 3 / 4 / 6 (Lv8 half of them came by the new line, still 6), lawn 1, players 2', () => {
+// 裁決 R13：一格 ≤ 8 人（球員 2＋草皮 1＋觀眾 ≤ 5；老鼠、鼠災工作人員不算）
+test('people budget: fans 3 / 4 / 5 (Lv8: 3 stay, 2 came by the new line), lawn 1, players 2 — the cell never needs more than 8', () => {
   const fans = v => (v['baseball.crowd']?.n ?? 0) + (v['baseball.riders']?.n ?? 0);
-  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => fans(views[n])), [0, 0, 0, 3, 4, 4, 6, 6]);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => fans(views[n])), [0, 0, 0, 3, 4, 4, 5, 5]);
+  assert.deepEqual([views[8]['baseball.crowd'].n, views[8]['baseball.riders'].n], [3, 2]);
+  for (let n = 1; n <= 8; n++) assert.ok(fans(views[n]) + (views[n]['baseball.lawn']?.n ?? 0) + (views[n]['baseball.players']?.n ?? 0) <= 8, `lv${n}`);
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => views[n]['baseball.lawn']?.n ?? 0), [0, 0, 0, 0, 1, 1, 1, 1]);
   for (let n = 2; n <= 8; n++) assert.equal(views[n]['baseball.players'].n, 2);
-  // 加人不換位置：同一批人的站位一樣；Lv8 門口 + 新線的站位剛好是 Lv7 那六個位置
+  // 加人不換位置：同一批人的站位一樣；Lv8 門口 + 新線的站位剛好是 Lv7 那五個位置
   assert.deepEqual(views[4]['baseball.crowd'].home.spots, views[5]['baseball.crowd'].home.spots.slice(0, 3));
   assert.deepEqual(views[5]['baseball.crowd'].home.spots, views[7]['baseball.crowd'].home.spots.slice(0, 4));
   assert.deepEqual([...views[8]['baseball.crowd'].home.spots, ...views[8]['baseball.riders'].home.spots].map(p => `${p.x},${p.z}`).sort(), views[7]['baseball.crowd'].home.spots.map(p => `${p.x},${p.z}`).sort());
@@ -153,7 +156,6 @@ test('scripts: every baseball level in both solutions plays 3–5 s (◆ Lv3/Lv8
     await playItem(show, tracked, order, 'baseball', (e, secs) => { seen.push(e.kind === 'grow' ? e.to : 1); checkBall(h, e, secs, n, timing); });
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8], `baseball events seen: ${seen}`);
   }
-  console.log('baseball script seconds', JSON.stringify(timing));
 });
 test('◆ Lv3 and Lv8 are the key nodes and end on the overview before the LEVEL UP; the others are short scripts', () => {
   assert.deepEqual(Object.entries(baseball.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [3, 8]);
@@ -270,13 +272,17 @@ test('Lv6: two boba tourists come to the gate for the fireworks and walk back; t
   show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.1), `tourist ${i} back in line`));
 });
 // ◆ Lv8：列車停在巨蛋站（車頭在 DOME_STOP），三個觀眾在列車停著的時候從月台靠軌道那頭下車、沿月台走到門口；沒有人瞬移
-test('◆ Lv8 live: the train stops at the dome station, three riders step off while it stands and walk along the platform to the gate', async () => {
+test('◆ Lv8 live: the train stops at the dome station, two riders step off while it stands, walk to the gate and cheer; only then two fans leave and the riders take their spots', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map(), last = new Map(), bad = [];
-    let live = false, clock = null;
+    let live = false, clock = null, tt = 0, waited = null, left = null;
     const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
     show.update = (dt, t) => {
       update(dt, t); if (!live) return;
+      tt += dt;
+      const rs = show.roster.members('baseball.riders');
+      if (waited === null && rs.length === 2 && rs.every((m, i) => near(m.pos, baseball.RIDER_WAIT[i], 0.05))) waited = tt;
+      if (left === null && show.roster.members('baseball.crowd').length === 3) left = tt;
       const c = t + h.rail.offset;
       for (const f of firsts.values()) if (f.stopped === undefined) f.stopped = Math.abs(c - clock) < 1e-6;   // 下車後那一幀車沒動
       clock = c;
@@ -287,7 +293,8 @@ test('◆ Lv8 live: the train stops at the dome station, three riders step off w
     };
     const { r } = await liveAt(h, order, isBall(8));
     const what = order.join('>');
-    assert.equal(firsts.size, 3, what);
+    assert.equal(firsts.size, 2, what);
+    assert.ok(waited !== null && left !== null && left >= waited + 1.0, `${what}: the two fans leave after the riders are at the gate and the overview hold (${waited}, ${left})`);
     for (const p of firsts.values()) {
       assert.ok(baseball.RIDE_OFF.some(q => near(p, q, 0.05)), `${what}: steps off at the platform`); assert.ok(p.stopped, `${what}: while the train stands`);
       const d = Math.atan2(Math.sin(p.head - baseball.DOME_STOP), Math.cos(p.head - baseball.DOME_STOP)); assert.ok(Math.abs(d) < 0.02, `${what}: train head at the dome stop (${d.toFixed(3)})`);
@@ -341,4 +348,42 @@ test('Lv5 concert never sends the electrician (he may live on the windmill islan
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const src = baseball.script.grow[5].toString(); assert.ok(!src.includes('bulb.electrician'));
   assert.ok(flat(baseball.script.grow[5]({ kind: 'grow', item: 'baseball', to: 5 }, { lv: lv({ baseball: 5 }), flags: {} }, ctx)).some(b => b.kind === 'gesture'));
+});
+// Lv8 月台外緣（甲板、雨棚沿徑向最外的那一點）離列車車廂側面 ≥ 0.1：車廂寬度用載入器實際量 glb（高 0.3，同 token.js）
+test('the Lv8 platform\'s outer edge stays ≥ 0.1 clear of the train cars passing on the ring', async () => {
+  const { readFileSync } = await import('node:fs'), { GLTFLoader } = await import('../vendor/three/addons/loaders/GLTFLoader.js'), { createAssets } = await import('../src/scene/assets.js');
+  const fakeTexture = () => ({ name: 'fakeTexture', loadTexture: () => { const t = new THREE.Texture({ width: 1, height: 1 }); t.flipY = false; return Promise.resolve(t); } });
+  const loader = { load: (url, ok, _, fail) => { const b = readFileSync(url); new GLTFLoader().register(fakeTexture).parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '', ok, fail); } };
+  const assets = createAssets(THREE, { base: 'assets/', loader, pixels: () => ({ width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) }) });
+  let half = 0;
+  for (const kind of ['subway', 'bullet']) for (const x of ['a', 'b', 'c']) {
+    const g = await assets.spawn(`kenney/train/train-electric-${kind}-${x}.glb`, { h: 0.3 }), size = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+    half = Math.max(half, size.x / 2);   // 車頭朝 +z：x 是車寬
+  }
+  assert.ok(half > 0.05 && half < 0.2, `car half-width ${half.toFixed(3)}`);
+  const p = views[8]['baseball.platform'], U = { x: Math.cos(baseball.DOME_STOP), z: Math.sin(baseball.DOME_STOP) };
+  // 沿徑向擺的方塊（甲板、雨棚、站名牌）：中心的徑向距離＋本地 z 半長；柱子：中心＋半徑
+  const outer = Math.max(...p.parts.filter(q => !cellAt(p.at.x + q.pos[0], p.at.z + q.pos[2])).map(q => {
+    const r = (p.at.x + q.pos[0]) * U.x + (p.at.z + q.pos[2]) * U.z, s = Array.isArray(q.scale) ? q.scale : [q.scale, q.scale, q.scale];
+    return r + (q.kind === 'box' ? s[2] / 2 : s[0] / 2);
+  }));
+  assert.ok(TRACK.radius - half - outer >= 0.1, `platform edge ${outer.toFixed(3)}, car side ${(TRACK.radius - half).toFixed(3)}`);
+});
+// 裁決 R13：Lv7、Lv8 劇本演完之後，球場格裡露出來的名冊成員（老鼠、鼠災工作人員不算；走出去的人已經不算成員）每一幀都 ≤ 8。
+// 住在這一格的島民（landmarks.islanders 的家有一個在球場格）、鮮奶節每格一個的小孩（milk.extraKids）是別的物品的人數預算
+// （計畫：島民 4、鮮奶節小孩 3，任務 12 驗全島），這裡不算——只管棒球自己的人和走進來的訪客
+const RESIDENTS = ['rat.pack', 'baseball.staff', 'landmarks.islanders', 'milk.extraKids'];
+test('after the Lv7 and Lv8 scripts the baseball cell never holds more than 8 visible roster members (rats, dome staff and other items\' residents excluded)', async () => {
+  for (const order of SOLUTIONS) for (const to of [7, 8]) {
+    const h = await headlessShow(), { show } = h;
+    await liveAt(h, order, isBall(to));
+    let worst = 0, who = '';
+    for (let f = 0; f < 450; f++) {
+      show.update(1 / 30, 200 + f / 30);
+      const inCell = show.roster.keys().filter(k => !RESIDENTS.includes(k))
+        .flatMap(k => show.roster.members(k).filter(m => !m.hidden && String(cellAt(m.pos.x, m.pos.z)) === String(CELL)).map(() => k));
+      if (inCell.length > worst) { worst = inCell.length; who = inCell.join(' '); }
+    }
+    assert.ok(worst <= 8, `${order.join('>')} lv${to}: ${worst} in the cell (${who})`);
+  }
 });

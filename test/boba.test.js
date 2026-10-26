@@ -217,7 +217,6 @@ test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 
     // 物品 v2：颱風外送 +1（fx 的 delta）帶上去的那一級不是 grow 事件，不在這裡
     assert.ok([1, 2, 3, 6, 7].every(l => seen.includes(l)), `boba events seen: ${seen}`);
   }
-  console.log('boba script seconds', JSON.stringify(timing));
 });
 // 正解裡被颱風外送帶上去的那一級（賽博 Lv4、外星 Lv5）自己演一次：照 order 演到上一級，改成 grow 事件單獨演
 test('scripts: the levels the typhoon delivery skips (Lv4, Lv5) also play 3–5 s with their camera', async () => {

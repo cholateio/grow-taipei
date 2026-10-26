@@ -313,7 +313,8 @@ test('landing turn live: people vanish at their doors without a blink; the next 
       if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
       const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0, home: false };
       if (frames <= 15 && !r.home) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); r.home = r.walk > 0 && !x.m.arriving; early.set(x.m, r); }
-      const tr = trip.get(x.m) ?? { len: 0, at: { ...x.m.pos } }; tr.len += Math.hypot(x.m.pos.x - tr.at.x, x.m.pos.z - tr.at.z); tr.at = { ...x.m.pos }; trip.set(x.m, tr);
+      // 每幀最多算走路速度 × dt（一幀瞬移不算走路）
+      const tr = trip.get(x.m) ?? { len: 0, at: { ...x.m.pos } }; tr.len += Math.min(Math.hypot(x.m.pos.x - tr.at.x, x.m.pos.z - tr.at.z), (x.m.speed ?? 1.6) * dt); tr.at = { ...x.m.pos }; trip.set(x.m, tr);
       if (frames <= 15 && x.m.walking && tr.len > 0.4) walked.add(x.m);
     }
   };

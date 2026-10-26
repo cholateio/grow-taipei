@@ -19,16 +19,17 @@ const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C
 // ── 版面（捷運格東半邊）：北邊是燈泡的夜市（四攤時最南那攤到錨點北邊 0.1）、西邊是捷運站與站前廣場、東邊是電工主路。
 // 攤車／店都在錨點南邊 0.4（SHOP），夜市第四攤的攤身外擴 PAD 後還碰不到；人龍在它前面（南邊）一排 ──
 const AT = anchorWorld('boba');
-export const SHOP = offset(AT, -0.1, 0.4);
+export const SHOP = offset(AT, -0.1, 0.4);   // queue() 用同一個偏移
 // 排隊（§13.3，計畫 3.8 Task 7）：橫排一列沿 x 往 −x（捷運站那側）排，所有人同一個 z——沿 z 排的話在畫面上會疊成一條黑色長條。
 // 攤車時排在攤車前方（錨點 +z 1.0，排頭在攤車東緣）；珍奶店時改排店門口（+z 1.1，排頭在門前）。
 // 間距 0.25 = 站著的人的分離距離（nav.SEPARATION），站定不會再被擠開。都面向攤車／店。
 // 南邊格子收窄（離格邊 MARGIN 0.35 才走得到，走路格 0.3 一格）：店門口那排再往南 0.05，排頭就走不到了
 const QUEUE_GAP = 0.25;
 export function queue(at, n, shop = false) {
+  const front = offset(at, -0.1, 0.4);   // 攤車／店（at 是錨點時就是 SHOP）
   return Array.from({ length: n }, (_, i) => {
     const p = offset(at, (shop ? 0 : 0.2) - QUEUE_GAP * i, shop ? 1.1 : 1.0);
-    return { ...p, yaw: Math.atan2(SHOP.x - p.x, SHOP.z - p.z) };
+    return { ...p, yaw: Math.atan2(front.x - p.x, front.z - p.z) };
   });
 }
 // 人龍最多 4 人一排（人數預算，使用者 2026-10-26：人龍太容易卡住）
@@ -56,7 +57,7 @@ const SHOP_TINT = { '^DarkWood$': C.coral, '^DarkBrown$': C.wood, '^Dark$': C.wo
 const BY_DOOR = offset(SHOP, 0.51, 0.56);
 export const ownerSpot = n => { const q = queue(AT, 1, n >= 3)[0]; return { ...BY_DOOR, yaw: Math.atan2(q.x - BY_DOOR.x, q.z - BY_DOOR.z) }; };
 
-// 噴泉（Lv4）：店的東側、往北（離鏡頭那邊）退 0.3——鏡頭往南看，噴泉不在店與鏡頭之間；西緣離店身 0.03、東緣離電工主路 0.04
+// 噴泉（Lv4）：店的東側、往北（離鏡頭那邊）退 0.3——鏡頭在南邊往北看，噴泉不在店與鏡頭之間；西緣離店身 0.03、東緣離電工主路 0.04
 export const FOUNTAIN = offset(SHOP, 0.73, -0.3), FOUNTAIN_R = 0.3;
 
 // ── 燈塔島（Lv6 旗艦店）：燈塔在島中心（底座半徑 0.5）、守塔人繞 0.6 一圈、東南有一棵樹；旗艦店在西南（朝主島、靠鏡頭那側）──
@@ -190,7 +191,7 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const owner = c => c.roster.members('boba.owner')[0] ?? null;
 const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const tourist = i => c => shown('boba.queue')(c)[i] ?? null;
-const rider = i => c => c.roster.members('boba.tourists')[i] ?? null;
+const passenger = i => c => c.roster.members('boba.tourists')[i] ?? null;
 const islander = i => c => c.roster.members('landmarks.islanders').filter(m => !m.hidden)[i] ?? null;
 const FOREST = island('forest'), ISLANDERS = 10;   // 糖分超標時最多這麼多島民一起 ♥
 const ISLAND_ZOOM = 0.8;
@@ -240,7 +241,7 @@ function sail() {
   let obj = null;
   const put = (c, k) => {
     const p = ferryAt(k); obj.position.set(p.x, p.y, p.z); obj.rotation.y = p.yaw - DOCK_YAW;
-    for (let i = 0; i < 2; i++) { const m = rider(i)(c); if (m && m.mode === 'script') c.roster.setPose(m, { ...seatAt(k, i), walking: false }); }
+    for (let i = 0; i < 2; i++) { const m = passenger(i)(c); if (m && m.mode === 'script') c.roster.setPose(m, { ...seatAt(k, i), walking: false }); }
   };
   return {
     kind: 'sail', dur: SAIL, keep: true,   // 倒數蒙太奇也留著（不然觀光客會留在碼頭的海上）
@@ -297,14 +298,14 @@ export const script = {
       ];
     },
     // ★ 旗艦店：鏡頭到燈塔島（zoom 0.8）→ 小船載著兩個觀光客在珍奶格東岸外閃白出現、開到燈塔島（SAIL 秒）→ 兩人跳上岸 →
-    //   閃白旗艦店與招牌杯、店屋頂兩台外送無人機 → 鏡頭跟 LEVEL UP 一起回珍奶格，無人機同時起飛繞店一圈
+    //   閃白旗艦店、店屋頂兩台外送無人機 → 鏡頭跟 LEVEL UP 一起回珍奶格，無人機同時起飛繞店一圈
     6(e, s, ctx) {
       const { B } = ctx, sp = [0, 1].map(i => B.spawn('boba.tourists', () => seatAt(0, i)));
-      const hop = Object.assign(B.together([0, 1].map(i => Object.assign(B.jump(rider(i), () => TOURIST_SPOTS[i], 0.5), { keep: true }))), { keep: true });
+      const hop = Object.assign(B.together([0, 1].map(i => Object.assign(B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5), { keep: true }))), { keep: true });
       return [
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,
-        sail(), hop, B.home([rider(0), rider(1)]),
+        sail(), hop, B.home([passenger(0), passenger(1)]),
         B.apply(e), B.together([B.focus('boba'), launch(), B.levelUp('boba')]),
       ];
     },

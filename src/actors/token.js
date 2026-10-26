@@ -162,9 +162,9 @@ export const script = {
         levelUpAtStation(B),
       ];
     },
-    // 接駁車：鏡頭到遊樂場島（zoom 0.8）→ 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥2 時兩個小孩下車走到溜滑梯 → 鏡頭跟 LEVEL UP 一起回代幣格
+    // 接駁車：鏡頭到遊樂場島（zoom 0.8）→ 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥3（有小學）時兩個小孩下車走到溜滑梯 → 鏡頭跟 LEVEL UP 一起回代幣格
     5(e, s, ctx) {
-      const { B } = ctx, kids = s.lv.milk >= 2;
+      const { B } = ctx, kids = s.lv.milk >= 3;
       return [
         B.focus(PLAYGROUND, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['token.shuttle', ...(kids ? ['sat.playground'] : [])], hold: ['sat.playground'] }),

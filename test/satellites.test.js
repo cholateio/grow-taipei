@@ -33,10 +33,12 @@ test('playground kids come with the shuttle and need a school; forest tourists a
   // 小孩是坐接駁車（代幣 Lv5）來的：代幣 Lv5 的劇本 hold 住名冊、在車旁 spawn
   assert.equal(sat.view(lv({ token: 4, milk: 3 }), {})['sat.playground'], undefined);
   assert.equal(sat.view(lv({ token: 5, milk: 1 }), {})['sat.playground'], undefined);
-  const kids = sat.view(lv({ token: 5, milk: 2 }), {})['sat.playground'], s = SATELLITES.find(x => x.kind === 'playground'), c = axialToWorld(s.q, s.r);
+  assert.equal(sat.view(lv({ token: 5, milk: 2 }), {})['sat.playground'], undefined, 'milk Lv2 is the breakfast shop: no schoolkids yet (items v2)');
+  const kids = sat.view(lv({ token: 5, milk: 3 }), {})['sat.playground'], s = SATELLITES.find(x => x.kind === 'playground'), c = axialToWorld(s.q, s.r);
   assert.deepEqual([kids.kind, kids.n, kids.accessory, kids.home.kind, kids.home.r], ['roster', 2, 'none', 'wander', 0.5]);
   assert.ok(Math.hypot(kids.home.at.x - c.x, kids.home.at.z - c.z) < 0.5, 'wanders on the playground island');
-  assert.equal(sat.view(lv({ token: 5, milk: 5 }), {})['sat.playground'].accessory, 'cap');
+  // 配件跟鮮奶格的小孩一樣（物品 v2 §4.2：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了）
+  assert.deepEqual([3, 5, 6, 7, 8, 9, 10].map(n => sat.view(lv({ token: 5, milk: n }), {})['sat.playground'].accessory), ['none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forestShop'], undefined);
   assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forestShop'].kind, 'compound');
 });
@@ -78,7 +80,7 @@ import { cellAt } from '../src/scene/hex.js';
 import { createNav } from '../src/show/nav.js';
 test('satellite rosters live off the main island: no entry declared, nothing for the entry check', () => {
   const nav = createNav();
-  for (const extra of [{ token: 5, milk: 2 }, { token: 6, milk: 5, boba: 4 }, allMax]) {
+  for (const extra of [{ token: 5, milk: 3 }, { token: 6, milk: 5, boba: 4 }, allMax]) {
     const v = sat.view(lv(extra), {}), rosters = Object.entries(v).filter(([, d]) => d.kind === 'roster');
     assert.ok(rosters.length, JSON.stringify(extra));
     for (const [k, d] of rosters) {

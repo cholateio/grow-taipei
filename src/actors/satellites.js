@@ -4,6 +4,7 @@ import { SATELLITES, axialToWorld, TOP, WATER_Y } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { C } from './palette.js';
 import { builders as ratBuilders } from './rat.js';
+import { kidAccessory } from './milk.js';
 import * as spec from '../rules/spec.js';
 
 export const id = 'satellites';
@@ -22,8 +23,9 @@ export function view(lv, flags) {
   // 守塔人（§14.3）：燈塔亮了之後一位守塔人繞著燈塔走（衛星島的 wander 是 ringPath，半徑 0.6 在塔身外、樹的內側）；停電也還在
   if (lv.bulb >= 2) v['sat.keeper'] = { kind: 'roster', at: at('lighthouse'), n: 1, shirt: C.navy, accessory: 'cap', home: { kind: 'wander', at: at('lighthouse'), r: 0.6 } };
   // 遊樂場的小孩是坐接駁車（代幣 Lv5）來的：代幣的劇本 hold 住這個名冊、在車旁 spawn；日常在島上繞圈（名冊的衛星島 wander）
-  if (lv.token >= 5 && lv.milk >= 2) {
-    v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: lv.milk >= 5 ? 'cap' : 'none', home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
+  // 物品 v2：鮮奶 Lv3 才有小學生（Lv2 是早餐店），配件跟鮮奶格的小孩同一張表
+  if (lv.token >= 5 && lv.milk >= 3) {
+    v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: kidAccessory(lv.milk), home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
   }
   // 小森林島的觀光客跟著珍奶分店（Lv4）一起來：珍奶 Lv4 的劇本鏡頭移過去時閃白出現（§8.7）
   if (lv.boba >= 4) {

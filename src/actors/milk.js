@@ -4,7 +4,8 @@
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
 // 被老鼠咬或颱風登陸那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來；颱風賴著不走也一樣）。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv7、Lv10 ≤ 10 秒、最後回全景定格。
-import { anchorWorld, cellCentre } from './anchors.js';
+import { anchorWorld } from './anchors.js';
+import { HOMES, HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
 
@@ -16,7 +17,7 @@ const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 const POLE = offset(AT, 0.75, 0.95);                  // 旗桿
-const ARCH = offset(AT, 1.25, 0.2);                   // 大學拱門校門
+const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（中心、兩根柱子離中心多遠）；右柱離小學生入口 ≥ 0.3（柱子有 footprint）
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
 const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
 // 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡
@@ -26,8 +27,6 @@ const MILK = [-1, 0];   // 鏡頭對的格子：校舍
 const league = lv => lv.milk === 6 && lv.baseball >= 2;
 // 小孩日常的中心：少棒隊在巨蛋旁的空地練球（門口留給球員和觀眾），否則在操場
 const kidsCenter = lv => (league(lv) ? offset(anchorWorld('baseball'), -1.15, 0.75) : PLAY);
-// 鮮奶節的小孩：溫泉格以外的六格各一個（同島民的家，landmarks.js）
-export const FESTIVAL_HOMES = [[0, 0], [-1, 1], [1, 0], [-1, 0], [0, -1], [0, 1]].map(cellCentre);
 
 // ── 校舍模型（§7.1 標準件）：size = glb 原始包圍盒（x, y, z），縮放到高度 h 後的佔地照比例算 ──
 export const MODELS = {
@@ -99,6 +98,9 @@ const bikes = (x, z) => [
 // 觀光船停在西岸（水上，格子外）
 const BOAT = offset(AT, -2.8, 0.55, WATER_Y - AT.y - 0.02);
 
+// 小學生的配件（遊樂場島的小孩也照這張表，satellites.js）：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了
+export const kidAccessory = n => (n >= 9 ? 'none' : n >= 8 ? 'coat' : n >= 7 ? 'mortar' : n >= 6 ? 'cap' : 'none');
+
 export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
@@ -137,12 +139,12 @@ export function view(lv, flags, meta = {}) {
   v['milk.yard'] = { kind: 'compound', at, parts: yard, footprint: n === 2 ? [{ x: -0.6, z: 0.3, r: 0.4 }, { x: 0.3, z: 0.45, r: 0.4 }] : false };
   // 旗子自己一個零件：Lv5 劇本讓它沿著旗桿升上去（scale.y 0→1，以地面為基準）
   if (n >= 5) v['milk.flag'] = { kind: 'compound', at, footprint: false, parts: [{ kind: 'box', pos: [0.86, 0.72, 0.95], scale: [0.2, 0.13, 0.02], color: C.coral, flag: true }] };
-  // 大學校門：兩根柱子 + 半圈拱（拱門可以穿過去）；Lv8 起旁邊 YouBike 站
-  // footprint 不算（拱門可以穿過去；單車跟旗桿一樣是小東西，不擋往橋頭的路）
-  if (n >= 7) v['milk.gate'] = { kind: 'compound', at, footprint: false, parts: [
-    { kind: 'box', pos: [ARCH.x - at.x - 0.3, 0.35, ARCH.z - at.z], scale: [0.1, 0.7, 0.1], color: C.wall },
-    { kind: 'box', pos: [ARCH.x - at.x + 0.3, 0.35, ARCH.z - at.z], scale: [0.1, 0.7, 0.1], color: C.wall },
-    { kind: 'torus', pos: [ARCH.x - at.x, 0.7, ARCH.z - at.z], scale: 0.62, color: C.wall },
+  // 大學校門：兩根柱子 + 半圈拱；Lv8 起旁邊 YouBike 站。footprint 只算兩根柱子（拱門中間可以穿過去；
+  // 單車跟旗桿一樣是小東西，不擋往橋頭的路）
+  const pillars = [-PILLAR, PILLAR].map(dx => ({ x: ARCH.x - at.x + dx, z: ARCH.z - at.z }));
+  if (n >= 7) v['milk.gate'] = { kind: 'compound', at, footprint: pillars.map(p => ({ ...p, r: 0.06 })), parts: [
+    ...pillars.map(p => ({ kind: 'box', pos: [p.x, 0.35, p.z], scale: [0.1, 0.7, 0.1], color: C.wall })),
+    { kind: 'torus', pos: [ARCH.x - at.x, 0.7, ARCH.z - at.z], scale: 2 * PILLAR + 0.02, color: C.wall },
     ...(n >= 8 ? bikes(BIKES.x - at.x, BIKES.z - at.z) : []),
   ] };
   // 畢業典禮拋上天的學士帽，落在操場上（Lv9 劇本從空中掉下來）
@@ -155,13 +157,12 @@ export function view(lv, flags, meta = {}) {
     v['milk.boat'] = { kind: 'glb', at: BOAT, path: MODELS.boat.path, h: 0.35, tint: BOAT_TINT, footprint: false };
   }
   if (n >= 3 && !home) {
-    const accessory = n >= 9 ? 'none' : n >= 8 ? 'coat' : n >= 7 ? 'mortar' : n >= 6 ? 'cap' : 'none';
     v['milk.kids'] = {
-      kind: 'roster', at, n: 3, shirt: C.yellow, accessory, scale: n >= 4 ? 1.3 : 1,
+      kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n), scale: n >= 4 ? 1.3 : 1,
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRY },
     };
-    // 鮮奶節：全島每格多一個小孩（溫泉格以外的六格，各自從自己那格的邊上走進來）
-    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: FESTIVAL_HOMES[3], n: FESTIVAL_HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: FESTIVAL_HOMES, r: 0.8 } };
+    // 鮮奶節：全島每格多一個小孩（同島民的家：溫泉格以外的六格、同樣的散步半徑，各自從自己那格的邊上走進來）
+    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: HOMES[3], n: HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: HOMES, r: HOME_R } };
   }
   return v;
 }
@@ -258,7 +259,7 @@ export const script = {
         gather(ctx, offset(ARCH, -0.1, 0.55), 0.4),
         B.bubble(kid(ctx, 0), { icon: 'mortar' }, 1.0),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 1.0 }), B.levelUp('milk'), B.home(allKids),
+        B.focus('home', { hold: 2.0 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
     // 研究大樓：左翼閃白換成玻璃研究大樓、大家抬頭看、一個人 ！→ 一個走去校門的 YouBike 站（白袍、車站閃白）♪ → LEVEL UP
@@ -290,7 +291,7 @@ export const script = {
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 1.5 }), B.levelUp('milk'), B.home(allKids),
+        B.focus('home', { hold: 2.5 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
   },

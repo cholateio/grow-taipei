@@ -179,7 +179,7 @@ test('Lv5: the playground kids get off the shuttle at the island end, then go ho
   let first = null;
   show.update = (dt, t) => { update(dt, t); const ks = show.roster.members('sat.playground'); if (!first && ks.length) first = ks.map(k => ({ ...k.pos })); };
   const { e, secs, n, r: r0 } = await liveAt(h, SOLUTIONS[0], isToken(5));
-  checkToken(h, e, secs, n, r0); assert.ok(show.stage.lv.milk >= 2);
+  checkToken(h, e, secs, n, r0); assert.ok(show.stage.lv.milk >= 3);
   // §13.2：spawn 不佔時間，兩個小孩同一幀在接駁車那頭下車
   assert.ok(first?.length >= 1, 'kids get off the shuttle');
   assert.ok(first.every(p => Math.hypot(p.x - end.x, p.z - end.z) < 0.6), 'kids spawn by the shuttle end');

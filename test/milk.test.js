@@ -4,6 +4,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import * as milk from '../src/actors/milk.js';
+import * as landmarks from '../src/actors/landmarks.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { RING_R, cellAt, axialToWorld, MAIN_CELLS } from '../src/scene/hex.js';
 import { existsSync } from 'node:fs';
@@ -89,6 +90,7 @@ test('milk kids count: 3 from Lv3; Lv10 adds one kid per main cell (landmarks.ex
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
   assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
+  assert.deepEqual(x.home.at, landmarks.HOMES, 'the islanders\' homes'); assert.equal(x.home.r, landmarks.view()['landmarks.islanders'].home.r, 'and their wander radius');
   assert.equal(new Set(cells).size, 6, 'one kid in each of six cells');
   assert.ok(cells.every(c => MAIN_CELLS.some(m => m.join(',') === c)) && !cells.includes('1,-1'), 'main cells except the spring');
   assert.equal(milk.view(lv({ milk: 10, typhoon: 2 }), {}, { landing: true })['milk.extraKids'], undefined, 'the festival kids hide on the landing turn too');
@@ -139,10 +141,16 @@ test('knocking milk back from 7 removes the arch gate; the graduates go back to 
   assert.ok(!show.stage.partKeys().includes('milk.gate'));
   assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'));
 });
-test('every milk part stays inside the milk cell (the festival boat is moored on the water just west of it)', () => {
+test('every milk part and footprint corner stays inside the milk cell (the festival boat is moored on the water just west of it)', () => {
   const c = axialToWorld(-1, 0);
   for (let n = 1; n <= 10; n++) for (const [key, s] of Object.entries(views[n])) {
     if (key === 'milk.extraKids') continue;
+    // footprint：框的四個角、圓的四個極點都在鮮奶格裡
+    for (const f of [].concat(s.footprint || [])) {
+      const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
+      const corners = f.r != null ? [[hx, 0], [-hx, 0], [0, hz], [0, -hz]] : [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]];
+      for (const [dx, dz] of corners) assert.deepEqual(cellAt(cx + dx, cz + dz), [-1, 0], `lv${n} ${key} footprint corner (${(cx + dx).toFixed(2)}, ${(cz + dz).toFixed(2)})`);
+    }
     const pts = s.kind === 'campus' ? s.models.map(m => ({ x: s.at.x + m.pos[0], z: s.at.z + m.pos[2] })) : s.kind === 'glb' ? [s.at] : worldPoints(s);
     for (const p of pts) {
       if (key === 'milk.boat' || (key === 'milk.yard' && p.x < c.x - RING_R)) { assert.equal(cellAt(p.x, p.z), null, `lv${n} ${key} on the water`); assert.ok(p.x < c.x - RING_R && distToCell(p, [-1, 0]) < RING_R + 1.2); continue; }
@@ -172,6 +180,8 @@ test('scripts: every milk event in both solutions plays 3–5 s (◆ Lv7 / Lv10 
       const to = e.kind === 'grow' ? e.to : 1; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       const [lo, hi] = to === 7 || to === 10 ? [3, 10] : [3, 5];
       assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs.toFixed(2)}s`);
+      // ◆（§6「8–10 秒」= 上限 10、軟下限 6，控制者裁決）：含鏡頭平移與回全景定格的整段 6–10 s
+      if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.at(-1), head = show.stage.headOf('milk');
         assert.equal(last.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - head.x, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
@@ -209,4 +219,40 @@ test('milk rosters enter walkable and ≥ 1.5 from every spot at every level (ki
   }
   bad.push(...await entriesThroughSolutions(milk, SOLUTIONS));
   assert.deepEqual(bad, []);
+});
+
+// 鮮奶節的小孩（審稿第 1 輪）：每格的散步圈在兩條正解收尾時的真 footprint 下 ≥ 30% 走得到；10 秒內每個人都走動過（不會卡在建築裡不動）
+test('festival kids: every home\'s wander disk is ≥ 30% walkable at the end of both solutions, and every festival kid moves within 10 s', async () => {
+  for (const order of SOLUTIONS) {
+    const { show, run } = await headlessShow();
+    let s = engine.createState(spec);
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const step of steps) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+    assert.equal(show.stage.lv.milk, 10);
+    const home = milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.extraKids'].home;
+    for (const c of home.at) {
+      let ok = 0, all = 0;
+      for (let i = -10; i <= 10; i++) for (let j = -10; j <= 10; j++) {
+        const dx = i / 10 * home.r, dz = j / 10 * home.r; if (Math.hypot(dx, dz) > home.r) continue;
+        all++; if (show.nav.walkable(c.x + dx, c.z + dz)) ok++;
+      }
+      assert.ok(ok / all >= 0.3, `${order.join('>')} home ${cellAt(c.x, c.z)}: ${(100 * ok / all).toFixed(0)}% walkable`);
+    }
+    const kids = show.roster.members('milk.extraKids'), start = kids.map(m => ({ ...m.pos })), moved = new Set();
+    assert.equal(kids.length, 6);
+    for (let f = 0; f < 300; f++) { show.update(1 / 30, 500 + f / 30); kids.forEach((m, i) => { if (Math.hypot(m.pos.x - start[i].x, m.pos.z - start[i].z) > 0.05) moved.add(i); }); }
+    assert.equal(moved.size, 6, `${order.join('>')}: kids that moved ${[...moved]}`);
+  }
+});
+test('the arch gate pillars block walkers (r 0.06 each); the passage between them and the kids\' entry stay walkable', () => {
+  const nav = createNav();
+  for (let n = 7; n <= 10; n++) {
+    const v = milk.view(lv({ milk: n }), {}), g = v['milk.gate'];
+    assert.equal(g.footprint.length, 2); assert.ok(g.footprint.every(f => f.r === 0.06));
+    nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    const [a, b] = g.footprint.map(f => ({ x: g.at.x + f.x, z: g.at.z + f.z }));
+    assert.ok(!nav.walkable(a.x, a.z) && !nav.walkable(b.x, b.z), `lv${n} pillars`);
+    assert.ok(nav.walkable((a.x + b.x) / 2, (a.z + b.z) / 2), `lv${n} passage`);
+    assert.ok(nav.walkable(milk.KID_ENTRY.x, milk.KID_ENTRY.z), `lv${n} entry`);
+  }
 });

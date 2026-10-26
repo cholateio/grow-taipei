@@ -1,6 +1,7 @@
 // 北側台地的常駐地標：陽明山（火山，山口冒煙）與北投溫泉（池子、小澡堂、蒸氣）。開局就在（§4.1）。
 import { landmarkWorld, cellCentre } from './anchors.js';
 import { offset } from './palette.js';
+import { trainCars } from './token.js';
 
 export const id = 'landmarks';
 
@@ -20,7 +21,7 @@ const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WAT
 
 // 老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時池水變成淡綠色
 export function view(lv = {}) {
-  const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !(lv.token >= 2) ? 0xbfd39c : WATER;
+  const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !trainCars(lv.token) ? 0xbfd39c : WATER;
   return {
     'landmarks.volcano': {
       kind: 'compound', at: v, parts: [

@@ -2,7 +2,7 @@
 //   名稱含 phone 用 390×844、含 wide 用 2560×1080，否則 1280×800；console 有 Uncaught/Error/Failed 就 exit 1。
 //   虛擬時間預設 20 s（夠載入＋?auto 瞬間放完）。但 ?live 在 warp 同步快轉之後動畫迴圈還會繼續演，20 s 拍到的是
 //   warp＋十幾秒那一刻，回合可能已經演完、鏡頭回全景。wide 的 live 截圖要拍「拉近到主角格」的那一刻，
-//   所以名稱含 wide（或 milk- 開頭的鮮奶標準件特寫）又有 live=1 時預算縮成 1.5 s（實測拍到 warp 後不到 1 秒的畫面，每次同一刻）；其他截圖照舊 20 s。
+//   所以名稱含 wide（或物品 id- 開頭的特寫：milk-、token-…）又有 live=1 時預算縮成 1.5 s（實測拍到 warp 後不到 1 秒的畫面，每次同一刻）；其他截圖照舊 20 s。
 //   npm run shot 的 wide-live 用 warp=4.5：第 6 回合（鮮奶）放下、酪農在鮮奶格冒 ♥，鏡頭拉近在鮮奶格。
 // node tools/shot.mjs --dom <query>  → 印出頁面 DOM（驗證錯誤畫面文字用）
 import { execFile } from 'node:child_process';
@@ -16,7 +16,8 @@ const base = q => `http://127.0.0.1:${PORT}/index.html${q ? '?' + q : ''}`;
 const flags = (size, budget = 20000) => ['--headless=new', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars',
   `--window-size=${size}`, `--virtual-time-budget=${budget}`, '--enable-logging=stderr', '--v=0'];
 const sizeOf = name => (name.includes('phone') ? '390,844' : name.includes('wide') ? '2560,1080' : '1280,800');
-const budgetOf = (name, query) => ((name.includes('wide') || name.startsWith('milk-')) && /(^|&)live=1(&|$)/.test(query) ? 1500 : 20000);
+const ITEM_SHOT = /^(milk|chip|bulb|token|typhoon|rat|boba|baseball)-/;   // 物品特寫（milk-3、token-6…）
+const budgetOf = (name, query) => ((name.includes('wide') || ITEM_SHOT.test(name)) && /(^|&)live=1(&|$)/.test(query) ? 1500 : 20000);
 
 // 必須非同步：同步 spawn 會卡住同一個程序裡的伺服器，Chrome 就永遠等不到頁面。
 const run = argv => new Promise(ok => execFile(CHROME, argv, { encoding: 'utf8', timeout: 180000, maxBuffer: 64 << 20 },

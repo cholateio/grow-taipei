@@ -9,6 +9,7 @@ import { CRATE } from './milk.js';
 import { C, offset } from './palette.js';
 import { ITEMS } from '../rules/spec.js';
 import { clampLv } from './clamp.js';
+import { trainCars } from './token.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
@@ -24,7 +25,7 @@ export function ratMode(lv, flags) {
   if (flags.domeRats) return 'dome';
   if (lv.rat >= 4 && flags.ratBranch === 'alien') return 'alien';
   if (lv.rat >= 4 && flags.ratBranch === 'cyber') return 'cyber';
-  if (lv.rat >= 3) return lv.token >= 2 ? 'train' : 'spring';
+  if (lv.rat >= 3) return trainCars(lv.token) ? 'train' : 'spring';   // 物品 v2：列車代幣 Lv4 才有
   return lv.rat >= 2 ? 'nest' : 'one';
 }
 
@@ -46,7 +47,7 @@ export function view(lv, flags) {
       'rat.pack': pack(AT, 5, wander(AT, 0.7)),
     };
     case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
-    case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: lv.token >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35 }) };
+    case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
     // Lv5 最終型態：機器鼠軍團 10 隻繞 101（骨架動畫上限 12：10 + 柴犬；石堆小島的兩隻這時不畫）
     case 'cyber': return lv.rat >= 5
       ? { 'rat.pack': pack(TOWER, 10, { ...wander(TOWER, 1.3), entry: PARK }, { tint: GREY, antenna: true }) }

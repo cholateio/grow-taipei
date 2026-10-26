@@ -121,7 +121,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 車頂座位：沿車廂前進方向（yaw）偏移，y 抬到車頂
   function seat(h, i, t) {
     const seats = SEATS[h.cars] ?? SEATS[3], [car, off] = seats[i % seats.length];
-    const p = trainPose(t + (rail?.offset ?? 0), car, { speed: h.speed });
+    const p = trainPose(t + (rail?.offset ?? 0), car, { speed: h.speed, trip: rail?.trip });
     return { x: p.x + Math.sin(p.yaw) * off, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * off, yaw: p.yaw };
   }
   // m：已經在場上的成員（snap 用）；follow 的家就是他現在站的地方，剛生出來的站在 spec.at
@@ -534,13 +534,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
     nav.separateStanding(standing, WALK_SPEED.people * dt);
     // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。
-    // 被推、被拉回游標的這一小段要是會切進 footprint（§14.1），這幀就站著不動（游標照走，下一幀再追上）
+    // 被推、被拉回游標的這一小段要是會切進 footprint（§14.1），這幀就站著不動（游標照走，下一幀再追上）。
+    // 看的是 nav.passable（外擴後的 footprint、水），不是 walkable：路線會貼著外擴邊走過格點被擋住的夾縫，那不是牆
     for (const [m, p, max, loose] of was) {
       if (m.gone || m.hidden || m.mode === 'script') continue;
       const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
       // 只走到一半時 y 不用兩點的直線內插（拱橋上那條弦會陷進橋面）：落在走路格上就貼那裡的地面
       if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.walkable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
-      if (!loose && !nav.walkable(m.pos.x, m.pos.z)) m.pos = p;
+      if (!loose && !nav.passable(m.pos.x, m.pos.z)) m.pos = p;
       place(m);
     }
   }

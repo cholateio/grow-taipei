@@ -27,20 +27,20 @@ test('ratMode precedence: dome > alien > cyber > train > spring > nest > one', (
   assert.equal(rat.ratMode(lv({ rat: 1 }), {}), 'one');
   assert.equal(rat.ratMode(lv({ rat: 2 }), {}), 'nest');
   assert.equal(rat.ratMode(lv({ rat: 3 }), {}), 'spring');
-  assert.equal(rat.ratMode(lv({ rat: 3, token: 2 }), {}), 'train');
-  assert.equal(rat.ratMode(lv({ rat: 4, token: 2 }), { ratBranch: 'cyber' }), 'cyber');
+  assert.equal(rat.ratMode(lv({ rat: 3, token: 4 }), {}), 'train');
+  assert.equal(rat.ratMode(lv({ rat: 4, token: 4 }), { ratBranch: 'cyber' }), 'cyber');
   assert.equal(rat.ratMode(lv({ rat: 4 }), { ratBranch: 'alien' }), 'alien');
   assert.equal(rat.ratMode(lv({ rat: 4 }), { ratBranch: 'alien', domeRats: true }), 'dome');
   assert.equal(rat.ratMode(lv({ rat: 0 }), {}), null);
 });
 test('rat lv4 without ratBranch falls back to plain rats (review focus 4)', () => {
   assert.doesNotThrow(() => rat.view(lv({ rat: 4 }), {})); assert.equal(rat.ratMode(lv({ rat: 4 }), {}), 'spring');
-  assert.equal(rat.ratMode(lv({ rat: 4, token: 3 }), {}), 'train');
+  assert.equal(rat.ratMode(lv({ rat: 4, token: 5 }), {}), 'train');
 });
 
 // ── Task 16：老鼠全部改成名冊 rat.pack（§5.1：同一批老鼠上岸、生窩、上車、變身）──
 const MODES = [
-  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 2 }, {}, 5], [{ rat: 4 }, { ratBranch: 'cyber' }, 5],
+  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 4 }, { ratBranch: 'cyber' }, 5],
   [{ rat: 5 }, { ratBranch: 'cyber' }, 10], [{ rat: 4 }, { ratBranch: 'alien' }, 1], [{ rat: 5 }, { ratBranch: 'alien' }, 1], [{ rat: 2 }, { domeRats: true }, 5],
 ];
 test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 5 → 10), walking anim, h 0.2 except the mutant', () => {
@@ -62,8 +62,8 @@ test('view: home shapes — one/nest wander by the nest, spring stands in the po
   const spring = rat.view(lv({ rat: 3 }), {})['rat.pack'].home;
   assert.equal(spring.kind, 'stand'); assert.equal(spring.spots.length, 5);
   for (const s of spring.spots) { assert.ok(near(s, SPRING, 0.8)); assert.ok(Math.abs(s.y - (SPRING.y + 0.1)) < 1e-9); }
-  assert.deepEqual(rat.view(lv({ rat: 3, token: 2 }), {})['rat.pack'].home, { kind: 'ride', cars: 3, speed: 0.35 });
-  assert.deepEqual(rat.view(lv({ rat: 3, token: 3 }), { flooded: true })['rat.pack'].home, { kind: 'ride', cars: 5, speed: 0 });
+  assert.deepEqual(rat.view(lv({ rat: 3, token: 4 }), {})['rat.pack'].home, { kind: 'ride', cars: 3, speed: 0.35 });
+  assert.deepEqual(rat.view(lv({ rat: 3, token: 5 }), { flooded: true })['rat.pack'].home, { kind: 'ride', cars: 5, speed: 0 });
   assert.deepEqual(rat.view(lv({ rat: 2 }), { domeRats: true })['rat.pack'].home, { kind: 'wander', at: GATE, r: 0.9 });
 });
 test('view: cyber rats are grey with antennas on the engineer route, then ten wander round 101; the alien is a big green three-eyed waver with a UFO at Lv5', () => {
@@ -82,7 +82,7 @@ test('view: cyber rats are grey with antennas on the engineer route, then ten wa
 test('rats bathing turn the hot spring green-ish; rats on the train do not', () => {
   const water = v => v['landmarks.spring'].parts[1].color;
   assert.notEqual(water(landmarks.view(lv({ rat: 3 }), {})), water(landmarks.view(lv({}), {})));
-  assert.equal(water(landmarks.view(lv({ rat: 3, token: 2 }), {})), water(landmarks.view(lv({}), {})));
+  assert.equal(water(landmarks.view(lv({ rat: 3, token: 4 }), {})), water(landmarks.view(lv({}), {})));
 });
 test('rats builder (kept for the two rats on the rocks islet) spawns a model on each spot', async () => {
   const assets = { spawn: async () => new THREE.Group() };
@@ -204,7 +204,7 @@ test('Lv3 train: one rat boards at the station, the other four at the nest-side 
   assert.ok(Math.abs(boards[0].a - station) < 0.25, 'rat 0 boards by the station');
   assert.ok(boards.slice(1).every(b => Math.abs(b.a - nest) < 0.3), 'the rest board by the nest');
 });
-test('Lv3 spring (token < 2): five rats walk up to the hot spring and ♥', async () => {
+test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring and ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
   const n = bubblesLog.length, e = { kind: 'grow', item: 'rat', from: 2, to: 3 }, secs = await run([e]);
@@ -302,7 +302,7 @@ const PARK = offset(anchorWorld('chip'), -0.5, 1.2);
 // 賽博 Lv5 補的五隻機器鼠從園區門口（原本五隻變身的地方）走去 101
 test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the first rat spawns at the landing in the sea off the dome cell; the cyber legion comes out of the park gate', async () => {
   const nav = createNav(), bad = [];
-  const modes = [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 2 }, {}], [{ rat: 4, chip: 3 }, { ratBranch: 'cyber' }], [{ rat: 5, chip: 3 }, { ratBranch: 'cyber' }],
+  const modes = [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 4 }, {}], [{ rat: 4, chip: 3 }, { ratBranch: 'cyber' }], [{ rat: 5, chip: 3 }, { ratBranch: 'cyber' }],
     [{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 4, baseball: 3 }, { domeRats: true }]];
   for (const [l, f] of modes) bad.push(...entryProblems(rat.view(lv(l), f), nav, `${JSON.stringify(l)} ${JSON.stringify(f)}`));
   bad.push(...await entriesThroughSolutions(rat, SOLUTIONS));
@@ -324,11 +324,11 @@ const grow = (to, l, flags = {}, prev = { lv: lv({ ...l, rat: to - 1 }), flags: 
 test('focus: train Lv3 token then nest; cyber Lv4 chip, Lv5 101; spring / alien at the hot spring', () => {
   const SPRING_CELL = [1, -1];
   const cases = [
-    ['train 3', grow(3, { token: 2 }), [cellOf('token'), cellOf('rat')]],
+    ['train 3', grow(3, { token: 4 }), [cellOf('token'), cellOf('rat')]],
     ['spring 3', grow(3, {}), [SPRING_CELL]],
-    ['cyber 4', grow(4, { chip: 8, token: 2 }, {}, { lv: lv({ rat: 3, chip: 8, token: 2 }), flags: {} }), [cellOf('chip')]],   // 物品 v2：晶片 ≥8 才分岔成機器鼠
+    ['cyber 4', grow(4, { chip: 8, token: 4 }, {}, { lv: lv({ rat: 3, chip: 8, token: 4 }), flags: {} }), [cellOf('chip')]],   // 物品 v2：晶片 ≥8 才分岔成機器鼠
     ['cyber 5', grow(5, { chip: 3 }, { ratBranch: 'cyber' }), [cellOf('tower')]],
-    ['alien 4', grow(4, { token: 2 }, {}, { lv: lv({ rat: 3, token: 2 }), flags: {} }), [SPRING_CELL]],
+    ['alien 4', grow(4, { token: 4 }, {}, { lv: lv({ rat: 3, token: 4 }), flags: {} }), [SPRING_CELL]],
     ['alien 5', grow(5, {}, { ratBranch: 'alien' }), [SPRING_CELL]],
   ];
   for (const [what, beats, want] of cases) {

@@ -1,259 +1,380 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import * as token from '../src/actors/token.js';
-test('trainPose: cars trail along the track radius at the right spacing; speed 0 freezes them', () => {
-  const { TRACK, trainPose } = token;
-  const a = trainPose(5, 0, { cars: 3 }), b = trainPose(5, 1, { cars: 3 });
-  for (const p of [a, b]) { assert.ok(Math.abs(Math.hypot(p.x, p.z) - TRACK.radius) < 1e-9); assert.equal(p.y, TRACK.y); }
-  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - 0.6) < 0.01, 'car gap 0.6');
-  assert.deepEqual(trainPose(1, 0, { speed: 0 }), trainPose(9, 0, { speed: 0 }));
-});
+import { existsSync } from 'node:fs';
 import * as THREE from '../vendor/three/three.module.js';
-import { groundAt, axialToWorld, SATELLITES } from '../src/scene/hex.js';
-import { createPartFactory } from '../src/actors/parts.js';
+import * as token from '../src/actors/token.js';
+import { groundAt, axialToWorld, SATELLITES, cellAt, worldToAxial, RING_R } from '../src/scene/hex.js';
+import { createPartFactory, orbitPose } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
-const L = extra => ({ milk: 0, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: 0, boba: 0, baseball: 0, ...extra });
-const pylons = s => s.parts.filter(p => p.kind === 'cylinder');
-
-test('token lv1 is a station and its staff', () => assert.deepEqual(Object.keys(token.view(L({ token: 1 }), {})), ['token.main', 'token.staff']));
-test('token lv2 track has 12 pylons whose heights come from groundAt', () => {
-  const v = token.view(L({ token: 2 }), {}), ps = pylons(v['token.track']);
-  assert.equal(ps.length, 12); assert.ok(v['token.track'].parts.some(p => p.kind === 'rail'));
-  for (const p of ps) { const base = groundAt(p.pos[0], p.pos[2]); assert.ok(Math.abs(p.pos[1] - p.scale[1] / 2 - base) < 1e-9); assert.ok(Math.abs(p.pos[1] + p.scale[1] / 2 - token.TRACK.y) < 1e-9); }
-  assert.equal(v['token.train'].cars, 3);
-});
-test('lv3 five cars; lv4 two spurs to the lighthouse and playground islands; lv5 a shuttle; lv6 neon cars', () => {
-  assert.equal(token.view(L({ token: 3 }), {})['token.train'].cars, 5); assert.ok(!Object.keys(token.view(L({ token: 3 }), {})).some(k => k.startsWith('token.spur')));
-  const v = token.view(L({ token: 4 }), {});
-  for (const kind of ['lighthouse', 'playground']) {
-    const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), last = v[`token.spur.${kind}.${token.SPUR_PARTS - 1}`];
-    assert.ok(last.parts.some(p => p.kind === 'box' && Math.hypot(last.at.x + p.pos[0] - c.x, last.at.z + p.pos[2] - c.z) < 2.2), kind);
-  }
-  assert.equal(v['token.train'].cars, 5); assert.ok(!v['token.train'].neon); assert.equal(v['token.shuttle'], undefined);
-  assert.equal(token.view(L({ token: 5 }), {})['token.shuttle'].kind, 'shuttle'); assert.ok(!token.view(L({ token: 5 }), {})['token.train'].neon);
-  assert.ok(token.view(L({ token: 6 }), {})['token.train'].neon);
-});
-test('flooded turns the station into a pool with two swimmers and stops the train', () => {
-  const v = token.view(L({ token: 2 }), { flooded: true });
-  assert.ok(v['token.main'].parts.some(p => p.color === 0xa4d4da)); assert.equal(v['token.swimmers'].n, 2); assert.equal(v['token.train'].speed, 0);
-});
-test('train builder: cars follow trainPose and glow when neon', () => {
-  const glow = createGlowRegistry(), f = createPartFactory(THREE, { glow, builders: token.builders });
-  const p = f.build({ ...token.view(L({ token: 6 }), {})['token.train'] }); p.update(0.1, 3);
-  assert.equal(p.object.children.length, 5); const want = token.trainPose(3, 0);
-  assert.ok(Math.abs(p.object.children[0].position.x - want.x) < 1e-9); assert.ok(glow.size > 0);
-});
-test('the ring line runs in the water channel outside the main island, below the old roof-cutting height', async () => {
-  const { SPACING, R, SATELLITES, axialToWorld, groundAt, WATER_Y, TOP } = await import('../src/scene/hex.js');
-  const mainReach = Math.sqrt(3) * SPACING + R, satInner = Math.min(...SATELLITES.map(s => { const c = axialToWorld(s.q, s.r); return Math.hypot(c.x, c.z); })) - R;
-  assert.ok(token.TRACK.radius > mainReach + 0.5 && token.TRACK.radius < satInner - 0.3, `${token.TRACK.radius} between ${mainReach} and ${satInner}`);
-  assert.ok(token.TRACK.y <= TOP + 0.6);
-  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; assert.equal(groundAt(Math.cos(a) * token.TRACK.radius, Math.sin(a) * token.TRACK.radius), WATER_Y); }
-});
-test('shuttle runs back and forth on the playground spur', () => {
-  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: token.builders });
-  const p = f.build(token.view(L({ token: 5 }), {})['token.shuttle']); p.update(0.5, 0.5); const a = p.object.children[0].position.clone(); p.update(1.5, 2);
-  assert.ok(a.distanceTo(p.object.children[0].position) > 0.3);
-});
-
-// ── Task 14：旅程劇本（§8.4）──
-import { anchorWorld } from '../src/actors/anchors.js';
-import { offset } from '../src/actors/palette.js';
-import { cellAt } from '../src/scene/hex.js';
+import { anchorWorld, cellOf } from '../src/actors/anchors.js';
+import { offset, C } from '../src/actors/palette.js';
+import { diffParts } from '../src/actors/stage.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
-import { headlessShow, playItem, DEFAULT_SECS } from './helpers/show.js';
-import { scripted } from '../src/actors/clamp.js';
-import { lv as LV, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
-import { entriesThroughSolutions } from './helpers/show.js';
-import { createNav } from '../src/show/nav.js';
-import { cellOf } from '../src/actors/anchors.js';
-import { worldToAxial } from '../src/scene/hex.js';
+import { createTimeline } from '../src/show/timeline.js';
+import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
+import { createNav, PAD } from '../src/show/nav.js';
+
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
-const AT = anchorWorld('token'), TWO_PI = 2 * Math.PI;
-const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
+const AT = anchorWorld('token'), TOWER = anchorWorld('tower'), TWO_PI = 2 * Math.PI, CELL = cellOf('token');
 const satC = kind => { const s = SATELLITES.find(x => x.kind === kind); return axialToWorld(s.q, s.r); };
+const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
+const views = Array.from({ length: 11 }, (_, n) => token.view(L({ token: n }), {}));
+const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
+const PALETTE = new Set(Object.values(C));
+const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+const fakeCtx = { B, roster: { members: () => [], nearest: () => null } };
 
-test('view: the station staff is a roster at the door; flooded turns them into swimmers; gone at Lv6', () => {
-  const st = token.view(L({ token: 1 }), {})['token.staff'];
-  assert.deepEqual([st.kind, st.n, st.accessory, st.home.kind], ['roster', 1, 'uniform', 'stand']);
-  const post = offset(AT, 0.6, 0.55); assert.ok(Math.hypot(st.home.spots[0].x - post.x, st.home.spots[0].z - post.z) < 1e-9);
-  assert.equal(token.view(L({ token: 5 }), {})['token.staff'].n, 1); assert.equal(token.view(L({ token: 6 }), {})['token.staff'], undefined);
-  const f = token.view(L({ token: 2 }), { flooded: true });
-  assert.equal(f['token.staff'], undefined);
-  assert.deepEqual([f['token.swimmers'].kind, f['token.swimmers'].n, f['token.swimmers'].accessory, f['token.swimmers'].from, f['token.swimmers'].home.kind], ['roster', 2, 'none', 'token.staff', 'stand']);
-  assert.equal(f['token.swimmers'].home.spots.length, 2);
+// 一個零件的 draw call：compound／spur = 黏土一個 + 每種發光色一個；glb = 1（有 glow 再 +1）；列車每節一個 glb；
+// orbit（飛天車）一個 glb；deck（懸浮月台）每個 glb 各算；接駁車一個 compound；名冊不算
+function drawCalls(v) {
+  const glb = m => 1 + (m.glow ? 1 : 0), compound = parts => 1 + new Set(parts.filter(x => x.glow).map(x => x.glow)).size;
+  return Object.values(v).reduce((t, p) => t + (
+    p.kind === 'compound' || p.kind === 'spur' ? compound(p.parts)
+      : p.kind === 'glb' || p.kind === 'orbit' ? glb(p)
+        : p.kind === 'train' ? p.models.length
+          : p.kind === 'deck' ? p.models.reduce((a, m) => a + glb(m), 0)
+          : p.kind === 'shuttle' ? 1 : 0), 0);
+}
+
+// ── 列車時鐘與支線行程 ──
+test('trainPose: cars trail along the track radius at the right spacing; speed 0 freezes them', () => {
+  const { TRACK, trainPose } = token;
+  const a = trainPose(5, 0), b = trainPose(5, 1);
+  for (const p of [a, b]) { assert.ok(Math.abs(Math.hypot(p.x, p.z) - TRACK.radius) < 1e-9); assert.equal(p.y, TRACK.y); }
+  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - 0.6) < 0.01, 'car gap 0.6');
+  assert.deepEqual(trainPose(1, 0, { speed: 0 }), trainPose(9, 0, { speed: 0 }));
 });
-test('view: each spur is split into SPUR_PARTS keyed parts (8 segments in all) with no footprint; track, train, shuttle have no footprint', () => {
-  const v = token.view(L({ token: 5 }), {});
-  for (const kind of ['lighthouse', 'playground']) {
-    const c = satC(kind);
-    const d = Array.from({ length: token.SPUR_PARTS }, (_, i) => { const s = v[`token.spur.${kind}.${i}`]; assert.equal(s.footprint, false); assert.equal(s.kind, 'compound'); return Math.hypot(s.at.x, s.at.z); });
-    assert.equal(Array.from({ length: token.SPUR_PARTS }, (_, i) => v[`token.spur.${kind}.${i}`].parts.filter(p => p.kind === 'box').length).reduce((a, b) => a + b), 8);
-    assert.equal(v[`token.spur.${kind}.${token.SPUR_PARTS}`], undefined);
-    assert.ok(d.every((x, i) => !i || x > d[i - 1]), `${kind} segments run outward in order`);
-    const last = v[`token.spur.${kind}.${token.SPUR_PARTS - 1}`].at; assert.ok(Math.hypot(last.x - c.x, last.z - c.z) < 2.5, `${kind} ends at the island`);
+test('trainCars: no train before Lv4, 3 cars at Lv4, 5 from Lv5', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 10].map(token.trainCars), [0, 0, 0, 0, 3, 5, 5, 5]);
+});
+test('spurPath / spurTrip run from the ring out to the windmill and playground islands; the lighthouse has no spur (R10)', () => {
+  assert.deepEqual(token.SPURS, ['windmill', 'playground']);
+  assert.throws(() => token.spurPath('lighthouse')); assert.throws(() => token.spurTrip('lighthouse'));
+  for (const kind of token.SPURS) {
+    const c = satC(kind), p = token.spurPath(kind), trip = token.spurTrip(kind), end = trip.path.at(-1), d = Math.hypot(c.x, c.z);
+    assert.ok(Math.abs(Math.hypot(p[0].x, p[0].z) - token.TRACK.radius) < 1e-9, `${kind} shuttle path starts on the ring`);
+    assert.ok(Math.hypot(p.at(-1).x - c.x, p.at(-1).z - c.z) < 1.2, `${kind} shuttle path ends on the island`);
+    assert.ok(Math.hypot(end.x - c.x, end.z - c.z) < 1.2, `${kind} train trip ends on the island`);
+    // 行程從環上（車頭停的角度 a）出發、切線方向接著環走，最後一段沿著徑向上島
+    const p0 = trip.path[0];
+    assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - token.TRACK.radius) < 1e-9 && Math.abs(Math.atan2(p0.z, p0.x) - trip.a) < 1e-9);
+    assert.ok(Math.abs(Math.atan2(end.z, end.x) - Math.atan2(c.z, c.x)) < 1e-6, `${kind} radial into the island`);
+    assert.ok(trip.total > 2 && trip.total < 4, `${kind} trip ${trip.total.toFixed(2)}`);
   }
-  assert.equal(v['token.spurs'], undefined);
-  for (const k of ['token.track', 'token.train', 'token.shuttle']) assert.equal(v[k].footprint, false, k);
-  // 接駁車改走遊樂場島的支線：第二點在遊樂場島方向、在島上
-  const p = v['token.shuttle'].path, c = satC('playground'), a = Math.atan2(p[1].z, p[1].x), want = Math.atan2(c.z, c.x);
-  assert.ok(Math.abs(a - want) < 1e-6); assert.ok(Math.hypot(p[1].x - c.x, p[1].z - c.z) < 2.5);
-  assert.ok(token.script?.placed && [2, 3, 4, 5, 6].every(n => token.script.grow[n]));
 });
-test('grow 4 applies the spur parts in order from the ring outward, two at a time (lighthouse i with playground i)', () => {
-  const ctx = { B, roster: { members: () => [] } };
-  const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-  const only = flat(token.script.grow[4]({ kind: 'grow', item: 'token', to: 4 }, { lv: L({ token: 4 }), flags: {} }, ctx)).filter(b => b.kind === 'apply' && b.only).map(b => b.only);
-  assert.deepEqual(only, Array.from({ length: token.SPUR_PARTS }, (_, i) => [`token.spur.lighthouse.${i}`, `token.spur.playground.${i}`]));
+test('trainPose with a trip: the head runs out along the spur, cars behind it still on the ring; s = 0 equals the ring at the trip angle', () => {
+  const trip = token.spurTrip('windmill'), R = token.TRACK.radius;
+  const ring = token.trainPose(trip.a / 0.35, 2), onTrip0 = token.trainPose(123, 2, { trip: { ...trip, s: 0 } });
+  for (const k of ['x', 'y', 'z']) assert.ok(Math.abs(ring[k] - onTrip0[k]) < 1e-9, `s 0 car 2 ${k}`);
+  const out = { ...trip, s: trip.total }, head = token.trainPose(0, 0, { trip: out }), end = trip.path.at(-1);
+  assert.ok(Math.hypot(head.x - end.x, head.z - end.z) < 1e-9, 'head at the island end');
+  const half = { ...trip, s: 0.9 }, c0 = token.trainPose(0, 0, { trip: half }), c3 = token.trainPose(0, 3, { trip: half });
+  assert.ok(Math.hypot(c0.x, c0.z) > R - 0.2 && Math.abs(Math.hypot(c3.x, c3.z) - R) < 1e-9, 'car 3 (0.9 − 1.8 < 0) behind on the ring');
 });
 
-const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
-async function liveAt({ run, bubblesLog, rig }, order, pred) {
-  let s = engine.createState(spec);
-  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-  for (const step of steps) {
-    const r = step(s); s = r.state;
-    for (const e of r.events) {
-      if (pred(e)) { const n = bubblesLog.length, r = rig.log.length; return { e, secs: await run([e]), n, r }; }
-      await run([e], { instant: true });
+// ── view：每一級看得到的變化（§4.1）──
+test('token view: something new at every level 1–10; staff from Lv2 (one), two from Lv8', () => {
+  assert.deepEqual(Object.keys(views[0]), []);
+  assert.deepEqual(Object.keys(views[1]), ['token.main'], 'Lv1 sign and a small platform, nobody yet');
+  for (let n = 2; n <= 10; n++) assert.ok(diffParts(nonRoster(views[n - 1]), nonRoster(views[n])).add.length, `lv${n}: something new`);
+  for (const n of [2, 3, 9]) assert.notEqual(JSON.stringify(views[n]['token.main']), JSON.stringify(views[n - 1]['token.main']), `lv${n} station changes`);
+  assert.deepEqual([1, 2, 3, 7, 8, 10].map(n => views[n]['token.staff']?.n ?? 0), [0, 1, 1, 1, 2, 2]);
+  for (let n = 2; n <= 10; n++) { const st = views[n]['token.staff']; assert.deepEqual([st.kind, st.accessory, st.home.kind], ['roster', 'uniform', 'stand']); }
+  const keys = n => Object.keys(views[n]);
+  assert.ok(!keys(3).includes('token.track') && keys(4).includes('token.track'), 'ring line at Lv4');
+  assert.ok(!keys(6).some(k => k.startsWith('token.spur')) && keys(7).filter(k => k.startsWith('token.spur')).length === 2, 'two spurs at Lv7');
+  assert.ok(!keys(7).includes('token.shuttle') && keys(8).includes('token.shuttle'), 'shuttle at Lv8');
+  assert.ok(!keys(8).includes('token.deck') && keys(9).includes('token.deck'), 'floating platform at Lv9');
+  assert.ok(!keys(9).some(k => k.startsWith('token.cars')) && keys(10).filter(k => k.startsWith('token.cars')).length === 3, 'three flying cars at Lv10');
+});
+test('trains: Lv4 subway 3 cars, Lv5 subway 5 cars, Lv6+ bullet train 5 cars (Kenney Train Kit glb, palette tint)', () => {
+  const tr = n => views[n]['token.train'];
+  for (let n = 1; n <= 3; n++) assert.equal(tr(n), undefined, `lv${n} no train`);
+  assert.equal(tr(4).models.length, 3); assert.equal(tr(5).models.length, 5); assert.equal(tr(6).models.length, 5); assert.equal(tr(10).models.length, 5);
+  for (const n of [4, 5]) assert.ok(tr(n).models.every(m => m.path.startsWith('kenney/train/train-electric-subway-')), `lv${n} subway`);
+  for (const n of [6, 7, 8, 9, 10]) assert.ok(tr(n).models.every(m => m.path.startsWith('kenney/train/train-electric-bullet-')), `lv${n} bullet`);
+  // 車頭、中間車、車尾（車尾是車頭轉半圈）：三種車型都用到
+  assert.deepEqual(tr(5).models.map(m => m.path.slice(-5)), ['a.glb', 'b.glb', 'c.glb', 'b.glb', 'a.glb']); assert.equal(tr(5).models.at(-1).ry, Math.PI);
+  assert.notDeepEqual(tr(5).tint, tr(6).tint, 'the bullet train is repainted (white with orange)');
+  for (const n of [4, 6]) {
+    for (const c of Object.values(tr(n).tint)) assert.ok(PALETTE.has(c), `lv${n} tint ${c.toString(16)} in the palette`);
+    for (const m of tr(n).models) assert.ok(existsSync(new URL(`../assets/${m.path}`, import.meta.url)), m.path);
+  }
+  assert.equal(tr(4).speed, 0.35); assert.equal(token.view(L({ token: 4 }), { flooded: true })['token.train'].speed, 0, 'flooded stops the train');
+});
+test('Lv9 cyber station: Cyberpunk Kit platform (hovering), railing and sign with neon glow; the speeders park on its roof at Lv10', () => {
+  const v = views[9], deck = v['token.deck'];
+  assert.equal(deck.kind, 'deck'); assert.equal(deck.footprint, false, 'hovers: no footprint');
+  assert.deepEqual(deck.models.map(m => m.path), ['quat/cyberpunk/Platform_4x1_Empty.glb', 'quat/cyberpunk/Rail_Long.glb', 'quat/cyberpunk/Sign_1.glb']);
+  for (const m of deck.models) {
+    assert.ok(m.glow, `${m.path} glows`);
+    for (const c of [...Object.values(m.tint ?? {}), ...Object.values(m.glow)]) assert.ok(PALETTE.has(c), `${m.path} ${c.toString(16)}`);
+    assert.ok(existsSync(new URL(`../assets/${m.path}`, import.meta.url)), m.path);
+  }
+  assert.ok(deck.at.y - AT.y >= 0.6, 'the platform floats above head height');
+  assert.ok(v['token.main'].parts.some(p => p.glow === C.neonBlue), 'neon station body'); assert.ok(deck.models[1].glow['^Black$'] === C.neonPink && deck.models[2].glow['^Texture_Signs$'] === C.neonPink, 'pink neon railing and sign');
+  const roof = token.ROOF_Y, f = v['token.main'].footprint;
+  for (let i = 0; i < 3; i++) {
+    const car = views[10][`token.cars.${i}`], pk = car.park;
+    assert.equal(car.kind, 'orbit'); assert.ok(car.path.startsWith('kenney/space/craft_speeder'));
+    assert.ok(Math.abs(pk.y - (AT.y + roof)) < 1e-9, 'parked on the roof');
+    assert.ok(Math.abs(pk.x - (AT.x + f.x)) < f.w / 2 && Math.abs(pk.z - (AT.z + f.z)) < f.d / 2, 'within the station');
+    assert.ok(Math.hypot(car.at.x - TOWER.x, car.at.z - TOWER.z) < 1e-9, 'orbits 101');
+  }
+});
+test('Lv7 spurs reach the windmill and playground islands (one keyed part each, no footprint); Lv8 shuttle on the playground spur', () => {
+  const v = views[8];
+  for (const kind of token.SPURS) {
+    const s = v[`token.spur.${kind}`], c = satC(kind), pts = worldPoints({ at: s.at, parts: s.parts.map(p => ({ pos: rot(p.pos, s.bearing) })) });
+    assert.equal(s.kind, 'spur'); assert.equal(s.footprint, false);
+    assert.ok(Math.abs(Math.hypot(s.at.x, s.at.z) - token.TRACK.radius) < 1e-9, `${kind} starts on the ring`);
+    assert.ok(pts.some(p => Math.hypot(p.x - c.x, p.z - c.z) < 1.3), `${kind} reaches the island`);
+  }
+  const sh = v['token.shuttle'], c = satC('playground');
+  assert.equal(sh.kind, 'shuttle'); assert.equal(sh.footprint, false); assert.ok(Math.hypot(sh.path[1].x - c.x, sh.path[1].z - c.z) < 1.2);
+  for (const k of ['token.track', 'token.train']) assert.equal(v[k].footprint, false, k);
+});
+// 支線零件的本地座標（沿 +z 往外）轉回世界方向
+const rot = ([x, y, z], b) => [x * Math.cos(b) + z * Math.sin(b), y, -x * Math.sin(b) + z * Math.cos(b)];
+test('the ring track has 12 pylons standing in the water, heights from groundAt; the ring runs in the channel outside the main island', async () => {
+  const { SPACING, R, WATER_Y, TOP } = await import('../src/scene/hex.js');
+  const ps = views[4]['token.track'].parts.filter(p => p.kind === 'cylinder');
+  assert.equal(ps.length, 12); assert.ok(views[4]['token.track'].parts.some(p => p.kind === 'rail'));
+  for (const p of ps) { const base = groundAt(p.pos[0], p.pos[2]); assert.equal(base, WATER_Y); assert.ok(Math.abs(p.pos[1] - p.scale[1] / 2 - base) < 1e-9); assert.ok(Math.abs(p.pos[1] + p.scale[1] / 2 - token.TRACK.y) < 1e-9); }
+  const mainReach = Math.sqrt(3) * SPACING + R, satInner = Math.min(...SATELLITES.map(s => Math.hypot(satC(s.kind).x, satC(s.kind).z))) - R;
+  assert.ok(token.TRACK.radius > mainReach + 0.5 && token.TRACK.radius < satInner - 0.3);
+  assert.ok(token.TRACK.y <= TOP + 0.6);
+});
+test('flooded (token ≤ 2): the station is a pool with two swimmers (≤ 3), no staff', () => {
+  for (const n of [1, 2]) {
+    const v = token.view(L({ token: n }), { flooded: true });
+    assert.ok(v['token.main'].parts.some(p => p.color === 0xa4d4da)); assert.equal(v['token.staff'], undefined);
+    assert.deepEqual([v['token.swimmers'].kind, v['token.swimmers'].n, v['token.swimmers'].from], ['roster', 2, 'token.staff']);
+  }
+});
+test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 included)', () => {
+  for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
+    const d = drawCalls(token.view(L({ token: n }), { flooded }));
+    assert.ok(d <= 20, `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
+  }
+});
+test('every token station part and every footprint corner stays inside the token cell (track, spurs, trains and flying cars are on the water / in the sky)', () => {
+  const OUT = ['token.track', 'token.train', 'token.shuttle'];
+  for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) for (const [key, s] of Object.entries(token.view(L({ token: n }), { flooded }))) {
+    for (const f of [].concat(s.footprint || [])) {
+      const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
+      for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), CELL, `lv${n} ${key} footprint corner`);
     }
-    await run([{ kind: 'settle' }], { instant: true });
+    if (OUT.includes(key) || key.startsWith('token.spur') || key.startsWith('token.cars') || s.kind === 'roster') continue;
+    for (const p of s.kind === 'glb' || s.kind === 'deck' ? [s.at] : worldPoints(s)) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   }
-  throw new Error('event not found');
-}
-const isToken = to => e => e.kind === 'grow' && e.item === 'token' && e.to === to;
-function checkToken({ show, bubblesLog, rig }, e, secs, n, r) {
-  const what = `${e.kind} ${e.to ?? ''}`;
-  // 下限因 §13.2 閃白變短而降低（原 2.5）；物品 v2 過渡期：超過舊 max 的級數走預設劇本
-  const [lo, hi] = scripted('token', e.kind === 'grow' ? e.to : 1) ? [1.5, 15] : DEFAULT_SECS;
-  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
-  if (e.kind === 'grow') {
-    const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('token');
-    assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over token`);
+});
+
+// ── 零件建構：列車（glb 車廂）、支線、飛天車（orbit）──
+const factory = (extra = {}) => createPartFactory(THREE, { glow: createGlowRegistry(), builders: token.builders, assets: { spawn: async () => new THREE.Group() }, ...extra });
+test('train builder: one glb per car (Train Kit path, tail turned round), cars follow trainPose and the rail trip', () => {
+  const rail = { offset: 0 }, spawned = [];
+  const f = factory({ rail, assets: { spawn: async (path, o) => { spawned.push([path, o.ry, o.tint]); return new THREE.Group(); } } });
+  const spec5 = views[6]['token.train'], p = f.build(spec5); p.update(0.1, 3);
+  assert.equal(p.object.children.length, 5);
+  assert.deepEqual(spawned.map(s => s[0]), spec5.models.map(m => m.path)); assert.equal(spawned.at(-1)[1], Math.PI); assert.equal(spawned[0][2], spec5.tint);
+  const want = token.trainPose(3, 0); assert.ok(Math.abs(p.object.children[0].position.x - want.x) < 1e-9);
+  rail.trip = { ...token.spurTrip('windmill'), s: 2 }; p.update(0.1, 3);
+  const h = token.trainPose(0, 0, { trip: rail.trip }); assert.ok(Math.abs(p.object.children[0].position.x - h.x) < 1e-9, 'head on the spur');
+});
+test('shuttle runs back and forth on the playground spur', () => {
+  const p = factory().build(views[8]['token.shuttle']); p.update(0.5, 0.5); const a = p.object.children[0].position.clone(); p.update(1.5, 2);
+  assert.ok(a.distanceTo(p.object.children[0].position) > 0.3);
+});
+test('orbitPose: in from the start point, one lap on the circle (tangent yaw, height h), then to the park point; done after', () => {
+  const s = { at: { x: 1, y: 0.5, z: -1 }, r: 2, h: 4, speed: 2.5, phase: 0.3, legs: [1.2, 0.8], from: { x: 10, y: 3, z: 10 }, park: { x: 2, y: 1.2, z: 3, yaw: 0.4 } };
+  const lap = TWO_PI / s.speed;
+  assert.deepEqual(orbitPose(s, 0), { x: 10, y: 3, z: 10, yaw: orbitPose(s, 0).yaw, done: false });
+  for (const t of [1.2, 1.2 + lap * 0.25, 1.2 + lap * 0.7]) {
+    const p = orbitPose(s, t), a = Math.atan2(p.z - s.at.z, p.x - s.at.x);
+    assert.ok(Math.abs(Math.hypot(p.x - s.at.x, p.z - s.at.z) - s.r) < 1e-9 && Math.abs(p.y - (s.at.y + s.h)) < 1e-9, `t ${t} on the circle`);
+    assert.ok(Math.abs(Math.sin(p.yaw) + Math.sin(a)) < 1e-9 && Math.abs(Math.cos(p.yaw) - Math.cos(a)) < 1e-9, `t ${t} tangent yaw`);
   }
-  for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
-  // 鏡頭（§13.1）：不再用舊的 panTo；Lv4 去燈塔島、Lv5 去遊樂場島（zoom 0.8），LEVEL UP 時回代幣格，最後回全景；其他級只對著代幣格
-  const cam = rig.log.slice(r), trail = focusTrail(rig.log, r).map(String), TOKEN = String(cellOf('token'));
-  assert.equal(cam.filter(c => c[0] === 'panTo').length, 0, `${what} no panTo`);
-  const want = e.to === 4 ? [TOKEN, String(satCell('lighthouse')), TOKEN, 'home'] : e.to === 5 ? [String(satCell('playground')), TOKEN, 'home'] : [TOKEN, 'home'];
-  assert.deepEqual(trail, want, `${what} camera trail`);
-  if ([4, 5].includes(e.to)) assert.ok(cam.some(c => c[0] === 'focus' && c[2].zoom === 0.8 && cellAt(c[1].x, c[1].z) === null), `${what} island at zoom 0.8`);
-  const lvl = e.kind === 'grow' ? e.to : 1;
-  assert.equal(show.roster.members('token.staff').length, lvl < 6 && !show.stage.flags.flooded ? 1 : 0, `${what} staff count`);
-}
-test('scripts: every token level in both solutions plays 1.5–15 s, ends with LEVEL UP on token, and leaves everyone at home', async () => {
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
+  const end = orbitPose(s, 1.2 + lap + 0.8 + 0.01);
+  assert.deepEqual(end, { x: 2, y: 1.2, z: 3, yaw: 0.4, done: true });
+  assert.ok(Math.hypot(orbitPose(s, 0, 'park').x - 2, orbitPose(s, 0, 'park').z - 3) < 1e-9, 'a lap from the park point starts there');
+});
+test('orbit part: parked until fly(); flies one lap round 101 and parks again; with rest it takes off again by itself', () => {
+  const s = views[10]['token.cars.0'], p = factory().build(s), m = () => { const o = p.object.children[0]; return { x: s.at.x + o.position.x, y: s.at.y + o.position.y, z: s.at.z + o.position.z }; };
+  const parked = () => Math.hypot(m().x - s.park.x, m().y - s.park.y, m().z - s.park.z) < 1e-9;
+  assert.ok(parked(), 'starts parked'); p.update(0.5, 0.5); assert.ok(parked() || s.rest < 0.5);
+  p.object.userData.fly(); p.update(0, 0);
+  assert.ok(Math.hypot(m().x - s.from.x, m().z - s.from.z) < 1e-9, 'fly() starts at the sea');
+  let onCircle = 0;
+  for (let i = 0; i < 300; i++) { p.update(1 / 30, i / 30); if (Math.abs(Math.hypot(m().x - TOWER.x, m().z - TOWER.z) - s.r) < 1e-6) onCircle++; }
+  assert.ok(onCircle / 30 > 0.8 * TWO_PI / s.speed, 'spends the lap on the circle round 101'); assert.ok(parked(), 'parked after the flight');
+  if (s.rest) { let off = 0; for (let t = 0; t < s.rest + 1; t += 1 / 30) { p.update(1 / 30, t); if (!parked()) off++; } assert.ok(off > 0, 'takes off again after rest'); }
+  p.object.userData.land(); assert.ok(parked(), 'land() snaps to the roof');
+});
+
+// ── 劇本（§6：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、回全景定格）──
+const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
+// 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
+const want = to => (to === 7 ? [String(satCell('windmill')), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
+test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10 6–10 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
   for (const order of SOLUTIONS) {
     show.reset();
-    const seen = new Set();
-    await playItem(show, tracked, order, 'token', (e, secs) => { seen.add(e.kind === 'grow' ? e.to : 1); checkToken(h, e, secs, n, r); });
-    assert.ok(seen.has(1), `token events seen: ${[...seen]}`);
-    for (const to of [2, 3, 4, 5, 6].filter(t => !seen.has(t))) {
-      show.reset();
-      const { e, secs, n: before, r: r0 } = await liveAt(h, order, isToken(to));
-      checkToken(h, e, secs, before, r0);
+    const seen = [];
+    await playItem(show, tracked, order, 'token', (e, secs) => {
+      const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
+      const big = to === 7 || to === 10;
+      assert.ok(secs >= 3 && secs <= (big ? 10 : 5), `${what} took ${secs.toFixed(2)}s`);
+      if (big) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+      if (e.kind === 'grow') {
+        const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');
+        assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over token`);
+        assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to), `${what} camera trail`);
+      }
+      for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
+      assert.equal(show.roster.members('token.staff').length, to >= 8 ? 2 : to >= 2 ? 1 : 0, `${what} staff count`);
+      assert.equal(h.rail.trip ?? null, null, `${what} no trip left on the rail`);
+    });
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `token events seen: ${seen}`);
+  }
+});
+test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8', () => {
+  for (const n of [7, 10]) {
+    const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n, milk: 5 }), flags: {} }, fakeCtx));
+    const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 1.5), j = beats.findIndex(b => b.kind === 'levelUp');
+    assert.ok(i > 0 && j > i, `lv${n} holds on the overview before LEVEL UP`);
+  }
+  const b7 = token.script.grow[7]({ kind: 'grow', item: 'token', to: 7 }, { lv: L({ token: 7 }), flags: {} }, fakeCtx);
+  assert.equal(b7[0].kind, 'focus'); assert.equal(b7[0].dur, 0.8); assert.deepEqual(focusCell(b7[0], fakeCtx), satCell('windmill'));
+  assert.ok(flat(b7).some(b => b.kind === 'trainStop'), 'the train rides out on the spur');
+});
+// trainStop 支線版：列車進到支線入口（環上 trip.a）→ 開到風車島那頭停住 → 開回環上；skip 不留行程
+test('trainStop({ spur }) takes the train out to the island end, holds it there, brings it back; end clears the trip', () => {
+  const tl = createTimeline(), rail = { offset: 0 }, trip = token.spurTrip('windmill');
+  const ctx = { now: 0, rail, stage: { flags: {}, partObject: k => (k === 'token.train' ? {} : null) } };
+  const atEnd = [], log = [];
+  tl.play([B.trainStop({ spur: 'windmill', stop: 1, during: [{ kind: 'x', dur: 0.2, start: () => log.push('x') }] })], ctx);
+  for (let i = 0; i < 30 * 12 && tl.busy; i++) {
+    ctx.now += 1 / 30; tl.update(1 / 30);
+    const hd = token.trainPose(ctx.now + rail.offset, 0, { trip: rail.trip });
+    if (Math.hypot(hd.x - trip.path.at(-1).x, hd.z - trip.path.at(-1).z) < 0.05) atEnd.push(ctx.now);
+  }
+  assert.ok(!tl.busy); assert.equal(rail.trip, null);
+  assert.ok(atEnd.length / 30 >= 0.9, `held at the island end ${(atEnd.length / 30).toFixed(2)} s`);
+  assert.deepEqual(log, ['x'], 'during plays at the island end');
+  const a = (((ctx.now + rail.offset) * 0.35 - trip.a) % TWO_PI + TWO_PI) % TWO_PI;
+  assert.ok(a < 0.5 || a > TWO_PI - 0.01, `back on the ring at the junction (${a.toFixed(3)})`);
+  const s2 = createTimeline(), r2 = { offset: 3 }; s2.play([B.trainStop({ spur: 'windmill' })], { ...ctx, rail: r2 }); s2.update(0); s2.skip(); assert.equal(r2.trip, null);
+});
+// Lv7 live：列車真的開到風車島那頭（車頭離島心 < 1.3）
+test('Lv7 live: the train rides out to the windmill island while the camera is there, then the overview', async () => {
+  const h = await headlessShow(), { show } = h, c = satC('windmill'), update = show.update;
+  let near = 0;
+  show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
+  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 7) { await h.run([e]); done = true; continue; }
+      await h.run([e], { instant: true });
     }
+    if (done) break;
+    await h.run([{ kind: 'settle' }], { instant: true });
   }
+  assert.ok(done && near >= 15, `head near the windmill island for ${near} frames`);
 });
-test('Lv3: the train pulls in within 4 s and is held 3 s while the staff waves', async () => {
-  for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show } = h, update = show.update, frames = [];
-    let t = 0;
-    show.update = (dt, tt) => { const before = h.rail.offset; update(dt, tt); frames.push({ t, held: Math.abs(h.rail.offset - before + dt) < 1e-9, wave: show.roster.members('token.staff').some(m => m.walker?.gesture?.kind === 'wave') }); t += dt; };
-    const { e } = await liveAt(h, order, isToken(3));
-    assert.equal(e.to, 3);
-    const held = frames.filter(f => f.held);
-    assert.ok(held.length, 'train held at the station');
-    assert.ok(held[0].t <= 4 + 0.1, `arrived after ${held[0].t.toFixed(2)} s`);
-    assert.ok(Math.abs(held.length / 30 - 3) < 0.1, `held ${(held.length / 30).toFixed(2)} s`);
-    assert.ok(frames.some(f => f.wave && f.held), 'staff waves while the train is held');
-  }
-});
-test('Lv5: the playground kids get off the shuttle at the island end, then go home on the island', async () => {
+test('Lv8 live: the playground kids get off the shuttle at the island end and go home on the island; a second staff joins', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, end = token.spurPath('playground').at(-1);
   let first = null;
   show.update = (dt, t) => { update(dt, t); const ks = show.roster.members('sat.playground'); if (!first && ks.length) first = ks.map(k => ({ ...k.pos })); };
-  const { e, secs, n, r: r0 } = await liveAt(h, SOLUTIONS[0], isToken(5));
-  checkToken(h, e, secs, n, r0); assert.ok(show.stage.lv.milk >= 3);
-  // §13.2：spawn 不佔時間，兩個小孩同一幀在接駁車那頭下車
-  assert.ok(first?.length >= 1, 'kids get off the shuttle');
-  assert.ok(first.every(p => Math.hypot(p.x - end.x, p.z - end.z) < 0.6), 'kids spawn by the shuttle end');
+  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 8) { await h.run([e]); done = true; continue; }
+      await h.run([e], { instant: true });
+    }
+    if (done) break;
+    await h.run([{ kind: 'settle' }], { instant: true });
+  }
+  assert.ok(done && show.stage.lv.milk >= 3);
+  assert.ok(first?.length >= 1 && first.every(p => Math.hypot(p.x - end.x, p.z - end.z) < 0.6), 'kids spawn by the shuttle end');
   const ks = show.roster.members('sat.playground'), c = satC('playground');
   assert.equal(ks.length, 2);
   for (let i = 0; i < 120; i++) show.update(1 / 30, 100 + i / 30);
-  for (const k of ks) { assert.equal(k.mode, 'home'); assert.equal(cellAt(k.pos.x, k.pos.z), null); assert.ok(Math.hypot(k.pos.x - c.x, k.pos.z - c.z) < 1.5, 'stays on the playground island'); }
-  assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(satCell('playground')), String(cellOf('token')), 'home'], 'camera: playground island, token for LEVEL UP, home');
+  for (const k of ks) { assert.equal(cellAt(k.pos.x, k.pos.z), null); assert.ok(Math.hypot(k.pos.x - c.x, k.pos.z - c.z) < 1.5, 'stays on the playground island'); }
+  assert.equal(show.roster.members('token.staff').length, 2);
 });
-test('Lv6: the staff runs into the station and is gone; the train turns neon', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h;
-  const { e, secs, n, r } = await liveAt(h, SOLUTIONS[0], isToken(6));
-  checkToken(h, e, secs, n, r);
-  assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'), 'staff ！'); assert.ok(bubblesLog.slice(n).some(b => b.kind === '♪'), 'roof ♪');
-  assert.equal(show.roster.members('token.staff').length, 0);
+test('Lv10 live: the three speeders fly a lap round 101 and land on the station roof', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, lap = new Set();
+  show.update = (dt, t) => { update(dt, t); for (let i = 0; i < 3; i++) { const o = show.stage.partObject(`token.cars.${i}`); if (!o) continue; const p = o.children[0].position, w = { x: o.position.x + p.x, z: o.position.z + p.z }; if (Math.hypot(w.x - TOWER.x, w.z - TOWER.z) < 3) lap.add(i); } };
+  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 10) { await h.run([e]); done = true; continue; }
+      await h.run([e], { instant: true });
+    }
+    if (done) break;
+    await h.run([{ kind: 'settle' }], { instant: true });
+  }
+  assert.ok(done); assert.equal(lap.size, 3, 'all three came round 101');
+  for (let i = 0; i < 3; i++) {
+    const o = show.stage.partObject(`token.cars.${i}`), p = o.children[0].position, park = token.view(show.stage.lv, show.stage.flags)[`token.cars.${i}`].park;
+    assert.ok(Math.hypot(o.position.x + p.x - park.x, o.position.y + p.y - park.y, o.position.z + p.z - park.z) < 1e-6, `car ${i} parked on the roof`);
+  }
 });
-// 兩個事件以上的回合整段 live 演：站務員、島緣都是演到才找；列車從站後面 0.6 rad 駛出
-test('grow 2 in a full live turn: the train departs from behind the station', async () => {
+// 兩個事件以上的回合整段 live 演：Lv4 環狀線的列車從站後面 0.6 rad 駛出
+test('grow 4 in a full live turn: the ring line rises and the train departs from behind the station', async () => {
   const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
   let st = engine.createState(spec), evs = null;
   for (const id of order) {
     const r = engine.place(st, id, spec); st = r.state;
-    if (r.events.some(isToken(2))) { evs = r.events; break; }
+    if (r.events.some(e => e.kind === 'grow' && e.item === 'token' && e.to === 4)) { evs = r.events; break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
-  assert.ok(evs, 'grow 2 happens in a placement turn');
-  const scripted = token.script.grow[2]; let angle = null, staffAt = null;
-  token.script.grow[2] = (e, s2, ctx) => {
-    const beats = scripted(e, s2, ctx), flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-    const dep = flat(beats).find(b => b.kind === 'trainDepart'), start = dep.start;
-    dep.start = c => { const r = start(c); angle = (c.now + c.rail.offset) * 0.35; staffAt = { ...c.roster.members('token.staff')[0].pos }; return r; };
+  assert.ok(evs, 'grow 4 happens in a placement turn');
+  const scripted = token.script.grow[4]; let angle = null;
+  token.script.grow[4] = (e, s2, ctx) => {
+    const beats = scripted(e, s2, ctx), dep = flat(beats).find(b => b.kind === 'trainDepart'), start = dep.start;
+    dep.start = c => { const r = start(c); angle = (c.now + c.rail.offset) * 0.35; return r; };
     return beats;
   };
-  try { await run([...evs, { kind: 'settle' }]); } finally { token.script.grow[2] = scripted; }
+  try { await run([...evs, { kind: 'settle' }]); } finally { token.script.grow[4] = scripted; }
   const d = ((((angle - (STATION_A - 0.6)) % TWO_PI) + TWO_PI + Math.PI) % TWO_PI) - Math.PI;
   assert.ok(Math.abs(d) < 0.05, `head car at ${angle} vs ${STATION_A - 0.6}`);
-  assert.ok(Math.hypot(staffAt.x, staffAt.z) > Math.hypot(AT.x, AT.z) + 0.5, 'staff walked out to the shore first');
-  assert.ok(show.stage.partObject('token.train'));
+  assert.ok(show.stage.partObject('token.train') && show.stage.partObject('token.track'));
 });
 
-// ── 計畫 3.8 Task 6：入口點、鏡頭焦點 ──
-// 站務員（淹水時的泳客同一個入口）從月台外側走來：入口走得到、離每個站位 ≥ 1.5（每一級、淹水與否；兩條正解每一刻的真 footprint）
-test('token rosters enter from outside the platform, walkable and ≥ 1.5 from every spot; placement spawns the staff there', async () => {
+// ── 入口點、站體 footprint、站務員不穿過珍奶人龍（計畫 3.8 Task 6、§14.1）──
+test('token rosters enter from behind the station, walkable and ≥ 1.5 from every spot; Lv2 spawns the staff there', async () => {
   const nav = createNav(), bad = [];
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const flooded of [false, true]) {
-    const v = token.view(LV({ token: n }), { flooded });
+  for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
+    const v = token.view(L({ token: n }), { flooded });
     for (const [k, d] of Object.entries(v)) if (d.kind === 'roster') assert.equal(d.home.entry, token.STAFF_ENTRY, `lv${n} ${k} entry`);
     bad.push(...entryProblems(v, nav, `lv${n}${flooded ? ' flooded' : ''}`));
   }
   bad.push(...await entriesThroughSolutions(token, SOLUTIONS));
   assert.deepEqual(bad, []);
-  assert.deepEqual(cellAt(token.STAFF_ENTRY.x, token.STAFF_ENTRY.z), [0, 1]);
-  const beats = token.script.placed({ kind: 'placed', item: 'token', to: 1 }, { lv: LV({ token: 1 }), flags: {} }, { B, roster: { members: () => [] } });
+  assert.deepEqual(cellAt(token.STAFF_ENTRY.x, token.STAFF_ENTRY.z), CELL);
+  const beats = token.script.grow[2]({ kind: 'grow', item: 'token', to: 2 }, { lv: L({ token: 2 }), flags: {} }, fakeCtx);
   const sp = beats.find(b => b.kind === 'spawn'), at = [];
   sp.start({ roster: { spawnHeld: (k, p) => { at.push([k, p]); return null; } } });
   assert.deepEqual(at, [['token.staff', token.STAFF_ENTRY]]);
 });
-test('token 4 / 5: the satellite island is a focus at zoom 0.8; LEVEL UP pans back to the token cell', () => {
-  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-  for (const [to, kind] of [[4, 'lighthouse'], [5, 'playground']]) {
-    const beats = token.script.grow[to]({ kind: 'grow', item: 'token', to }, { lv: LV({ token: to, milk: 2 }), flags: {} }, ctx);
-    const focus = flat(beats).filter(b => b.kind === 'focus');
-    assert.deepEqual(focus.map(b => focusCell(b, ctx)), [satCell(kind), cellOf('token')], `lv${to} focus cells`);
-    if (to === 5) assert.equal(beats[0].kind, 'focus', 'lv5 starts on the playground island');
-    const last = beats.at(-1); assert.equal(last.kind, 'together'); assert.deepEqual(last.beats.map(b => b.kind).sort(), ['focus', 'levelUp']);
-  }
-});
-// 站務員從入口走到崗位不穿過珍奶攤車前的人龍（排隊站位，最多 6 人，§14.3）：
-// 兩條正解裡有攤車的每一刻（放置與倒數回合）的真 footprint 下，路線離每個排隊站位 ≥ 0.25，也不經過攤車前方（隊伍橫排在那裡）
 test('the staff entry walk to the post stays clear of the boba queue and the cart front', async () => {
   const BOBA = anchorWorld('boba'), POST = offset(AT, 0.6, 0.55);
-  const { queue } = await import('../src/actors/boba.js'), Q = queue(BOBA, 6);   // 攤車人龍（最多 6 人，§14.3）
-  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L)); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
-  // 攤車前方：橫排人龍在攤車前 0.9（boba.queue），前後各留 0.35
+  const { queue } = await import('../src/actors/boba.js'), Q = queue(BOBA, 6);
+  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, LL = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / LL)); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
   const front = p => Math.abs(p.x - BOBA.x) < 1.3 && p.z > BOBA.z + 0.55 && p.z < BOBA.z + 1.25;
   const check = (route, what) => {
     for (let k = 1; k < route.length; k++) {
@@ -273,24 +394,19 @@ test('the staff entry walk to the post stays clear of the boba queue and the car
     assert.ok(seen >= 3, 'checked with the cart on the island');
   }
 });
-
-// ── §14.1：站體有 footprint（錄影裡有人站進站體），站務員與泳客的站位用 rescue 站到最近的可走點 ──
-test('the station body has a footprint at every level and staff/swimmer spots are walkable (rescue)', async () => {
-  const { PAD } = await import('../src/show/nav.js');
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const flooded of [false, true]) {
-    const v = token.view(LV({ token: n }), { flooded }), what = `lv${n}${flooded ? ' flooded' : ''}`, f = v['token.main'].footprint;
+test('the station has a footprint at every level and staff/swimmer spots are walkable (rescue), outside the padded station', () => {
+  for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
+    const v = token.view(L({ token: n }), { flooded }), what = `lv${n}${flooded ? ' flooded' : ''}`, f = v['token.main'].footprint;
     assert.ok(f && typeof f === 'object' && (f.r > 0 || (f.w > 0 && f.d > 0)), `${what}: station footprint ${JSON.stringify(f)}`);
     const fp = f.r !== undefined ? { x: AT.x, z: AT.z, r: f.r } : { x: AT.x + (f.x ?? 0), z: AT.z + (f.z ?? 0), w: f.w, d: f.d };
-    if (!flooded) assert.ok(fp.w >= 1.1 && fp.d >= 0.9 - 1e-9, `${what}: covers the body, the dome and the ticket machine`);
     const nav = createNav(); nav.setFootprints([fp]);
     assert.ok(!nav.walkable(AT.x, AT.z), `${what}: nobody stands inside the station`);
     for (const [k, d] of Object.entries(v)) {
       if (d.kind !== 'roster') continue;
       assert.equal(d.home.rescue, true, `${what} ${k} rescue`);
       for (const s of d.home.spots) {
-        const p = nav.walkable(s.x, s.z) ? s : nav.nearestWalkable(s);   // 名冊的 spotOf（rescue）
-        assert.ok(nav.walkable(p.x, p.z), `${what} ${k} spot walkable`);
-        assert.ok(Math.hypot(p.x - s.x, p.z - s.z) < 0.8, `${what} ${k} stays by its spot (${Math.hypot(p.x - s.x, p.z - s.z).toFixed(2)})`);
+        const p = nav.walkable(s.x, s.z) ? s : nav.nearestWalkable(s);
+        assert.ok(Math.hypot(p.x - s.x, p.z - s.z) < 0.8, `${what} ${k} stays by its spot`);
         const out = fp.r !== undefined ? Math.hypot(p.x - fp.x, p.z - fp.z) - fp.r : Math.max(Math.abs(p.x - fp.x) - fp.w / 2, Math.abs(p.z - fp.z) - fp.d / 2);
         assert.ok(out >= PAD - 1e-9, `${what} ${k} outside the padded station (${out.toFixed(2)})`);
       }

@@ -4,7 +4,7 @@
 import { together } from './timeline.js';
 import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';
-import { trainPose } from '../actors/token.js';
+import { trainPose, trainCars, spurTrip, SPUR_SPEED } from '../actors/token.js';
 import { anchorWorld, cellOf, cellCentre } from '../actors/anchors.js';
 import { worldToAxial } from '../scene/hex.js';
 import { createPathCursor } from '../scene/path.js';
@@ -18,6 +18,7 @@ export const STATION_A = Math.atan2(STATION.z, STATION.x);   // 捷運站對島�
 const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, RIDE_Y = 0.18, TRAIN_HEAD_Y = 0.5, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
 
 const lerp = (a, b, k) => a + (b - a) * k;
+const ease = k => k * k * (3 - 2 * k);
 const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));   // 從角 a 轉到 b 的最短轉角
 const call = (v, ctx) => (typeof v === 'function' ? v(ctx) : v);
 const isPartKey = t => typeof t === 'string' && t.includes('.');
@@ -49,13 +50,13 @@ export function partHead(key, dy = 0, ctx) {
 }
 // 車頭上方（泡泡用）
 export function trainHead(ctx) {
-  return { head: () => { const p = trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx) }); return { x: p.x, y: p.y + TRAIN_HEAD_Y, z: p.z }; } };
+  return { head: () => { const p = trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx), trip: ctx.rail.trip }); return { x: p.x, y: p.y + TRAIN_HEAD_Y, z: p.z }; } };
 }
 // 車頂第 i 個座位現在的位置：和名冊的 ride 一樣沿車身前進方向偏移
 export function seat(i, ctx) {
   return () => {
-    const seats = SEATS[ctx.stage.lv.token >= 3 ? 5 : 3], [car, off] = seats[i % seats.length];
-    const p = trainPose(ctx.now + ctx.rail.offset, car, { speed: trainSpeed(ctx) });
+    const seats = SEATS[trainCars(ctx.stage.lv.token) === 5 ? 5 : 3], [car, off] = seats[i % seats.length];
+    const p = trainPose(ctx.now + ctx.rail.offset, car, { speed: trainSpeed(ctx), trip: ctx.rail.trip });
     return { x: p.x + Math.sin(p.yaw) * off, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * off, yaw: p.yaw };
   };
 }
@@ -158,6 +159,8 @@ export function apply(e, { blink = true, only, hold } = {}) {
     estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
       const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;
+      // 新建築的 footprint 從套用這一刻就算（閃白期間還藏著也一樣）：不然閃白那 0.15 秒走路格還不知道，走路的人會走進剛長出來的建築
+      if (all.length) ctx.nav.setFootprints(ctx.stage.footprints());
       const pending = new Set(blink ? ctx.stage.pendingKeys() : []);
       keys = all.map(c => c.key).filter(k => pending.has(k));
       if (!keys.length) return false;
@@ -286,8 +289,11 @@ export function trainDepart() {
   };
 }
 
-// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 4.5 倍）在 4 秒內進站，
+// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 boost，預設 4.5 倍）在 arrive 秒（預設 4）內進站，
 // 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
+// spur（'windmill'／'playground'）：停的不是站，是支線那頭的離島站——車頭先進到支線入口（token.spurTrip 的角 a），
+//   環上的時鐘停住，ctx.rail.trip 帶著車頭在支線上的位置 s：開出去（SPUR_SPEED）→ 在島那頭停 stop 秒 → 倒回環上，再照常開。
+//   during 在車頭到島那頭時才開始演；跳過、中止時 trip 收掉（列車回到環上原本的時鐘）
 // during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
 // together（還沒 start，dur 是 0）取子拍估計的最長
@@ -295,8 +301,11 @@ const durOf = (b, ctx) => {
   if (b.kind === 'together' && b.beats) return Math.max(0, ...b.beats.map(x => durOf(x, ctx)));
   const d = b.estimate ? b.estimate(ctx) : typeof b.dur === 'function' ? b.dur(ctx) : b.dur; return d > 0 ? d : 0;
 };
-export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [] } = {}) {
-  const subs = [].concat(during);
+export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur = null, arrive: within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST } = {}) {
+  const subs = [].concat(during), trip = spur ? spurTrip(spur) : null, out = trip ? trip.total / SPUR_SPEED : 0;
+  const hold = trip ? out + stop + out : stop;   // 環上的時鐘停多久：支線來回加上在島那頭停的
+  // 進支線後第 u 秒車頭在支線上第幾公尺（緩起緩停）
+  const tripS = u => trip.total * (u < out ? ease(u / out) : u < out + stop ? 1 : 1 - ease(Math.min(1, (u - out - stop) / out)));
   let k = 1, arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }
   const open = (ctx, t0) => {
     while (i < subs.length) {
@@ -313,17 +322,19 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [] } = {
       i = 0; cur = null;
       const speed = trainSpeed(ctx);
       if (!partOf('token.train', ctx) || !speed) return false;
-      const a0 = (ctx.now + ctx.rail.offset) * speed, need = ((((at - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
-      k = need <= TRAIN_ARRIVE ? 1 : Math.min(TRAIN_MAX_BOOST, need / TRAIN_ARRIVE);
+      const a0 = (ctx.now + ctx.rail.offset) * speed, target = trip ? trip.a : at, need = ((((target - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
+      k = need <= within ? 1 : Math.min(boost, need / within);
       arrive = need / k; t = 0;
-      total = Math.max(stop, subs.reduce((a, b) => a + durOf(b, ctx), 0));
+      const sub = subs.reduce((a, b) => a + durOf(b, ctx), 0);
+      total = trip ? out + Math.max(stop + out, sub) : Math.max(stop, sub);
     },
     step(_k, dt, ctx) {
       // 跨過到站、開車那一刻的一幀拆開：進站的部分加速、停站的部分停住、之後照常
-      const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + stop - t - run));
+      const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + hold - t - run));
       ctx.rail.offset += run * (k - 1) - held; t += dt;
-      if (t < arrive) return;
-      if (!cur && i === 0) open(ctx, arrive);
+      if (trip) ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
+      if (t < arrive + out) return;
+      if (!cur && i === 0) open(ctx, arrive + out);
       while (cur) {
         const sk = Math.min(1, (t - cur.t0) / cur.dur);
         cur.beat.step?.(sk, dt, ctx);
@@ -332,6 +343,7 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [] } = {
       }
     },
     end(ctx) {
+      if (trip) ctx.rail.trip = null;
       cur?.beat.end?.(ctx); cur = null;
       while (i < subs.length) { const beat = subs[i++]; beat.start?.(ctx); beat.end?.(ctx); }
     },

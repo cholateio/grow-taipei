@@ -10,16 +10,16 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 
 | 物品 | 級 | 零件鍵 | 來源（程式／glb 路徑） | 授權 | 狀態 |
 |---|---|---|---|---|---|
-| 代幣 | 1 | `token.main` | 程式（站牌＋小月台） | — | 現有 |
-| 代幣 | 2 | `token.main`、`token.staff` | 程式（小站、售票機、站務員 1） | — | 現有 |
-| 代幣 | 3 | `token.main` | `kenney/commercial/low-detail-building-wide-a.glb`、`low-detail-building-wide-b.glb`（站體）＋程式站前廣場 | CC0 | 待做 |
-| 代幣 | 4 | `token.track`、`token.train` | 程式環狀線；`kenney/train/train-electric-subway-a.glb`（車頭）、`-b.glb`（中間車）、`-c.glb`（車尾）3 節 | CC0 | 待做 |
-| 代幣 | 5 | `token.train` | `kenney/train/train-electric-subway-a/b/c.glb` 5 節 | CC0 | 待做 |
-| 代幣 | 6 | `token.train` | `kenney/train/train-electric-bullet-a.glb`、`-b.glb`、`-c.glb`（白底橘線靠 tint） | CC0 | 待做 |
-| 代幣 | 7 ★◆ | `token.spur.*` | 程式（支線架到風車島與燈塔島） | — | 現有 |
-| 代幣 | 8 | `token.shuttle`、`token.staff` | 程式（接駁小車、站務員 2） | — | 現有（站務員 2 待做） |
-| 代幣 | 9 | `token.main`、`token.train` | `kenney/space/monorail_trainFront.glb`、`monorail_trainPassenger.glb`、`monorail_trainEnd.glb`；`quat/cyberpunk/Platform_4x1_Empty.glb`、`Rail_Long.glb`、`Sign_1.glb`、`TV_1.glb`（glow） | CC0 | 待做 |
-| 代幣 | 10 ◆ | `token.cars` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb`（設計是三台繞 101，一款一台；結局的紅色第四台用其中一款加 tint，所以 speederD 不抓） | CC0 | 待做 |
+| 代幣 | 1 | `token.main` | 程式（站牌＋小月台、長椅） | — | 現有 |
+| 代幣 | 2 | `token.main`、`token.staff` | 程式（月台、售票亭斜屋頂、售票機、站務員 1） | — | 現有 |
+| 代幣 | 3 | `token.main` | 程式（站房＋圓頂、拱門入口、鐘、站前廣場）——設計 §7.2 把捷運站本體列在「找不到 CC0」；`low-detail-building-wide-a` 看過是窄高的辦公樓，不像車站，沒用 | — | 現有 |
+| 代幣 | 4 | `token.track`、`token.train` | 程式環狀線；`kenney/train/train-electric-subway-a.glb`（車頭）、`-b.glb`（中間車）、車尾＝車頭轉半圈，3 節；色票圖 tint：白車身、藍飾條、淺色車窗 | CC0 | 換新 |
+| 代幣 | 5 | `token.train` | `kenney/train/train-electric-subway-a/b/c.glb` 5 節（a b c b a） | CC0 | 換新 |
+| 代幣 | 6 | `token.train` | `kenney/train/train-electric-bullet-a/b/c.glb` 5 節（白底橘線靠 tint：藍車頂與鼻換珊瑚橘、深色車窗） | CC0 | 換新 |
+| 代幣 | 7 ★◆ | `token.spur.windmill`、`token.spur.playground` | 程式（支線架到**風車島**與遊樂場島，裁決 R10：燈塔島沒有支線；零件 kind `spur`，劇本沿徑向 scaleIn 長出去） | — | 現有 |
+| 代幣 | 8 | `token.shuttle`、`token.staff` | 程式（接駁小車、站務員 2） | — | 現有 |
+| 代幣 | 9 | `token.main`、`token.deck` | 程式霓虹站體（深藍、霓虹藍邊條、平屋頂、天線）；懸浮月台 `token.deck`（零件 kind `deck`，一起閃白、浮上來）＝`quat/cyberpunk/Platform_4x1_Empty.glb`（Texture_Signs 發藍光）＋`Rail_Long.glb`（欄杆，發粉紅光）＋`Sign_1.glb`（招牌，發粉紅光）；列車仍是高鐵（`monorail_*`、`TV_1` 沒用：整格 draw call ≤ 20） | CC0 | 換新 |
+| 代幣 | 10 ◆ | `token.cars.0`–`token.cars.2` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb`（一款一台，飾條珊瑚／藍／黃；零件 kind `orbit`：繞 101 一圈、停在賽博站屋頂） | CC0 | 換新 |
 | 鮮奶 | 1 | `milk.crate` | 程式（牛奶箱） | — | 現有 |
 | 鮮奶 | 2 | `milk.main`、`milk.yard` | `quat/buildings/1Story_Sign_Mat.glb`（早餐店，tint 奶油牆、珊瑚招牌）＋程式桌子 | CC0 | 換新 |
 | 鮮奶 | 3 | `milk.main`、`milk.yard`、`milk.kids` | `kenney/commercial/building-e.glb`（一層教室＋兩層辦公室，視覺標準件：牆 `C.cream`、飾邊 `C.coral`、窗 `C.window`）＋程式操場；小孩 = 程式名冊 | CC0 | 換新 |

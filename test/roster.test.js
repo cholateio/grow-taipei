@@ -706,6 +706,23 @@ test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25
   assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);
   assert.deepEqual([...crowd].slice(0, 20), [], `${crowd.size} frames too close`);
 });
+// 物品 v2 任務 5：路線（拉直時用 footprint 真的形狀判斷）會貼著外擴邊走過「夾縫」——離外擴邊不到一格、最近的格點被擋住的點，
+// nav.walkable 判成走不到；每幀的防穿牆檢查不能把這種點當成牆，不然走路的人卡在原地、游標自己跑掉（颱風登陸隔回合島民走不出門口）。
+// 現場：鮮奶 Lv9 大學右翼（外擴後 z 到 0.102）旁 z 0.115 往東走
+test('a walker whose route skims a padded footprint through a grid crevice keeps walking (no freeze at the wall)', () => {
+  const { roster, nav } = setup();
+  nav.setFootprints([{ x: -5.73, z: 0.85, r: 0.3 }, { x: -4.78, z: -0.35, w: 0.42, d: 0.42 }, { x: -3.98, z: 0.4, r: 0.06 }, { x: -3.38, z: 0.4, r: 0.06 },
+    { x: -5.73, z: -0.5, w: 1.3913, d: 0.6956 }, { x: -3.86, z: -0.5, w: 1.5663, d: 0.9646 }]);
+  const y = cellTop([-1, 0]), A = { x: -3.987, y, z: 0.115, yaw: 0 }, G = { x: -5.84, y, z: -1.35, yaw: 0 };
+  const route = nav.route(A, G);
+  assert.ok(route.slice(1, 6).some(p => !nav.walkable(p.x, p.z) && !nav.inFootprint(p.x, p.z)), 'the route really runs through a crevice point');
+  const stand = spot => ({ kind: 'roster', at: A, n: 1, home: { kind: 'stand', spots: [spot] } });
+  roster.declare('k', stand(A)); roster.snap(); const [m] = roster.members('k');
+  roster.declare('k', stand(G)); roster.flush();
+  run(roster, 15);
+  assert.ok(gap(m.pos, A) > 0.3, `moved ${gap(m.pos, A).toFixed(2)} in 0.5 s`);
+  for (let i = 0; i < 150; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside a padded footprint`); }
+});
 // §14.1：走到一半，路上長出建築——從現在的位置重新找路繞過去，不照舊路穿過
 test('a walker whose route is cut by a new footprint replans around it and still arrives', () => {
   const { roster, nav } = setup(), A = { x: Q.x - 1.0, y: Q.y, z: Q.z, yaw: 0 }, B = { x: Q.x + 1.0, y: Q.y, z: Q.z, yaw: 0 };

@@ -1,10 +1,26 @@
 // 動態零件工廠：把 view 裡的 partSpec 做成 three.js 物件。
 //   compound：kit 零件合併成「一個黏土 mesh + 每種發光色一個 mesh」，演員再多 draw call 也壓得住（§10 ≤ 150）
-//   people：在共用的小人系統裡生 n 個；glb：CC0 模型（可沿路徑走）；smoke：循環冒煙
+//   people：在共用的小人系統裡生 n 個；glb：CC0 模型（可沿路徑走）；smoke：循環冒煙；
+//   orbit：一個 glb 從 from 飛進來、繞圓心 at 一圈（高 h、半徑 r、車頭朝切線）、停到 park（飛天車）
 // 物品模組可以用 ctx.builders 加自己的 kind。每個零件 = { object, update?(dt, t), dispose?() }。
 import { makeGeometry } from '../scene/kit.js';
 import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 import { createPathCursor } from '../scene/path.js';
+
+const ease = k => k * k * (3 - 2 * k);
+const lerp = (a, b, k) => a + (b - a) * k;
+// orbit 的一趟飛行（純函式）：t 秒時的位置與車頭方向。start 'from'（從 spec.from 飛進來）或 'park'（從停車點起飛）；
+//   legs = [飛到圓上幾秒, 從圓上飛回停車點幾秒]；圓上那一圈從角 phase 逆時針繞一圈（2π / speed 秒），車頭朝切線（同列車的 yaw）；
+//   飛完 done = true、停在 park（帶 park.yaw）
+export function orbitPose(spec, t, start = 'from') {
+  const { at, r, h, speed, phase = 0, legs: [tin, tout] = [1, 1], park } = spec, from = start === 'park' ? park : spec.from;
+  const lap = 2 * Math.PI / speed, E = { x: at.x + Math.cos(phase) * r, y: at.y + h, z: at.z + Math.sin(phase) * r };
+  const leg = (a, b, k) => ({ x: lerp(a.x, b.x, ease(k)), y: lerp(a.y, b.y, ease(k)), z: lerp(a.z, b.z, ease(k)), yaw: Math.atan2(b.x - a.x, b.z - a.z), done: false });
+  if (t < tin) return leg(from, E, t / tin);
+  if (t < tin + lap) { const a = phase + (t - tin) * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: Math.atan2(-Math.sin(a), Math.cos(a)), done: false }; }
+  if (t < tin + lap + tout) return leg(E, park, (t - tin - lap) / tout);
+  return { x: park.x, y: park.y, z: park.z, yaw: park.yaw ?? 0, done: true };
+}
 
 export function createPartFactory(THREE, ctx) {
   const unit = new Map(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), color = new THREE.Color();
@@ -98,6 +114,29 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
+  // 飛天車：平常停在 park；object.userData.fly({ delay }) 從 from 飛一趟（劇本的拍叫它），land() 立刻停好（跳過）；
+  // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。模型在 at 底下，位置相對 at
+  function orbit(spec) {
+    const object = new THREE.Group(), at = spec.at;
+    const model = glb({ path: spec.path, h: spec.size, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 });
+    object.add(model.object);
+    let flying = false, start = 'from', t = 0, idle = 0;
+    const put = p => { model.object.position.set(p.x - at.x, p.y - at.y, p.z - at.z); model.object.rotation.y = p.yaw; };
+    const land = () => { flying = false; idle = 0; put({ ...spec.park, yaw: spec.park.yaw ?? 0 }); };
+    land();
+    object.userData.fly = ({ delay = 0 } = {}) => { flying = true; start = 'from'; t = -delay; put(orbitPose(spec, 0, 'from')); };
+    object.userData.land = land;
+    return {
+      object,
+      update(dt) {
+        if (!flying) { if (spec.rest == null || (idle += dt) < spec.rest) return; flying = true; start = 'park'; t = 0; }
+        t += dt; const p = orbitPose(spec, Math.max(0, t), start); put(p);
+        if (p.done) land();
+      },
+      dispose: model.dispose,
+    };
+  }
+
   // 煙火：60 顆小球一發，從中心炸開、重力下落、淡出，每 1.2 秒一發；不投影
   function fireworks(spec) {
     const N = 60, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
@@ -117,7 +156,7 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  const KINDS = { compound, people, glb, smoke, fireworks };
+  const KINDS = { compound, people, glb, smoke, fireworks, orbit };
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 

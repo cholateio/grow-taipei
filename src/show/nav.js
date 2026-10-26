@@ -68,12 +68,18 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   const ground = k => k >= 0 && open[k] === 1, free = k => ground(k) && !blocked.has(k);
   const padded = (x, z) => pads.some(p => inPad(p, x, z));
 
+  // 走得過：在格內／橋面上（看最近的格點）、點本身不在外擴後的 footprint 裡——不管夾縫。路線拉直時（clear）用的就是這個標準，
+  // 走路中每幀的防穿牆也用它（貼著外擴邊走過夾縫是合法的路，不能當成牆把人卡住）
+  function passable(x, z) {
+    const k = index(x, z); if (!ground(k) || padded(x, z)) return false;
+    return onGrid(x, z);   // 橋旁邊的水（格點落在橋面上，點本身在橋外）不算
+  }
   // 可走：在格內／橋面上（看最近的格點），而且點本身不在外擴後的 footprint 裡——footprint 用真的形狀判，不看格點
   // （格點 0.3 一格，只看格點的話 PAD 會忽大忽小，牆邊的站位、入口落在哪一格就看運氣）。
   // 最近的格點被 footprint 擋住（點貼著牆）時，旁邊一格內要有直線走得到的可走格點，不然是走不出去的夾縫（牆和格邊之間）
   function walkable(x, z) {
-    const k = index(x, z); if (!ground(k) || padded(x, z)) return false;
-    if (!cellAt(x, z) && !onAnyBridge(x, z)) return false;   // 橋旁邊的水（格點落在橋面上，點本身在橋外）
+    if (!passable(x, z)) return false;
+    const k = index(x, z);
     if (!blocked.has(k)) return true;
     for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
       const kk = k + dj * N + di; if ((di || dj) && Math.abs(ix(kk) - ix(k)) <= 1 && free(kk) && clear({ x, z }, pointOf(kk))) return true;
@@ -358,7 +364,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return best < 0 ? null : pointOf(best);
   }
 
-  return { get version() { return version; }, inFootprint: padded, walkable, groundY, setFootprints, nearestWalkable, route, ground: groundPath, routeLength, slots, wander, separate, separateStanding, edgePoint };
+  return { get version() { return version; }, inFootprint: padded, walkable, passable, groundY, setFootprints, nearestWalkable, route, ground: groundPath, routeLength, slots, wander, separate, separateStanding, edgePoint };
 }
 
 // 點在外擴後的 footprint 裡（圓 { r }、橢圓 { rx, rz } 或框 { hx, hz }）

@@ -301,7 +301,7 @@ test('spawn takes a held member out at once without a blink; home hands members 
   assert.deepEqual(roster.homed, [sp.member, member]); assert.ok(!tl.busy);
 });
 test('seat and trainHead follow the train clock', () => {
-  const { ctx } = fake({ parts: ['token.train'] }); ctx.now = 3; ctx.rail.offset = 1; ctx.stage.lv.token = 3;
+  const { ctx } = fake({ parts: ['token.train'] }); ctx.now = 3; ctx.rail.offset = 1; ctx.stage.lv.token = 5;
   const s = B.seat(1, ctx)(), h = B.trainHead(ctx).head();
   const a = 4 * 0.35, ar = a - 0.6 / 8.3;   // 5 節車的第 1 個座位在第 2 節（SEATS[5][1] = [1, 0]）
   assert.ok(Math.abs(s.x - Math.cos(ar) * 8.3) < 1e-9 && Math.abs(s.z - Math.sin(ar) * 8.3) < 1e-9);

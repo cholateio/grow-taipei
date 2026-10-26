@@ -12,9 +12,10 @@ export const TRACK = { radius: 8.3, y: TOP - 0.25 };   // 比島面低：從前�
 const GAP = 0.6;   // 車廂間距（弧長）
 const POOL = 0xa4d4da;
 const AT = anchorWorld('token'), POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站務員的崗位（站門口旁）、站門
-// 名冊入口（§13.2）：月台外側，站務員與泳客都從這裡走來。計畫給的 offset(AT, 1.6, 0.9) 離崗位只有 1.06，
-// 沿同一個方向往外推到離崗位、泳客站位都 ≥ 1.5（1.62）、兩條正解每一刻都走得到的最近點
-export const STAFF_ENTRY = offset(AT, 2.1, 1.15);
+// 名冊入口（§13.2）：站體北側（背面），站務員與泳客都從這裡繞過站體走來。計畫給的 offset(AT, 1.6, 0.9) 離崗位只有 1.06；
+// 往外推到 ≥ 1.5 的點（+x、+z 那側）又會穿過珍奶攤車前的人龍。這一點離崗位 2.4、離泳客站位 ≥ 1.6，兩條正解每一刻都走得到，
+// 走到崗位的路線離 Lv1–2 每個排隊站位 ≥ 0.3、不經過攤車前方
+export const STAFF_ENTRY = offset(AT, -0.35, -1.65);
 
 // 第 i 節車廂在時間 t 的位置：逆時針繞島，角速度 speed（rad/s）
 export function trainPose(t, i, { speed = 0.35 } = {}) {

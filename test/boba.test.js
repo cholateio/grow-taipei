@@ -2,16 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as boba from '../src/actors/boba.js';
 import * as sat from '../src/actors/satellites.js';
-import { RING_R, SATELLITES, axialToWorld } from '../src/scene/hex.js';
-import { anchorWorld } from '../src/actors/anchors.js';
+import { RING_R, SATELLITES, axialToWorld, worldToAxial } from '../src/scene/hex.js';
+import { anchorWorld, cellOf } from '../src/actors/anchors.js';
 import { offset } from '../src/actors/palette.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail } from './helpers/actors.js';
-import { cellOf } from '../src/actors/anchors.js';
-import { worldToAxial } from '../src/scene/hex.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const AT = anchorWorld('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;

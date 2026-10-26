@@ -187,14 +187,16 @@ export function camera(target) {
 // 也可以是 ctx => 上面三種（演到這拍才算：主角到時候在哪一格；回 null 這拍跳過）；
 // 1 秒平移＋拉近到全景距離 × zoom，名冊只讓那一格的人做日常（§13.4）。玩家拖過鏡頭 → 不動、不佔時間。
 // 拍只佔 FOCUS_BEAT 秒：easeInOut 最後 0.2 秒只剩 3% 的路，劇本先接著演（節奏門檻 50 s，計畫 3.8 Task 3）。
-// 'home'：回全景、名冊全部恢復；拖過也照回（清掉拖過的記號）。不佔時間：回合最後沒有別的要演，鏡頭在回合結束後自己飛完
+// 'home'：回全景、名冊全部恢復。不佔時間：鏡頭在後面的拍（或回合結束後）自己飛完
 export const FOCUS_BEAT = 0.8;
-export function focus(target, { zoom = 0.6 } = {}) {
+// 回合中途的 'home'（全島的事）也尊重拖過的記號：名冊照樣全部恢復，鏡頭不動、不清記號（計畫 3.8 R13）；
+// final（只有 turn.js 回合最後那拍用）拖過也照回、清掉記號
+export function focus(target, { zoom = 0.6, final = false } = {}) {
   return {
-    kind: 'focus', dur: target === 'home' ? 0 : FOCUS_BEAT, target,
+    kind: 'focus', dur: target === 'home' ? 0 : FOCUS_BEAT, target, final,
     start(ctx) {
       const ms = ctx.instant ? 0 : 1000;
-      if (target === 'home') { ctx.roster.setFocus(null); ctx.rig.home(ms); return; }
+      if (target === 'home') { ctx.roster.setFocus(null); if (final || !ctx.rig.grabbed) ctx.rig.home(ms); return; }
       const t = typeof target === 'function' ? target(ctx) : target; if (!t) return false;
       // 點：格子用軸座標反算（衛星島也有自己的格子）
       const cell = Array.isArray(t) ? t : typeof t === 'string' ? cellOf(t) : worldToAxial(t.x, t.z);

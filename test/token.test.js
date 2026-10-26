@@ -245,3 +245,29 @@ test('token 4 / 5: the satellite island is a focus at zoom 0.8 (no camera beats)
     const last = beats.at(-1); assert.equal(last.kind, 'together'); assert.deepEqual(last.beats.map(b => b.kind).sort(), ['focus', 'levelUp']);
   }
 });
+// 站務員從入口走到崗位不穿過珍奶攤車前的人龍（Lv1–2 的排隊站位，含 Lv3 前補到 8 人的轉角）：
+// 兩條正解裡有攤車的每一刻（放置與倒數回合）的真 footprint 下，路線離每個排隊站位 ≥ 0.25，也不經過攤車前方（Task 7 會把隊伍橫排在那裡）
+test('the staff entry walk to the post stays clear of the boba queue and the cart front', async () => {
+  const BOBA = anchorWorld('boba'), POST = offset(AT, 0.6, 0.55);
+  const Q = [...Array.from({ length: 6 }, (_, i) => offset(BOBA, -0.5, 0.15 + 0.22 * i)), offset(BOBA, -0.72, 1.25), offset(BOBA, -0.94, 1.25)];
+  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, L = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L)); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  // 攤車前方：Task 7 的橫排人龍在攤車前 0.9，前後各留 0.35
+  const front = p => Math.abs(p.x - BOBA.x) < 1.3 && p.z > BOBA.z + 0.55 && p.z < BOBA.z + 1.25;
+  const check = (route, what) => {
+    for (let k = 1; k < route.length; k++) {
+      for (const q of Q) assert.ok(segD(q, route[k - 1], route[k]) >= 0.25, `${what}: passes ${segD(q, route[k - 1], route[k]).toFixed(2)} from queue spot (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`);
+      for (let u = 0; u <= 1; u += 0.05) { const a = route[k - 1], b = route[k]; assert.ok(!front({ x: a.x + (b.x - a.x) * u, z: a.z + (b.z - a.z) * u }), `${what}: crosses the cart front`); }
+    }
+  };
+  check([token.STAFF_ENTRY, POST], 'straight');
+  const { show, run } = await headlessShow();
+  for (const order of SOLUTIONS) {
+    show.reset(); let s = engine.createState(spec), seen = 0;
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const [i, step] of steps.entries()) {
+      const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true });
+      if (show.stage.lv.boba >= 1) { seen++; check(show.nav.route(token.STAFF_ENTRY, POST), `${order.join('>')} step ${i + 1}`); }
+    }
+    assert.ok(seen >= 3, 'checked with the cart on the island');
+  }
+});

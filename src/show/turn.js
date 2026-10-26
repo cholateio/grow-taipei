@@ -5,7 +5,7 @@
 // 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡閃白補上（沒剩就 0 秒）。
 // 上一回合被撞歪的零件（stage.tilted）在回合一開頭閃白扶正（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
 // 鏡頭跟主線（§13.1）：有東西演的事件，劇本前面先 focus 到事件的格子（同一格連續不重複），不同物品之間先空 GAP 秒；
-//   劇本第一拍自己就是 focus 的不補；回合最後 focus('home') 回全景、名冊全部恢復日常。
+//   劇本第一拍自己就是 focus 的不補；回合最後 focus('home', { final: true }) 回全景（拖過也照回）、名冊全部恢復日常。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
@@ -128,6 +128,6 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   out.push(B.home(c => scriptMembers(c.roster)), {
     kind: 'world', dur: 0,
     start(c) { c.world(worldEffects(c.stage.lv, c.stage.flags, c.stage.meta), !!c.instant); },
-  }, B.focus('home'));
+  }, B.focus('home', { final: true }));
   return montage && estimateTurn(out, ctx) > MONTAGE_CAP ? keepOnly(out, b => b.kind !== 'walk') : out;
 }

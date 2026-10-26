@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as typhoon from '../src/actors/typhoon.js';
-import { landmarkWorld } from '../src/actors/anchors.js';
-import { lv } from './helpers/actors.js';
+import { anchorWorld, cellOf, landmarkWorld } from '../src/actors/anchors.js';
+import { lv, focusCell } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
+import { cellAt } from '../src/scene/hex.js';
 
 test('typhoon lv1: one grey cloud high above the island, no rain', () => {
   const v = typhoon.view(lv({ typhoon: 1 }), {}); assert.deepEqual(Object.keys(v), ['typhoon.main']);
@@ -51,13 +52,11 @@ test('rain shows fewer, fainter drops when weather.rain is low', () => {
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { anchorWorld } from '../src/actors/anchors.js';
 import { offset } from '../src/actors/palette.js';
 import { LAMP_STOPS } from '../src/actors/bulb.js';
 import * as baseball from '../src/actors/baseball.js';
 import * as milk from '../src/actors/milk.js';
 import { worldEffects } from '../src/actors/world.js';
-import { cellAt } from '../src/scene/hex.js';
 import { B } from '../src/show/beats.js';
 import { headlessShow, playItem } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
@@ -257,7 +256,6 @@ test('after a landing turn with baseball ≥ 3, the next turn ends with the stor
 });
 
 // ── 計畫 3.8 Task 6：鏡頭焦點、登陸躲進門裡不閃、下一回合從門口走出來 ──
-import { focusCell, focusTrail } from './helpers/actors.js';
 const firstFocus = beats => { assert.equal(beats[0].kind, 'focus', 'the script starts with its own focus'); return beats[0].target === 'home' ? 'home' : focusCell(beats[0], fakeCtx()); };
 test('focus: the cloud (placed, stall) frames the typhoon cell; landing, clearing and the blackout are island-wide; reactions focus where they happen', () => {
   const s = (extra, flags = {}) => ({ lv: lv({ typhoon: 2, ...extra }), flags });
@@ -266,11 +264,10 @@ test('focus: the cloud (placed, stall) frames the typhoon cell; landing, clearin
   for (const to of [2, 3]) assert.equal(firstFocus(typhoon.script.grow[to]({ kind: 'grow', item: 'typhoon', from: to - 1, to }, s({ typhoon: to }), fakeCtx())), 'home', `grow ${to}`);
   const fx = (e, extra, flags) => firstFocus(typhoon.script.fx({ kind: 'fx', item: 'typhoon', cause: 'typhoon', ...e }, s(extra, flags), fakeCtx()));
   assert.equal(fx({ item: 'milk', flag: { name: 'blackout', value: true }, delta: { target: 'milk', from: 2, to: 1 } }, { bulb: 2, milk: 1 }, { blackout: true }), 'home');
-  assert.deepEqual(fx({ flag: { name: 'flooded', value: true } }, { token: 2 }, { flooded: true }), cellOfItem('token'));
-  assert.deepEqual(fx({ flag: { name: 'domeRats', value: true } }, { rat: 2, baseball: 3 }, { domeRats: true }), cellOfItem('baseball'));
-  assert.deepEqual(fx({ story: '颱風假！小朋友在家看電視' }, { milk: 1 }), cellOfItem('milk'));
+  assert.deepEqual(fx({ flag: { name: 'flooded', value: true } }, { token: 2 }, { flooded: true }), cellOf('token'));
+  assert.deepEqual(fx({ flag: { name: 'domeRats', value: true } }, { rat: 2, baseball: 3 }, { domeRats: true }), cellOf('baseball'));
+  assert.deepEqual(fx({ story: '颱風假！小朋友在家看電視' }, { milk: 1 }), cellOf('milk'));
 });
-import { cellOf as cellOfItem } from '../src/actors/anchors.js';
 test('placed live: the camera frames the cloud over the typhoon cell at zoom 0.8, then home', async () => {
   const h = await headlessShow(); let n0 = 0, opts = null;
   await playItem(h.show, (evs, o) => { if (!o?.instant) n0 = h.rig.log.length; return h.run(evs, o); }, SOLUTIONS[0], 'typhoon', e => {
@@ -316,4 +313,25 @@ test('landing turn live: people vanish at their doors without a blink; the next 
     assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
   }
+});
+// R13：玩家在回合中途拖過鏡頭 → 登陸的 focus('home') 不把鏡頭拉回全景、不清拖過的記號；只有回合最後的 home 照回並清掉
+test('landing turn with the camera dragged mid-turn: no home before the turn-end one, which still flies home and clears the drag', async () => {
+  const h = await headlessShow(), { show, rig } = h;
+  const evs = await turnWith(h.run, SOLUTIONS[0], landing);
+  const home = rig.home, homes = [];
+  rig.home = ms => { homes.push({ grabbed: rig.grabbed }); return home(ms); };
+  const p = show.turn(evs); let t = 0, done = false, grabbedUntilEnd = true;
+  p.then(() => { done = true; });
+  show.update(1 / 30, t); t += 1 / 30; rig.cancel(); const n1 = rig.log.length;   // 第一幀之後拖了一下
+  while (!done) {
+    if (!homes.length && !rig.grabbed) grabbedUntilEnd = false;
+    show.update(1 / 30, t); t += 1 / 30; await Promise.resolve(); assert.ok(t < 120);
+  }
+  rig.home = home;
+  assert.ok(show.stage.lv.typhoon === 2, 'landed');
+  assert.equal(homes.length, 1, `exactly one home call (${JSON.stringify(homes)})`);
+  assert.equal(homes[0].grabbed, true, 'the turn-end home is the one that ends the drag');
+  assert.ok(grabbedUntilEnd, 'still dragged until the turn-end home');
+  assert.equal(rig.grabbed, false, 'turn-end home clears the drag');
+  assert.equal(rig.log.slice(n1).filter(([k]) => k === 'focus').length, 0, 'no focus while dragged');
 });

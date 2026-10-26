@@ -249,7 +249,7 @@ test('camera home/pan and world pass through to rig and ctx.world; instant camer
   assert.deepEqual(rig.calls[2], ['panTo', p, 0]); assert.deepEqual(ctx.worlds, [[{ storm: true }, true]]);
 });
 // §13.1 鏡頭跟主線：focus 平移拉近到格子中心 1 秒、名冊只讓那一格的人做日常；拖過鏡頭就跳過（0 秒）；home 一定回全景
-test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and narrows the roster focus; grabbed skips it; home always runs', () => {
+test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and narrows the roster focus; grabbed skips it; mid-turn home respects it, the final home always runs', () => {
   const { ctx, tl, rig, roster } = fake();
   tl.play([B.focus([1, 0])], ctx); tl.update(0);
   assert.equal(FOCUS_BEAT, 0.8); assert.equal(tl.currentDur, FOCUS_BEAT); assert.deepEqual(rig.calls[0], ['focus', c([1, 0]), { zoom: 0.6, ms: 1000 }]); assert.deepEqual(roster.focus, [[[1, 0]]]);
@@ -264,8 +264,10 @@ test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and nar
   rig.grabbed = true; let ended = false;
   tl.play([B.focus([0, 0])], ctx).then(() => { ended = true; }); tl.update(0);
   assert.equal(rig.calls.length, 3); assert.equal(tl.busy, false); assert.deepEqual(roster.focus.at(-1), [[0, 0]]);
-  // home：拖過也照回，名冊全部恢復；不佔時間（鏡頭在回合結束後自己飛完）
+  // 回合中途的 home（R13）：拖過就不動鏡頭（名冊照樣全部恢復）；回合最後的 final home 拖過也照回。都不佔時間
   tl.play([B.focus('home')], ctx); tl.update(0);
+  assert.equal(tl.busy, false); assert.equal(rig.calls.length, 3, 'mid-turn home leaves a dragged camera alone'); assert.equal(roster.focus.at(-1), null);
+  tl.play([B.focus('home', { final: true })], ctx); tl.update(0);
   assert.equal(tl.busy, false); assert.deepEqual(rig.calls[3], ['home', 1000]); assert.equal(roster.focus.at(-1), null);
   ctx.instant = true; rig.grabbed = false; tl.play([B.focus([0, 0]), B.focus('home')], ctx); tl.skip();
   assert.deepEqual(rig.calls.slice(4), [['focus', c([0, 0]), { zoom: 0.6, ms: 0 }], ['home', 0]], 'instant uses 0 ms');

@@ -36,6 +36,17 @@ test('cancel marks the rig grabbed; home clears it; focus while grabbed does not
   assert.equal(rig.grabbed, true); const mid = controls.target.clone(); rig.focus({ x: -4, y: 0, z: 0 }); rig.update(1); assert.ok(controls.target.distanceTo(mid) < 1e-9);
   rig.home(0); assert.equal(rig.grabbed, false);
 });
+// 回合最後回全景飛到一半被點一下（final review 2）：回全景的飛行直接落地，不停在半路；其他框景照舊停在半路
+test('cancel during a flight home lands at the overview at once and still marks the rig grabbed', () => {
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); const home = camera.position.clone();
+  rig.focus({ x: 4, y: 0.65, z: 2 }); rig.update(1.1); rig.home(1000); rig.update(0.3);
+  assert.ok(rig.flying, 'mid-flight home'); rig.cancel();
+  assert.equal(rig.flying, false); assert.equal(rig.grabbed, true);
+  assert.ok(camera.position.distanceTo(home) < 1e-6 && controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-6, 'landed at the overview');
+  rig.update(0.5); assert.ok(camera.position.distanceTo(home) < 1e-6, 'stays there');
+  rig.home(0); rig.cancel(); assert.equal(rig.grabbed, true, 'a click at the overview just marks grabbed');
+  assert.ok(camera.position.distanceTo(home) < 1e-6);
+});
 // 回合開始放開「拖過」的記號，但鏡頭留在玩家拖到的地方（計畫 3.8 R4）
 test('release clears grabbed without moving the camera', () => {
   const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); rig.cancel();

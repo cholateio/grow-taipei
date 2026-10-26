@@ -238,6 +238,21 @@ test('skip during a focus pan ends with the rig at home and the next turn pans a
   assert.ok(reached, 'the camera reached the chip cell'); assert.deepEqual(cam.calls.at(-1), ['home', 1000]);
 });
 
+// final review 2：turn() resolve 時鏡頭還在飛回全景（最後那拍 0 秒）；這時點一下（app.js 的 pointerdown → cancel）要落在全景，不停在半路
+test('a click during the fly-home after turn() resolves leaves the rig at the overview', async () => {
+  for (const at of [0, 0.2, 0.5, 0.9]) {
+    const cam = realRig(), { show } = await headlessShow({ rig: cam.rig });
+    const r = place(engine.createState(spec), 'milk');
+    const p = show.turn([...r.events, { kind: 'settle' }]);
+    let t = 0, done = false; p.then(() => { done = true; });
+    while (!done && t < 60) { show.update(1 / 30, t); cam.rig.update(1 / 30); t += 1 / 30; await Promise.resolve(); }
+    assert.ok(done && cam.rig.flying, 'turn resolved while the camera is still flying home');
+    for (let k = 0; k < at; k += 1 / 30) { show.update(1 / 30, t); cam.rig.update(1 / 30); t += 1 / 30; }
+    cam.rig.cancel();
+    for (let i = 0; i < 40; i++) { show.update(1 / 30, t); cam.rig.update(1 / 30); t += 1 / 30; }
+    assert.ok(cam.atHome(), `click ${at} s after the turn: camera at the overview (target ${cam.controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)).toFixed(2)} off)`);
+  }
+});
 test('after the player grabs the camera, no focus moves the rig for the rest of the turn (review focus 2)', async () => {
   // 鮮奶、晶片之後放燈泡：這回合有好幾個物品的事件（不拖的話鏡頭會平移好幾次）
   const setup = async () => {

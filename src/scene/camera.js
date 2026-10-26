@@ -50,7 +50,12 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
       if (dir.lengthSq() < 1e-12) dir.copy(v(OVERVIEW_DIR));
       show({ kind: 'focus', target: t, dir: dir.normalize(), zoom }, ms);
     },
-    cancel() { flight = null; grabbed = true; },
+    // 玩家按下滑鼠：停掉飛行、標記拖過。正在飛回全景（回合最後那拍不佔時間，turn() resolve 後還在飛）就直接落在全景，
+    // 不停在半路——點一下等於「跳到全景」（final review 2）；其他框景照舊停在原地
+    cancel() {
+      if (flight && framing.kind === 'home') go(flight.pos, flight.target, 0);
+      flight = null; grabbed = true;
+    },
     // 回合開始放開拖過的記號（不動鏡頭）：回合之間拖一下不影響下一回合跟主線
     release() { grabbed = false; },
     update(dt) {

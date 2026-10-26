@@ -21,3 +21,9 @@ test('index.html importmap points three and three/addons/ at vendor', () => {
   assert.equal(map.imports['three/addons/'], './vendor/three/addons/');
   assert.doesNotMatch(html, /cdn\.jsdelivr|unpkg|cdnjs/);
 });
+test('vendored BufferGeometryUtils exports mergeGeometries (assets.js merges each glb with it) and it runs in Node', async () => {
+  const THREE = await import('../vendor/three/three.module.js');
+  const { mergeGeometries } = await import('../vendor/three/addons/utils/BufferGeometryUtils.js');
+  const a = new THREE.BoxGeometry().toNonIndexed(), b = new THREE.BoxGeometry().toNonIndexed();
+  assert.equal(mergeGeometries([a, b]).attributes.position.count, a.attributes.position.count * 2);
+});

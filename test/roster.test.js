@@ -539,3 +539,61 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
     assert.ok(ms.every(m => m.cursor), 'still on the route');
   }
 });
+
+// ── §14.1／§14.5：兩條正解 live 演完（seed 21），每一幀名冊成員都不在 footprint（含 PAD）裡；走進來的人都走得到 ──
+// 「在 footprint 裡」= 主島走路格上、落在 show.nav 當下外擴 PAD 的 footprint 裡（nav.inFootprint）。藏起來（躲進門裡）的人不算。
+// 不歸走路格管的不查：劇本手上的人（劇本自己擺位置）、沿手畫折線走的 path 成員、站位本來就畫在 footprint 裡的 stand（沒有 rescue：泡溫泉的老鼠、
+// 攤車後的老闆）。已經在裡面才開始查的人（建築長在身上——footprint 換了的那一幀人就在裡面；劇本把人放在門裡再交回日常）
+// 要在 CAUGHT_MAX 秒內走出來；本來在外面、自己走進去的就是穿牆。
+// 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）
+test('no roster member is ever inside a padded footprint, and nobody is stuck: every walk-in arrives', async () => {
+  const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
+  const { headlessShow, ALL } = await import('./helpers/show.js'), { PAD } = await import('../src/show/nav.js');
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = 1 / 30, bare = createNav(), bad = new Set(), stuck = [], slow = [];
+  for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
+    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet();
+    let label = '', t = 0, version = show.nav.version, walkedIn = 0;
+    const authored = (h, i) => { if (h?.kind !== 'stand' || h.rescue) return false; const p = h.spots[i % h.spots.length]; return show.nav.inFootprint(p.x, p.z); };
+    const check = () => {
+      const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), changed = show.nav.version !== version;
+      version = show.nav.version;
+      for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+        if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
+        const h = view[k]?.home, exempt = m.hidden || m.mode === 'script' || h?.kind === 'path' || authored(h, m.i);
+        const inside = bare.walkable(m.pos.x, m.pos.z) && show.nav.inFootprint(m.pos.x, m.pos.z);
+        if (exempt || !inside) { caught.delete(m); if (exempt) outside.delete(m); else outside.add(m); continue; }
+        const what = `${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
+        if (!caught.has(m)) { if (outside.has(m) && !changed) bad.add(what); else caught.set(m, t); }
+        if (caught.has(m) && t - caught.get(m) > CAUGHT_MAX) slow.push(`${what} still inside after ${CAUGHT_MAX} s`);
+      }
+    };
+    show.update = (dt, tt) => { update(dt, tt); t += dt; check(); };
+    let s = engine.createState(spec);
+    const steps = [...order.map(id => ['place', id]), ...Array.from({ length: spec.CLOSING_TURNS }, () => ['advance'])];
+    for (const [i, [kind, id]] of steps.entries()) {
+      const r = kind === 'place' ? engine.place(s, id, spec) : engine.advance(s, spec); s = r.state;
+      label = `${order.join('>')} turn ${i + 1}`;
+      await run([...r.events, { kind: 'settle' }], { montage: kind === 'advance' });
+      const walking = () => [...since.keys()].filter(m => m.arriving && !m.gone);
+      for (let f = 0; f < ARRIVE_MAX / DT && walking().length; f++) show.update(DT, 1000 + t);
+      for (const m of walking()) stuck.push(`${label} ${m.key}#${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+      for (const m of walking()) since.delete(m);
+    }
+    assert.ok(walkedIn >= 10, `${order.join('>')}: ${walkedIn} walk-ins arrived`);
+  }
+  assert.equal(PAD, 0.12);
+  assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} frames inside a footprint`);
+  assert.deepEqual(slow.slice(0, 20), [], 'caught by a new building: walks out at once');
+  assert.deepEqual(stuck, []);
+});
+// §14.1：走到一半，路上長出建築——從現在的位置重新找路繞過去，不照舊路穿過
+test('a walker whose route is cut by a new footprint replans around it and still arrives', () => {
+  const { roster, nav } = setup(), A = { x: Q.x - 1.0, y: Q.y, z: Q.z, yaw: 0 }, B = { x: Q.x + 1.0, y: Q.y, z: Q.z, yaw: 0 };
+  const stand = spot => ({ kind: 'roster', at: Q, n: 1, home: { kind: 'stand', spots: [spot] } });
+  roster.declare('k', stand(A)); roster.snap(); const [m] = roster.members('k');
+  roster.declare('k', stand(B)); roster.flush();
+  run(roster, 6); assert.ok(m.walking && m.pos.x < Q.x - 0.5, 'walking toward B');
+  nav.setFootprints([{ x: Q.x, z: Q.z, w: 0.4, d: 0.8 }]);
+  for (let i = 0; i < 150; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at ${m.pos.x.toFixed(2)},${m.pos.z.toFixed(2)}`); }
+  assert.ok(gap(m.pos, B) < 0.05, `arrived (${gap(m.pos, B).toFixed(2)})`);
+});

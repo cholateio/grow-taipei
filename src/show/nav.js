@@ -1,14 +1,18 @@
 // 走路格與尋路：主島六格與橋面切成方格，A* 八方向（不切角）找路，再沿視線拉直。
-// 建築佔地（footprint）是另一層可隨時重設的阻擋集合。純函式、不依賴 three。
+// 建築佔地（footprint）是另一層可隨時重設的阻擋集合，每個 footprint 外擴 PAD（小人身寬，§14.1）。純函式、不依賴 three。
 import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, edgeMidpoint, WATER_Y, SATELLITES } from '../scene/hex.js';
 
-export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25;
-const SQ3 = Math.sqrt(3), HALF = 9.5, BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, WANDER_TRIES = 12, STAND_PASSES = 24;
+export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25, HALF = 9.5;   // 走路格的點在 -HALF + STEP·i
+export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕，站在牆邊身體不會陷進牆裡（§14.1）
+// 同高兩格之間的拱橋（island.js addBridge → bridgeDecks(a, b, { arch: 0.08 })）：甲板中心 base + sin(π·t)·ARCH，板厚 DECK
+const ARCH = 0.08, DECK = 0.05;
+const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32;
+const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
 const BRIDGES = adjacentPairs(MAIN_CELLS).map(([A, B]) => {
   const { a, b } = edgeMidpoint(A, B, RING_R * SQ3 / 2), len = Math.hypot(b.x - a.x, b.z - a.z);
-  return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len, ta: cellTop(A), tb: cellTop(B) };
+  return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len, ta: cellTop(A), tb: cellTop(B), level: cellTop(A) === cellTop(B) };
 });
 
 // 點投影到橋線段：s 是沿線距離（從 a 起算），off 是離中心線的距離
@@ -42,46 +46,98 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
 
   const open = new Uint8Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = toW(i), z = toW(j); open[j * N + i] = insideCell(x, z) || onAnyBridge(x, z) ? 1 : 0; }
-  let blocked = new Set();
-  const free = k => k >= 0 && open[k] === 1 && !blocked.has(k);
+  // blocked：落在外擴後 footprint 裡的格點（A* 不走）；pads：外擴 PAD 之後的 footprint（圓 { x, z, r }、橢圓 { x, z, rx, rz } 或框 { x, z, hx, hz }）；
+  // version：footprint 每變一次 +1（名冊看它重新規劃走到一半的路）
+  let blocked = new Set(), pads = [], version = 0, last = '[]', near = new Map();
+  const ground = k => k >= 0 && open[k] === 1, free = k => ground(k) && !blocked.has(k);
+  const padded = (x, z) => pads.some(p => inPad(p, x, z));
 
-  function walkable(x, z) { return free(index(x, z)); }
+  // 可走：在格內／橋面上（看最近的格點），而且點本身不在外擴後的 footprint 裡——footprint 用真的形狀判，不看格點
+  // （格點 0.3 一格，只看格點的話 PAD 會忽大忽小，牆邊的站位、入口落在哪一格就看運氣）。
+  // 最近的格點被 footprint 擋住（點貼著牆）時，旁邊一格內要有直線走得到的可走格點，不然是走不出去的夾縫（牆和格邊之間）
+  function walkable(x, z) {
+    const k = index(x, z); if (!ground(k) || padded(x, z)) return false;
+    if (!blocked.has(k)) return true;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+      const kk = k + dj * N + di; if ((di || dj) && Math.abs(ix(kk) - ix(k)) <= 1 && free(kk) && clear({ x, z }, pointOf(kk))) return true;
+    }
+    return false;
+  }
 
+  // 橋面：同高兩格是拱橋（拱高 + 半個板厚，走在甲板上不陷進去），高低格之間的階梯直線內插
   function groundY(x, z) {
     for (const br of BRIDGES) {
       const { s, off } = onBridge(br, x, z);
-      if (off <= BRIDGE_HALF && s >= 0 && s <= br.len) return br.ta + (br.tb - br.ta) * (s / br.len);
+      if (off > BRIDGE_HALF || s < 0 || s > br.len) continue;
+      const t = s / br.len;
+      return br.level ? br.ta + Math.sin(Math.PI * t) * ARCH + DECK / 2 : br.ta + (br.tb - br.ta) * t;
     }
     const cell = cellAt(x, z);
     return cell ? cellTop(cell) : WATER_Y;
   }
 
+  // 每個 footprint（圓 { r }、橢圓 { rx, rz } 或矩形 { w, d }）外擴 PAD 再擋格子
   function setFootprints(list) {
-    blocked = new Set();
+    const key = JSON.stringify(list); if (key === last) return;
+    last = key; version++;
+    blocked = new Set(); pads = []; near = new Map();
     for (const f of list) {
-      const hx = f.r ?? f.w / 2, hz = f.r ?? f.d / 2;
-      const inside = f.r != null ? (x, z) => Math.hypot(x - f.x, z - f.z) <= f.r : (x, z) => Math.abs(x - f.x) <= hx && Math.abs(z - f.z) <= hz;
+      const p = f.r != null ? { x: f.x, z: f.z, r: f.r + PAD } : f.rx != null ? { x: f.x, z: f.z, rx: f.rx + PAD, rz: f.rz + PAD } : { x: f.x, z: f.z, hx: f.w / 2 + PAD, hz: f.d / 2 + PAD };
+      const hx = p.r ?? p.rx ?? p.hx, hz = p.r ?? p.rz ?? p.hz;
+      pads.push(p);
       for (let j = Math.max(0, toI(f.z - hz)); j <= Math.min(N - 1, toI(f.z + hz)); j++)
-        for (let i = Math.max(0, toI(f.x - hx)); i <= Math.min(N - 1, toI(f.x + hx)); i++) if (inside(toW(i), toW(j))) blocked.add(j * N + i);
+        for (let i = Math.max(0, toI(f.x - hx)); i <= Math.min(N - 1, toI(f.x + hx)); i++) if (inPad(p, toW(i), toW(j))) blocked.add(j * N + i);
     }
   }
 
-  function nearestWalkable({ x, z }) {
-    if (walkable(x, z)) return { x, y: groundY(x, z), z };
+  // 最近的可走格點（格點在格內、不在外擴後的 footprint 裡）；沒有回 -1
+  function nearestFree(x, z) {
     let best = -1, bestD = Infinity;
     for (let k = 0; k < N * N; k++) if (free(k)) { const d = Math.hypot(toW(ix(k)) - x, toW(jz(k)) - z); if (d < bestD) { bestD = d; best = k; } }
-    return best < 0 ? { x, y: groundY(x, z), z } : pointOf(best);
+    return best;
+  }
+  // 最近的可走點：先在附近一圈一圈找（每圈 NEAR_STEP，NEAR_DIRS 個方向，同一圈取第一個），NEAR_MAX 內找不到再找最近的可走格點。
+  // 不直接跳到格點：相鄰的站位一起落進 footprint 時，各自站到牆邊不同的位置，不會擠到同一個格點上。
+  // 結果記在 near（footprint 變了就清掉）：rescue 的站位每幀都會問
+  function nearestWalkable({ x, z }) {
+    if (walkable(x, z)) return { x, y: groundY(x, z), z };
+    const key = `${x},${z}`, hit = near.get(key); if (hit) return { ...hit };
+    let out = null;
+    for (let rr = NEAR_STEP; !out && rr <= NEAR_MAX + 1e-9; rr += NEAR_STEP) for (let k = 0; k < NEAR_DIRS && !out; k++) {
+      const a = 2 * Math.PI * k / NEAR_DIRS, px = x + Math.cos(a) * rr, pz = z + Math.sin(a) * rr;
+      if (walkable(px, pz)) out = { x: px, y: groundY(px, pz), z: pz };
+    }
+    if (!out) { const best = nearestFree(x, z); out = best < 0 ? { x, y: groundY(x, z), z } : pointOf(best); }
+    near.set(key, out);
+    return { ...out };
+  }
+  // 路線從哪些格點出發／到哪些格點：點所在那一格；那一格的格點在 footprint 裡（點本身在 PAD 外、貼著牆）就用
+  // 附近兩格內、直線走得到（不擦過 footprint）的格點，全部交給 A*（最近的那個可能在 footprint 圍住的死角裡）。
+  // 回 [[格點, 從點走過去的距離（格數）]]
+  function anchors(p) {
+    const k = index(p.x, p.z); if (free(k)) return [[k, 0]];
+    const out = [];
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+      const i = toI(p.x) + di, j = toI(p.z) + dj; if (i < 0 || j < 0 || i >= N || j >= N || !free(j * N + i)) continue;
+      const q = { x: toW(i), z: toW(j) };
+      if (clear(p, q)) out.push([j * N + i, Math.hypot(q.x - p.x, q.z - p.z) / step]);
+    }
+    return out;
   }
 
-  // A*：八方向，斜走要兩個正交鄰居都可走；啟發用 octile 距離（格數單位）
-  function astar(startK, goalK) {
+  // A*：八方向，斜走要兩個正交鄰居都可走；啟發用 octile 距離（格數單位）。
+  // 起點、終點各可以是幾個格點（[格點, 從點走到格點的距離（格數）]）：走到任何一個終點格點就停
+  function astar(starts, goals) {
     const g = new Float64Array(N * N).fill(Infinity), came = new Int32Array(N * N).fill(-1), done = new Uint8Array(N * N);
-    const gi = ix(goalK), gj = jz(goalK);
-    const h = k => { const a = Math.abs(ix(k) - gi), b = Math.abs(jz(k) - gj); return Math.max(a, b) + (Math.SQRT2 - 1) * Math.min(a, b); };
-    const heap = createHeap(); g[startK] = 0; heap.push(startK, h(startK));
+    const goal = new Set(goals.map(([k]) => k));
+    const oct = (k, q) => { const a = Math.abs(ix(k) - ix(q)), b = Math.abs(jz(k) - jz(q)); return Math.max(a, b) + (Math.SQRT2 - 1) * Math.min(a, b); };
+    const h = k => Math.min(...goals.map(([q, d]) => oct(k, q) + d));
+    const heap = createHeap();
+    for (const [k, d] of starts) if (d < g[k]) { g[k] = d; heap.push(k, d + h(k)); }
+    let goalK = -1;
     while (heap.size) {
       const k = heap.pop(); if (done[k]) continue; done[k] = 1;
-      if (k === goalK) break;
+      if (goal.has(k)) { goalK = k; break; }
       const i = ix(k), j = jz(k);
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
         if (!di && !dj) continue;
@@ -92,19 +148,21 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
         if (ng < g[nk]) { g[nk] = ng; came[nk] = k; heap.push(nk, ng + h(nk)); }
       }
     }
-    if (!done[goalK]) return null;
+    if (goalK < 0) return null;
     const cells = []; for (let k = goalK; k !== -1; k = came[k]) cells.push(k);
     return cells.reverse();
   }
 
-  // 視線：沿線每 step/2 取樣都可走。相鄰兩樣本斜跨一格時，線會擦過兩個正交鄰格之一，兩格都要可走（同 A* 不切角）
+  // 視線：線段不擦過外擴後的 footprint（真的形狀，取樣之間那一段也算），沿線每 step/2 取樣都在格內／橋面上；
+  // 相鄰兩樣本斜跨一格時，線會擦過兩個正交鄰格之一，兩格都要在格內（同 A* 不切角）
   function clear(a, b) {
+    if (pads.some(p => crossesPad(p, a, b))) return false;
     const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (step / 2));
     let prev = -1;
     for (let k = 0; k <= n; k++) {
       const t = n ? k / n : 0, cur = index(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t);
-      if (!free(cur)) return false;
-      if (prev >= 0 && ix(prev) !== ix(cur) && jz(prev) !== jz(cur) && !(free(jz(prev) * N + ix(cur)) && free(jz(cur) * N + ix(prev)))) return false;
+      if (!ground(cur)) return false;
+      if (prev >= 0 && ix(prev) !== ix(cur) && jz(prev) !== jz(cur) && !(ground(jz(prev) * N + ix(cur)) && ground(jz(cur) * N + ix(prev)))) return false;
       prev = cur;
     }
     return true;
@@ -127,9 +185,10 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     const rescued = !walkable(from.x, from.z), start = rescued ? nearestWalkable(from) : from;
     if (rescued) head.push(start);
     const end = nearestWalkable(to);
-    const cells = astar(index(start.x, start.z), index(end.x, end.z));
+    const a = anchors(start), b = anchors(end), cells = a.length && b.length ? astar(a, b) : null;
     if (!cells) return head;                                   // 被 footprint 隔斷、到不了：留在原地
-    const pulled = pull([start, ...cells.slice(1, -1).map(pointOf), end]).slice(1);
+    // 起點、終點的格點也排進去：拉直時從起點直接接第二格會擦過牆角的話，退回先走到起點的格點（那一段一定看得到）
+    const pulled = pull([start, ...cells.map(pointOf), end]).slice(1);
     return [...head, ...pulled.map(p => ({ x: p.x, y: groundY(p.x, p.z), z: p.z }))];
   }
 
@@ -138,19 +197,23 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return s;
   }
 
+  // 站定點：半徑 r 的圓上 n 個可走、彼此 ≥ SEPARATION 的點。先照等分角取；有點落在 footprint 裡（外擴 PAD 後
+  // 圓的一段被建築蓋住）就在圓上可走的那幾段裡平均挑；圓上放不下才把半徑放大（最多 RING_TRIES 次），最後退回最近的可走點
   function slots(center, n, r) {
-    const y = groundY(center.x, center.z);
+    const y = groundY(center.x, center.z), apart = ps => ps.every((p, i) => ps.slice(i + 1).every(q => Math.hypot(p.x - q.x, p.z - q.z) >= SEPARATION));
+    const on = (a, rr) => ({ x: center.x + Math.cos(a) * rr, y, z: center.z + Math.sin(a) * rr });
     let pts = [];
     for (let attempt = 0; attempt <= RING_TRIES; attempt++, r += RING_GROW) {
-      pts = Array.from({ length: n }, (_, k) => {
-        const a = 2 * Math.PI * k / n, p = nearestWalkable({ x: center.x + Math.cos(a) * r, z: center.z + Math.sin(a) * r });
-        return { x: p.x, y, z: p.z };
-      });
-      if (pts.every((p, i) => pts.slice(i + 1).every(q => Math.hypot(p.x - q.x, p.z - q.z) >= SEPARATION))) break;
+      pts = Array.from({ length: n }, (_, k) => on(2 * Math.PI * k / n, r));
+      if (pts.every(p => walkable(p.x, p.z)) && apart(pts)) return pts;
+      const arc = Array.from({ length: SLOT_SAMPLES }, (_, k) => on(2 * Math.PI * k / SLOT_SAMPLES, r)).filter(p => walkable(p.x, p.z));
+      if (arc.length >= n) { pts = Array.from({ length: n }, (_, k) => arc[Math.floor((k + 0.5) * arc.length / n)]); if (apart(pts)) return pts; }
     }
-    return pts;
+    r -= RING_GROW;   // 最後一次試的半徑
+    return Array.from({ length: n }, (_, k) => { const p = nearestWalkable(on(2 * Math.PI * k / n, r)); return { x: p.x, y, z: p.z }; });
   }
 
+  // 閒晃的下一個點：home 附近隨機挑可走點（footprint 外擴 PAD 之外）；挑不到就回 home 最近的可走點
   function wander(home, r) {
     for (let k = 0; k < WANDER_TRIES; k++) {
       const a = rnd() * 2 * Math.PI, d = r * Math.sqrt(rnd()), x = home.x + Math.cos(a) * d, z = home.z + Math.sin(a) * d;
@@ -159,36 +222,47 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return nearestWalkable(home);
   }
 
-  // 走動中的兩人太近就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）
+  // 走動中的兩人太近就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）；
+  // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）
   function separate(members, _dt) {
     const walkers = members.filter(m => m.walking === true);
+    const nudge = (p, x, z) => { if (walkable(x, z) || !walkable(p.x, p.z)) { p.x = x; p.z = z; } };
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
       if (d >= SEPARATION) continue;
       const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (SEPARATION - d) / 2;
-      p.x -= ux * push; p.z -= uz * push; q.x += ux * push; q.z += uz * push;
+      nudge(p, p.x - ux * push, p.z - uz * push); nudge(q, q.x + ux * push, q.z + uz * push);
     }
   }
 
   // 站著的人太近（< SEPARATION）：只沿 x 錯開（不往鏡頭縱深推，§13.3），各退一半；寫回 m.pos，回傳被推過的人。
   // 一串人擠在一起時推一次可能又撞到下一個，最多來回推 STAND_PASSES 輪（每次多推 1e-6，浮點誤差不會讓下一幀又推）。
+  // 只推到可走點上（§14.1）：站在走路格上的人，推過去會落進 footprint（或水裡）就不推——貼著牆的人不動、
+  //   另一個人讓開整段；兩邊都推不開就不推。走路格外的人（衛星島、屋頂）照舊錯開。
   // maxStep：這一次每人最多移動多少（每幀呼叫時傳走路速度 × dt，錯開是滑過去的、不瞬移；沒到的下一幀接著推）
   function separateStanding(members, maxStep = Infinity) {
-    const xs = members.map(m => m.pos.x);
+    const xs = members.map(m => m.pos.x), zs = members.map(m => m.pos.z);
+    const can = (i, x) => walkable(x, zs[i]) || !walkable(xs[i], zs[i]);
     for (let pass = 0; pass < STAND_PASSES; pass++) {
       let pushed = false;
       for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) {
-        const dx = xs[j] - xs[i], dz = members[j].pos.z - members[i].pos.z;
+        const dx = xs[j] - xs[i], dz = zs[j] - zs[i];
         if (Math.abs(dz) >= SEPARATION || Math.hypot(dx, dz) >= SEPARATION - 1e-9) continue;
         const need = Math.sqrt(SEPARATION * SEPARATION - dz * dz) + 1e-6, dir = dx < 0 ? -1 : 1, push = (need - Math.abs(dx)) / 2;
-        xs[i] -= dir * push; xs[j] += dir * push; pushed = true;
+        const ok = [can(i, xs[i] - dir * push), can(j, xs[j] + dir * push)];
+        let di = ok[0] ? push : 0, dj = ok[1] ? push : 0;
+        if (!ok[1] && ok[0] && can(i, xs[i] - dir * 2 * push)) di = 2 * push;   // 對方貼著牆：自己讓開整段
+        if (!ok[0] && ok[1] && can(j, xs[j] + dir * 2 * push)) dj = 2 * push;
+        xs[i] -= dir * di; xs[j] += dir * dj; pushed ||= di > 0 || dj > 0;
       }
       if (!pushed) break;
     }
     const moved = [];
     members.forEach((m, i) => {
       const d = xs[i] - m.pos.x; if (d === 0) return;
-      m.pos.x += Math.max(-maxStep, Math.min(maxStep, d)); moved.push(m);
+      const x = m.pos.x + Math.max(-maxStep, Math.min(maxStep, d));
+      if (!walkable(x, m.pos.z) && walkable(m.pos.x, m.pos.z)) return;   // 滑到一半會經過 footprint：這一幀不動
+      m.pos.x = x; moved.push(m);
     });
     return moved;
   }
@@ -196,8 +270,8 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   // 格子裡離 awayFrom 最遠、而且從 awayFrom 走得到的點（名冊成員出場的預設入口，§13.2：落在格子邊上）。
   // 從 awayFrom 最近的可走點往外淹（四方向），淹到的點裡挑這一格的；這一格沒有走得到的點（不是主島格）回 null
   function edgePoint(cell, awayFrom) {
-    const s = nearestWalkable(awayFrom), k0 = index(s.x, s.z);
-    if (!free(k0)) return null;
+    const k = index(awayFrom.x, awayFrom.z), k0 = free(k) ? k : nearestFree(awayFrom.x, awayFrom.z);
+    if (k0 < 0) return null;
     const seen = new Uint8Array(N * N), queue = [k0]; seen[k0] = 1;
     let best = -1, bestD = -1;
     for (let h = 0; h < queue.length; h++) {
@@ -211,7 +285,30 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return best < 0 ? null : pointOf(best);
   }
 
-  return { walkable, groundY, setFootprints, nearestWalkable, route, routeLength, slots, wander, separate, separateStanding, edgePoint };
+  return { get version() { return version; }, inFootprint: padded, walkable, groundY, setFootprints, nearestWalkable, route, routeLength, slots, wander, separate, separateStanding, edgePoint };
+}
+
+// 點在外擴後的 footprint 裡（圓 { r }、橢圓 { rx, rz } 或框 { hx, hz }）
+function inPad(p, x, z) {
+  if (p.r != null) return Math.hypot(x - p.x, z - p.z) <= p.r;
+  if (p.rx != null) return ((x - p.x) / p.rx) ** 2 + ((z - p.z) / p.rz) ** 2 <= 1;
+  return Math.abs(x - p.x) <= p.hx && Math.abs(z - p.z) <= p.hz;
+}
+// 線段 a→b 碰到外擴後的 footprint：圓（橢圓先縮放成單位圓）看圓心到線段的距離，框用 slab 法
+function crossesPad(p, a, b) {
+  if (p.r != null || p.rx != null) {
+    const sx = p.rx ?? p.r, sz = p.rz ?? p.r, ax = (a.x - p.x) / sx, az = (a.z - p.z) / sz, dx = (b.x - a.x) / sx, dz = (b.z - a.z) / sz;
+    const L = dx * dx + dz * dz, t = L ? Math.max(0, Math.min(1, -(ax * dx + az * dz) / L)) : 0;
+    return Math.hypot(ax + dx * t, az + dz * t) <= 1;
+  }
+  const dx = b.x - a.x, dz = b.z - a.z;
+  let lo = 0, hi = 1;
+  for (const [o, d, c, h] of [[a.x, dx, p.x, p.hx], [a.z, dz, p.z, p.hz]]) {
+    if (Math.abs(d) < 1e-12) { if (Math.abs(o - c) > h) return false; continue; }
+    let t0 = (c - h - o) / d, t1 = (c + h - o) / d; if (t0 > t1) [t0, t1] = [t1, t0];
+    lo = Math.max(lo, t0); hi = Math.min(hi, t1); if (lo > hi) return false;
+  }
+  return true;
 }
 
 // 最小堆（A* 的 open list）

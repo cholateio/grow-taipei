@@ -17,7 +17,7 @@ export function diffParts(prev, next) {
   };
 }
 
-const WIDE = 2.4, SHRINK = 0.9;   // 自動 footprint：水平邊長超過 WIDE 的不算（軌道、整圈路燈、彩虹），其餘縮 0.9
+const WIDE = 2.4;   // 自動 footprint：水平邊長超過 WIDE 的不算（軌道、整圈路燈、彩虹），其餘用整個包圍盒（不再縮，人身寬度由走路格外擴 PAD，§14.1）
 
 // 老鼠咬鮮奶（§8.6 的反應）：鮮奶因老鼠掉級的那個事件
 export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause === 'rat' && e.delta.to < e.delta.from;
@@ -50,18 +50,19 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     return { x: p.x, y: p.y + y, z: p.z };
   }
 
-  // footprint（§5.3）：宣告的圓 { r } 或矩形 { w, d, x?, z? }（相對 at）；false 不算；
+  // footprint（§5.3）：宣告的圓 { r }、橢圓 { rx, rz, x?, z? } 或矩形 { w, d, x?, z? }（相對 at）；false 不算；
   // 沒宣告的 compound 建好時量一次包圍盒（零件已經放在 at，包圍盒就是世界座標）；其他 kind 沒宣告就沒有
   const box = new THREE.Box3(), size = new THREE.Vector3(), centre = new THREE.Vector3();
   function footprintOf(s, object) {
     const f = s.footprint, at = s.at ?? { x: 0, z: 0 };
     if (f === false) return null;
     if (f?.r !== undefined) return { x: at.x, z: at.z, r: f.r };
+    if (f?.rx !== undefined) return { x: at.x + (f.x ?? 0), z: at.z + (f.z ?? 0), rx: f.rx, rz: f.rz };
     if (f) return { x: at.x + (f.x ?? 0), z: at.z + (f.z ?? 0), w: f.w, d: f.d };
     if (s.kind !== 'compound') return null;
     box.setFromObject(object); if (box.isEmpty()) return null;
     box.getSize(size); box.getCenter(centre);
-    return Math.max(size.x, size.z) > WIDE ? null : { x: centre.x, z: centre.z, w: size.x * SHRINK, d: size.z * SHRINK };
+    return Math.max(size.x, size.z) > WIDE ? null : { x: centre.x, z: centre.z, w: size.x, d: size.z };
   }
   function make(s) {
     const part = factory.build(s);

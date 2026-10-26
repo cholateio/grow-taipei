@@ -23,8 +23,8 @@ export function queue(at, n, plaza = false) {
 
 const AT = anchorWorld('boba'), BEHIND = offset(AT, 0, -0.45), BESIDE = offset(AT, -1.0, -0.6);   // 老闆：攤車後面（面向 +z）／噴泉旁
 // 碼頭（觀光客的入口，§13.2）：珍奶格靠海的東邊。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，而夜市（燈泡 ≥2）蓋住那一段，
-// 所以取那一段最近的可走點——格子東角、夜市北邊；三個點沿 −x 錯開 0.25（一批三個人一人一個）
-export const PIER = [0, 1, 2].map(k => offset(AT, 0.35 - 0.25 * k, -1.6));
+// 所以取那一段最近的可走點——格子東角、夜市北邊（夜市 footprint 外擴 PAD 之外）；三個點沿 −x 錯開 0.25（一批三個人一人一個）
+export const PIER = [0, 1, 2].map(k => offset(AT, 0.35 - 0.25 * k, -1.7));
 
 export function view(lv) {
   const n = lv.boba, at = AT, v = {};
@@ -46,7 +46,8 @@ export function view(lv) {
     { kind: 'box', pos: [0, 0.3, 0.88], scale: [0.6, 0.2, 0.04], color: fresh ? C.white : C.coral, sign: true },
     { kind: 'box', pos: [0, 0.3, 0.9], scale: [0.4, 0.06, 0.02], color: fresh ? C.blue : C.cream },
   ];
-  v['boba.main'] = { kind: 'compound', at, parts, footprint: n < 3 ? { w: 0.7, d: 0.5 } : { r: 0.95 } };
+  // 噴泉的 footprint 0.8：外擴 PAD（0.12）後剛好蓋住矮台階（半徑 0.9），南緣外的人龍站得下（§14.1）
+  v['boba.main'] = { kind: 'compound', at, parts, footprint: n < 3 ? { w: 0.7, d: 0.5 } : { r: 0.8 } };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）
   v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave' } };
   // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點

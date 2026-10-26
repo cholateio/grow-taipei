@@ -98,19 +98,21 @@ test('roster parts go to the roster, not the factory; hold is passed through; re
   assert.deepEqual(calls, [['declare', 'milk.kids', 2, true], ['declare', 'milk.kids', 3, false]]);
   stage.apply({ kind: 'fx', item: 'milk', delta: { target: 'milk', from: 3, to: 1 } }); assert.deepEqual(calls.at(-1), ['retire', 'milk.kids']);
 });
-test('footprints: declared circle, declared rect, auto bbox for compact compounds, none for wide ones or false', () => {
+test('footprints: declared circle, declared ellipse, declared rect, auto bbox (not shrunk, §14.1) for compact compounds, none for wide ones or false', () => {
   const mod = { id: 'milk', view: lv => lv.milk ? {
     'milk.a': { kind: 'compound', at, footprint: { r: 0.4 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 1 }] },
     'milk.b': { kind: 'compound', at: { ...at, x: 3 }, footprint: { w: 1, d: 0.5, z: -0.3 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 1 }] },
     'milk.c': { kind: 'compound', at: { ...at, x: 6 }, parts: [{ kind: 'box', pos: [0, 0.5, 0], scale: [1, 1, 2], color: 1 }] },
     'milk.d': { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.1, 0], scale: [6, 0.1, 6], color: 1 }] },
     'milk.e': { kind: 'compound', at, footprint: false, parts: [{ kind: 'box', pos: [0, 0.1, 0], scale: 1, color: 1 }] },
+    'milk.f': { kind: 'compound', at: { ...at, x: -3 }, footprint: { rx: 1.15, rz: 0.95 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 1 }] },
   } : {} };
   const { stage } = setup([mod]); stage.apply(placed); const f = stage.footprints();
   assert.deepEqual(f.find(x => x.r === 0.4), { x: at.x, z: at.z, r: 0.4 });
   assert.deepEqual(f.find(x => x.w === 1), { x: at.x + 3, z: at.z - 0.3, w: 1, d: 0.5 });
-  const auto = f.find(x => Math.abs(x.x - (at.x + 6)) < 1e-6); assert.ok(Math.abs(auto.w - 0.9) < 1e-6 && Math.abs(auto.d - 1.8) < 1e-6);
-  assert.equal(f.length, 3);
+  assert.deepEqual(f.find(x => x.rx === 1.15), { x: at.x - 3, z: at.z, rx: 1.15, rz: 0.95 });
+  const auto = f.find(x => Math.abs(x.x - (at.x + 6)) < 1e-6); assert.ok(Math.abs(auto.w - 1) < 1e-6 && Math.abs(auto.d - 2) < 1e-6);
+  assert.equal(f.length, 4);
 });
 test('grow adds the extra part and keeps the unchanged part object', () => {
   const { stage, parts } = setup();

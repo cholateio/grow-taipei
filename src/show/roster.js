@@ -22,6 +22,8 @@
 //   wander 馬上走下一趟、path 沿路接著走，走到不擠了才停。
 // 不瞬移（final review）：日常、退場中的人每幀最多移動自己的走路速度 × dt（nav.separate 的推擠、開始／停下走路時推擠突然消失，
 //   都是滑過去的，不會一幀跳 0.3–0.5）；劇本手上的人、ride、藏起來的人不限
+// 不穿牆（§14.1）：footprint 一變（建築長出來），走到一半的人從現在的位置重新找路；推擠、追游標會切進 footprint 的那一幀不動；
+//   閒晃的人站在走路格外（建築長在身上、劇本把人放在門裡）馬上走出來
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
@@ -82,6 +84,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
   let exits = [];   // 走回入口、到了就拿掉的人（R9）
   let now = 0;   // 最近一次 update 的 t（home() 讓 ride 成員瞬間上車要用）
+  let planned = nav.version;   // 走到一半的路是照哪一版 footprint 規劃的（建築長出來就重新規劃，§14.1）
   let focus = null;   // 焦點格 [[q, r], …]；null = 全部的人都做日常
 
   const pause = () => 0.5 + rnd();
@@ -353,9 +356,17 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // ── 日常 ──
   // 走進來、走出去用走路速度，日常散步用 WANDER_SPEED（出發時定好）
+  // offgrid：終點本來就在走路格外（屋頂、footprint 裡的站位、橋頭的折線），重新規劃時照樣走上去
   function go(m, path) {
     const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' ? m.speed : WANDER_SPEED;
-    m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed } : null;
+    m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed, offgrid: !nav.walkable(last.x, last.z) } : null;
+  }
+  // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築
+  function replan(m) {
+    const { last, speed, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
+    if (offgrid && (end.x !== last.x || end.z !== last.z)) path.push(last);
+    go(m, path);
+    if (m.trip) { m.trip.speed = speed; if (goal) m.trip.goal = goal; }
   }
   function walk(m, dt) {
     const trip = m.trip, ds = Math.min(trip.speed * dt, trip.left);
@@ -389,7 +400,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (h.kind === 'path' || ring) { if (m.trip || m.arriving || inFocus(m, spec) || crowded(m)) onPath(m, ring ?? h, dt, spec); else halt(m); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
-      if (!m.arriving && !crowded(m) && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;   // 走進來的第一趟、擠著別人時不等、不看焦點
+      // 走進來的第一趟、擠著別人、站在走路格外（建築長在身上、劇本放在門裡）時不等、不看焦點
+      if (!m.arriving && !crowded(m) && nav.walkable(m.pos.x, m.pos.z) && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;
       const { at, r } = wanderHome(spec, m.i);
       go(m, nav.route(m.pos, nav.wander(at, r)));
       if (!m.trip) { m.rest = pause(); m.arriving = false; }
@@ -449,8 +461,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   function update(dt, t) {
     now = t;
+    if (nav.version !== planned) {
+      planned = nav.version;
+      for (const g of groups.values()) for (const m of g.members) if (m.trip && m.mode === 'home') replan(m);
+      for (const m of exits) if (m.trip) replan(m);
+    }
     const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
-    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt]); };
+    // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）
+    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, !!(m.cursor || m.trip?.offgrid) || !nav.walkable(m.pos.x, m.pos.z)]); };
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
@@ -465,11 +483,13 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     exits = exits.filter(m => { keep(m, null); if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
     nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
     nav.separateStanding(standing, WALK_SPEED.people * dt);
-    // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）
-    for (const [m, p, max] of was) {
+    // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。
+    // 被推、被拉回游標的這一小段要是會切進 footprint（§14.1），這幀就站著不動（游標照走，下一幀再追上）
+    for (const [m, p, max, loose] of was) {
       if (m.gone || m.hidden || m.mode === 'script') continue;
       const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
       if (d > max) { const k = max / d; m.pos = { x: p.x + dx * k, y: p.y + (m.pos.y - p.y) * k, z: p.z + dz * k }; }
+      if (!loose && !nav.walkable(m.pos.x, m.pos.z)) m.pos = p;
       place(m);
     }
   }

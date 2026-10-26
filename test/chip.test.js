@@ -70,14 +70,16 @@ async function liveAt({ run, bubblesLog }, order, pred) {
 const isChip = to => e => e.kind === 'grow' && e.item === 'chip' && e.to === to;
 function checkChip({ show, bubblesLog }, e, secs, n) {
   const what = `${e.kind} ${e.to ?? ''}`;
-  assert.ok(secs >= 3 && secs <= 18, `${what} took ${secs.toFixed(1)}s`);   // 上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）
+  // 上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）。下限 3 → 2.5：§14.1 塔架 footprint 縮成底座後，
+  // 工人從 101 工地走到廠門不再繞過塔架（路長 4.2，原 6.1–7.7）
+  assert.ok(secs >= 2.5 && secs <= 18, `${what} took ${secs.toFixed(1)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('chip');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over chip`);
   }
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
 }
-test('scripts: every chip level in both solutions plays 3–18 s, ends with LEVEL UP on chip, and leaves everyone at home', async () => {
+test('scripts: every chip level in both solutions plays 2.5–18 s, ends with LEVEL UP on chip, and leaves everyone at home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };

@@ -20,11 +20,11 @@ const players = at => [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...of
 
 // 入口點（§13.2）：球員從看台後方的格邊走出來，繞過看台到本壘前——看台正後方的格子北角被看台和兩邊的格邊圍住、走不出去，
 // 所以用看台後方東側的格邊（往中心格的橋頭）。觀眾從捷運站前（月台）走來，四個點沿 x 錯開、往站那側（−x）偏
-// （再往 +x 就是 Lv3 珍奶噴泉的 footprint）
+// （再往 +x 就是 Lv3 珍奶噴泉的 footprint；外擴 PAD 後最東那點要離噴泉中心 ≥ 1.07，整排往南 0.15）
 const AT = anchorWorld('baseball');
 export const PLAYER_ENTRY = [offset(AT, 0.95, -1.45), offset(AT, 1.15, -1.6)];
 const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前：觀眾下車的地方
-export const CROWD_ENTRY = [0, 1, 2, 3].map(k => offset(PLATFORM, (k - 2.5) * 0.25, 0));
+export const CROWD_ENTRY = [0, 1, 2, 3].map(k => offset(PLATFORM, (k - 2.7) * 0.25, 0.15));
 
 // 觀眾站在巨蛋門前的弧線上，正中間留一條走道給球員；人數少一點，不然和小孩、老鼠擠成一團
 function fans(at, n) {
@@ -61,8 +61,9 @@ export function view(lv, flags) {
   }
   // 跨年煙火：巨蛋上空循環放
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };
-  // footprint：沙地可以走（島民跑壘），Lv2 只擋木看台；巨蛋擋住整個圓頂（含底座），門前的球員、觀眾、門口都在外面
-  v['baseball.main'] = { kind: 'compound', at, parts, footprint: n === 1 ? false : n === 2 ? STANDS : { w: 2.3, d: 1.9 } };
+  // footprint：沙地可以走（島民跑壘），Lv2 只擋木看台；巨蛋擋住整個圓頂（含底座：2.3 × 1.9 的橢圓），門前的球員、觀眾、門口都在外面。
+  // 用橢圓不用框：框的四個角外擴 PAD 後會把巨蛋和格邊（老鼠窩）之間的走道堵死（§14.1）
+  v['baseball.main'] = { kind: 'compound', at, parts, footprint: n === 1 ? false : n === 2 ? STANDS : { rx: 1.15, rz: 0.95 } };
   // 鼠災的工作人員：名冊，日常跟在最近的老鼠旁邊；颱風的劇本從巨蛋門口放他們出來
   if (flags.domeRats) v['baseball.staff'] = { kind: 'roster', at: offset(at, 0, 1.1), n: 2, accessory: 'helmet', home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } };
   // 鍵的順序：main 先（標籤掛在 main）

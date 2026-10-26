@@ -270,3 +270,27 @@ test('the staff entry walk to the post stays clear of the boba queue and the car
     assert.ok(seen >= 3, 'checked with the cart on the island');
   }
 });
+
+// ── §14.1：站體有 footprint（錄影裡有人站進站體），站務員與泳客的站位用 rescue 站到最近的可走點 ──
+test('the station body has a footprint at every level and staff/swimmer spots are walkable (rescue)', async () => {
+  const { PAD } = await import('../src/show/nav.js');
+  for (const n of [1, 2, 3, 4, 5, 6]) for (const flooded of [false, true]) {
+    const v = token.view(LV({ token: n }), { flooded }), what = `lv${n}${flooded ? ' flooded' : ''}`, f = v['token.main'].footprint;
+    assert.ok(f && typeof f === 'object' && (f.r > 0 || (f.w > 0 && f.d > 0)), `${what}: station footprint ${JSON.stringify(f)}`);
+    const fp = f.r !== undefined ? { x: AT.x, z: AT.z, r: f.r } : { x: AT.x + (f.x ?? 0), z: AT.z + (f.z ?? 0), w: f.w, d: f.d };
+    if (!flooded) assert.ok(fp.w >= 1.1 && fp.d >= 0.9 - 1e-9, `${what}: covers the body, the dome and the ticket machine`);
+    const nav = createNav(); nav.setFootprints([fp]);
+    assert.ok(!nav.walkable(AT.x, AT.z), `${what}: nobody stands inside the station`);
+    for (const [k, d] of Object.entries(v)) {
+      if (d.kind !== 'roster') continue;
+      assert.equal(d.home.rescue, true, `${what} ${k} rescue`);
+      for (const s of d.home.spots) {
+        const p = nav.walkable(s.x, s.z) ? s : nav.nearestWalkable(s);   // 名冊的 spotOf（rescue）
+        assert.ok(nav.walkable(p.x, p.z), `${what} ${k} spot walkable`);
+        assert.ok(Math.hypot(p.x - s.x, p.z - s.z) < 0.8, `${what} ${k} stays by its spot (${Math.hypot(p.x - s.x, p.z - s.z).toFixed(2)})`);
+        const out = fp.r !== undefined ? Math.hypot(p.x - fp.x, p.z - fp.z) - fp.r : Math.max(Math.abs(p.x - fp.x) - fp.w / 2, Math.abs(p.z - fp.z) - fp.d / 2);
+        assert.ok(out >= PAD - 1e-9, `${what} ${k} outside the padded station (${out.toFixed(2)})`);
+      }
+    }
+  }
+});

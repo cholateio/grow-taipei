@@ -60,7 +60,7 @@ test('view: players and crowd are rosters standing (crowd fidgets with jumps); f
   assert.deepEqual(p.shirt, [0xffffff, 0x3f5a8a]);
   for (const n of [3, 4, 5, 6]) {
     const v = baseball.view(lv({ baseball: n }), {});
-    assert.equal(v['baseball.lines.0'], undefined); assert.deepEqual(v['baseball.main'].footprint, { w: 2.3, d: 1.9 });
+    assert.equal(v['baseball.lines.0'], undefined); assert.deepEqual(v['baseball.main'].footprint, { rx: 1.15, rz: 0.95 });   // 巨蛋底座的橢圓（§14.1）
     assert.equal(v['baseball.players'].kind, 'roster');
   }
   for (const [n, k] of [[4, 4], [5, 6], [6, 6]]) {

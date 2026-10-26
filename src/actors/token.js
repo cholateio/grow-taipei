@@ -53,22 +53,24 @@ function spur(kind) {
 export function view(lv, flags) {
   const n = lv.token, at = anchorWorld('token'), v = {};
   if (!n) return v;
+  // 站體的 footprint（§14.1，錄影裡有人站進站體）：平常是站房＋圓頂＋售票機的框，淹水是整個泳池
   v['token.main'] = flags.flooded
-    ? { kind: 'compound', at, parts: [
+    ? { kind: 'compound', at, footprint: { r: 0.65 }, parts: [
       { kind: 'cylinder', pos: [0, 0.05, 0], scale: [1.3, 0.1, 1.3], color: C.cliff },
       { kind: 'cylinder', pos: [0, 0.07, 0], scale: [1.12, 0.1, 1.12], color: POOL },
       { kind: 'box', pos: [0.6, 0.175, 0.3], scale: [0.2, 0.35, 0.2], color: C.blue },
     ] }
-    : { kind: 'compound', at, parts: [
+    : { kind: 'compound', at, footprint: { x: 0.125, z: 0, w: 1.15, d: 0.9 }, parts: [
       { kind: 'box', pos: [0, 0.25, 0], scale: [0.9, 0.5, 0.7], color: C.wall },
       { kind: 'dome', pos: [0, 0.5, 0], scale: [0.9, 0.6, 0.9], color: roofColor(C.navy, rebuilt(lv)) },
       { kind: 'box', pos: [0, 0.16, 0.36], scale: [0.3, 0.32, 0.02], color: C.window },
       { kind: 'box', pos: [0.6, 0.175, 0.3], scale: [0.2, 0.35, 0.2], color: C.blue },
       { kind: 'cylinder', pos: [0.6, 0.3, 0.41], scale: [0.08, 0.02, 0.08], rot: [Math.PI / 2, 0, 0], color: C.neonBlue },
     ] };
-  // 站務員站在站門口、面向外；淹水時他原地換成泳客（from），再多一個泳客；Lv6 無人列車就沒有站務員
-  if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }], entry: STAFF_ENTRY } };
-  else if (n < 6) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], entry: STAFF_ENTRY } };
+  // 站務員站在站門口、面向外；淹水時他原地換成泳客（from），再多一個泳客；Lv6 無人列車就沒有站務員。
+  // 站位落在站體（含 PAD）裡就站到最近的可走點（rescue）：泳客站在池邊、站務員站在售票機前
+  if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }], rescue: true, entry: STAFF_ENTRY } };
+  else if (n < 6) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
   if (n >= 2) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }

@@ -42,8 +42,8 @@ test('view: the owner is an apron roster standing behind the cart (beside the fo
   }
   const v3 = boba.view(lv({ boba: 3, milk: 2 }), {});
   assert.ok(near(v3['boba.owner'].home.spots[0], offset(AT, -1.0, -0.6), 1e-9), 'beside the fountain');
-  assert.ok(Math.hypot(v3['boba.owner'].home.spots[0].x - AT.x, v3['boba.owner'].home.spots[0].z - AT.z) > 0.95, 'outside the fountain footprint');
-  assert.deepEqual(v3['boba.main'].footprint, { r: 0.95 });
+  assert.ok(Math.hypot(v3['boba.owner'].home.spots[0].x - AT.x, v3['boba.owner'].home.spots[0].z - AT.z) > 0.8 + 0.12, 'outside the fountain footprint (with PAD)');
+  assert.deepEqual(v3['boba.main'].footprint, { r: 0.8 });   // 外擴 PAD 後 0.92，蓋住半徑 0.9 的台階（§14.1）
   const q = v3['boba.queue'];
   assert.deepEqual([q.kind, q.n, q.accessory, q.home.kind, q.home.spots.length], ['roster', 10, 'suitcase', 'stand', 10]);
   assert.ok(Array.isArray(q.shirt));

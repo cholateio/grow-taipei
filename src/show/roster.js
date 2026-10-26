@@ -8,7 +8,7 @@
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
-//   其他人走完手上這一趟就站著；劇本手上的人、走回站位的人照樣動；ride、follow 不受限。null = 全部恢復。
+//   path 成員只要折線經過焦點格就照走（整條路都不在鏡頭裡才停）；其他人走完手上這一趟就站著；劇本手上的人、走回站位的人照樣動；ride、follow 不受限。null = 全部恢復。
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
@@ -28,6 +28,19 @@ const body = md => JSON.stringify([md?.path, md?.h, md?.anim, md?.tint, md?.glow
 // path 日常：開放路徑的長度、第 s 公尺的位置、離 p 最近的那一點在第幾公尺
 const pathOf = h => { const loop = !!h.loop, lens = measurePath(h.path, loop); return { path: h.path, loop, lens, total: lens.at(-1) }; };
 const pointAt = (P, s) => locateOnPath(P.path, P.lens, s, P.loop);
+// 折線經過哪些格子（頂點與每段中點的軸座標；同一條折線只算一次）
+const cellsOfPath = new WeakMap();
+function pathCells(h) {
+  let cells = cellsOfPath.get(h.path);
+  if (!cells) {
+    const P = h.path, pts = [...P];
+    for (let k = 0; k < P.length - (h.loop ? 0 : 1); k++) { const a = P[k], b = P[(k + 1) % P.length]; pts.push({ x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }); }
+    const keys = new Set(pts.map(p => worldToAxial(p.x, p.z).join(',')));
+    cells = [...keys].map(k => k.split(',').map(Number));
+    cellsOfPath.set(h.path, cells);
+  }
+  return cells;
+}
 function nearestS(P, p) {
   let best = 0, bestD = Infinity;
   for (let k = 0; k < P.lens.length - 1; k++) {
@@ -278,12 +291,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }
     setPose(m, { ...trip.cursor.locate(), walking: true });
   }
-  // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看人現在在哪一格（軸座標，衛星島也算一格）
+  // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）
+  const hit = ([q, r]) => focus.some(c => c[0] === q && c[1] === r);
   function inFocus(m, spec) {
     if (!focus) return true;
-    const h = spec.home ?? {}, p = h.kind === 'wander' ? wanderHome(spec, m.i).at : h.kind === 'path' ? m.pos : spotOf(spec, m.i);
-    const [q, r] = worldToAxial(p.x, p.z);
-    return focus.some(c => c[0] === q && c[1] === r);
+    const h = spec.home ?? {};
+    if (h.kind === 'path') return pathCells(h).some(hit);
+    const p = h.kind === 'wander' ? wanderHome(spec, m.i).at : spotOf(spec, m.i);
+    return hit(worldToAxial(p.x, p.z));
   }
   // 不在焦點：停在原地（沿線走的游標留著，恢復時接著走）
   function halt(m) { if (m.walking) setPose(m, { ...m.pos, walking: false }); }

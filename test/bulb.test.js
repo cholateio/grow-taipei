@@ -192,7 +192,8 @@ test('ROAD clears the core of every footprint at the end of both solutions', asy
 });
 
 // 審查：起點那一站要用「第一段走路開始那一刻」電工的位置挑，不是建拍時（同回合前面的劇本演的時候他還在巡路）
-test('grow 2 picks its first stop from where the electrician is when the walk starts, not when the turn is built', async () => {
+// stub：關掉名冊焦點（電工照常巡路，驗「建拍之後他走開了」）；不關時只驗第一站是開走那一刻離他最近的
+async function firstStopRun({ stub }) {
   const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
   let st = engine.createState(spec), evs = null;
   for (const id of order) {
@@ -201,8 +202,8 @@ test('grow 2 picks its first stop from where the electrician is when the walk st
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
   // 整回合 live 演（珍奶放置、鮮奶、晶片的劇本都在燈泡前面），電工在那段時間照常巡路
-  // （名冊焦點關掉：§13.4 焦點格外的人會站著，這裡要的是「他在別的劇本演的時候走開了」）
-  show.roster.setFocus = () => {};
+  // （stub：名冊焦點關掉——§13.4 焦點格外的人會站著，這裡要的是「他在別的劇本演的時候走開了」）
+  if (stub) show.roster.setFocus = () => {};
   let atBuild = null, atWalk = null;
   const scripted = bulb.script.grow[2];
   bulb.script.grow[2] = (e, s2, ctx) => {
@@ -217,10 +218,12 @@ test('grow 2 picks its first stop from where the electrician is when the walk st
     assert.ok(evs.indexOf(evs.find(isBulb(2))) > 0, 'bulb grows after other events in the turn');
     await run([...evs, { kind: 'settle' }]);
     const nearest = p => bulb.LAMP_STOPS.reduce((b, gg, k) => (Math.hypot(bulb.lampApproach(gg[0]).x - p.x, bulb.lampApproach(gg[0]).z - p.z) < Math.hypot(bulb.lampApproach(bulb.LAMP_STOPS[b][0]).x - p.x, bulb.lampApproach(bulb.LAMP_STOPS[b][0]).z - p.z) ? k : b), 0);
-    assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1, 'electrician patrolled during the wait');
+    if (stub) assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1, 'electrician patrolled during the wait');
     assert.equal(first[0], nearest(atWalk), `first stop ${first[0]} vs nearest at walk ${nearest(atWalk)} / at build ${nearest(atBuild)}`);
   } finally { bulb.script.grow[2] = scripted; }
-});
+}
+test('grow 2 picks its first stop from where the electrician is when the walk starts, not when the turn is built', () => firstStopRun({ stub: true }));
+test('grow 2 with the roster focus on: the first stop is the nearest to the electrician when the walk starts', () => firstStopRun({ stub: false }));
 test('Lv4 never picks hidden islanders', () => {
   const vis = { pos: { x: 9, z: 9 }, head: () => ({ x: 9, y: 0, z: 9 }) }, m = landmarkWorld('market');
   const hid = { pos: { ...m }, hidden: true, head: () => m }, vis2 = { pos: { x: 8, z: 8 }, head: () => ({ x: 8, y: 0, z: 8 }) };

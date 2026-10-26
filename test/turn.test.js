@@ -195,3 +195,11 @@ test('focus beats set the roster focus cells; the final home focus clears them',
   for (const b of noMarks(beats)) if (b.kind === 'focus') b.start(ctx);
   assert.deepEqual(set, [[[-1, 0]], [[1, 0]], null]);
 });
+
+// 審查：有東西演但沒有格子的事件（cause 'turn' 之類）不平移，也不算「換物品」，不多空 0.6 s
+test('an event with no cell neither pans nor counts as a change of item', () => {
+  const rat = { id: 'rat', view() {}, script: { fx: (e, s, c) => [c.B.wait(0.5)] } };
+  const beats = noMarks(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'after', item: 'turn', cause: 'rat', flag: { name: 'x', value: true } }, { kind: 'grow', item: 'milk', from: 1, to: 2 }], base([quietTower, rat]), fakeCtx()));
+  assert.deepEqual(beats.filter(b => b.kind === 'wait').map(b => b.dur), [0.5], 'only the script wait');
+  assert.deepEqual(focusTargets(beats), [[-1, 0], 'home']);
+});

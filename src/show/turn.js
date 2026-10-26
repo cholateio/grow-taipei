@@ -106,16 +106,18 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
     }
     if (montage) beats = keepOnly(beats, b => MONTAGE_KEEP.includes(b.kind));
-    // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101
+    // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
+    // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
     if (e.kind !== 'wait' && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
-      if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));
-      const own = beats[0]?.kind === 'focus';
-      if (!own && cell && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
+      if (cell) {
+        if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));
+        if (beats[0]?.kind !== 'focus' && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
+        lastItem = item;
+      }
       // 劇本自己動了鏡頭（focus、舊的 camera 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus' || b.kind === 'camera')) lastCell = null;
-      lastItem = item;
     }
     // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
     out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...lead, ...beats, B.apply(e));

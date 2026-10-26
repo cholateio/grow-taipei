@@ -43,3 +43,22 @@ test('release clears grabbed without moving the camera', () => {
   rig.release(); assert.equal(rig.grabbed, false); assert.equal(rig.flying, false);
   rig.update(1); assert.ok(camera.position.distanceTo(pos) < 1e-9); assert.ok(controls.target.distanceTo(target) < 1e-9);
 });
+// 視窗縮放（fit）不能把演到一半的 focus 拉回全景（控制者 F1）：記住現在的框景，用新的長寬比重算
+test('fit after a focus keeps the focus target at zoom × the new overview distance; fit during the flight retargets it', () => {
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); const dir = camera.position.clone().sub(controls.target).normalize();
+  const p = new THREE.Vector3(4, 0.65, 2);
+  rig.focus(p, { zoom: 0.6, ms: 1000 }); rig.update(1.1); rig.fit(1);
+  assert.equal(rig.flying, false); assert.ok(controls.target.distanceTo(p) < 1e-6);
+  const d = camera.position.clone().sub(controls.target); assert.ok(Math.abs(d.length() - 26 * 0.6) < 1e-6); assert.ok(d.normalize().distanceTo(dir) < 1e-6);
+  // 飛到一半縮放：照樣飛，終點換成新長寬比的框景
+  const b = rigWith(); b.rig.fit(16 / 9); b.rig.focus(p, { zoom: 0.6, ms: 1000 }); b.rig.update(0.3); b.rig.fit(9 / 16);
+  assert.equal(b.rig.flying, true); b.rig.update(0.8);
+  assert.ok(b.controls.target.distanceTo(p) < 1e-6); assert.ok(Math.abs(b.camera.position.distanceTo(p) - 40 * 0.6) < 1e-6);
+});
+test('fit after home stays at home; fit after panTo keeps the pan', () => {
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9);
+  rig.focus({ x: 4, y: 0.65, z: 2 }); rig.update(1.1); rig.home(1000); rig.update(1.1); rig.fit(1);
+  assert.ok(controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-6); assert.ok(Math.abs(camera.position.distanceTo(controls.target) - 26) < 1e-6);
+  rig.panTo({ x: 5, y: 0.6, z: 5 }, 0); rig.fit(16 / 9);
+  assert.ok(controls.target.distanceTo(new THREE.Vector3(5, 0.6, 5)) < 1e-6); assert.ok(Math.abs(camera.position.distanceTo(controls.target) - 19) < 1e-6);
+});

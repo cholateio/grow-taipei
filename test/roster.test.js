@@ -296,3 +296,29 @@ test('setFocus limits idle wandering and fidgets to members whose home cell is i
   for (let i = 0; i < 180; i++) roster.update(1 / 30, 10 + i / 30);
   assert.ok(moved(b, pb), 'null frees everyone');
 });
+// 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
+test('a path member whose route touches the focus cell keeps walking and never ends up within 0.25 of another member; a route off the focus halts', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
+  for (const cell of [[1, 0], [0, 0]]) {
+    const { roster } = setup();
+    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+    for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
+    roster.setFocus([cell]);
+    const ms = roster.members('eng'), start = ms.map(m => ({ ...m.pos }));
+    let minGap = Infinity;
+    for (let i = 0; i < 30 * 25; i++) {
+      roster.update(1 / 30, 2 + i / 30);
+      if (i > 30 * 3) for (let a = 0; a < ms.length; a++) for (let b = a + 1; b < ms.length; b++) minGap = Math.min(minGap, Math.hypot(ms[a].pos.x - ms[b].pos.x, ms[a].pos.z - ms[b].pos.z));
+    }
+    assert.ok(ms.some((m, i) => Math.hypot(m.pos.x - start[i].x, m.pos.z - start[i].z) > 0.5), `focus ${cell}: still walking`);
+    assert.ok(minGap >= 0.25 - 1e-6, `focus ${cell}: min gap ${minGap.toFixed(3)}`);   // 走動的人之間 nav.separate 推到剛好 0.25
+  }
+  // 整條路都不在焦點格：原地停下
+  const { roster } = setup();
+  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+  for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
+  roster.setFocus([[-1, 1]]); roster.update(1 / 30, 2);
+  const [m] = roster.members('eng'), p = { ...m.pos };
+  for (let i = 0; i < 90; i++) roster.update(1 / 30, 2 + i / 30);
+  assert.deepEqual([m.pos.x, m.pos.z, m.walking], [p.x, p.z, false]);
+});

@@ -30,15 +30,15 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 鮮奶 | 8 | `milk.main`、`milk.gate` | `kenney/commercial/low-detail-building-wide-b.glb`（玻璃研究大樓，帶狀玻璃 tint `C.blue`／`C.glass`，換掉大學左翼）＋程式 YouBike 站；白袍 = 名冊配件 | CC0 | 換新 |
 | 鮮奶 | 9 | `milk.hats`、`milk.yard` | 程式（操場上的學士帽、紅布條；101 頭上「恭喜畢業」是劇本字卡） | — | 現有 |
 | 鮮奶 | 10 ◆ | `milk.truck`、`milk.boat`、`milk.extraKids` | `kenney/car/truck.glb`（牛奶車，tint 白）、`quat/ships/Boat.glb`（西岸觀光船，tint 珊瑚／奶油）＋程式船上牛奶箱（併在 `milk.yard`）；全島六格各一個小孩 = 程式名冊 | CC0 | 換新 |
-| 晶片 | 1 | `chip.main`、`chip.crane`、`chip.worker` | `kenney/factory/crane.glb`＋程式圍籬、三角錐 | CC0 | 待做（程式版現有） |
-| 晶片 | 2 | `chip.main`、`chip.smoke`、`chip.engineers` | `kenney/industrial/building-a.glb`、`chimney-medium.glb`、`pipe-large.glb`、`pipe-large-bend.glb`；煙 = 程式 | CC0 | 待做（程式版現有） |
-| 晶片 | 3 | `chip.main`、`chip.engineers` | `kenney/industrial/building-b.glb`、`building-c.glb`、`building-d.glb`（三棟）、`chimney-small.glb`、`chimney-large.glb` | CC0 | 待做（程式版現有） |
-| 晶片 | 4 | `chip.main` | 程式（「星群」弧形玻璃總部） | — | 待做 |
-| 晶片 | 5 | `chip.solar`、`chip.substation` | `kenney/industrial/solar-panel-flat.glb`、`solar-panel-landscape.glb`、`water-tower.glb`＋程式變電站、電線桿 | CC0 | 待做 |
-| 晶片 | 6 ★ | `chip.cable` | 程式（海底電纜發光、廠房燈全亮） | — | 待做 |
-| 晶片 | 7 ★ | `tower.antenna` | `quat/cyberpunk/Antenna_1.glb`、`Antenna_2.glb` | CC0 | 待做 |
-| 晶片 | 8 ★ | `chip.shield` | 程式（半圓半透明罩、六角格紋） | — | 待做 |
-| 晶片 | 9 ★◆ | `chip.shield`、`tower.antenna` | 程式（罩子常駐、101 每 3 秒閃一圈） | — | 待做 |
+| 晶片 | 1 | `chip.main`、`chip.crane`、`chip.worker` | 程式（圍籬、三角錐、吊車＝tower.js 的 crane builder，吊臂會擺，和 101 工地同一個）；`kenney/factory/crane.glb` 沒用（留程式版是為了吊臂動畫） | — | 現有 |
+| 晶片 | 2 | `chip.main`、`chip.smoke`、`chip.engineers` | `kenney/industrial/building-a.glb`（廠房：色票圖 tint 奶油牆、屋頂色飾條、珊瑚牆腳）＋`chimney-medium.glb`（立在廠房屋頂，珊瑚白條紋）；零件 kind `campus`（同鮮奶校舍）；煙 = 程式；工程師 = 程式名冊 | CC0 | 換新 |
+| 晶片 | 3 | `chip.campus`、`chip.engineers` | 程式三棟玻璃盒（窗帶）＋招牌；工程師 4 人騎 YouBike（玻璃盒用程式畫才是一整塊玻璃色；`building-b/c/d.glb` 沒用） | — | 現有 |
+| 晶片 | 4 | `chip.campus` | 程式（「星群」弧形玻璃圓頂總部，前排中間那棟玻璃盒換掉） | — | 現有 |
+| 晶片 | 5 | `chip.solar`、`chip.substation` | `kenney/industrial/solar-panel-landscape.glb` ×3（廠房屋頂，tint 深藍板面）；程式變電站（小房子、礙子）＋兩根電線桿與下垂電線；煙囪不冒煙了（`water-tower.glb` 沒用） | CC0 | 換新 |
+| 晶片 | 6 ★ | `chip.cable` | 程式（零件 kind `cable`，parts.js：風車島 → 主島南側海面 → 晶片格東岸登陸桿 → 變電站；暗管一個黏土 mesh，通電多一條自發光管、光從風車島跑過來）；燈泡 ≥8 時先鋪好（暗）；廠房窗、玻璃盒窗帶、總部大門亮暖光，礙子亮淡藍 | — | 現有 |
+| 晶片 | 7 ★ | `tower.antenna` | `quat/cyberpunk/Antenna_1.glb`（細桿）、`Antenna_2.glb`（碟子）＋程式塔頂環（零件 kind `antenna`，tower.js） | CC0 | 換新 |
+| 晶片 | 8 ★ | `tower.shield`（state `test`） | 程式（零件 kind `shield`，parts.js：半球半透明淡藍、六角格紋 DataTexture；閃三下後縮回地面） | — | 現有 |
+| 晶片 | 9 ★◆ | `tower.shield`（state `standby`）、`tower.antenna`（pulse） | 程式（罩子淡淡常駐、格紋往上捲；天線環與塔身大環每 3 秒閃一圈）；結局用 `shieldSpec('full')` 全亮 | — | 現有 |
 | 燈泡 | 1 | `bulb.main` | `quat/streets/Streetlight_Single.glb`（燈罩 glow） | CC0 | 待做（程式版現有） |
 | 燈泡 | 2 | `bulb.posts`、`bulb.market` | `quat/streets/Streetlight_Double.glb`；夜市 2 攤 = `quat/village/MarketStand_1.glb`、`MarketStand_2.glb` | CC0 | 待做（程式版現有） |
 | 燈泡 | 3 | `bulb.posts`、`bulb.market` | 程式（霓虹色燈頭、傍晚） | — | 現有 |

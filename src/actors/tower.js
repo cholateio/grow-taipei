@@ -1,8 +1,9 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級 0–8 工地（吊車會動）、9–18 半成品、19–29 完工、30+ 點燈。
-// 晶片 Lv5 長出矽盾天線、Lv6 每 3 秒閃一圈淡藍光；燈泡 Lv5 做燈光秀。
+// 晶片（物品 v2 §4.3）Lv7 塔頂長出矽盾天線（Cyberpunk Kit 天線 glb＋環）、Lv8 矽盾測試（罩子閃三下又收起）、
+// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋飛彈）；燈泡 Lv5 做燈光秀。
 // 劇本（§8.9、§14.4）：回合最後的 settle 跨門檻時，鏡頭對著 101，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 回全景 → 閃白跳階 → 頭上寫階段名。
 import { anchorWorld, frontOf } from './anchors.js';
-import { offset } from './palette.js';
+import { offset, C } from './palette.js';
 
 export const id = 'tower';
 
@@ -11,6 +12,16 @@ const TIER_H = 0.45, LABEL_UP = 0.6;   // LABEL_UP：頭頂（LEVEL UP、泡泡�
 const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
 // 蓋東西站的鏡頭側距離（§14）：底座 1.6 見方外擴 PAD 後半寬 0.92，鏡頭方向（z 分量 0.96）1.1 才站得到底座外
 export const FRONT_R = 1.1;
+
+// 矽盾罩：半球立在 101 底座，半徑蓋過主島七格的每個角（最遠的西南角離 101 約 7.6）
+export const SHIELD_R = 7.8;
+export const shieldSpec = state => ({ kind: 'shield', at: AT, r: SHIELD_R, state, footprint: false });
+// 天線（Quaternius Cyberpunk Kit）：Antenna_1 細桿立在尖塔頂、Antenna_2 碟子掛在尖塔側面朝鏡頭；pos 相對 101 的 at
+const ANTENNA_TINT = { '^MetalLight$': C.cream, '^LightGrey$': C.white, '^Grey$': C.curb, '^DarkGrey$': C.ink };
+const antennaModels = top => [
+  { path: 'quat/cyberpunk/Antenna_1.glb', pos: [0, top, 0], h: 0.55, tint: ANTENNA_TINT },
+  { path: 'quat/cyberpunk/Antenna_2.glb', pos: [0.14, top - 0.6, 0.06], h: 0.3, ry: 0.4, tint: ANTENNA_TINT },
+];
 
 export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
 
@@ -45,12 +56,15 @@ export function view(lv, flags, meta = {}) {
   const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
   const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + LABEL_UP, parts } };
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
-  if (lv.chip >= 5) {
-    // 矽盾天線：塔頂的環
-    const ring = { kind: 'torus', pos: [0, top, 0], scale: 1.2, rot: [Math.PI / 2, 0, 0], color: CREAM };
-    v['tower.antenna'] = lv.chip >= 6 ? { kind: 'pulse', at, parts: [{ ...ring, color: NEON_BLUE, glow: NEON_BLUE }, { kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE }] }
-      : { kind: 'compound', at, parts: [ring] };
+  if (lv.chip >= 7) {
+    // 矽盾天線：塔頂的環＋天線 glb；待命（Lv9）時環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
+    const pulse = lv.chip >= 9, glow = pulse ? { glow: NEON_BLUE } : {};
+    const parts = [{ kind: 'torus', pos: [0, top - 0.25, 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: pulse ? NEON_BLUE : CREAM, ...glow }];
+    if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
+    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top), parts, pulse, footprint: false };
   }
+  if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
+  else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
   if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = 1.0 + (i % 4) * (top - 1.2) / 4;
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相
@@ -75,10 +89,14 @@ export const builders = {
     jib.object.name = 'jib'; object.add(mast.object, jib.object);
     return { object, update(dt, t) { jib.object.rotation.y = Math.sin(t * 0.4) * 0.9; }, dispose() { mast.dispose(); jib.dispose(); } };
   },
-  // 矽盾待命：天線環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零）
-  pulse(THREE, spec, ctx) {
-    const part = ctx.build({ ...spec, kind: 'compound', at: { x: 0, y: 0, z: 0 } });
-    return { ...part, update(dt, t) { const k = (1 + Math.sin(t * Math.PI * 2 / 3)) / 2; for (const m of part.materials) m.emissiveIntensity = (1.2 + ctx.glow.intensity) * k; } };
+  // 矽盾天線：環（compound）＋天線 glb；pulse 時環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零；相位同 parts.js 的 shieldPose）
+  antenna(THREE, spec, ctx) {
+    const object = new THREE.Group(), ring = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts, shadow: false });
+    const subs = spec.models.map(m => ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint }));
+    object.add(ring.object, ...subs.map(p => p.object));
+    const dispose = () => { ring.dispose(); for (const p of subs) p.dispose(); };
+    if (!spec.pulse) return { object, materials: ring.materials, dispose };
+    return { object, materials: ring.materials, dispose, update(dt, t) { const k = (1 + Math.sin(t * Math.PI * 2 / 3)) / 2; for (const m of ring.materials) m.emissiveIntensity = (1.2 + ctx.glow.intensity) * k; } };
   },
   // 全島 LED：塔身八個燈條沿色相轉，每 4 秒一圈
   lightshow(THREE, spec, ctx) {

@@ -255,11 +255,12 @@ test('R11: key nodes are flagged on token Lv7/Lv10 and milk Lv7/Lv10 only; token
 });
 // 新級數（§4）：物品模組還沒改寫的，超過舊 max 的級數不查劇本，走預設 apply + LEVEL UP
 test('a grow above the item’s old max falls back to the default script', () => {
+  // 物品 v2 過渡期：晶片改寫完（任務 6）拿燈泡（舊 max 5）當例子
   const asked = [];
-  const chip = { id: 'chip', view() {}, script: { grow: Object.fromEntries([6, 7, 8].map(n => [n, (e, s, c) => { asked.push(n); return [c.B.wait(3)]; }])) } };
-  const raw = buildTurn([{ kind: 'grow', item: 'chip', from: 6, to: 7 }], base([quietTower, chip]), fakeCtx());
+  const bulb = { id: 'bulb', view() {}, script: { grow: Object.fromEntries([5, 6, 7].map(n => [n, (e, s, c) => { asked.push(n); return [c.B.wait(3)]; }])) } };
+  const raw = buildTurn([{ kind: 'grow', item: 'bulb', from: 5, to: 6 }], base([quietTower, bulb]), fakeCtx());
   assert.deepEqual(asked, []);
   assert.deepEqual(between(raw, 0).map(b => b.kind), ['focus', 'apply', 'levelUp', 'apply']);
-  buildTurn([{ kind: 'grow', item: 'chip', from: 5, to: 6 }], base([quietTower, chip]), fakeCtx());
-  assert.deepEqual(asked, [6], 'levels up to the old max still use the module script');
+  buildTurn([{ kind: 'grow', item: 'bulb', from: 4, to: 5 }], base([quietTower, bulb]), fakeCtx());
+  assert.deepEqual(asked, [5], 'levels up to the old max still use the module script');
 });

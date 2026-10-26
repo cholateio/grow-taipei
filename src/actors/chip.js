@@ -1,27 +1,29 @@
-// 晶片（§5.1）：北士科工地 → 冒煙的廠房、2 個工程師走去 101 → 園區三棟玻璃盒、4 個工程師騎 YouBike → 星群總部（弧形玻璃）→ 矽盾待命（閃光在 101）。
+// 晶片（物品 v2 §4.3，max 9）：北士科工地 → 冒煙的廠房、2 個工程師走去 101 → 園區三棟玻璃盒、4 個工程師騎 YouBike
+//   → 「星群」總部（弧形玻璃）→ 太陽能板屋頂＋變電站（小房子＋電線桿，煙囪不冒煙了）→ ★ 廠房通電（海底電纜從風車島接進變電站、發光、廠房燈全亮）
+//   → ★ 101 頂端長出矽盾天線（零件由列車運進來）→ ★ 矽盾測試（罩子閃三下又收起，全島抬頭）→ ★◆ 矽盾待命（罩子淡淡常駐、101 每 3 秒閃一圈）。
+// 天線與罩子是 101 的零件（tower.js 照 lv.chip 畫 tower.antenna、tower.shield），這裡的劇本用 apply 的 only 叫它們出來。
+// 廠房、煙囪、太陽能板用 Kenney City Kit Industrial 的 glb（零件 kind 'campus'，同鮮奶的校舍），經載入器重上色票；
+//   電線桿、海底電纜是程式畫的（§7.2 找不到 CC0 的那幾樣）；玻璃盒、總部圓頂、變電站也是程式畫的（玻璃要一整塊玻璃色）。
+// 海底電纜（零件 kind 'cable'，parts.js）歸晶片管：燈泡 Lv8 先鋪好（暗），晶片 Lv6 通電發光（控制者裁決：燈泡只點亮風車與燈塔）。
 // 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」。
-// 劇本（§8.2）：工人從 101 工地走來開工 → 工程師從廠門外走進來、過橋去 101 → 騎 YouBike 回來 → 小學生來園區門口 → 站前接箱子送到 101 → 看見彩虹、矽盾待命。
+// 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv9 6–10 秒、回全景定格。
 import { anchorWorld, routeBetween, frontOf } from './anchors.js';
-import { worldToAxial } from '../scene/hex.js';
+import { SATELLITES, axialToWorld, TOP, WATER_Y, cellAt } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
+import { builders as milkBuilders } from './milk.js';
+import { SHIELD_TEST_DUR } from './parts.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
-import { clampLv } from './clamp.js';
 
 export const id = 'chip';
 export const labelY = 1.5;
 const AT = anchorWorld('chip'), TOWER = anchorWorld('tower');
-// 廠門外（工程師通勤的起點）：每一級的工地（三角錐）、廠房、園區、總部（含招牌）最南到 z +1.06，外擴 PAD 後 1.18；門口站在 1.25，不站進建築裡（§14.1）
-const DOOR = offset(AT, -0.3, 1.25), DOOR_WEST = offset(AT, -1.45, 1.25);   // DOOR_WEST：沿園區南緣往西走到這裡才轉去橋頭（不切過總部的西南角）
+// 廠門外（工程師通勤的起點）：每一級的建築最南到 z +1.0，外擴 PAD 後 1.12；門口站在 1.25，不站進建築裡（§14.1）
+const DOOR = offset(AT, -0.3, 1.25), DOOR_WEST = offset(AT, -1.45, 1.25);   // DOOR_WEST：沿園區南緣往西走到這裡才轉去橋頭
 // 蓋東西站的鏡頭側距離（§14）：工地的三角錐到 z +1.06、外擴 PAD 後 1.18，鏡頭方向（z 分量 0.96）1.3 才站得到外面
 export const FRONT_R = 1.3;
-const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地（0.6 會落在 101 的 footprint 裡）
-const FOOT = offset(TOWER, 0.95, 0.25);           // 101 腳下（通勤的終點）
-const KID_GATE = offset(AT, -1.5, 0.6);           // 園區西側門口（總部那回合小學生從中心格過橋來，停在這裡）
-const BRIDGE_END = offset(AT, -3.0, 0.2);         // 中心格那頭的橋口（小學生走到這裡才開始冒圖框）
-const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前
-const RAINBOW = offset(anchorWorld('typhoon'), 0.6, -5.2); // 彩虹（台地後面，颱風 Lv3 起）
+const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地
+export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（通勤的終點、天線零件送到這裡）
 // 入口（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來——廠房西北、上台地那座階梯旁
-// （通勤路線沿著西南邊走到橋，那一側每一點都離某個工程師的起點不到 1.5，所以放在西北）
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
@@ -29,117 +31,254 @@ const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格�
 const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
 export const ENGINEER_ROUTE = [COMMUTE[0], { ...DOOR_WEST, y: COMMUTE[0].y }, ...COMMUTE.slice(1)];
 
+// ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
+export const MODELS = {
+  factory: { path: 'kenney/industrial/building-a.glb', size: [2.08, 1.47, 1.24], roof: 1.28 / 1.47 },
+  chimney: { path: 'kenney/industrial/chimney-medium.glb', size: [0.45, 1.92, 0.45] },
+  solar: { path: 'kenney/industrial/solar-panel-landscape.glb', size: [0.71, 0.26, 0.40] },
+};
+// 色票圖的格子顏色（'#rrggbb'）分族（在遊戲裡每族塗一個鮮豔色看過）：藍窗；近黑那族是廠房的牆面與屋頂 → 奶油牆；
+// 灰藍那族是樓層之間的飾條與屋頂邊 → 屋頂色（颱風重建換色）；淺色那族是一樓牆腳與煙囪的條紋 → 珊瑚；煙囪的橘條 → 白
+const WINDOW = '^#[7-9a][0-9a-f][a-c][0-9a-f][d-f][0-9a-f]$';
+const industrialTint = roof => ({
+  [WINDOW]: C.window, '^#ff': C.white, '^#[34]|^#5[0-2]': C.wall, '^#[5-9][0-9a-f][5-9]': roof, '^#[a-f]': C.coral,
+});
+// 太陽能板：藍紫色的板面換深藍、鋁框換路緣色
+const SOLAR_TINT = { '^#[5-7][0-9a-f][5-8][0-9a-f][9a-e]': C.navy, '^#[7-9][0-9a-f][9a][0-9a-f][d-e]': C.blue, '^#': C.curb };
+const model = (key, pos, h, extra = {}) => ({ path: MODELS[key].path, pos, h, ...extra });
+// 一棟模型的佔地（照縮放後的尺寸）
+function footprintOf(m) {
+  const k = Object.values(MODELS).find(x => x.path === m.path), s = m.h / k.size[1];
+  return { x: m.pos[0], z: m.pos[2], w: k.size[0] * s, d: k.size[2] * s };
+}
+// 廠房在園區西北（後排），煙囪立在它的平屋頂東南角（落地的話會和廠房、玻璃盒、總部圍出一塊走不出去的死角）；Lv5 起屋頂後排三片太陽能板
+const FACTORY = model('factory', [-0.45, 0, -0.65], 0.85), ROOF_Y = MODELS.factory.roof * FACTORY.h;
+const CHIMNEY = model('chimney', [0, ROOF_Y, -0.45], 0.9);
+const SOLAR = [-0.85, -0.45, -0.05].map(x => model('solar', [x, ROOF_Y, -0.82], 0.13, { tint: SOLAR_TINT }));
+
+// ── 園區（程式畫的玻璃）：Lv3 三棟玻璃盒；Lv4 起前排中間那棟換成「星群」總部的弧形玻璃圓頂。Lv6 起每棟的窗帶亮暖光 ──
+const BOXES = [{ x: 0.95, z: -0.45, w: 0.55, h: 1.2 }, { x: 0.05, z: 0.45, w: 0.6, h: 0.8 }, { x: 1.0, z: 0.5, w: 0.5, h: 1.35 }];
+const HQ = { x: 0.05, z: 0.35, rx: 0.7, rz: 0.52 };
+const SIGN = { x: -0.45, z: 0.95 };   // 廠門旁的招牌：貼著總部（Lv3 是前排玻璃盒）的前緣，外擴後和它連成一塊——中間不留夾縫（颱風天躲在那裡的人走不出來）
+function campus(n) {
+  const lit = n >= 6, boxes = n >= 4 ? [BOXES[0], BOXES[2]] : BOXES, parts = [];
+  for (const b of boxes) parts.push(
+    { kind: 'box', pos: [b.x, b.h / 2, b.z], scale: [b.w, b.h, b.w], color: C.glass },
+    { kind: 'box', pos: [b.x, b.h * 0.62, b.z + b.w / 2 + 0.01], scale: [b.w * 0.8, b.h * 0.5, 0.02], color: lit ? C.warm : C.window, ...(lit ? { glow: C.warm } : {}) },
+  );
+  if (n >= 4) parts.push(
+    { kind: 'cylinder', pos: [HQ.x, 0.05, HQ.z], scale: [2 * HQ.rx, 0.1, 2 * HQ.rz], color: C.curb },
+    { kind: 'dome', pos: [HQ.x, 0.1, HQ.z], scale: [2 * HQ.rx - 0.1, 0.85, 2 * HQ.rz - 0.1], color: C.glass },
+    { kind: 'box', pos: [HQ.x, 0.2, HQ.z + HQ.rz - 0.04], scale: [0.36, 0.22, 0.04], color: lit ? C.warm : C.window, ...(lit ? { glow: C.warm } : {}) },   // 總部大門
+  );
+  // 園區招牌：白板 + 珊瑚色字條（廠門旁）
+  parts.push({ kind: 'box', pos: [SIGN.x, 0.25, SIGN.z], scale: [0.6, 0.3, 0.05], color: C.white }, { kind: 'box', pos: [SIGN.x, 0.27, SIGN.z + 0.03], scale: [0.44, 0.06, 0.02], color: C.coral });
+  const footprint = [
+    ...boxes.map(b => ({ x: b.x, z: b.z, w: b.w, d: b.w })),
+    ...(n >= 4 ? [{ x: HQ.x, z: HQ.z, rx: HQ.rx, rz: HQ.rz }] : []),
+    { x: SIGN.x, z: SIGN.z + 0.01, w: 0.6, d: 0.08, door: false },   // 招牌不是門
+  ];
+  return { parts, footprint, top: Math.max(...boxes.map(b => b.h), n >= 4 ? 0.95 : 0) };
+}
+
+// ── 變電站（Lv5）：園區東側兩棟玻璃盒之間的小房子＋變壓器礙子，兩根電線桿沿北緣把電拉到廠房屋頂；Lv6 通電礙子發淡藍光。
+// 燈泡電工的主路沿晶片格外圈走（東邊那段在 x +1.81、330° 那盞燈的站位在 (1.56, −0.76)）：變電站與桿子外擴 PAD 後都不碰到 ──
+const SUB = { x: 1.48, z: 0.03, w: 0.34, d: 0.32, h: 0.32 };
+const POLES = [{ x: 1.3, z: -0.95, h: 0.9 }, { x: 0.75, z: -1.25, h: 0.9 }];
+const INSULATOR_Y = SUB.h + 0.1;
+// 兩點之間的細線（box 沿 z 拉長）：rot = [atan2(−dy, dz), asin(dx / L), 0]（Euler XYZ）
+const wire = (a, b, t = 0.014) => {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], L = Math.hypot(dx, dy, dz);
+  return { kind: 'box', pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2], scale: [t, t, L], rot: [Math.atan2(-dy, dz), Math.asin(dx / L), 0], color: C.ink };
+};
+// 下垂的線：中點往下 sag，兩段
+const sagging = (a, b, sag = 0.08) => { const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - sag, (a[2] + b[2]) / 2]; return [wire(a, m), wire(m, b)]; };
+function substation(n) {
+  const lit = n >= 6, top = POLES.map(p => [p.x, p.h - 0.04, p.z]);
+  const parts = [
+    { kind: 'box', pos: [SUB.x, SUB.h / 2, SUB.z], scale: [SUB.w, SUB.h, SUB.d], color: C.wall },
+    { kind: 'box', pos: [SUB.x, SUB.h + 0.02, SUB.z], scale: [SUB.w + 0.04, 0.04, SUB.d + 0.04], color: C.navy },
+    { kind: 'box', pos: [SUB.x - 0.08, 0.12, SUB.z + SUB.d / 2 + 0.01], scale: [0.12, 0.2, 0.02], color: C.window },   // 門
+    ...[-0.1, 0, 0.1].map(dx => ({ kind: 'cylinder', pos: [SUB.x + dx, SUB.h + 0.08, SUB.z], scale: [0.05, 0.12, 0.05], color: lit ? C.neonBlue : C.cream, ...(lit ? { glow: C.neonBlue } : {}) })),
+    ...POLES.flatMap(p => [
+      { kind: 'cylinder', pos: [p.x, p.h / 2, p.z], scale: [0.05, p.h, 0.05], color: C.wood },
+      { kind: 'box', pos: [p.x, p.h - 0.04, p.z], scale: [0.26, 0.03, 0.04], color: C.wood },
+    ]),
+    ...sagging([SUB.x, INSULATOR_Y + 0.04, SUB.z], top[0]), ...sagging(top[0], top[1]), ...sagging(top[1], [FACTORY.pos[0] + 0.55, ROOF_Y + 0.02, -0.95], 0.06),
+  ];
+  return { parts, footprint: [{ x: SUB.x, z: SUB.z, w: SUB.w + 0.04, d: SUB.d + 0.04 }, ...POLES.map(p => ({ x: p.x, z: p.z, r: 0.05 }))] };
+}
+
+// ── 海底電纜（§5）：風車島的風車腳下 → 島的東南岸下水 → 沿主島南側的海面繞半圈（半徑 7.6，在主島與環狀線之間、鏡頭那一側）
+//   → 晶片格東岸的登陸桿（崖邊、燈泡電工主路的外側）→ 下垂跨過主路接進變電站的礙子。晶片還沒蓋變電站（< 5）時接到登陸桿腳下就停 ──
+const satCentre = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP - 0.2, z: c.z }; };
+const WINDMILL = satCentre('windmill');
+export const LANDING = offset(AT, 2.0, 0.45);   // 登陸桿（晶片格東岸、崖邊）
+const LANDING_H = 0.55, SEA_R = 7.6, SEA_Y = WATER_Y + 0.03;
+function cablePath(landed) {
+  const p = (x, y, z) => ({ x, y, z });
+  const island = [p(WINDMILL.x + 0.25, WINDMILL.y + 0.02, WINDMILL.z + 0.3), p(WINDMILL.x + 1.2, WINDMILL.y + 0.02, WINDMILL.z + 1.0), p(WINDMILL.x + 2.0, SEA_Y, WINDMILL.z + 1.6)];
+  const a0 = Math.PI - 0.2, a1 = 0.1, N = 28;
+  const arc = Array.from({ length: N + 1 }, (_, i) => { const a = a0 + (a1 - a0) * i / N; return p(Math.cos(a) * SEA_R, SEA_Y, Math.sin(a) * SEA_R); });
+  const shore = [p(LANDING.x + 0.3, SEA_Y, LANDING.z + 0.15), p(LANDING.x + 0.05, LANDING.y + 0.15, LANDING.z), p(LANDING.x, LANDING.y + LANDING_H, LANDING.z)];
+  if (!landed) return [...island, ...arc, ...shore.slice(0, 2), p(LANDING.x - 0.05, LANDING.y + 0.03, LANDING.z - 0.05)];
+  const ins = offset(AT, SUB.x, SUB.z, INSULATOR_Y + 0.04), top = shore.at(-1), mid = p((top.x + ins.x) / 2, (top.y + ins.y) / 2 - 0.1, (top.z + ins.z) / 2);
+  return [...island, ...arc, ...shore, mid, ins];
+}
+const cable = (lit, landed) => ({
+  kind: 'cable', at: LANDING, path: cablePath(landed), r: 0.05, lit, color: C.ink, glow: C.neonBlue, footprint: { r: 0.04 },
+  parts: [{ kind: 'cylinder', pos: [0, LANDING_H / 2, 0], scale: [0.05, LANDING_H, 0.05], color: C.wood }, { kind: 'box', pos: [0, LANDING_H - 0.03, 0], scale: [0.04, 0.03, 0.16], color: C.wood }],
+});
+
 export function view(lv) {
-  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.chip, at = AT, v = {};
-  if (!n) return v;
-  const parts = [];
+  // 電纜：燈泡 Lv8 鋪好（暗的、還沒通電）或晶片 Lv6 通電；晶片沒放也照鋪（接到晶片格東岸）
+  const wired = lv.bulb >= 8 || n >= 6;
+  if (!n) return wired ? { 'chip.cable': cable(false, false) } : v;
+  const roof = roofColor(C.navy, rebuilt(lv));
   if (n === 1) {
-    parts.push({ kind: 'box', pos: [0, 0.05, 0], scale: [1.2, 0.1, 1.0], color: C.cliff });
+    const parts = [{ kind: 'box', pos: [0, 0.05, 0], scale: [1.2, 0.1, 1.0], color: C.cliff }];
     for (let i = 0; i < 8; i++) {
       const side = i >> 1, k = i % 2 ? 0.4 : -0.4, horiz = side % 2 === 0, s = side < 2 ? -0.8 : 0.8;
       parts.push({ kind: 'box', pos: horiz ? [k, 0.15, s] : [s, 0.15, k], scale: horiz ? [0.78, 0.3, 0.03] : [0.03, 0.3, 0.78], color: C.yellow });
     }
     for (const [x, z] of [[-0.95, 0.95], [-0.6, 1.0], [0.95, 0.9]]) parts.push({ kind: 'cone', pos: [x, 0.09, z], scale: [0.12, 0.18, 0.12], color: C.coral });
+    v['chip.main'] = { kind: 'compound', at, parts };
     v['chip.crane'] = { kind: 'crane', at, height: 1.8, offset: [0.5, 0, -0.4], footprint: { x: 0.5, z: -0.4, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座
     v['chip.worker'] = { kind: 'roster', at, n: 1, accessory: 'helmet', home: { kind: 'wander', at, r: 0.9, entry: WORKER_ENTRY } };
-  } else if (n === 2) {
-    parts.push(
-      { kind: 'box', pos: [0, 0.4, -0.1], scale: [1.4, 0.8, 1.0], color: C.wall },
-      { kind: 'box', pos: [0, 0.84, -0.1], scale: [1.48, 0.08, 1.08], color: roofColor(C.navy, rebuilt(lv)) },
-      { kind: 'cylinder', pos: [0.45, 1.1, -0.4], scale: [0.2, 0.6, 0.2], color: C.cliff },
-      { kind: 'box', pos: [-0.3, 0.2, 0.41], scale: [0.3, 0.4, 0.02], color: C.window },
-    );
-    v['chip.smoke'] = { kind: 'smoke', at: offset(at, 0.45, -0.4), n: 4, size: 0.14, rise: 1.0, offsetY: 1.45 };
   } else {
-    if (n === 3) parts.push(
-      { kind: 'box', pos: [-0.55, 0.55, -0.35], scale: [0.6, 1.1, 0.6], color: C.glass },
-      { kind: 'box', pos: [0.35, 0.45, -0.45], scale: [0.9, 0.9, 0.9], color: C.glass },
-      { kind: 'box', pos: [0.6, 0.65, 0.5], scale: [0.6, 1.3, 0.6], color: C.glass },
-    );
-    else parts.push(
-      { kind: 'cylinder', pos: [0, 0.05, -0.2], scale: [2.1, 0.1, 1.6], color: C.curb },
-      { kind: 'dome', pos: [0, 0.1, -0.2], scale: [2.0, 1.1, 1.5], color: C.glass },
-      { kind: 'box', pos: [-1.0, 0.35, 0.45], scale: [0.4, 0.7, 0.4], color: C.glass },
-      { kind: 'box', pos: [1.0, 0.45, 0.4], scale: [0.4, 0.9, 0.4], color: C.glass },
-    );
-    // 園區招牌：白板 + 珊瑚色字條
-    parts.push({ kind: 'box', pos: [-0.5, 0.25, 0.95], scale: [0.7, 0.3, 0.05], color: C.white }, { kind: 'box', pos: [-0.5, 0.27, 0.98], scale: [0.5, 0.06, 0.02], color: C.coral });
+    // 廠房＋煙囪（Lv6 起窗戶全亮）；Lv2–4 煙囪冒煙，Lv5 換太陽能就不冒了
+    const lit = n >= 6 ? { glow: { [WINDOW]: C.warm } } : {};
+    const models = [{ ...FACTORY, tint: industrialTint(roof), ...lit }, { ...CHIMNEY, tint: industrialTint(roof) }];
+    const c = n >= 3 ? campus(n) : null, top = Math.max(ROOF_Y + CHIMNEY.h, c?.top ?? 0);
+    v['chip.main'] = { kind: 'campus', at, models, labelY: top + 0.3, footprint: [footprintOf(FACTORY)] };   // 煙囪在屋頂上，不另外擋
+    if (n <= 4) v['chip.smoke'] = { kind: 'smoke', at: offset(at, CHIMNEY.pos[0], CHIMNEY.pos[2]), n: 4, size: 0.14, rise: 1.0, offsetY: ROOF_Y + CHIMNEY.h + 0.05 };
+    if (c) v['chip.campus'] = { kind: 'compound', at, parts: c.parts, footprint: c.footprint };
+    if (n >= 5) {
+      const sub = substation(n);
+      v['chip.solar'] = { kind: 'campus', at, models: SOLAR, footprint: false };
+      v['chip.substation'] = { kind: 'compound', at, parts: sub.parts, footprint: sub.footprint };
+    }
   }
-  v['chip.main'] = { kind: 'compound', at, parts };
+  if (wired) v['chip.cable'] = cable(n >= 6, n >= 5);
   if (n >= 2) {
     const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 4 : 2) - (detective ? 1 : 0);
     v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: n >= 3 ? 'bike' : 'coat', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: n >= 3 ? 0.8 : 0.45, entry: ENGINEER_ENTRY } };
     // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
     if (detective) v['chip.detective'] = { kind: 'roster', at, n: 1, accessory: 'glass', from: 'chip.engineers', home: { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: ENGINEER_ENTRY[0] } };
   }
-  return { 'chip.main': v['chip.main'], ...v };
+  return v;
 }
 
-export const builders = { crane: towerBuilders.crane };
+export const builders = { crane: towerBuilders.crane, campus: milkBuilders.campus };
 
-// ── 劇本（§8.2）──
-// 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
+// ── 劇本（§6）──
+// 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。藏起來的人（颱風登陸躲進門裡）不算。
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-const worker = ctx => () => ctx.roster.members('chip.worker')[0] ?? null;
-const eng = (ctx, i) => () => ctx.roster.members('chip.engineers')[i] ?? null;
+const seen = (c, key) => c.roster.members(key).filter(m => !m.hidden);
+const worker = () => c => seen(c, 'chip.worker')[0] ?? null;
+const eng = i => c => seen(c, 'chip.engineers')[i] ?? null;
 const ENGINEERS = c => c.roster.members('chip.engineers');
+const nearestEng = p => once(c => seen(c, 'chip.engineers').sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0] ?? null);
+// 工程師（最多 4 個）一起轉頭看 p
+const engineersLook = (B, p, dur = 1.0) => B.together([0, 1, 2, 3].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
 // （老鼠那邊的劇本在老鼠 Lv2 成立時也補這一拍，哪邊先成立哪邊演）
-const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(() => ctx.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
+const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(c => c.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
+// 電纜通電：光從風車島那頭跑到變電站（零件的 userData.progress）；跳過或蒙太奇拿掉這拍時零件本來就是全亮的
+const surge = dur => {
+  let o = null;
+  return {
+    kind: 'surge', dur,
+    start(c) { o = c.stage.partObject('chip.cable'); if (!o?.userData.progress) return false; o.userData.progress(0); },
+    step(k) { o.userData.progress(k); },
+    end() { o?.userData.progress?.(1); },
+  };
+};
+// 矽盾測試時全島抬頭：主島上看得到的小人（不含模型、坐車的）都轉頭看 101；演到這拍才點名，最多 LOOKERS 個
+const LOOKERS = 24;
+const islanders = c => c.roster.keys().flatMap(k => c.roster.members(k)).filter(m => m.walker && !m.hidden && m.mode === 'home' && cellAt(m.pos.x, m.pos.z));
+function everyoneLooksUp(B, dur) {
+  let list = null;
+  const who = i => c => (list ??= islanders(c))[i] ?? null;
+  return Array.from({ length: LOOKERS }, (_, i) => B.gesture(who(i), 'look', dur, { at: TOWER }));
+}
 
 export const script = {
-  // 工地開工：閃白圍籬 → 工人從 101 工地走過來 → 繞工地
+  // 工地開工：閃白圍籬 → 工人從 101 工地走過來 → ♪ → 繞工地
   placed(e, s, ctx) {
-    const { B } = ctx, w = worker(ctx);
-    return [B.apply(e, { hold: ['chip.worker'] }), B.spawn('chip.worker', WORKER_ENTRY), B.walk(w, DOOR), B.home(w)];
+    const { B } = ctx, w = worker();
+    return [B.apply(e, { hold: ['chip.worker'] }), B.spawn('chip.worker', WORKER_ENTRY), B.walk(w, DOOR), B.bubble(w, '♪', 0.8), B.home(w)];
   },
   grow: {
-    // 廠房：工人 …… → 走到工地的鏡頭側揮鋤頭 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）走進來、過橋走去 101
+    // 廠房：工人走到工地的鏡頭側揮鋤頭 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）出來上班
     2(e, s, ctx) {
-      const { B } = ctx, w = worker(ctx), foot = i => c => c.nav.slots(FOOT, 2, 0.2)[i];
+      const { B } = ctx, w = worker();
       return [
-        B.bubble(w, '……'), B.walk(w, c => frontOf(AT, FRONT_R, c.nav)), B.gesture(w, 'build', { at: AT }),
+        B.walk(w, c => frontOf(AT, FRONT_R, c.nav)), B.gesture(w, 'build', 1.2, { at: AT }),
         B.apply(e, { hold: ['chip.engineers'] }),
         B.spawn('chip.engineers', ENGINEER_ENTRY[0]), B.spawn('chip.engineers', ENGINEER_ENTRY[1]),
-        B.together([B.walk(eng(ctx, 0), foot(0)), B.walk(eng(ctx, 1), foot(1))]),
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 園區：工程師下班回廠門 → ♪ → 閃白三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）
+    // 園區：工程師轉頭看廠房旁的空地 → 閃白三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）→ ♪
     3(e, s, ctx) {
-      const { B } = ctx, door = i => c => c.nav.slots(DOOR, 2, 0.25)[i];
+      const { B } = ctx;
+      return [engineersLook(B, offset(AT, 0.6, 0)), B.apply(e), ...detective(ctx, s), B.bubble(eng(0), '♪', 0.9), B.home(ENGINEERS), B.levelUp('chip')];
+    },
+    // 星群總部（鮮奶 ≥4：喝鮮奶長大的人才）：工程師圖框「鮮奶」→ 閃白弧形玻璃總部 → 大家轉頭看、♥
+    4(e, s, ctx) {
+      const { B } = ctx;
+      return [B.bubble(eng(0), { icon: 'milk' }, 1.0), B.apply(e), B.together([engineersLook(B, offset(AT, HQ.x, HQ.z)), B.bubble(eng(1), '♥', 1.0)]), B.home(ENGINEERS), B.levelUp('chip')];
+    },
+    // 太陽能＋變電站（燈泡 ≥3）：煙囪的煙停了 → ！→ 屋頂閃白太陽能板（大家抬頭看）→ 閃白變電站與電線桿
+    5(e, s, ctx) {
+      const { B } = ctx;
       return [
-        B.together([B.walk(eng(ctx, 0), door(0)), B.walk(eng(ctx, 1), door(1))]),
-        B.bubble(eng(ctx, 0), '♪', 0.9), B.apply(e), ...detective(ctx, s),
+        B.apply(e, { only: ['chip.smoke'] }), B.bubble(eng(0), '！', 0.8),
+        B.apply(e, { only: ['chip.solar'] }), engineersLook(B, offset(AT, FACTORY.pos[0], FACTORY.pos[2])),
+        B.apply(e), B.home(ENGINEERS), B.levelUp('chip'),
+      ];
+    },
+    // ★ 廠房通電（燈泡 ≥8 海底電纜鋪好了）：回全景 → 電纜換成發光的、光從風車島一路跑進變電站 → 鏡頭回園區 → 廠房燈全亮、♪
+    6(e, s, ctx) {
+      const { B } = ctx;
+      return [
+        B.focus('home'), B.apply(e, { only: ['chip.cable'], blink: false }), surge(1.5),
+        B.focus(CHIP), B.apply(e), B.together([B.bubble(eng(0), '♪', 0.9), engineersLook(B, offset(AT, FACTORY.pos[0], FACTORY.pos[2]), 0.9)]),
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 總部（鮮奶 ≥3）：長高的小學生（離園區最近的那個）過橋走到園區西側門口，最後一段邊走邊冒圖框「晶片」→ 工程師 ♥ → 閃白總部
-    // 鏡頭（§13.1）：先對著小學生出發的那一格（鮮奶格；少棒隊在巨蛋旁練球時是巨蛋格），他走到橋口才轉來晶片格
-    4(e, s, ctx) {
-      const { B } = ctx, kid = once(c => (c.roster.members('milk.kids').length ? c.roster.nearest('milk.kids', KID_GATE) : c.roster.nearest('landmarks.islanders', KID_GATE)));
-      const from = c => { const m = kid(c); return m ? worldToAxial(m.pos.x, m.pos.z) : null; };
+    // ★ 矽盾天線（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
+    //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 天線在塔頂閃白 → LEVEL UP 時轉回晶片格。
+    //   （工程師平常在廠門與 101 腳下之間通勤，離站前都很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
+    //   一級 ≤ 5 秒：列車最多趕 2 秒進站（剛開走的車要繞一整圈，所以上限放到 9 倍速，特寫裡是一班急駛進站的車）
+    7(e, s, ctx) {
+      const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(FOOT);
       return [
-        B.focus(from), B.walk(kid, BRIDGE_END), B.together([B.focus(CHIP), B.walk(kid, KID_GATE), B.bubble(kid, { icon: 'chip' }, 1.0)]),
-        B.bubble(eng(ctx, 0), '♥', 0.9), B.apply(e), B.home(kid), B.levelUp('chip'),
-      ];
-    },
-    // 天線（代幣 ≥3）：工程師走到站前等 → 列車進站停下，一停就敲（接箱子）→ 不等車開就送去 101 腳下 → 閃白天線
-    // 鏡頭（§13.1）：站前（代幣格）等列車進站 → 他抱著箱子出發就轉去 101（天線在 101 上閃白）→ LEVEL UP 時轉回晶片格
-    5(e, s, ctx) {
-      const { B } = ctx, e0 = eng(ctx, 0);
-      return [
-        B.focus(TOKEN), B.walk(e0, PLATFORM), B.trainStop({ during: [B.gesture(e0, 'knock', 0.6), B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT)])] }),
+        B.focus(TOKEN), B.trainStop({ stop: 0.6, arrive: 2, boost: 9, during: [B.gesture(staff, 'knock', 0.6)] }),
+        B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT), B.bubble(e0, { icon: 'chip' }, 0.8)]),
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];
     },
-    // 矽盾（颱風 Lv3）：工程師走到 101 腳下 → 轉頭看彩虹 → ！ → 天線開始脈衝
-    6(e, s, ctx) {
-      const { B } = ctx, e0 = eng(ctx, 0);
-      return [B.walk(e0, FOOT), B.gesture(e0, 'look', { at: RAINBOW }), B.bubble(e0, '！'), B.apply(e), B.home(e0), B.levelUp('chip')];
+    // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面（零件自己演，蒙太奇裡照樣閃）、全島的人轉頭看 101 → LEVEL UP
+    8(e, s, ctx) {
+      const { B } = ctx;
+      return [B.focus('home'), B.apply(e, { only: ['tower.shield'], blink: false }), B.together([B.wait(SHIELD_TEST_DUR), ...everyoneLooksUp(B, 1.2)]), B.apply(e), B.levelUp('chip')];
+    },
+    // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）
+    //   → 全景定格（看一次 101 閃光）→ LEVEL UP
+    9(e, s, ctx) {
+      const { B } = ctx;
+      return [
+        B.focus('home'), B.apply(e, { only: ['tower.shield'], blink: false }), B.scaleIn('tower.shield', { axis: 'y', dur: 1.5 }),
+        B.together([B.apply(e), B.bubble(eng(0), '！', 0.8)]),
+        B.focus('home', { hold: 3.2 }), B.home(ENGINEERS), B.levelUp('chip'),
+      ];
     },
   },
   fx: () => null,   // 晶片自己沒有 onLevel
   rep: (s, ctx) => ctx.roster.members('chip.engineers').find(m => !m.hidden) ?? ctx.roster.members('chip.worker').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+script.grow[9].key = true;

@@ -2,6 +2,7 @@
 //   compound：kit 零件合併成「一個黏土 mesh + 每種發光色一個 mesh」，演員再多 draw call 也壓得住（§10 ≤ 150）
 //   people：在共用的小人系統裡生 n 個；glb：CC0 模型（可沿路徑走）；smoke：循環冒煙；
 //   orbit：一個 glb 從 from 飛進來、繞圓心 at 一圈（高 h、半徑 r、車頭朝切線）、停到 park（飛天車）
+//   shield：矽盾罩（半球、半透明淡藍、六角格紋）；cable：沿路徑的管子（海底電纜，通電時多一條發光管）
 // 物品模組可以用 ctx.builders 加自己的 kind。每個零件 = { object, update?(dt, t), dispose?() }。
 import { makeGeometry } from '../scene/kit.js';
 import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
@@ -26,6 +27,47 @@ export function orbitPose(spec, t, start = 'from') {
   if (t < tin + lap) { const u = t - tin, a = phase + u * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: turnIn(hIn, tangent(a), u), done: false }; }
   if (t < tin + lap + tout) { const u = t - tin - lap; return leg(E, park, u / tout, turnIn(tangent(phase), hOut, u)); }
   return { x: park.x, y: park.y, z: park.z, yaw: hPark, done: true };
+}
+
+// ── 矽盾罩（晶片 Lv8／9、結局 §8）：狀態 test 閃三下（不透明度脈衝）再縮回地面藏起來；standby 淡淡常駐、跟 101 每 3 秒一起亮一下；
+// full 全亮（結局擋飛彈）。shieldPose 是純函式：t 秒時的 { opacity, scale, visible }
+export const SHIELD = { color: 0xa8e6ff, flashes: 3, period: 0.8, retract: 0.6, test: 0.55, standby: [0.08, 0.2], full: 0.55, pulse: 3 };
+export const SHIELD_TEST_DUR = SHIELD.flashes * SHIELD.period + SHIELD.retract;
+export function shieldPose(state, t) {
+  if (state === 'test') {
+    const flash = SHIELD.flashes * SHIELD.period;
+    if (t < flash) return { opacity: 0.04 + (SHIELD.test - 0.04) * Math.sin(Math.PI * (t % SHIELD.period) / SHIELD.period) ** 2, scale: 1, visible: true };
+    if (t < SHIELD_TEST_DUR) return { opacity: 0.04, scale: 1 - ease((t - flash) / SHIELD.retract), visible: true };
+    return { opacity: 0, scale: 0, visible: false };
+  }
+  if (state === 'full') return { opacity: SHIELD.full, scale: 1, visible: true };
+  // standby：跟天線同一個相位（tower.js 的 antenna：(1 + sin(2πt/3)) / 2）
+  const [lo, hi] = SHIELD.standby, k = (1 + Math.sin(t * Math.PI * 2 / SHIELD.pulse)) / 2;
+  return { opacity: lo + (hi - lo) * k, scale: 1, visible: true };
+}
+// 六角格紋貼圖（pointy-top，一格貼圖剛好一個週期：寬 √3·s、高 3·s）：邊線不透明白、格心淡；DataTexture 不靠 canvas，Node 測試也做得出來
+const HEX_W = 64, HEX_H = 111, hexCache = new WeakMap();
+function hexGrid(THREE) {
+  if (hexCache.has(THREE)) return hexCache.get(THREE);
+  const s = HEX_W / Math.sqrt(3), data = new Uint8Array(HEX_W * HEX_H * 4), ap = s * Math.sqrt(3) / 2;
+  // 週期格子裡的六角中心：四角與正中（再加上下左右的鄰格，取最近的）
+  const centres = [];
+  for (const [cx, cy] of [[0, 0], [HEX_W, 0], [0, HEX_H], [HEX_W, HEX_H], [HEX_W / 2, HEX_H / 2], [HEX_W / 2, -HEX_H / 2], [HEX_W / 2, HEX_H * 1.5], [-HEX_W / 2, HEX_H / 2], [HEX_W * 1.5, HEX_H / 2]]) centres.push([cx, cy]);
+  const normals = [0, Math.PI / 3, 2 * Math.PI / 3].map(a => [Math.cos(a), Math.sin(a)]);
+  for (let y = 0; y < HEX_H; y++) for (let x = 0; x < HEX_W; x++) {
+    let best = Infinity;
+    for (const [cx, cy] of centres) {
+      const dx = x + 0.5 - cx, dy = y + 0.5 - cy, r = Math.max(...normals.map(([nx, ny]) => Math.abs(dx * nx + dy * ny)));
+      if (r < best) best = r;
+    }
+    const edge = ap - best, i = (y * HEX_W + x) * 4;   // 離最近的邊幾格
+    data[i] = data[i + 1] = data[i + 2] = 255;
+    data[i + 3] = edge < 1.5 ? 255 : edge < 3 ? 140 : 46;
+  }
+  const tex = new THREE.DataTexture(data, HEX_W, HEX_H, THREE.RGBAFormat);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; tex.needsUpdate = true;
+  hexCache.set(THREE, tex);
+  return tex;
 }
 
 export function createPartFactory(THREE, ctx) {
@@ -162,7 +204,47 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  const KINDS = { compound, people, glb, smoke, fireworks, orbit };
+  // 矽盾罩：半徑 r 的半球立在 at（101 底座）；格紋貼圖共用，材質每個零件自己一份（不透明度各演各的）。
+  // 單面（FrontSide）：從全景看得到靠鏡頭的那半面，罩裡的島透得出來；不寫深度、不投影，一個 draw call。
+  // 演法照 shieldPose；縮放與藏起來動的是裡面的 mesh，劇本的 scaleIn／閃白照樣作用在外層
+  function shield(spec) {
+    const geo = new THREE.SphereGeometry(spec.r, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), map = hexGrid(THREE).clone();
+    map.repeat.set(24, 3.5); map.needsUpdate = true;
+    const mat = new THREE.MeshBasicMaterial({ color: SHIELD.color, map, transparent: true, depthWrite: false, side: THREE.FrontSide });
+    const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group(); mesh.castShadow = mesh.receiveShadow = false; mesh.renderOrder = 2; object.add(mesh);
+    let t = 0;
+    const put = () => { const p = shieldPose(spec.state, t); mesh.visible = p.visible; mesh.scale.setScalar(p.scale); mat.opacity = p.opacity; };
+    put();
+    return {
+      object,
+      update(dt) { t += dt; put(); map.offset.y = (map.offset.y + dt * 0.05) % 1; },   // 格紋慢慢往上捲
+      dispose() { geo.dispose(); mat.dispose(); map.dispose(); },
+    };
+  }
+
+  // 海底電纜：path（世界座標）連成平滑的管子。暗的管子和 parts（登陸桿等，相對 at）併成一個黏土 mesh；
+  // lit 時外面多一條略粗的自發光管（MeshBasicMaterial，白天也亮），object.userData.progress(k) 讓光從 path 的頭跑到 k
+  function cable(spec) {
+    const at = spec.at, pts = spec.path.map(p => new THREE.Vector3(p.x - at.x, p.y - at.y, p.z - at.z));
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'), segs = Math.max(16, pts.length * 6), r = spec.r ?? 0.05;
+    const tube = new THREE.TubeGeometry(curve, segs, r, 5, false).toNonIndexed();
+    tube.deleteAttribute('uv'); color.setHex(spec.color ?? 0x211d1d);
+    const n = tube.attributes.position.count, cols = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { cols[i * 3] = color.r; cols[i * 3 + 1] = color.g; cols[i * 3 + 2] = color.b; }
+    tube.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    const extra = (spec.parts ?? []).map(partGeometry), geo = mergeGeometries([tube, ...extra]); tube.dispose(); extra.forEach(g => g.dispose());
+    const object = new THREE.Group(), dark = new THREE.Mesh(geo, clay); dark.castShadow = dark.receiveShadow = true; object.add(dark);
+    let glowGeo = null, glowMat = null;
+    if (spec.lit) {
+      glowGeo = new THREE.TubeGeometry(curve, segs, r * 1.25, 5, false); glowMat = new THREE.MeshBasicMaterial({ color: spec.glow ?? 0x3fe0ff });
+      const lit = new THREE.Mesh(glowGeo, glowMat); lit.castShadow = lit.receiveShadow = false; object.add(lit);
+      const total = glowGeo.index.count, tri = 3 * 5 * 2;   // 一段管子（5 邊 × 2 三角形）的索引數，光一段一段往前
+      object.userData.progress = k => glowGeo.setDrawRange(0, Math.round(Math.min(1, Math.max(0, k)) * total / tri) * tri);
+    } else object.userData.progress = () => {};
+    return { object, dispose() { geo.dispose(); glowGeo?.dispose(); glowMat?.dispose(); } };
+  }
+
+  const KINDS = { compound, people, glb, smoke, fireworks, orbit, shield, cable };
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 

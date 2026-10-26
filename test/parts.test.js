@@ -85,3 +85,69 @@ test('fireworks: one InstancedMesh of 60 sparks that bursts out from the centre 
   const m = new THREE.Matrix4(), v = new THREE.Vector3(); p.update(0, 0.05); mesh.getMatrixAt(0, m); const r0 = v.setFromMatrixPosition(m).length();
   p.update(0, 0.5); mesh.getMatrixAt(0, m); assert.ok(v.setFromMatrixPosition(m).length() > r0, 'spreads out');
 });
+
+// ── 矽盾罩（晶片 Lv8／9、結局）：半球、半透明淡藍、六角格紋（程式產生的貼圖，快取共用），一個 mesh ──
+import { SHIELD, SHIELD_TEST_DUR, shieldPose } from '../src/actors/parts.js';
+const shieldOf = (f, state, r = 7.6) => f.build({ kind: 'shield', at, r, state });
+const run = (p, secs, fn) => { for (let i = 0; i < secs * 30; i++) { p.update(1 / 30, i / 30); fn?.(i / 30); } };
+test('shield: one transparent basic mesh, single-sided, no depth write, hex-grid texture shared between builds; radius r, centred on at', () => {
+  const { f } = setup(), a = shieldOf(f, 'standby'), b = shieldOf(f, 'full');
+  assert.equal(a.object.children.length, 1);
+  const [m] = a.object.children, mat = m.material;
+  assert.ok(mat.isMeshBasicMaterial && mat.transparent && mat.depthWrite === false && mat.side !== THREE.DoubleSide);
+  assert.ok(mat.map?.isDataTexture, 'procedural hex-grid texture'); assert.equal(b.object.children[0].material.map.source, mat.map.source, 'pixels generated once (each part clones the texture for its own scroll offset)');
+  assert.equal(m.castShadow, false);
+  const box = new THREE.Box3().setFromObject(a.object);
+  assert.ok(Math.abs(box.max.y - (at.y + 7.6)) < 0.05 && Math.abs(box.min.y - at.y) < 0.05, 'a hemisphere standing on at');
+  assert.ok(Math.abs(box.max.x - box.min.x - 15.2) < 0.1, 'radius r');
+  // 貼圖：邊線不透明、格心淡
+  const d = mat.map.image.data, alphas = new Set(); for (let i = 3; i < d.length; i += 4) alphas.add(d[i]);
+  assert.ok(Math.max(...alphas) === 255 && Math.min(...alphas) < 80, 'bright hex edges over a faint fill');
+  a.dispose(); b.dispose();
+});
+test('shieldPose test: three opacity flashes, then it retracts to scale 0 and hides; done by SHIELD_TEST_DUR', () => {
+  assert.equal(SHIELD.flashes, 3);
+  let peaks = 0, prev = 0, rising = false;
+  for (let t = 0; t <= SHIELD_TEST_DUR + 0.5; t += 1 / 60) {
+    const p = shieldPose('test', t);
+    if (p.opacity > prev) rising = true; else if (rising && p.opacity < prev) { peaks++; rising = false; assert.ok(prev > 0.4, `flash ${peaks} peak ${prev.toFixed(2)}`); }
+    prev = p.opacity;
+  }
+  assert.equal(peaks, 3);
+  const mid = shieldPose('test', SHIELD_TEST_DUR - SHIELD.retract / 2); assert.ok(mid.visible && mid.scale > 0.1 && mid.scale < 0.9, 'retracting');
+  const end = shieldPose('test', SHIELD_TEST_DUR + 0.01); assert.equal(end.visible, false); assert.equal(end.scale, 0);
+  assert.ok(SHIELD_TEST_DUR <= 4, `${SHIELD_TEST_DUR} s`);
+});
+test('shieldPose standby stays a faint outline forever (visible, opacity 0.06–0.22, brightens with the 101 pulse every 3 s); full is bright', () => {
+  const ops = [];
+  for (let t = 0; t < 30; t += 0.05) { const p = shieldPose('standby', t); assert.ok(p.visible && p.scale === 1); ops.push(p.opacity); }
+  assert.ok(Math.min(...ops) >= 0.06 && Math.max(...ops) <= 0.22, `${Math.min(...ops)}–${Math.max(...ops)}`);
+  assert.ok(Math.max(...ops) - Math.min(...ops) > 0.04, 'it pulses');
+  assert.ok(Math.abs(shieldPose('standby', 1) .opacity - shieldPose('standby', 4).opacity) < 1e-9, 'period 3 s');
+  assert.ok(shieldPose('full', 2).opacity >= 0.45 && shieldPose('full', 2).visible);
+});
+test('shield part follows shieldPose: test flashes then hides (mesh scale 0), standby keeps a scrolling faint outline', () => {
+  const { f } = setup(), p = shieldOf(f, 'test'), [m] = p.object.children, ops = [];
+  run(p, SHIELD_TEST_DUR + 0.5, () => ops.push(m.visible ? m.material.opacity : 0));
+  assert.ok(Math.max(...ops) > 0.4); assert.equal(m.visible, false); assert.equal(m.scale.x, 0);
+  const s = shieldOf(f, 'standby'), [ms] = s.object.children, y0 = ms.material.map.offset.y;
+  run(s, 2); assert.ok(ms.visible && ms.material.opacity < 0.25); assert.notEqual(ms.material.map.offset.y, y0, 'hex grid scrolls');
+  for (const x of [p, s]) x.dispose();
+});
+
+// ── 海底電纜（晶片 Lv6、燈泡 Lv8）：沿 path（世界座標）的管子；暗的時候一個黏土 mesh（連登陸桿），通電多一條發光管，progress 讓光從頭跑到尾 ──
+const cablePath = [{ x: -3, y: 0, z: 0 }, { x: 0, y: 0, z: 2 }, { x: 3, y: 0.5, z: 0 }];
+const cableOf = (f, lit) => f.build({ kind: 'cable', at: { x: 3, y: 0, z: 0 }, path: cablePath, r: 0.05, lit, color: 0x211d1d, glow: 0x3fe0ff, parts: [{ kind: 'cylinder', pos: [0, 0.25, 0], scale: [0.05, 0.5, 0.05], color: 0x9c7a4e }] });
+test('cable: dark = one clay mesh along the path (with the landing pole); lit adds one glowing tube; progress runs the light along it', () => {
+  const { f } = setup(), dark = cableOf(f, false), lit = cableOf(f, true);
+  assert.equal(dark.object.children.length, 1); assert.equal(lit.object.children.length, 2);
+  const box = new THREE.Box3().setFromObject(dark.object);
+  assert.ok(box.min.x < -2.9 + 0 && box.max.x > 2.9 && box.max.z > 1.9, 'follows the world path (offset by at)');
+  const glow = lit.object.children.find(m => m.material.isMeshBasicMaterial);
+  assert.ok(glow, 'lit tube is self-lit'); assert.equal(glow.material.color.getHex(), 0x3fe0ff);
+  const total = glow.geometry.index ? glow.geometry.index.count : glow.geometry.attributes.position.count;
+  lit.object.userData.progress(0); assert.equal(glow.geometry.drawRange.count, 0);
+  lit.object.userData.progress(0.5); assert.ok(glow.geometry.drawRange.count > total * 0.4 && glow.geometry.drawRange.count < total * 0.6);
+  lit.object.userData.progress(1); assert.ok(glow.geometry.drawRange.count >= total);
+  dark.dispose(); lit.dispose();
+});

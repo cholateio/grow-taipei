@@ -10,7 +10,6 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 import { C, offset } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
-import { OLD_MAX } from '../src/actors/clamp.js';
 import { TRACK } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
@@ -26,7 +25,7 @@ const views = Array.from({ length: 9 }, (_, n) => baseball.view(lv({ baseball: n
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]].map(([x, z]) => offset(AT, x, z));
 
-test('baseball is off the transition clamp (max 8)', () => { assert.ok(!('baseball' in OLD_MAX)); assert.equal(spec.ITEMS.baseball.max, 8); });
+test('baseball has its v2 ladder (max 8)', () => { assert.equal(spec.ITEMS.baseball.max, 8); });
 test('baseball has something new at every level 1–8: sand lot, stands, dome, roof slit, concert, fireworks, bigger dome, dome station', () => {
   assert.deepEqual(Object.keys(views[1]), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3']);
   for (let n = 2; n <= 8; n++) assert.ok(diffParts(nonRoster(views[n - 1]), nonRoster(views[n])).add.length, `lv${n}: something new`);

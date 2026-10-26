@@ -51,6 +51,10 @@ export function view(lv, flags) {
   // 石堆上的老鼠；賽博最終型態（10 隻軍團）時不畫，守住骨架動畫 ≤ 12
   if (lv.rat >= 3 && !(lv.rat >= 5 && flags.ratBranch === 'cyber')) v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
     spots: [{ ...at('rocks', -0.4, 0.3, 0.52), yaw: 0.6 }, { ...at('rocks', 0.5, -0.2, 0.44), yaw: -2.2 }] };
+  // 外星 Lv5（變異鼠加冕）：石堆小島一圈綠光（外星結局的降落場前身，物品 v2 §8）
+  if (lv.rat >= 5 && flags.ratBranch === 'alien') v['sat.rocksRing'] = { kind: 'compound', at: island('rocks'), shadow: false, footprint: false, parts: [
+    { kind: 'torus', pos: [0, 0.06, 0], scale: [2.2, 2.2, 1], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
+  ] };
   const open = allMax(lv);
   v['sat.chest'] = { kind: 'compound', at: at('chest'), open, parts: open ? [
     { kind: 'rbox', pos: [0.2, 0.52, -0.02], scale: [0.58, 0.08, 0.43], rot: [-1.2, 0, 0], color: GOLD },

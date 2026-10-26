@@ -261,14 +261,3 @@ test('R11: key nodes are flagged on token Lv7/Lv10 and milk Lv7/Lv10 only; token
   const beats = buildTurn([{ kind: 'grow', item: 'token', from: 9, to: 10 }], { ...base([quietTower, token]), lv: { ...zero, token: 9 }, montage: true }, ctx);
   assert.ok(beats.some(b => b.kind === 'fly'), 'fly beat kept in the montage');
 });
-// 新級數（§4）：物品模組還沒改寫的，超過舊 max 的級數不查劇本，走預設 apply + LEVEL UP
-test('a grow above the item’s old max falls back to the default script', () => {
-  // 物品 v2 過渡期：珍奶、棒球改寫完（任務 8）拿老鼠（舊 max 5）當例子——規則不會長到 6，這裡直接造一個超過舊 max 的事件
-  const asked = [];
-  const rat = { id: 'rat', view() {}, script: { grow: Object.fromEntries([5, 6].map(n => [n, (e, s, c) => { asked.push(n); return [c.B.wait(3)]; }])) } };
-  const raw = buildTurn([{ kind: 'grow', item: 'rat', from: 5, to: 6 }], base([quietTower, rat]), fakeCtx());
-  assert.deepEqual(asked, []);
-  assert.deepEqual(between(raw, 0).map(b => b.kind), ['focus', 'apply', 'levelUp', 'apply']);
-  buildTurn([{ kind: 'grow', item: 'rat', from: 4, to: 5 }], base([quietTower, rat]), fakeCtx());
-  assert.deepEqual(asked, [5], 'levels up to the old max still use the module script');
-});

@@ -1,5 +1,6 @@
 // 連鎖規則引擎：place(state, id) → { state, events }。不可變，Node 與瀏覽器共用。
-// 語意見設計文件 §6.2 與物品 v2 §3：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合一步：+1 或跳級 +2；連 delta 最多 +2）→ 回合結束反應。
+// 語意見設計文件 §6.2 與物品 v2 §3：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合一步：+1 或跳級 +2；連 delta 最多 +2）
+// → 被 delay 擋住的記 stall → 等待 → 回合結束反應。
 import * as defaultSpec from './spec.js';
 import { compile } from './conditions.js';
 
@@ -181,6 +182,13 @@ function turn(state, id, spec, rules) {
       }
     }
     if (!changed) break;
+  }
+
+  // 只差多等一回合的物品（+1 條件成立、delay[n] 擋著，颱風賴在巨蛋）：記一個 stall 事件（演出層演「……」）；不算在等誰
+  for (const k of spec.ORDER) {
+    const it = rules.items[k], lv = s.lv[k], n = lv + 1;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || !it.delay[n]) continue;
+    if (it.delay[n](s) && s.held[k] < 2 && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
   }
 
   // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；

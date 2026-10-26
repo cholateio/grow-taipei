@@ -11,7 +11,6 @@ import { anchorWorld, cellOf } from '../src/actors/anchors.js';
 import { OVERVIEW_DIR } from '../src/scene/camera.js';
 import { C } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
-import { OLD_MAX } from '../src/actors/clamp.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
@@ -33,7 +32,7 @@ const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.
 // 鏡頭方向（水平）：OVERVIEW_DIR 指向鏡頭
 const CAM = (() => { const n = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z); return { x: OVERVIEW_DIR.x / n, z: OVERVIEW_DIR.z / n }; })();
 
-test('boba is off the transition clamp (max 7)', () => { assert.ok(!('boba' in OLD_MAX)); assert.equal(spec.ITEMS.boba.max, 7); });
+test('boba has its v2 ladder (max 7)', () => { assert.equal(spec.ITEMS.boba.max, 7); });
 
 // ── view：每一級看得見的東西都不一樣（§4.7）──
 test('boba has something new at every level 1–7: cart, queue, shop, fountain, branch, flagship, festival', () => {

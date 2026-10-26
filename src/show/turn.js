@@ -12,11 +12,12 @@
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
 //   關鍵劇本的每一拍（together 裡也是）標 keep，蒙太奇不過濾、超過 MONTAGE_CAP 拿掉走路時也不拿，倒數回合裡照樣看得到。
-// 過渡期（計畫 4 任務 2）：超過舊 max 的級數（actors/clamp.js 的 OLD_MAX）不查模組劇本，走預設。
-import { foldEvent } from '../rules/engine.js';
+// 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
+//   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。等待圖框照舊（謎題提示）；
+//   回合末的 settle 照 101 的劇本，但只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）。
+import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
-import { scripted } from '../actors/clamp.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
 
@@ -66,6 +67,14 @@ function defaults(e) {
   return [B.apply(e, { blink: false })];
 }
 
+// 登陸之後的事件（indoors）：升級 → [apply, LEVEL UP]；改級的反應 → [apply, LEVEL UP／DOWN]；其他 → 閃白套用
+function indoors(e) {
+  if (e.kind === 'grow') return [B.apply(e), B.levelUp(e.item)];
+  return e.delta && e.delta.to !== e.delta.from ? defaults(e) : [B.apply(e)];
+}
+// 登陸回合的 settle（101 跳階）：只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）——不走路、不先飛去 101
+const indoorSettle = b => b.kind === 'apply' || b.kind === 'levelUp' || (b.kind === 'focus' && b.target === 'home');
+
 // 扶正：零件當場轉回來、閃白 BLINK 秒；跳過時 end 照樣轉回來（閃白由 snap 收掉）
 function upright(key) {
   const fix = c => { const o = c.stage.partObject(key); if (o) o.rotation.z = 0; };
@@ -94,6 +103,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
+  let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
   const out = [...(ctx.stage?.tilted ?? [])].map(upright);
   if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR)));
 
@@ -105,8 +115,9 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     if (e.kind === 'settle') settled = total;
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
+    if (landed && e.kind !== 'wait' && e.kind !== 'settle') { out.push(mark(e), ...indoors(e), B.apply(e)); return; }
     // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
-    const keyFn = e.kind === 'grow' && scripted(e.item, e.to) ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
+    const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
     const jumped = e.kind === 'grow' && e.jump && events[i - 1]?.kind === 'grow' && events[i - 1].item === e.item && events[i - 1].to === e.from;
     let beats;
     if (jumped && !key) {
@@ -123,15 +134,16 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       }
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
-      const fn = { placed: sc?.placed, grow: scripted(e.item, e.to) ? sc?.grow?.[e.to] : undefined, fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
+      const fn = { placed: sc?.placed, grow: sc?.grow?.[e.to], fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
+      if (landed && e.kind === 'settle') beats = keepOnly(beats, indoorSettle);
     }
     if (key) markKeep(beats);
     if (montage) beats = keepOnly(beats, b => b.keep || MONTAGE_KEEP.includes(b.kind));
     // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
-    if (e.kind !== 'wait' && shows(beats)) {
+    if (e.kind !== 'wait' && !landed && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
       if (cell) {
         if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));
@@ -142,6 +154,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
     out.push(mark(e), ...lead, ...beats, B.apply(e));
+    if (landsTyphoon(e)) landed = true;
   });
 
   // 收尾：劇本手上的人回日常；全島效果照舞台最後的狀態瞄準（演到這拍才讀，跳過時 ctx.instant 讓它貼齊）；

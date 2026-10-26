@@ -317,6 +317,23 @@ test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn 
   assert.equal(advance(lingering, real).state.lv.typhoon, 3);
   assert.equal(advance({ ...lingering, lv: { ...lingering.lv, chip: 6 } }, real).state.lv.typhoon, 2);
 });
+// 計畫 4 任務 9：只差多等一回合（+1 條件成立、delay 擋著）時記一個 stall 事件（演出層：雲停在巨蛋上空冒「……」）；
+// 缺幫手（燈泡 <6）照舊是 wait，不記 stall；第二回合照常長
+test('the typhoon delay records one stall event on the extra turn (up passes, delay holds), then grows', () => {
+  const s0 = createState(real);
+  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 6, chip: 6 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, locked: { bulb: true, chip: true, baseball: true }, turn: 9 };
+  const r1 = advance(lingering, real);
+  assert.equal(r1.state.lv.typhoon, 2);
+  assert.deepEqual(r1.events.filter(e => e.kind === 'stall'), [{ kind: 'stall', item: 'typhoon' }]);
+  assert.ok(!r1.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'not a wait');
+  const r2 = advance(r1.state, real);
+  assert.equal(r2.state.lv.typhoon, 3); assert.ok(!r2.events.some(e => e.kind === 'stall'));
+  const pushed = advance({ ...lingering, lv: { ...lingering.lv, chip: 8 } }, real);
+  assert.equal(pushed.state.lv.typhoon, 3); assert.ok(!pushed.events.some(e => e.kind === 'stall'), 'the shield pushes it away: no stall');
+  const dark = advance({ ...lingering, lv: { ...lingering.lv, bulb: 5 } }, real);
+  assert.ok(!dark.events.some(e => e.kind === 'stall'), 'waiting for the bulb is a wait, not a stall');
+  assert.ok(dark.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')));
+});
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   let s = place(createState(real), 'milk', real).state; s = advance(s, real).state;    // 鮮奶 2（早餐店）
   const r = place(s, 'rat', real);

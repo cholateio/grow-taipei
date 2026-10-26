@@ -42,7 +42,7 @@ const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
-const look = md => `${!!md?.antenna},${!!md?.eye}`;   // 模型的「配件」：天線、獨眼
+const look = md => `${!!md?.antenna},${!!md?.eye},${!!md?.crown}`;   // 模型的「配件」：天線、獨眼、王冠
 const body = md => JSON.stringify([md?.path, md?.h, md?.anim, md?.tint, md?.glow]);   // 模型本體：變了就換一個 holder
 // path 日常：第 s 公尺的位置、離 p 最近的那一點在第幾公尺（P 是 pathOf 貼地後的折線）
 const pointAt = (P, s) => locateOnPath(P.path, P.lens, s, P.loop);
@@ -71,9 +71,15 @@ function nearestS(P, p) {
 }
 const headYOf = spec => (spec.model ? HEAD_Y.model * spec.model.h / MODEL_H : HEAD_Y.people) * (spec.scale ?? 1);
 
-// 模型身上的小配件（從 rat.js 的 builders.rats 搬來）：機器鼠天線、變異鼠的大眼睛
-function extraSpecs(md, h) {
-  const out = [];
+// 模型身上的小配件（從 rat.js 的 builders.rats 搬來；站頂的王冠鼠零件也用）：機器鼠天線、變異鼠的大眼睛、
+// 老鼠 Lv5 的王冠（金色圈＋四個尖，照模型高度縮放，戴在頭頂偏前）
+export const CROWN_GOLD = 0xe8c547;
+export function modelExtras(md, h) {
+  const out = [], k = h / MODEL_H;
+  if (md.crown) out.push({ kind: 'compound', at: { x: 0, y: h * 0.86, z: h * 0.2 }, shadow: false, parts: [
+    { kind: 'cylinder', pos: [0, 0.02 * k, 0], scale: [0.09 * k, 0.04 * k, 0.09 * k], color: CROWN_GOLD },
+    ...[0, 1, 2, 3].map(i => { const a = i * Math.PI / 2 + Math.PI / 4; return { kind: 'cone', pos: [Math.cos(a) * 0.035 * k, 0.06 * k, Math.sin(a) * 0.035 * k], scale: [0.025 * k, 0.05 * k, 0.025 * k], color: CROWN_GOLD }; }),
+  ] });
   if (md.antenna) out.push({ kind: 'compound', at: { x: 0, y: h, z: 0 }, shadow: false, parts: [{ kind: 'cylinder', pos: [0, 0.04, 0], scale: [0.01, 0.08, 0.01], color: C.ink }, { kind: 'sphere', pos: [0, 0.09, 0], scale: 0.025, color: C.neonBlue, glow: C.neonBlue }] });
   if (md.eye) out.push({ kind: 'compound', at: { x: 0, y: h * 0.78, z: h * 0.32 }, shadow: false, parts: [{ kind: 'sphere', pos: [0, 0, 0], scale: [0.09, 0.09, 0.05], color: C.white }, { kind: 'sphere', pos: [0, 0, 0.02], scale: [0.04, 0.04, 0.03], color: C.ink }] });
   return out;
@@ -175,7 +181,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.dress = md; if (!m.holder) return;
     for (const e of m.extras) { e.dispose?.(); e.object.removeFromParent(); }
     m.extras = [];
-    if (build) for (const s of extraSpecs(md, md.h * m.scale)) { const p = build(s); m.extras.push(p); m.holder.add(p.object); }
+    if (build) for (const s of modelExtras(md, md.h * m.scale)) { const p = build(s); m.extras.push(p); m.holder.add(p.object); }
   }
 
   // 換裝閃白（§13.2）：小人整個實例閃白；模型閃 holder——換了模型、新 holder 還沒到就記著，到了再閃

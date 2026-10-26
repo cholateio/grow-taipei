@@ -10,7 +10,6 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
-import { OLD_MAX } from '../src/actors/clamp.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
 import * as sat from '../src/actors/satellites.js';
 import * as chip from '../src/actors/chip.js';
@@ -325,7 +324,7 @@ const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.
 const V = Array.from({ length: 10 }, (_, n) => whole(atLv(n)));
 const NEON = ['bulb.neon.station', 'bulb.neon.bridges', 'bulb.neon.market'];
 
-test('bulb is off the transition clamp (max 9)', () => { assert.ok(!('bulb' in OLD_MAX)); assert.equal(spec.ITEMS.bulb.max, 9); });
+test('bulb has its v2 ladder (max 9)', () => { assert.equal(spec.ITEMS.bulb.max, 9); });
 test('bulb has something new at every level 1–9: substation (6), turbine and lighthouse (7), the cable (8), island-wide neon (9)', () => {
   for (let n = 1; n <= 9; n++) assert.ok(diffParts(nonRoster(V[n - 1]), nonRoster(V[n])).add.length, `lv${n}: something new`);
   assert.ok(V[5]['tower.show'] && !V[4]['tower.show'], 'Lv5 light show on 101');

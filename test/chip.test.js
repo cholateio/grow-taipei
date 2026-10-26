@@ -14,7 +14,6 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
-import { OLD_MAX } from '../src/actors/clamp.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 const AT = anchorWorld('chip'), CELL = cellOf('chip'), TOWER = anchorWorld('tower');
@@ -29,7 +28,7 @@ const at = n => lv({ chip: n, bulb: n >= 6 ? 8 : 3, token: n >= 7 ? 7 : 3, milk:
 const views = Array.from({ length: 10 }, (_, n) => both(at(n)));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 
-test('chip is off the transition clamp (max 9)', () => { assert.ok(!('chip' in OLD_MAX)); assert.equal(spec.ITEMS.chip.max, 9); });
+test('chip has its v2 ladder (max 9)', () => { assert.equal(spec.ITEMS.chip.max, 9); });
 
 // ── 每一級看得見什麼（§4.3）──
 test('chip view has something new at every level 1–9 (chip cell, the cable, the antenna and shield on 101)', () => {

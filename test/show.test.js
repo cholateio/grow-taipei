@@ -404,16 +404,10 @@ test('skip during a jump lands both levels', async () => {
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
 });
 
-// 物品 v2 新級數：還沒改寫的演員 view 把超過舊 max 的級數夾住（跟舊 max 一模一樣，不丟錯、不畫垃圾）；
-// 兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿
-test('both new solutions play to the end without a script error at every level (views clamp levels they do not know yet)', async () => {
-  const { OLD_MAX, clampLv } = await import('../src/actors/clamp.js');
-  const top = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max])), old = { ...top, ...OLD_MAX };
-  assert.deepEqual(clampLv(top), old); assert.equal(clampLv(old), old, 'nothing above the old max → the same object');
-  for (const mod of ALL) {
-    for (const id of spec.ORDER) for (let n = 0; n <= top[id]; n++) assert.doesNotThrow(() => mod.view({ ...old, [id]: n }, {}, {}), `${mod.id} with ${id} ${n}`);
-    if (spec.ORDER.includes(mod.id) && mod.id in OLD_MAX) assert.equal(JSON.stringify(mod.view(top, {}, {})), JSON.stringify(mod.view(old, {}, {})), `${mod.id} clamps`);
-  }
+// 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿
+test('both new solutions play to the end without a script error at every level', async () => {
+  const top = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));
+  for (const mod of ALL) for (const id of spec.ORDER) for (let n = 0; n <= top[id]; n++) assert.doesNotThrow(() => mod.view({ ...top, [id]: n }, {}, {}), `${mod.id} with ${id} ${n}`);
   const { show, run, bubblesLog } = await headlessShow();
   for (const order of SOLUTIONS) {
     show.reset(); bubblesLog.length = 0;
@@ -427,4 +421,62 @@ test('both new solutions play to the end without a script error at every level (
     assert.deepEqual(show.stage.lv, top, 'all max');
     assert.ok(bubblesLog.filter(b => b.text === 'LEVEL UP').length >= grows, `${order.join('>')}: a LEVEL UP for every grow (${grows})`);
   }
+});
+
+// 使用者規則（計畫 4 任務 9）：颱風登陸（landsTyphoon）之後，同一回合的事件只演 [apply, LEVEL UP]——大家躲在屋裡，沒有人走路；
+// 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；等待圖框照舊（謎題提示，代表角色躲起來就掛在建築上）
+test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP: no walk, gesture, bubble or lead focus; blinks still happen', async () => {
+  const { buildTurn } = await import('../src/show/turn.js');
+  const { B: beats } = await import('../src/show/beats.js');
+  const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  for (const order of SOLUTIONS) {
+    let s = engine.createState(spec), events = null, before = null;
+    for (const step of [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
+      const r = step(s);
+      if (r.events.some(engine.landsTyphoon)) { events = [...r.events, { kind: 'settle' }]; before = s; break; }
+      s = r.state;
+    }
+    assert.ok(events, `${order.join('>')} has a landing turn`);
+    const i0 = events.findIndex(engine.landsTyphoon);
+    assert.ok(events.slice(i0 + 1).some(e => e.kind === 'grow'), 'something grows after the landing');
+    for (const montage of [false, true]) {
+      const ctx = { B: beats, stage: { tilted: new Set() }, roster: { members: () => [], keys: () => [], nearest: () => null } };
+      const out = buildTurn(events, { modules: ALL, spec, lv: before.lv, flags: before.flags, meta: { total: 0 }, montage }, ctx);
+      // 把拍依 mark 切成每個事件的一段
+      const seg = new Map(); let cur = null;
+      for (const b of out) { if (b.kind === 'mark') { b.start({ onMark: e => { cur = e; } }); seg.set(cur, []); } else if (cur) seg.get(cur).push(b); }
+      assert.ok(flat(seg.get(events[i0])).some(b => b.kind === 'crowd' || b.kind === 'walk'), 'the landing itself still sends people to the doors');
+      for (const e of events.slice(i0 + 1)) {
+        const kinds = flat(seg.get(e)).map(b => b.kind), what = `${montage ? 'montage ' : ''}${e.kind} ${e.item ?? ''} ${e.to ?? e.flag?.name ?? e.story ?? ''}`;
+        if (e.kind === 'wait') continue;
+        for (const k of ['walk', 'gesture', 'bubble', 'jump', 'spawn', 'crowd', 'trainStop', 'wait']) assert.ok(!kinds.includes(k), `${what}: no ${k} (${kinds})`);
+        if (e.kind === 'settle') continue;
+        assert.ok(!kinds.includes('focus'), `${what}: no lead focus (${kinds})`);
+        assert.ok(flat(seg.get(e)).some(b => b.kind === 'apply' && b.blink !== false), `${what}: blinks`);
+        if (e.kind === 'grow') assert.deepEqual(kinds, ['apply', 'levelUp', 'apply'], what);
+      }
+    }
+  }
+});
+test('the landing turn plays live with a LEVEL UP for every grow after the landing; the next turn people walk out of their doors', async () => {
+  const { show, run, bubblesLog } = await headlessShow();
+  let s = engine.createState(spec);
+  const steps = [...SOLUTIONS[1].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const [i, step] of steps.entries()) {
+    const r = step(s); s = r.state;
+    if (!r.events.some(engine.landsTyphoon)) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+    const n = bubblesLog.length, after = r.events.slice(r.events.findIndex(engine.landsTyphoon) + 1).filter(e => e.kind === 'grow').length;
+    await run([...r.events, { kind: 'settle' }], { montage: i >= SOLUTIONS[1].length });
+    assert.ok(bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').length >= after + 1, 'LEVEL UP for the landing and every grow after it');
+    const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
+    assert.ok(hidden.length > 0, 'people indoors at the end of the landing turn');
+    const next = steps[i + 1](s), p = show.turn([...next.events, { kind: 'settle' }], { montage: true });
+    let walked = false;
+    for (let t = 0; t < 0.5; t += 1 / 30) { show.update(1 / 30, t); walked ||= hidden.some(m => m.walking); }
+    assert.ok(hidden.every(m => !m.hidden), 'everyone out as the next turn starts');
+    assert.ok(walked, 'they walk home');
+    show.skip(); await p;
+    return;
+  }
+  assert.fail('no landing turn');
 });

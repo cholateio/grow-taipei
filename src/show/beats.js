@@ -293,7 +293,8 @@ export function trainDepart() {
 // 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
 // spur（'windmill'／'playground'）：停的不是站，是支線那頭的離島站——車頭先進到支線入口（token.spurTrip 的角 a），
 //   環上的時鐘停住，ctx.rail.trip 帶著車頭在支線上的位置 s：開出去（SPUR_SPEED）→ 在島那頭停 stop 秒 → 倒回環上，再照常開。
-//   during 在車頭到島那頭時才開始演；跳過、中止時 trip 收掉（列車回到環上原本的時鐘）
+//   支線版進出都緩：趕路（最多 boost 倍）的最後 SPUR_BRAKE 秒線性減速停在入口；倒回環上後 SPUR_PULL 秒從 0 加速回原速
+//   （這段算在拍裡）。during 在車頭到島那頭時才開始演；跳過、中止時 trip 收掉（列車回到環上原本的時鐘）
 // during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
 // together（還沒 start，dur 是 0）取子拍估計的最長
@@ -301,12 +302,25 @@ const durOf = (b, ctx) => {
   if (b.kind === 'together' && b.beats) return Math.max(0, ...b.beats.map(x => durOf(x, ctx)));
   const d = b.estimate ? b.estimate(ctx) : typeof b.dur === 'function' ? b.dur(ctx) : b.dur; return d > 0 ? d : 0;
 };
+export const SPUR_BRAKE = 0.6, SPUR_PULL = 0.7;
 export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur = null, arrive: within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST } = {}) {
   const subs = [].concat(during), trip = spur ? spurTrip(spur) : null, out = trip ? trip.total / SPUR_SPEED : 0;
   const hold = trip ? out + stop + out : stop;   // 環上的時鐘停多久：支線來回加上在島那頭停的
   // 進支線後第 u 秒車頭在支線上第幾公尺（緩起緩停）
   const tripS = u => trip.total * (u < out ? ease(u / out) : u < out + stop ? 1 : 1 - ease(Math.min(1, (u - out - stop) / out)));
   let k = 1, arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }
+  let need = 0, offset0 = 0, cruise = true;   // 支線版：要趕的環上時間、開始時的時鐘偏移（每幀直接算偏移 = offset0 + 環上走了多少 − t）、路夠長先等速再減速
+  // 支線版第 u 秒環上走了多少（以原速的秒計）：趕路（k 倍、最後 SPUR_BRAKE 秒減速到 0；路太短就從原速直接減速）→ 停住 → 加速回原速
+  const ringRun = u => {
+    if (u < arrive) {
+      if (!cruise) return u - u * u / (2 * arrive);
+      const c = arrive - SPUR_BRAKE, w = u - c;
+      return u <= c ? k * u : k * c + k * (w - w * w / (2 * SPUR_BRAKE));
+    }
+    const w = u - arrive - hold;
+    if (w <= 0) return need;
+    return w < SPUR_PULL ? need + w * w / (2 * SPUR_PULL) : need + SPUR_PULL / 2 + (w - SPUR_PULL);
+  };
   const open = (ctx, t0) => {
     while (i < subs.length) {
       const beat = subs[i++], shown = beat.start?.(ctx), d = shown === false ? 0 : (typeof beat.dur === 'function' ? beat.dur(ctx) : beat.dur);
@@ -316,23 +330,29 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
     cur = null;
   };
   return {
-    kind: 'trainStop',
+    kind: 'trainStop', during: subs,   // during 原樣留在拍上（測試看裡面的拍）
     dur: () => arrive + total,
     start(ctx) {
       i = 0; cur = null;
       const speed = trainSpeed(ctx);
       if (!partOf('token.train', ctx) || !speed) return false;
-      const a0 = (ctx.now + ctx.rail.offset) * speed, target = trip ? trip.a : at, need = ((((target - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
+      const a0 = (ctx.now + ctx.rail.offset) * speed, target = trip ? trip.a : at;
+      need = ((((target - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
       k = need <= within ? 1 : Math.min(boost, need / within);
       arrive = need / k; t = 0;
+      if (trip) { offset0 = ctx.rail.offset; cruise = need >= k * SPUR_BRAKE / 2; arrive = cruise ? need / k + SPUR_BRAKE / 2 : 2 * need; }
       const sub = subs.reduce((a, b) => a + durOf(b, ctx), 0);
-      total = trip ? out + Math.max(stop + out, sub) : Math.max(stop, sub);
+      total = trip ? out + Math.max(stop + out + SPUR_PULL, sub) : Math.max(stop, sub);
     },
     step(_k, dt, ctx) {
       // 跨過到站、開車那一刻的一幀拆開：進站的部分加速、停站的部分停住、之後照常
-      const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + hold - t - run));
-      ctx.rail.offset += run * (k - 1) - held; t += dt;
-      if (trip) ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
+      if (trip) {
+        t += dt; ctx.rail.offset = offset0 + ringRun(t) - t;
+        ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
+      } else {
+        const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + hold - t - run));
+        ctx.rail.offset += run * (k - 1) - held; t += dt;
+      }
       if (t < arrive + out) return;
       if (!cur && i === 0) open(ctx, arrive + out);
       while (cur) {

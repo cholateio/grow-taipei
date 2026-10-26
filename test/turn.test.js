@@ -227,6 +227,32 @@ test('two consecutive grow events of one item in a turn: the second plays only a
   assert.deepEqual(between(apart, 2).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
 });
 
+// 裁決 R11：◆ 關鍵節點（劇本函數帶 key: true）在正解裡也要看得到——跳級的第二級落在關鍵級就演完整劇本（第一級照常演自己的），
+// 倒數蒙太奇裡關鍵劇本的拍都帶 keep、不被過濾，超過 MONTAGE_CAP 拿掉走路時也不拿它們
+const keyChip = () => {
+  const asked = [], five = (e, s, c) => { asked.push(e.to); return [c.B.wait(2), { kind: 'fly', dur: 3 }, c.B.walk(walker, { x: 40, y: 0, z: 0 }), c.B.levelUp('chip')]; };
+  five.key = true;
+  return { asked, mod: { id: 'chip', view() {}, script: { grow: { 4: (e, s, c) => { asked.push(e.to); return [c.B.wait(1), c.B.levelUp('chip')]; }, 5: five } } } };
+};
+test('R11: the second level of a jump plays its full script when it is a key node; a montage keeps every beat of a key script', () => {
+  const { asked, mod } = keyChip(), jump = { kind: 'grow', item: 'chip', from: 4, to: 5, jump: true };
+  const raw = buildTurn([{ kind: 'grow', item: 'chip', from: 3, to: 4 }, jump, { kind: 'settle' }], base([quietTower, mod]), fakeCtx({ nav: navOf(40) }));
+  assert.deepEqual(asked, [4, 5], 'both levels ask their scripts');
+  assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'fly', 'walk', 'levelUp', 'apply'], 'the key script, no extra focus on the same cell');
+  // 蒙太奇：fly、wait 不在 MONTAGE_KEEP 也留著；走 40 公尺超過上限也不拿掉（keep）
+  const walkMilk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.walk(walker, { x: 40, y: 0, z: 0 }), c.B.levelUp('milk')] } };
+  const ctx = fakeCtx({ nav: navOf(40) }), m = noMarks(buildTurn([{ kind: 'grow', item: 'chip', from: 4, to: 5 }, { kind: 'placed', item: 'milk', to: 1 }], { ...base([quietTower, mod, walkMilk]), montage: true }, ctx));
+  for (const k of ['wait', 'fly']) assert.ok(m.some(b => b.kind === k && b.keep), `${k} kept`);
+  assert.equal(m.filter(b => b.kind === 'walk').length, 1, 'only the key walk survives the walk-strip');
+  assert.ok(m.find(b => b.kind === 'walk').keep);
+});
+test('R11: key nodes are flagged on token Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 in a countdown montage still flies the speeders in', async () => {
+  const token = await import('../src/actors/token.js'), milkMod = await import('../src/actors/milk.js');
+  for (const [mod, keys] of [[token, [7, 10]], [milkMod, [7, 10]]]) assert.deepEqual(Object.entries(mod.script.grow).filter(([, f]) => f.key).map(([n]) => +n), keys, mod.id);
+  const ctx = fakeCtx({ roster: { members: () => [], nearest: () => null, keys: () => [] } });
+  const beats = buildTurn([{ kind: 'grow', item: 'token', from: 9, to: 10 }], { ...base([quietTower, token]), lv: { ...zero, token: 9 }, montage: true }, ctx);
+  assert.ok(beats.some(b => b.kind === 'fly'), 'fly beat kept in the montage');
+});
 // 新級數（§4）：物品模組還沒改寫的，超過舊 max 的級數不查劇本，走預設 apply + LEVEL UP
 test('a grow above the item’s old max falls back to the default script', () => {
   const asked = [];

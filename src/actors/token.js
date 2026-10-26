@@ -187,7 +187,7 @@ function speeder(i) {
   const m = SPEEDERS[i], phase = Math.atan2(AT.z - TOWER.z, AT.x - TOWER.x), sea = 0.26 + i * 0.35;   // 繞完從朝車站那側離開；從右前方的海上飛進來
   return {
     kind: 'orbit', at: TOWER, r: 1.7 + 0.3 * i, h: 3.4 + 0.6 * i, phase, ...ORBIT,
-    from: { x: Math.cos(sea) * 14, y: 3.5, z: Math.sin(sea) * 14 }, park: { ...offset(AT, (i - 1) * 0.33, 0.02, ROOF_Y), yaw: 0 },
+    from: { x: Math.cos(sea) * 14, y: 3.5, z: Math.sin(sea) * 14 }, park: offset(AT, (i - 1) * 0.33, 0.02, ROOF_Y),   // 停好朝最後一段的方向（從 101 那側飛過來）
     path: m.path, size: 0.3 * m.size[1] / m.size[0], ry: Math.PI, rest: 16 + 6 * i, footprint: false,   // 模型機頭朝 −z：轉半圈才朝前進方向
     tint: { '^metalRed$': m.accent, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink },
   };
@@ -319,16 +319,16 @@ export const script = {
         B.together([B.bubble(B.trainHead(ctx), '♪', 1.2), B.gesture(st, 'jump')]), B.levelUp('token'), B.home(st),
       ];
     },
-    // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 2 秒）→ 開進支線、
-    //   到風車島那頭停一下、倒回環上 → 回全景定格 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
+    // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
+    //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   支線 0.8 秒長完（每秒 3 公尺多），比車速 2.5 快，列車追不上還沒長好的那一段
     7(e, s, ctx) {
       const { B } = ctx, keys = SPURS.map(k => `token.spur.${k}`);
       return [
         B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: keys, blink: false }),
-        B.together([...keys.map(k => B.scaleIn(k, { axis: 'z', dur: 0.8 })), B.trainStop({ spur: 'windmill', stop: 0.8, arrive: 2, boost: 9 })]),
-        B.apply(e), B.focus('home', { hold: 2.0 }), B.levelUp('token'),
+        B.together([...keys.map(k => B.scaleIn(k, { axis: 'z', dur: 0.8 })), B.trainStop({ spur: 'windmill', stop: 0.4, during: [B.focus('home', { hold: 2.0 })] })]),
+        B.apply(e), B.levelUp('token'),
       ];
     },
     // 接駁車：鏡頭到遊樂場島（zoom 0.8）→ 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥3（有小學）時兩個小孩下車走到溜滑梯
@@ -367,3 +367,5 @@ export const script = {
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）
   rep: (s, ctx) => ctx.roster.members('token.staff').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+script.grow[7].key = script.grow[10].key = true;

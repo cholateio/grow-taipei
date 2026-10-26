@@ -540,7 +540,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       if (m.gone || m.hidden || m.mode === 'script') continue;
       const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
       // 只走到一半時 y 不用兩點的直線內插（拱橋上那條弦會陷進橋面）：落在走路格上就貼那裡的地面
-      if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.walkable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
+      if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.passable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
       if (!loose && !nav.passable(m.pos.x, m.pos.z)) m.pos = p;
       place(m);
     }

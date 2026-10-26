@@ -10,6 +10,8 @@
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——第二個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
+// ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
+//   關鍵劇本的每一拍（together 裡也是）標 keep，蒙太奇不過濾、超過 MONTAGE_CAP 拿掉走路時也不拿，倒數回合裡照樣看得到。
 // 過渡期（計畫 4 任務 2）：超過舊 max 的級數（actors/clamp.js 的 OLD_MAX）不查模組劇本，走預設。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
@@ -40,6 +42,8 @@ const some = (beats, f) => beats.some(b => f(b) || (b.kind === 'together' && b.b
 const shows = beats => some(beats, b => b.kind !== 'together' && !(b.kind === 'apply' && b.blink === false));
 const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
 
+// 關鍵劇本：每一拍（together 裡也是）標 keep
+function markKeep(beats) { for (const b of beats) { b.keep = true; if (b.kind === 'together' && b.beats) markKeep(b.beats); } return beats; }
 // 只留 keep(拍) 為真的拍；together 裡面也過濾，過濾完空了就整個拿掉
 function keepOnly(beats, keep) {
   const out = [];
@@ -100,9 +104,10 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
     // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
+    const keyFn = e.kind === 'grow' && scripted(e.item, e.to) ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
     const jumped = e.kind === 'grow' && e.jump && events[i - 1]?.kind === 'grow' && events[i - 1].item === e.item && events[i - 1].to === e.from;
     let beats;
-    if (jumped) {
+    if (jumped && !key) {
       out.push(mark(e), B.apply(e), B.levelUp(e.item), B.apply(e));
       return;
     }
@@ -119,7 +124,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       const fn = { placed: sc?.placed, grow: scripted(e.item, e.to) ? sc?.grow?.[e.to] : undefined, fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
     }
-    if (montage) beats = keepOnly(beats, b => MONTAGE_KEEP.includes(b.kind));
+    if (key) markKeep(beats);
+    if (montage) beats = keepOnly(beats, b => b.keep || MONTAGE_KEEP.includes(b.kind));
     // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
@@ -142,5 +148,5 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     kind: 'world', dur: 0,
     start(c) { c.world(worldEffects(c.stage.lv, c.stage.flags, c.stage.meta), !!c.instant); },
   }, B.focus('home', { final: true, skyline: c => c.stage.headOf('tower').y }));   // 回全景前全景跟 101 頭頂走（§14.4）
-  return montage && estimateTurn(out, ctx) > MONTAGE_CAP ? keepOnly(out, b => b.kind !== 'walk') : out;
+  return montage && estimateTurn(out, ctx) > MONTAGE_CAP ? keepOnly(out, b => b.keep || b.kind !== 'walk') : out;
 }

@@ -11,15 +11,21 @@ const ease = k => k * k * (3 - 2 * k);
 const lerp = (a, b, k) => a + (b - a) * k;
 // orbit 的一趟飛行（純函式）：t 秒時的位置與車頭方向。start 'from'（從 spec.from 飛進來）或 'park'（從停車點起飛）；
 //   legs = [飛到圓上幾秒, 從圓上飛回停車點幾秒]；圓上那一圈從角 phase 逆時針繞一圈（2π / speed 秒），車頭朝切線（同列車的 yaw）；
-//   飛完 done = true、停在 park（帶 park.yaw）
+//   飛完 done = true、停在 park，車頭朝最後一段的方向（停好不再轉）。
+//   每一段開頭車頭從上一段結束的方向轉過來（最短轉角，每秒最多 TURN_RATE、至少 TURN_MIN 秒），交界不瞬間轉向
+const TURN_RATE = 3.3, TURN_MIN = 0.3;
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const turnIn = (prev, cur, u) => { const d = wrap(prev - cur), T = Math.max(TURN_MIN, Math.abs(d) / TURN_RATE); return cur + d * Math.max(0, 1 - u / T); };
 export function orbitPose(spec, t, start = 'from') {
   const { at, r, h, speed, phase = 0, legs: [tin, tout] = [1, 1], park } = spec, from = start === 'park' ? park : spec.from;
   const lap = 2 * Math.PI / speed, E = { x: at.x + Math.cos(phase) * r, y: at.y + h, z: at.z + Math.sin(phase) * r };
-  const leg = (a, b, k) => ({ x: lerp(a.x, b.x, ease(k)), y: lerp(a.y, b.y, ease(k)), z: lerp(a.z, b.z, ease(k)), yaw: Math.atan2(b.x - a.x, b.z - a.z), done: false });
-  if (t < tin) return leg(from, E, t / tin);
-  if (t < tin + lap) { const a = phase + (t - tin) * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: Math.atan2(-Math.sin(a), Math.cos(a)), done: false }; }
-  if (t < tin + lap + tout) return leg(E, park, (t - tin - lap) / tout);
-  return { x: park.x, y: park.y, z: park.z, yaw: park.yaw ?? 0, done: true };
+  const head = (a, b) => Math.atan2(b.x - a.x, b.z - a.z), tangent = a => Math.atan2(-Math.sin(a), Math.cos(a));
+  const hIn = head(from, E), hOut = head(E, park), hPark = hOut;
+  const leg = (a, b, k, yaw) => ({ x: lerp(a.x, b.x, ease(k)), y: lerp(a.y, b.y, ease(k)), z: lerp(a.z, b.z, ease(k)), yaw, done: false });
+  if (t < tin) return leg(from, E, t / tin, start === 'park' ? turnIn(hPark, hIn, t) : hIn);
+  if (t < tin + lap) { const u = t - tin, a = phase + u * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: turnIn(hIn, tangent(a), u), done: false }; }
+  if (t < tin + lap + tout) { const u = t - tin - lap; return leg(E, park, u / tout, turnIn(tangent(phase), hOut, u)); }
+  return { x: park.x, y: park.y, z: park.z, yaw: hPark, done: true };
 }
 
 export function createPartFactory(THREE, ctx) {
@@ -122,7 +128,7 @@ export function createPartFactory(THREE, ctx) {
     object.add(model.object);
     let flying = false, start = 'from', t = 0, idle = 0;
     const put = p => { model.object.position.set(p.x - at.x, p.y - at.y, p.z - at.z); model.object.rotation.y = p.yaw; };
-    const land = () => { flying = false; idle = 0; put({ ...spec.park, yaw: spec.park.yaw ?? 0 }); };
+    const land = () => { flying = false; idle = 0; put(orbitPose(spec, Infinity)); };
     land();
     object.userData.fly = ({ delay = 0 } = {}) => { flying = true; start = 'from'; t = -delay; put(orbitPose(spec, 0, 'from')); };
     object.userData.land = land;

@@ -5,6 +5,7 @@ import * as THREE from '../vendor/three/three.module.js';
 import * as token from '../src/actors/token.js';
 import { groundAt, axialToWorld, SATELLITES, cellAt, worldToAxial, RING_R } from '../src/scene/hex.js';
 import { createPartFactory, orbitPose } from '../src/actors/parts.js';
+const { FLIGHT } = token;
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { anchorWorld, cellOf } from '../src/actors/anchors.js';
 import { offset, C } from '../src/actors/palette.js';
@@ -25,7 +26,7 @@ const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); }
 const views = Array.from({ length: 11 }, (_, n) => token.view(L({ token: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const PALETTE = new Set(Object.values(C));
-const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : b.kind === 'trainStop' ? [b, ...flat(b.during)] : [b]));
 const fakeCtx = { B, roster: { members: () => [], nearest: () => null } };
 
 // 一個零件的 draw call：compound／spur = 黏土一個 + 每種發光色一個；glb = 1（有 glow 再 +1）；列車每節一個 glb；
@@ -197,10 +198,11 @@ test('orbitPose: in from the start point, one lap on the circle (tangent yaw, he
   for (const t of [1.2, 1.2 + lap * 0.25, 1.2 + lap * 0.7]) {
     const p = orbitPose(s, t), a = Math.atan2(p.z - s.at.z, p.x - s.at.x);
     assert.ok(Math.abs(Math.hypot(p.x - s.at.x, p.z - s.at.z) - s.r) < 1e-9 && Math.abs(p.y - (s.at.y + s.h)) < 1e-9, `t ${t} on the circle`);
-    assert.ok(Math.abs(Math.sin(p.yaw) + Math.sin(a)) < 1e-9 && Math.abs(Math.cos(p.yaw) - Math.cos(a)) < 1e-9, `t ${t} tangent yaw`);
+    if (t > 1.2 + 1) assert.ok(Math.abs(Math.sin(p.yaw) + Math.sin(a)) < 1e-9 && Math.abs(Math.cos(p.yaw) - Math.cos(a)) < 1e-9, `t ${t} tangent yaw (after the turn-in)`);
   }
-  const end = orbitPose(s, 1.2 + lap + 0.8 + 0.01);
-  assert.deepEqual(end, { x: 2, y: 1.2, z: 3, yaw: 0.4, done: true });
+  // 停好的方向接著最後一段的方向（從圓上那點飛向停車點），不再轉
+  const end = orbitPose(s, 1.2 + lap + 0.8 + 0.01), E = { x: s.at.x + Math.cos(0.3) * 2, z: s.at.z + Math.sin(0.3) * 2 };
+  assert.deepEqual(end, { x: 2, y: 1.2, z: 3, yaw: Math.atan2(2 - E.x, 3 - E.z), done: true });
   assert.ok(Math.hypot(orbitPose(s, 0, 'park').x - 2, orbitPose(s, 0, 'park').z - 3) < 1e-9, 'a lap from the park point starts there');
 });
 test('orbit part: parked until fly(); flies one lap round 101 and parks again; with rest it takes off again by itself', () => {
@@ -214,6 +216,22 @@ test('orbit part: parked until fly(); flies one lap round 101 and parks again; w
   assert.ok(onCircle / 30 > 0.8 * TWO_PI / s.speed, 'spends the lap on the circle round 101'); assert.ok(parked(), 'parked after the flight');
   if (s.rest) { let off = 0; for (let t = 0; t < s.rest + 1; t += 1 / 30) { p.update(1 / 30, t); if (!parked()) off++; } assert.ok(off > 0, 'takes off again after rest'); }
   p.object.userData.land(); assert.ok(parked(), 'land() snaps to the roof');
+});
+
+// 審稿第 1 輪：每一段交界（起飛、上圓、離圓、停好）車頭不瞬間轉向——整趟（海上飛進來、停車點起飛再繞一圈）每幀轉向 ≤ 0.2 rad
+test('orbit headings turn smoothly: ≤ 0.2 rad per frame through in → lap → out → park, from the sea and from the roof', () => {
+  const s = views[10]['token.cars.2'], p = factory().build(s), yaw = () => p.object.children[0].rotation.y;
+  const turn = (a, b) => Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
+  p.object.userData.fly(); p.update(0, 0);   // 飛到海上那一刻是瞬移，不算
+  let prev = yaw(), worst = 0, frames = 0, retook = false;
+  const T = FLIGHT + s.rest + FLIGHT + 2;
+  for (let t = 0; t < T; t += 1 / 30) {
+    const parked = Math.abs(p.object.children[0].position.y - (s.park.y - s.at.y)) < 1e-9;
+    p.update(1 / 30, t); frames++;
+    if (parked && Math.abs(p.object.children[0].position.y - (s.park.y - s.at.y)) > 1e-9) retook = true;
+    worst = Math.max(worst, turn(prev, yaw())); prev = yaw();
+  }
+  assert.ok(retook, 'took off again from the roof'); assert.ok(worst <= 0.2, `worst turn ${worst.toFixed(3)} rad in a frame`);
 });
 
 // ── 劇本（§6：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、回全景定格）──
@@ -258,13 +276,23 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
 test('trainStop({ spur }) takes the train out to the island end, holds it there, brings it back; end clears the trip', () => {
   const tl = createTimeline(), rail = { offset: 0 }, trip = token.spurTrip('windmill');
   const ctx = { now: 0, rail, stage: { flags: {}, partObject: k => (k === 'token.train' ? {} : null) } };
-  const atEnd = [], log = [];
+  const atEnd = [], log = [], steps = [];   // steps：環上（沒在支線上）每幀車頭轉了多少 rad，與這幀前後在不在支線上
+  ctx.now = (trip.a + 0.2) / 0.35;   // 剛過入口：要繞將近一圈，趕路用到上限 4.5 倍
   tl.play([B.trainStop({ spur: 'windmill', stop: 1, during: [{ kind: 'x', dur: 0.2, start: () => log.push('x') }] })], ctx);
-  for (let i = 0; i < 30 * 12 && tl.busy; i++) {
+  let prevA = (ctx.now + rail.offset) * 0.35, prevTrip = null;
+  for (let i = 0; i < 30 * 15 && tl.busy; i++) {
     ctx.now += 1 / 30; tl.update(1 / 30);
-    const hd = token.trainPose(ctx.now + rail.offset, 0, { trip: rail.trip });
+    const hd = token.trainPose(ctx.now + rail.offset, 0, { trip: rail.trip }), a = (ctx.now + rail.offset) * 0.35;
     if (Math.hypot(hd.x - trip.path.at(-1).x, hd.z - trip.path.at(-1).z) < 0.05) atEnd.push(ctx.now);
+    if (!rail.trip) steps.push({ d: a - prevA, before: !!prevTrip });
+    const was = prevTrip; prevTrip = rail.trip; prevA = a;
+    if (rail.trip && !was) steps.push({ d: 0, into: steps.at(-1)?.d ?? 0 });
   }
+  // 趕路不超過 4.5 倍；開進入口前一幀已經慢到不比原速快（減速停進去），倒回環上後第一幀也是從慢慢開始
+  const normal = 0.35 / 30;
+  assert.ok(Math.max(...steps.map(x => x.d)) <= 4.5 * normal * 1.001, `boost ≤ 4.5 (max ${(Math.max(...steps.map(x => x.d)) / normal).toFixed(2)}×)`);
+  assert.ok(steps.find(x => x.into !== undefined).into <= normal, 'eases into the junction');
+  assert.ok(steps.find(x => x.before).d <= normal * 0.2, 'eases out of the junction');
   assert.ok(!tl.busy); assert.equal(rail.trip, null);
   assert.ok(atEnd.length / 30 >= 0.9, `held at the island end ${(atEnd.length / 30).toFixed(2)} s`);
   assert.deepEqual(log, ['x'], 'during plays at the island end');
@@ -272,39 +300,33 @@ test('trainStop({ spur }) takes the train out to the island end, holds it there,
   assert.ok(a < 0.5 || a > TWO_PI - 0.01, `back on the ring at the junction (${a.toFixed(3)})`);
   const s2 = createTimeline(), r2 = { offset: 3 }; s2.play([B.trainStop({ spur: 'windmill' })], { ...ctx, rail: r2 }); s2.update(0); s2.skip(); assert.equal(r2.trip, null);
 });
+// 照 order 演到代幣升 to 級那個事件：之前的事件瞬間演，這個事件單獨 live 演（回傳事件，找不到回 null）
+async function liveAt(h, order, to) {
+  let s = engine.createState(spec);
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (e.kind === 'grow' && e.item === 'token' && e.to === to) { await h.run([e]); return e; }
+      await h.run([e], { instant: true });
+    }
+    await h.run([{ kind: 'settle' }], { instant: true });
+  }
+  return null;
+}
 // Lv7 live：列車真的開到風車島那頭（車頭離島心 < 1.3）
 test('Lv7 live: the train rides out to the windmill island while the camera is there, then the overview', async () => {
   const h = await headlessShow(), { show } = h, c = satC('windmill'), update = show.update;
   let near = 0;
   show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
-  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
-  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-  for (const step of steps) {
-    const r = step(s); s = r.state;
-    for (const e of r.events) {
-      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 7) { await h.run([e]); done = true; continue; }
-      await h.run([e], { instant: true });
-    }
-    if (done) break;
-    await h.run([{ kind: 'settle' }], { instant: true });
-  }
+  const done = !!await liveAt(h, SOLUTIONS[0], 7);
   assert.ok(done && near >= 15, `head near the windmill island for ${near} frames`);
 });
 test('Lv8 live: the playground kids get off the shuttle at the island end and go home on the island; a second staff joins', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, end = token.spurPath('playground').at(-1);
   let first = null;
   show.update = (dt, t) => { update(dt, t); const ks = show.roster.members('sat.playground'); if (!first && ks.length) first = ks.map(k => ({ ...k.pos })); };
-  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
-  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-  for (const step of steps) {
-    const r = step(s); s = r.state;
-    for (const e of r.events) {
-      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 8) { await h.run([e]); done = true; continue; }
-      await h.run([e], { instant: true });
-    }
-    if (done) break;
-    await h.run([{ kind: 'settle' }], { instant: true });
-  }
+  const done = !!await liveAt(h, SOLUTIONS[0], 8);
   assert.ok(done && show.stage.lv.milk >= 3);
   assert.ok(first?.length >= 1 && first.every(p => Math.hypot(p.x - end.x, p.z - end.z) < 0.6), 'kids spawn by the shuttle end');
   const ks = show.roster.members('sat.playground'), c = satC('playground');
@@ -316,17 +338,7 @@ test('Lv8 live: the playground kids get off the shuttle at the island end and go
 test('Lv10 live: the three speeders fly a lap round 101 and land on the station roof', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, lap = new Set();
   show.update = (dt, t) => { update(dt, t); for (let i = 0; i < 3; i++) { const o = show.stage.partObject(`token.cars.${i}`); if (!o) continue; const p = o.children[0].position, w = { x: o.position.x + p.x, z: o.position.z + p.z }; if (Math.hypot(w.x - TOWER.x, w.z - TOWER.z) < 3) lap.add(i); } };
-  const order = SOLUTIONS[0]; let s = engine.createState(spec), done = false;
-  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-  for (const step of steps) {
-    const r = step(s); s = r.state;
-    for (const e of r.events) {
-      if (!done && e.kind === 'grow' && e.item === 'token' && e.to === 10) { await h.run([e]); done = true; continue; }
-      await h.run([e], { instant: true });
-    }
-    if (done) break;
-    await h.run([{ kind: 'settle' }], { instant: true });
-  }
+  const done = !!await liveAt(h, SOLUTIONS[0], 10);
   assert.ok(done); assert.equal(lap.size, 3, 'all three came round 101');
   for (let i = 0; i < 3; i++) {
     const o = show.stage.partObject(`token.cars.${i}`), p = o.children[0].position, park = token.view(show.stage.lv, show.stage.flags)[`token.cars.${i}`].park;

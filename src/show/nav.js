@@ -6,7 +6,7 @@ export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25, H
 export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕，站在牆邊身體不會陷進牆裡（§14.1）
 // 同高兩格之間的拱橋（island.js addBridge → bridgeDecks(a, b, { arch: 0.08 })）：甲板中心 base + sin(π·t)·ARCH，板厚 DECK；
 // 9 片甲板各長 len/9 × 1.08，兩端的板子超出端點半片（PLANK·len）。DENSE：路線過橋那一段每隔多遠補一個點（游標直線內插才貼著拱）
-const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05;
+const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05, STEP_Y = 0.03;   // STEP_Y：相鄰取樣差這麼多就是一階（拱的弧每 0.05 只差 0.02 以內）
 const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32, ESCAPE_MAX = 1.6;
 const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
 
@@ -236,7 +236,20 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     let bent = false;
     for (let k = 1; k < 2 * n && !bent; k++) { const t = k / (2 * n), p = at(t); bent = Math.abs(yAt(p, t) - (a.y + (b.y - a.y) * t)) > 0.002; }
     if (!bent) return [];
-    return Array.from({ length: n - 1 }, (_, k) => { const t = (k + 1) / n, p = at(t); return { x: p.x, y: yAt(p, t), z: p.z }; });
+    const pts = Array.from({ length: n - 1 }, (_, k) => { const t = (k + 1) / n, p = at(t); return { t, x: p.x, y: yAt(p, t), z: p.z }; });
+    // 從橋側邊踏上／踏下（格面和橋面差一階，不是拱的弧）：兩個取樣點之間差超過 STEP_Y 就二分找到那一階，
+    // 在階的兩側各補一個點——游標內插到那一段時是「一步跨上去」，不會停在半空中陷進橋面（物品 v2 任務 4：被推擠卡住幾幀就看得出來）
+    const ends = [{ t: 0, y: a.y }, ...pts, { t: 1, y: b.y }], out = [];
+    for (let i = 1; i < ends.length; i++) {
+      const p = ends[i - 1], q = ends[i];
+      if (Math.abs(q.y - p.y) > STEP_Y) {
+        let lo = p.t, hi = q.t;
+        for (let k = 0; k < 10; k++) { const mid = (lo + hi) / 2, y = yAt(at(mid), mid); if (Math.abs(y - p.y) <= Math.abs(y - q.y)) lo = mid; else hi = mid; }
+        for (const t of [lo, hi]) if (t > p.t && t < q.t) { const c = at(t); out.push({ t, x: c.x, y: yAt(c, t), z: c.z }); }   // 不和兩端重疊（零長度的一段）
+      }
+      if (i < ends.length - 1) out.push(q);
+    }
+    return out.map(({ x, y, z }) => ({ x, y, z }));
   }
   // 手畫的折線（工程師通勤、電工主路、routeBetween 接起來的路）貼地：走路格上（格內、橋面）的點 y 換成 groundY，
   // 兩端都在走路格上的那一段過拱橋、上下階梯就補點（同 densify）。xz 不變（補的點都在原線段上，總長一樣）；

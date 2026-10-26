@@ -303,14 +303,15 @@ test('landing turn live: people vanish at their doors without a blink; the next 
   const next = [...steps[k + 1](st).events, { kind: 'settle' }];
   const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { blinked.add(w); return walker(w); };
   // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.4 以上；日常散步 0.5/s 只走得到 0.25）。
-  // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、平均每秒 1.0 以上也算
+  // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、走回家那段平均每秒 1.0 以上也算
+  // （只算 arriving 那段的走路幀：走到家之後日常散步接著走開的不算進去，物品 v2 任務 4）
   const update = show.update, walked = new Set(), first = new Map(), early = new Map(); let frames = 0;
   show.update = (dt, t) => {
     update(dt, t); frames++;
     for (const x of indoors) {
       if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
-      const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0 };
-      if (frames <= 15) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); early.set(x.m, r); }
+      const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0, home: false };
+      if (frames <= 15 && !r.home) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); r.home = r.walk > 0 && !x.m.arriving; early.set(x.m, r); }
       if (frames <= 15 && x.m.walking && d > 0.4) walked.add(x.m);
     }
   };
@@ -321,7 +322,7 @@ test('landing turn live: people vanish at their doors without a blink; the next 
     assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
     assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
     // 家就在門邊的不用走（物品 v2 正解登陸時巨蛋已經蓋好，球員的站位就在巨蛋門口）
-    const r = early.get(x.m), arrived = r.walk > 0 && r.walk < 15 && r.d / (r.walk / 30) >= 1.0;
+    const r = early.get(x.m), arrived = r.home && r.d / (r.walk / 30) >= 1.0;
     if (Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) > 0.5) assert.ok(walked.has(x.m) || arrived, `${x.m.key} walks home at walking speed from the start of the turn`);
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
   }

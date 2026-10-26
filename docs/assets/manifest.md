@@ -21,15 +21,15 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 代幣 | 9 | `token.main`、`token.train` | `kenney/space/monorail_trainFront.glb`、`monorail_trainPassenger.glb`、`monorail_trainEnd.glb`；`quat/cyberpunk/Platform_4x1_Empty.glb`、`Rail_Long.glb`、`Sign_1.glb`、`TV_1.glb`（glow） | CC0 | 待做 |
 | 代幣 | 10 ◆ | `token.cars` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb`（設計是三台繞 101，一款一台；結局的紅色第四台用其中一款加 tint，所以 speederD 不抓） | CC0 | 待做 |
 | 鮮奶 | 1 | `milk.crate` | 程式（牛奶箱） | — | 現有 |
-| 鮮奶 | 2 | `milk.main` | `quat/buildings/1Story_Sign_Mat.glb`（早餐店）＋程式桌子 | CC0 | 待做 |
-| 鮮奶 | 3 | `milk.main`、`milk.kids` | `kenney/commercial/building-a.glb`（一層米色校舍，視覺標準件）＋程式操場；小孩 = 程式名冊 | CC0 | 待做 |
-| 鮮奶 | 4 | `milk.main`、`milk.kids` | `kenney/commercial/building-b.glb`（兩層） | CC0 | 待做 |
-| 鮮奶 | 5 | `milk.main`、`milk.flag` | `kenney/commercial/building-c.glb`（三層）＋程式旗桿 | CC0 | 待做 |
-| 鮮奶 | 6 | `milk.main`、`milk.kids` | 程式鐘塔（Quaternius `Bell_Tower.glb` 728 KB 超過單檔上限，沒收）；少棒隊 = 程式名冊 | — | 待做 |
-| 鮮奶 | 7 ◆ | `milk.main`、`milk.gate` | `kenney/commercial/building-d.glb`、`building-e.glb`（拉長校舍）＋程式拱門校門 | CC0 | 待做 |
-| 鮮奶 | 8 | `milk.lab` | `kenney/commercial/building-f.glb`（玻璃盒研究大樓）＋程式 YouBike 站 | CC0 | 待做 |
-| 鮮奶 | 9 | `milk.kids` | 程式（拋學士帽、101 螢幕字） | — | 待做 |
-| 鮮奶 | 10 ◆ | `milk.truck`、`milk.kids` | `kenney/car/truck.glb`（牛奶車）＋程式；觀光船 = `quat/ships/Boat.glb`（現有） | CC0 | 待做 |
+| 鮮奶 | 2 | `milk.main`、`milk.yard` | `quat/buildings/1Story_Sign_Mat.glb`（早餐店，tint 奶油牆、珊瑚招牌）＋程式桌子 | CC0 | 換新 |
+| 鮮奶 | 3 | `milk.main`、`milk.yard`、`milk.kids` | `kenney/commercial/building-e.glb`（一層教室＋兩層辦公室，視覺標準件：牆 `C.cream`、飾邊 `C.coral`、窗 `C.window`）＋程式操場；小孩 = 程式名冊 | CC0 | 換新 |
+| 鮮奶 | 4 | `milk.main`、`milk.kids` | `kenney/commercial/building-e.glb`＋`building-c.glb`（加一棟兩層教室）；小孩長高 1.3 | CC0 | 換新 |
+| 鮮奶 | 5 | `milk.main`、`milk.yard`、`milk.flag` | `kenney/commercial/building-e.glb`＋`building-a.glb`（三層教室）＋程式旗桿、旗子 | CC0 | 換新 |
+| 鮮奶 | 6 | `milk.tower`、`milk.kids` | 程式鐘塔（三層樓頂；Quaternius `Bell_Tower.glb` 728 KB 超過單檔上限，沒收）；少棒隊 = 程式名冊 | — | 現有 |
+| 鮮奶 | 7 ◆ | `milk.main`、`milk.tower`、`milk.gate` | `kenney/commercial/building-e.glb` ×2（大學兩翼，右翼轉 180°）＋程式鐘塔（兩翼中間）、拱門校門；學士帽 = 名冊配件 | CC0 | 換新 |
+| 鮮奶 | 8 | `milk.main`、`milk.gate` | `kenney/commercial/low-detail-building-wide-b.glb`（玻璃研究大樓，帶狀玻璃 tint `C.blue`／`C.glass`，換掉大學左翼）＋程式 YouBike 站；白袍 = 名冊配件 | CC0 | 換新 |
+| 鮮奶 | 9 | `milk.hats`、`milk.yard` | 程式（操場上的學士帽、紅布條；101 頭上「恭喜畢業」是劇本字卡） | — | 現有 |
+| 鮮奶 | 10 ◆ | `milk.truck`、`milk.boat`、`milk.extraKids` | `kenney/car/truck.glb`（牛奶車，tint 白）、`quat/ships/Boat.glb`（西岸觀光船，tint 珊瑚／奶油）＋程式船上牛奶箱（併在 `milk.yard`）；全島六格各一個小孩 = 程式名冊 | CC0 | 換新 |
 | 晶片 | 1 | `chip.main`、`chip.crane`、`chip.worker` | `kenney/factory/crane.glb`＋程式圍籬、三角錐 | CC0 | 待做（程式版現有） |
 | 晶片 | 2 | `chip.main`、`chip.smoke`、`chip.engineers` | `kenney/industrial/building-a.glb`、`chimney-medium.glb`、`pipe-large.glb`、`pipe-large-bend.glb`；煙 = 程式 | CC0 | 待做（程式版現有） |
 | 晶片 | 3 | `chip.main`、`chip.engineers` | `kenney/industrial/building-b.glb`、`building-c.glb`、`building-d.glb`（三棟）、`chimney-small.glb`、`chimney-large.glb` | CC0 | 待做（程式版現有） |

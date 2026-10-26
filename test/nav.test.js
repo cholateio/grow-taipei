@@ -242,3 +242,25 @@ test('a route rescued out of a footprint never cuts through another building on 
     assert.ok(!(Math.abs(x - B.x) <= B.w / 2 && Math.abs(z - B.z) <= B.d / 2), `escape leg crosses the other building at ${x.toFixed(2)},${z.toFixed(2)} (to ${out.x.toFixed(2)},${out.z.toFixed(2)})`);
   }
 });
+// 物品 v2 任務 4：從橋面側邊踏下到格子的角（橋面和格面差一階）——路線在階的兩側各有一點，游標走在橋面上時不會停在兩個高度中間陷進橋面
+// （名冊的人被推擠卡住幾幀就看得出來）。橋面 = 中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
+test('a route stepping off the side of a level bridge onto a cell corner climbs down at once (cursor on the deck never hangs between the two heights)', async () => {
+  const { createPathCursor } = await import('../src/scene/path.js'), { BRIDGE_HALF } = await import('../src/show/nav.js'), { cellAt } = await import('../src/scene/hex.js');
+  const level = await bridgesOf(true), nav = createNav();
+  let stepped = 0;
+  for (const { A, B, a, b } of level) {
+    const len = Math.hypot(b.x - a.x, b.z - a.z), ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+    const deck = p => { const dx = p.x - a.x, dz = p.z - a.z, s = dx * ux + dz * uz; return s >= 0 && s <= len && Math.abs(dx * uz - dz * ux) <= BRIDGE_HALF; };
+    // 橋側邊外、走得到的格子角：沿線 0.1–0.4、離中心線 0.27–0.45 找第一個
+    for (const side of [-1, 1]) for (const s of [0.1, 0.2, 0.3, 0.4].flatMap(t => [t, len - t])) {
+      const off = [0.27, 0.3, 0.35, 0.4, 0.45].map(o => ({ x: a.x + ux * s - uz * side * o, z: a.z + uz * s + ux * side * o })).find(p => cellAt(p.x, p.z) && nav.walkable(p.x, p.z));
+      if (!off) continue;
+      const from = { x: a.x + ux * s, z: a.z + uz * s }, path = nav.route({ ...from, y: nav.groundY(from.x, from.z) }, off), total = createPathCursor(path, { loop: false }).total;
+      let hang = 0;
+      for (let k = 0; k <= 400; k++) { const cur = createPathCursor(path, { loop: false }); cur.advance(total * k / 400); const p = cur.locate(); if (deck(p) && Math.abs(p.y - nav.groundY(p.x, p.z)) > 0.01) hang++; }
+      assert.ok(hang <= 1, `${A}→${B} side ${side} at ${s.toFixed(2)}: ${hang} cursor samples on the deck hang off it`);
+      stepped++;
+    }
+  }
+  assert.ok(stepped >= 2, `${stepped} side steps checked`);
+});

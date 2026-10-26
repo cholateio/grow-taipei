@@ -5,139 +5,15 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import * as milk from '../src/actors/milk.js';
 import { anchorWorld } from '../src/actors/anchors.js';
-import { RING_R, cellAt } from '../src/scene/hex.js';
-import { ROOFS, roofColor } from '../src/actors/palette.js';
-import { lv, worldPoints, distToCell, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { RING_R, cellAt, axialToWorld, MAIN_CELLS } from '../src/scene/hex.js';
+import { existsSync } from 'node:fs';
+import { ROOFS, roofColor, C } from '../src/actors/palette.js';
+import { diffParts } from '../src/actors/stage.js';
+import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, DEFAULT_SECS } from './helpers/show.js';
-import { scripted } from '../src/actors/clamp.js';
+import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
-
-test('roofColor cycles coral → navy → yellow after the typhoon rebuild', () => {
-  assert.deepEqual(ROOFS, [0xdb6a41, 0x3f5a8a, 0xfcea8b]);
-  assert.equal(roofColor(0xdb6a41, false), 0xdb6a41); assert.equal(roofColor(0xdb6a41, true), 0x3f5a8a); assert.equal(roofColor(0xfcea8b, true), 0xdb6a41);
-});
-test('milk climbs one storey a level: 1 crate, 2 one-storey school + 3 kids, 3 two storeys + tall kids, 4 three storeys + flag', () => {
-  assert.deepEqual(Object.keys(milk.view(lv({ milk: 1 }), {})), ['milk.crate']);
-  const windows = n => milk.view(lv({ milk: n }), {})['milk.main'].parts.filter(p => p.win).length;
-  assert.equal(windows(2), 4); assert.equal(windows(3), 8); assert.equal(windows(4), 12);
-  assert.equal(milk.view(lv({ milk: 2 }), {})['milk.kids'].n, 3); assert.equal(milk.view(lv({ milk: 3 }), {})['milk.kids'].scale, 1.3);
-  assert.ok(milk.view(lv({ milk: 4 }), {})['milk.flag'], 'flag goes up at Lv4'); assert.equal(milk.view(lv({ milk: 3 }), {})['milk.flag'], undefined);
-});
-test('lv5 clock tower and caps; lv6 university with an arch gate and mortarboards', () => {
-  const v5 = milk.view(lv({ milk: 5 }), {}), v6 = milk.view(lv({ milk: 6 }), {});
-  assert.ok(v5['milk.main'].parts.some(p => p.glow), 'clock face'); assert.equal(v5['milk.kids'].accessory, 'cap');
-  assert.equal(v6['milk.gate'].kind, 'compound', 'arch gate'); assert.equal(v6['milk.kids'].accessory, 'mortar');
-  assert.equal(v5['milk.gate'], undefined);
-});
-test('knocking milk back from 6 removes the university and its graduates (review focus 3)', async () => {
-  const { show, people, run } = await headlessShow({ modules: [milk] });
-  await run([{ kind: 'placed', item: 'milk', to: 1 }, ...[2, 3, 4, 5, 6].map(n => ({ kind: 'grow', item: 'milk', from: n - 1, to: n, via: [] }))], { instant: true });
-  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'mortar'));
-  await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 6, to: 5 } }, { kind: 'settle' }], { instant: true });
-  assert.ok(!show.stage.partKeys().includes('milk.gate'));
-  assert.equal(people.walkers.length, 0, 'the bite turn: kids shelter in the school');
-  await run([{ kind: 'wait', waits: [] }, { kind: 'settle' }], { instant: true });
-  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'), 'next turn: back out in caps');
-});
-test('the rat-bite turn or the typhoon landing send the kids home and light the windows; the turn after they come back', () => {
-  for (const [extra, meta] of [[{}, { bitten: true }], [{ typhoon: 2 }, { landing: true }]]) {
-    const v = milk.view(lv({ milk: 3, ...extra }), {}, meta);
-    assert.equal(v['milk.kids'], undefined, JSON.stringify(meta)); assert.ok(v['milk.main'].parts.some(p => p.glow === 0xffc777));
-  }
-  assert.ok(milk.view(lv({ milk: 3, typhoon: 3 }), {})['milk.kids'], 'back out after the storm');
-  assert.ok(milk.view(lv({ milk: 3, rat: 4 }), {}, { bitten: false })['milk.kids'], 'a rat nest alone does not keep them in');
-});
-// 錄影審查：颱風被大巨蛋卡在 Lv2 的後續回合，小孩不能整場消失（只在登陸那回合躲）
-test('milk kids stay out after the landing turn while the typhoon lingers', () => {
-  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {}, { landing: false })['milk.kids']);
-  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {})['milk.kids'], 'no meta = not landing');
-});
-test('milk 5 with a ballfield relocates the kids next to the dome (little league)', () => {
-  const v = milk.view(lv({ milk: 5, baseball: 2 }), {}), b = anchorWorld('baseball');
-  const c = v['milk.kids'].home.at;
-  assert.ok(Math.hypot(c.x - b.x, c.z - b.z) < 2.5); assert.ok(Math.hypot(c.x - b.x, c.z - (b.z + 1.05)) > 0.9, 'off the gate where players and fans stand');
-});
-test('typhoon Lv3 swaps the school roof colour', () => {
-  const roof = v => v['milk.main'].parts.find(p => p.kind === 'hip').color;
-  assert.notEqual(roof(milk.view(lv({ milk: 2 }), {})), roof(milk.view(lv({ milk: 2, typhoon: 3 }), {})));
-});
-test('milk 2→1 removes the kids and frees walkers (review focus 3)', async () => {
-  const { people, run } = await headlessShow({ modules: [milk] });
-  await run([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }], { instant: true });
-  assert.equal(people.walkers.length, 3);
-  await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }], { instant: true });
-  assert.equal(people.walkers.length, 0);
-});
-test('every milk part stays inside the milk cell', () => {
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const s of Object.values(milk.view(lv({ milk: n }), {}))) for (const p of worldPoints(s)) assert.ok(distToCell(p, [-1, 0]) < RING_R, `lv${n}`);
-});
-
-test('view: kids are a roster declaration; crate and flag are separate parts; school footprint excludes the playground', () => {
-  const v = milk.view(lv({ milk: 4 }), {});
-  assert.equal(v['milk.kids'].kind, 'roster'); assert.equal(v['milk.kids'].n, 3); assert.equal(v['milk.kids'].home.kind, 'wander');
-  assert.ok(v['milk.crate'] && v['milk.flag']); assert.deepEqual(v['milk.crate'].footprint, { r: 0.3 }); assert.equal(v['milk.flag'].footprint, false);
-  assert.deepEqual(milk.CRATE, v['milk.crate'].at);
-  assert.ok(v['milk.main'].footprint.d <= 0.9); assert.equal(v['milk.gate'], undefined);
-  assert.equal(milk.view(lv({ milk: 6 }), {})['milk.gate'].footprint, false);
-});
-test('scripts: every milk event in both solutions plays 2.5–18 s, ends with LEVEL UP on milk, and leaves the kids at home', async () => {
-  const { show, run, bubblesLog } = await headlessShow();
-  for (const order of SOLUTIONS) {
-    show.reset();
-    const seen = [];
-    await playItem(show, run, order, 'milk', (e, secs) => {
-      const to = e.kind === 'grow' ? e.to : 1; seen.push(to);
-      // 下限因 §13.2 閃白變短而降低（原 3）；上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）；物品 v2 過渡期：超過舊 max 走預設劇本
-      // 放置的下限 2.5 → 1.8：物品 v2 正解鮮奶第 3 個放，最近的島民離牛奶箱比較近（實測 2.1 s）
-      const [lo, hi] = scripted('milk', to) ? [e.kind === 'placed' ? 1.8 : 2.5, 18] : DEFAULT_SECS;
-      assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs}s`);
-      if (e.kind === 'grow') assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
-      for (const m of show.roster.members('milk.kids')) assert.equal(m.mode, 'home');
-    });
-    assert.ok(seen.length >= 3, `milk events seen: ${seen}`);
-  }
-});
-
-// Lv6 只在倒數蒙太奇回合長出來（playItem 演不到）：用引擎把正解瞬間演到鮮奶 grow 6 之前（鮮奶 5、晶片 ≥3），再單獨 live 演這一級
-test('milk 6 live: the university plays 3–18 s, LEVEL UP over milk is the last new bubble, kids end at home in mortarboards', async () => {
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
-  const isSix = e => e.kind === 'grow' && e.item === 'milk' && e.to === 6;
-  for (const order of SOLUTIONS) {
-    show.reset();
-    let s = engine.createState(spec), e6 = null;
-    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-    for (const step of steps) {
-      const r = step(s); s = r.state;
-      for (const e of r.events) { if (isSix(e)) { e6 = e; break; } await run([e], { instant: true }); }
-      if (e6) break;
-      await run([{ kind: 'settle' }], { instant: true });
-    }
-    assert.ok(e6, 'milk grows to 6');
-    assert.equal(show.stage.lv.milk, 5); assert.ok(show.stage.lv.chip >= 3, `chip ${show.stage.lv.chip}`);
-    const n = bubblesLog.length, secs = await run([e6]);
-    assert.ok(secs >= 3 && secs <= 18, `grow 6 took ${secs.toFixed(1)}s`);   // 上限 15 → 18：計畫 3.8 Task 5（工程師從園區橋頭出發，+3 s）
-    const last = bubblesLog.slice(n).at(-1), head = show.stage.headOf('milk');
-    assert.equal(last?.text, 'LEVEL UP');
-    assert.ok(Math.hypot(last.at.x - head.x, last.at.y - head.y, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
-    const kids = show.roster.members('milk.kids');
-    assert.equal(kids.length, 3);
-    for (const m of kids) { assert.equal(m.mode, 'home'); assert.equal(m.walker.accessory, 'mortar'); }
-  }
-});
-
-// 入口點（§13.2、計畫 3.8 Task 5）：小學生從校門外靠中心格那側的邊上走進來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有少棒隊；兩條正解每一刻的真 footprint）
-test('milk.kids enter from the gate edge toward the centre cell, walkable and ≥ 1.5 from every spot at every level', async () => {
-  const nav = createNav(), bad = [];
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const baseball of [0, 2]) {
-    const v = milk.view(lv({ milk: n, baseball }), {});
-    if (v['milk.kids']) { assert.ok(v['milk.kids'].home.entry, `lv${n} entry declared`); assert.deepEqual(cellAt(v['milk.kids'].home.entry.x, v['milk.kids'].home.entry.z), [-1, 0]); assert.ok(v['milk.kids'].home.entry.x > anchorWorld('milk').x + 1.5, 'east side (toward the centre cell)'); }
-    bad.push(...entryProblems(v, nav, `lv${n} baseball ${baseball}`));
-  }
-  bad.push(...await entriesThroughSolutions(milk, SOLUTIONS));
-  assert.deepEqual(bad, []);
-});
 
 // 鏡頭（§13.1、計畫 3.8 Task 5）：照 order 瞬間演到 pred 那個事件，單獨 live 演；回傳這個事件的鏡頭軌跡（格子…、'home'）
 async function trailAt(h, order, pred) {
@@ -155,26 +31,182 @@ async function trailAt(h, order, pred) {
 }
 const isMilk = to => e => e.kind === 'grow' && e.item === 'milk' && e.to === to;
 const fakeCtx = { B, roster: { members: () => [], nearest: () => null } };
-test('milk 5 with a little league: the camera follows the kids to the dome cell, then comes back to the school for the clock tower', async () => {
-  const s5 = { lv: lv({ milk: 5, baseball: 2 }), flags: {} }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-  const beats = milk.script.grow[5]({ kind: 'grow', item: 'milk', to: 5 }, s5, fakeCtx);
-  assert.notEqual(beats[0].kind, 'focus', 'starts on the milk cell (the turn pans there)');
-  assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, fakeCtx)), [[-1, 1], [-1, 0]]);
-  assert.ok(beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'walk')), 'pans while they walk');
-  const noLeague = milk.script.grow[5]({ kind: 'grow', item: 'milk', to: 5 }, { lv: lv({ milk: 5 }), flags: {} }, fakeCtx);
-  assert.equal(flat(noLeague).filter(b => b.kind === 'focus').length, 0, 'no little league: they stay on the playground');
-  for (const order of SOLUTIONS) {
-    const h = await headlessShow(), trail = await trailAt(h, order, isMilk(5));
-    assert.deepEqual(trail, [[-1, 0], [-1, 1], [-1, 0], 'home'], order.join('>'));
+
+test('roofColor cycles coral → navy → yellow after the typhoon rebuild', () => {
+  assert.deepEqual(ROOFS, [0xdb6a41, 0x3f5a8a, 0xfcea8b]);
+  assert.equal(roofColor(0xdb6a41, false), 0xdb6a41); assert.equal(roofColor(0xdb6a41, true), 0x3f5a8a); assert.equal(roofColor(0xfcea8b, true), 0xdb6a41);
+});
+const views = Array.from({ length: 11 }, (_, n) => milk.view(lv({ milk: n }), {}));
+const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
+// 一個零件的 draw call：compound = 黏土一個 + 每種發光色一個；glb = 1（有 glow 再 +1）；campus = 每棟 glb 各算；名冊（共用的小人）不算
+function drawCalls(v) {
+  const glb = m => 1 + (m.glow ? 1 : 0);
+  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? 1 + new Set(p.parts.filter(x => x.glow).map(x => x.glow)).size
+    : p.kind === 'campus' ? p.models.reduce((a, m) => a + glb(m), 0) : p.kind === 'glb' ? glb(p) : 0), 0);
+}
+const PALETTE = new Set(Object.values(C));
+
+test('milk view has a distinct main part at every level 1–10 (part spec differs between consecutive levels)', () => {
+  assert.deepEqual(Object.keys(views[1]), ['milk.crate']);
+  for (let n = 2; n <= 10; n++) {
+    const { add } = diffParts(nonRoster(views[n - 1]), nonRoster(views[n]));
+    assert.ok(add.length, `lv${n}: something new in view`);
+    assert.ok(views[n]['milk.main'], `lv${n} main`);
+    if (n <= 8) assert.notEqual(JSON.stringify(views[n]['milk.main']), JSON.stringify(views[n - 1]['milk.main']), `lv${n} main changes`);
+  }
+  assert.ok(views[5]['milk.flag'] && !views[4]['milk.flag'], 'flag goes up at Lv5');
+  assert.ok(views[6]['milk.tower'] && !views[5]['milk.tower'], 'clock tower at Lv6');
+  assert.ok(views[7]['milk.gate'] && !views[6]['milk.gate'], 'arch gate at Lv7');
+  assert.ok(views[8]['milk.gate'].parts.length > views[7]['milk.gate'].parts.length, 'YouBike stand at Lv8');
+  assert.ok(views[9]['milk.hats'] && !views[8]['milk.hats'], 'mortarboards on the playground at Lv9');
+  assert.ok(views[10]['milk.truck'] && views[10]['milk.boat'] && !views[9]['milk.truck'], 'milk truck and boat at Lv10');
+});
+test('milk Lv3/7/8 use the school / university / research glb models with the palette tint', () => {
+  const models = n => views[n]['milk.main'].models, paths = n => models(n).map(m => m.path);
+  for (const n of [2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+    assert.equal(views[n]['milk.main'].kind, 'campus');
+    for (const m of models(n)) {
+      assert.ok(m.path.endsWith('.glb') && m.tint, `lv${n} ${m.path}`);
+      for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `lv${n} ${m.path} tint ${c.toString(16)} is in the palette`);
+    }
+  }
+  assert.deepEqual(paths(2), [milk.MODELS.shop.path]);
+  assert.deepEqual(paths(3), [milk.MODELS.wing.path], 'school: one Kenney commercial building');
+  assert.deepEqual(paths(7), [milk.MODELS.wing.path, milk.MODELS.wing.path], 'university: two wings');
+  assert.ok(paths(8).includes(milk.MODELS.lab.path), 'research building');
+  for (const p of [...paths(3), ...paths(7), ...paths(8)]) assert.ok(existsSync(new URL(`../assets/${p}`, import.meta.url)), p);
+  // 三代輪廓明顯不同：小學窄矮、大學拉長（寬 ≥ 1.8 倍）、研究大樓最高
+  const width = n => { const f = views[n]['milk.main'].footprint; return Math.max(...f.map(r => r.x + r.w / 2)) - Math.min(...f.map(r => r.x - r.w / 2)); };
+  const tallest = n => Math.max(...models(n).map(m => m.h));
+  assert.ok(width(7) >= 1.8 * width(3), `university ${width(7).toFixed(2)} vs school ${width(3).toFixed(2)}`);
+  assert.ok(tallest(8) >= 1.8 * tallest(7) && tallest(7) <= 1.1 * tallest(3), 'the research building towers over the low wings');
+});
+test('milk kids count: 3 from Lv3; Lv10 adds one kid per main cell (landmarks.extraKids)', () => {
+  assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
+  for (let n = 3; n <= 10; n++) assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`);
+  assert.equal(views[3]['milk.kids'].scale, 1); assert.equal(views[4]['milk.kids'].scale, 1.3);
+  assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
+  for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
+  const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
+  assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
+  assert.equal(new Set(cells).size, 6, 'one kid in each of six cells');
+  assert.ok(cells.every(c => MAIN_CELLS.some(m => m.join(',') === c)) && !cells.includes('1,-1'), 'main cells except the spring');
+  assert.equal(milk.view(lv({ milk: 10, typhoon: 2 }), {}, { landing: true })['milk.extraKids'], undefined, 'the festival kids hide on the landing turn too');
+});
+test('milk draw calls stay ≤ 12 for the whole cell at every level (glb parts merged; lit windows included)', () => {
+  for (let n = 1; n <= 10; n++) for (const meta of [{}, { bitten: true }]) {
+    const v = milk.view(lv({ milk: n, baseball: 2 }), {}, meta);
+    assert.ok(drawCalls(v) <= 12, `lv${n} ${JSON.stringify(meta)}: ${drawCalls(v)}`);
   }
 });
-test('milk 6: the first beat focuses the chip cell (the engineer sets off), then the milk cell while he walks in', async () => {
-  const beats = milk.script.grow[6]({ kind: 'grow', item: 'milk', to: 6 }, { lv: lv({ milk: 6, chip: 3 }), flags: {} }, fakeCtx);
-  assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], fakeCtx), [1, 0]);
-  const t = beats.find(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus'));
-  assert.deepEqual(focusCell(t.beats.find(x => x.kind === 'focus'), fakeCtx), [-1, 0]); assert.ok(t.beats.some(x => x.kind === 'walk'));
-  for (const order of SOLUTIONS) {
-    const h = await headlessShow(), trail = await trailAt(h, order, isMilk(6));
-    assert.deepEqual(trail, [[1, 0], [-1, 0], 'home'], order.join('>'));
+test('the rat-bite turn or the typhoon landing send the kids home and light the windows; the turn after they come back', () => {
+  for (const [extra, meta] of [[{}, { bitten: true }], [{ typhoon: 2 }, { landing: true }]]) {
+    const v = milk.view(lv({ milk: 3, ...extra }), {}, meta);
+    assert.equal(v['milk.kids'], undefined, JSON.stringify(meta)); assert.ok(v['milk.main'].models.every(m => Object.values(m.glow ?? {}).includes(C.warm)));
   }
+  assert.ok(views[3]['milk.main'].models.every(m => !m.glow), 'windows dark while the kids are out');
+  assert.ok(milk.view(lv({ milk: 3, typhoon: 3 }), {})['milk.kids'], 'back out after the storm');
+  assert.ok(milk.view(lv({ milk: 3, rat: 4 }), {}, { bitten: false })['milk.kids'], 'a rat nest alone does not keep them in');
+});
+// 錄影審查：颱風被大巨蛋卡在 Lv2 的後續回合，小孩不能整場消失（只在登陸那回合躲）
+test('milk kids stay out after the landing turn while the typhoon lingers', () => {
+  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {}, { landing: false })['milk.kids']);
+  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {})['milk.kids'], 'no meta = not landing');
+});
+test('milk 6 with a ballfield relocates the kids next to the dome (little league); the university brings them back', () => {
+  const v = milk.view(lv({ milk: 6, baseball: 2 }), {}), b = anchorWorld('baseball');
+  const c = v['milk.kids'].home.at;
+  assert.ok(Math.hypot(c.x - b.x, c.z - b.z) < 2.5); assert.ok(Math.hypot(c.x - b.x, c.z - (b.z + 1.05)) > 0.9, 'off the gate where players and fans stand');
+  for (const n of [5, 7]) assert.deepEqual(cellAt(milk.view(lv({ milk: n, baseball: 2 }), {})['milk.kids'].home.at.x, milk.view(lv({ milk: n, baseball: 2 }), {})['milk.kids'].home.at.z), [-1, 0], `lv${n} on campus`);
+});
+test('typhoon Lv3 swaps the school trim (roof) colour', () => {
+  const trim = v => v['milk.main'].models[0].tint['^#[5-8][0-9a-f][5-8]'];
+  assert.equal(trim(views[3]), C.coral);
+  assert.notEqual(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 3 }), {})));
+});
+test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
+  const { people, run } = await headlessShow({ modules: [milk] });
+  await run([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'milk', from: 2, to: 3 }], { instant: true });
+  assert.equal(people.walkers.length, 3);
+  await run([{ kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 2 } }], { instant: true });
+  assert.equal(people.walkers.length, 0);
+});
+test('knocking milk back from 7 removes the arch gate; the graduates go back to caps', async () => {
+  const { show, people, run } = await headlessShow({ modules: [milk] });
+  await run([{ kind: 'placed', item: 'milk', to: 1 }, ...[2, 3, 4, 5, 6, 7].map(n => ({ kind: 'grow', item: 'milk', from: n - 1, to: n, via: [] }))], { instant: true });
+  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'mortar'));
+  await run([{ kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 7, to: 6 } }, { kind: 'settle' }], { instant: true });
+  assert.ok(!show.stage.partKeys().includes('milk.gate'));
+  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'));
+});
+test('every milk part stays inside the milk cell (the festival boat is moored on the water just west of it)', () => {
+  const c = axialToWorld(-1, 0);
+  for (let n = 1; n <= 10; n++) for (const [key, s] of Object.entries(views[n])) {
+    if (key === 'milk.extraKids') continue;
+    const pts = s.kind === 'campus' ? s.models.map(m => ({ x: s.at.x + m.pos[0], z: s.at.z + m.pos[2] })) : s.kind === 'glb' ? [s.at] : worldPoints(s);
+    for (const p of pts) {
+      if (key === 'milk.boat' || (key === 'milk.yard' && p.x < c.x - RING_R)) { assert.equal(cellAt(p.x, p.z), null, `lv${n} ${key} on the water`); assert.ok(p.x < c.x - RING_R && distToCell(p, [-1, 0]) < RING_R + 1.2); continue; }
+      assert.ok(distToCell(p, [-1, 0]) < RING_R, `lv${n} ${key}`);
+    }
+  }
+});
+
+test('view: kids are a roster declaration; crate, yard and flag are separate parts; school footprints declared, playground walkable', () => {
+  const v = views[5];
+  assert.equal(v['milk.kids'].kind, 'roster'); assert.equal(v['milk.kids'].n, 3); assert.equal(v['milk.kids'].home.kind, 'wander');
+  assert.ok(v['milk.crate'] && v['milk.flag'] && v['milk.yard']); assert.deepEqual(v['milk.crate'].footprint, { r: 0.3 }); assert.equal(v['milk.flag'].footprint, false); assert.equal(v['milk.yard'].footprint, false);
+  assert.deepEqual(milk.CRATE, v['milk.crate'].at);
+  for (let n = 2; n <= 10; n++) {
+    const f = views[n]['milk.main'].footprint; assert.equal(f.length, views[n]['milk.main'].models.length);
+    for (const r of f) assert.ok(r.z + r.d / 2 < 0.35, `lv${n} school stays behind the playground`);
+  }
+  assert.ok(views[10]['milk.truck'].footprint, 'the truck blocks walkers');
+});
+test('scripts: every milk event in both solutions plays 3–5 s (◆ Lv7 / Lv10 ≤ 10 s), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
+  const { show, run, bubblesLog } = await headlessShow();
+  const timing = {};
+  for (const order of SOLUTIONS) {
+    show.reset();
+    const seen = [];
+    await playItem(show, run, order, 'milk', (e, secs) => {
+      const to = e.kind === 'grow' ? e.to : 1; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
+      const [lo, hi] = to === 7 || to === 10 ? [3, 10] : [3, 5];
+      assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs.toFixed(2)}s`);
+      if (e.kind === 'grow') {
+        const last = bubblesLog.at(-1), head = show.stage.headOf('milk');
+        assert.equal(last.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - head.x, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
+      }
+      for (const k of ['milk.kids', 'milk.extraKids']) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
+    });
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `milk events seen: ${seen}`);
+  }
+});
+test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP', () => {
+  for (const n of [7, 10]) {
+    const beats = milk.script.grow[n]({ kind: 'grow', item: 'milk', to: n }, { lv: lv({ milk: n }), flags: {} }, fakeCtx);
+    const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
+    assert.ok(i > 0 && beats[i].dur >= 1, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
+  }
+});
+test('lv10 live: the festival kids walk in to all six cells, the truck and boat appear, the camera ends on the overview', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), trail = await trailAt(h, order, isMilk(10));
+    assert.ok(trail.indexOf('home') >= 1 && trail.at(-1) === 'home', `${order.join('>')} ${JSON.stringify(trail)}`);
+    assert.equal(h.show.roster.members('milk.extraKids').length, 6);
+    assert.ok(h.show.stage.partKeys().includes('milk.truck') && h.show.stage.partKeys().includes('milk.boat'));
+  }
+});
+
+// 入口點（§13.2、計畫 3.8 Task 5）：小學生從校門外靠中心格那側的邊上走進來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有少棒隊；兩條正解每一刻的真 footprint）；
+// 鮮奶節的小孩各自從自己那格的邊上進來
+test('milk rosters enter walkable and ≥ 1.5 from every spot at every level (kids from the gate edge toward the centre cell)', async () => {
+  const nav = createNav(), bad = [];
+  for (let n = 1; n <= 10; n++) for (const baseball of [0, 2]) {
+    const v = milk.view(lv({ milk: n, baseball }), {});
+    if (v['milk.kids']) { assert.ok(v['milk.kids'].home.entry, `lv${n} entry declared`); assert.deepEqual(cellAt(v['milk.kids'].home.entry.x, v['milk.kids'].home.entry.z), [-1, 0]); assert.ok(v['milk.kids'].home.entry.x > anchorWorld('milk').x + 1.5, 'east side (toward the centre cell)'); }
+    nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    bad.push(...entryProblems(v, nav, `lv${n} baseball ${baseball}`));
+  }
+  bad.push(...await entriesThroughSolutions(milk, SOLUTIONS));
+  assert.deepEqual(bad, []);
 });

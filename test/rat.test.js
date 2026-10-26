@@ -231,11 +231,12 @@ test('the placement turn with both reactions plays live: a rat goes to the crate
 test('a bite that costs milk a level: crate tips, kids ！ run to the school gate and vanish quietly, LEVEL DOWN', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let st = engine.createState(spec);
-  for (const id of ['rat', 'typhoon', 'milk', 'chip']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.equal(show.stage.lv.milk, 2); assert.equal(show.roster.members('milk.kids').length, 3);
+  // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 3 再咬掉一級
+  for (const id of ['rat', 'typhoon', 'milk', 'chip', 'bulb']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.lv.milk, 3); assert.equal(show.roster.members('milk.kids').length, 3);
   const hidden = [], hide = show.roster.hide; show.roster.hide = m => { hidden.push(m.key); return hide(m); };
   const n = bubblesLog.length, crate = show.stage.partObject('milk.crate');
-  const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 }, story: '老鼠咬破鮮奶箱' }]);
+  const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 3, to: 2 }, story: '老鼠咬破鮮奶箱' }]);
   assert.ok(secs >= 4 && secs <= 14, `${secs.toFixed(1)} s`);
   assert.notEqual(show.stage.partObject('milk.crate'), crate, 'crate rebuilt tipped');
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 4, 'rat ！ and three kids ！');

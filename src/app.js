@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three/three.module.js';
 // 遊戲本體：場景 → 介面 → 演出層 → 遊戲。由 main.js 動態載入，任何模組載入失敗都會落到 main.js 的錯誤畫面。
-// ?auto=a,b,c 自動依序放（截圖用；&live=1&warp=N 最後一個物品照常演 N 秒）、?time=、?quality=、?simulateFail=webgl、?cam=
+// ?auto=a,b,c 自動依序放（截圖用；&live=1&warp=N 最後一個物品照常演 N 秒）、?time=、?quality=、?simulateFail=webgl、?cam=（座標或物品 id）
 import { createRenderer, pickQuality, CENTER } from './scene/renderer.js';
 import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
@@ -36,6 +36,7 @@ import * as satellites from './actors/satellites.js';
 import { worldEffects, stepWorld } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
+import { ANCHORS, cellCentre, cellOf } from './actors/anchors.js';
 
 const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
@@ -79,6 +80,7 @@ export async function start({ params, loading }) {
   const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); };
   fit(); new ResizeObserver(fit).observe(document.body);
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫
+  const camItem = ANCHORS[params.get('cam')] ? params.get('cam') : null;   // 除錯：?cam=milk 自動放完後鏡頭拉近那個物品的格子（同演出中的 focus）
   if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
 
   // 介面、演出層、遊戲
@@ -146,6 +148,7 @@ export async function start({ params, loading }) {
       pick(auto.at(-1));
       for (let i = 0, n = Math.round((+params.get('warp') || 0) * 30); i < n; i++) frame(1 / 30);
     } else for (const id of auto) await pick(id);
+    if (camItem) rig.focus(cellCentre(cellOf(camItem)), { ms: 0 });
     autoDone = true;
   })();
 }

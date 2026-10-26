@@ -29,8 +29,8 @@ const QUEUE_SPEED = 2.4;   // Lv4 島民快步去夜市排隊（一般走路 1.6
 const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
 const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
 export const ISLAND_LV = 7;   // 離岸風電啟動那一級起，電工住在風車島上
-export const LIGHTING_SPEED = 2.8;
-export const WALKED = 3;   // Lv2 電工走過去親手點的站數；其餘的站回全景後一站站自己亮   // 點燈這段電工快走（一般走路 1.6；2.4 → 2.8 是節奏驗收的裁定，見規格 §12）
+export const LIGHTING_SPEED = 2.8;   // 點燈這段電工快走（一般走路 1.6；2.4 → 2.8 是節奏驗收的裁定，見規格 §12）
+export const WALKED = 3;   // Lv2 電工走過去親手點的站數；其餘的站回全景後一站站自己亮
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）
 function ringPoint(cell, deg, r) {
   const c = axialToWorld(...cell), a = deg * Math.PI / 180;

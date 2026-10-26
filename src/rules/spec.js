@@ -49,9 +49,10 @@ export const ITEMS = {
   },
   typhoon: {
     name: '颱風', max: 3,
-    // 烏雲 → 下一回合登陸 → 再下一回合放晴（抽水站要有電：大停電就一直不放晴）；颱風賴在大巨蛋（棒球 ≥3）就多等一回合
+    // 烏雲 → 下一回合登陸 → 再下一回合放晴（抽水站要有電：大停電就一直不放晴）；
+    // 颱風賴在大巨蛋（棒球 ≥3）就多等一回合——除非矽盾已經測試過（晶片 ≥8），罩子一閃把颱風推走
     up: { 2: auto, 3: min('bulb', 3) },
-    delay: { 3: min('baseball', 3) },
+    delay: { 3: and(min('baseball', 3), max('chip', 7)) },
     onLevel: {
       2: [
         { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },

@@ -275,6 +275,11 @@ test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn 
   const { lvs } = playReal(['bulb', 'baseball', 'milk', 'token', 'typhoon', 'rat', 'boba', 'chip']);
   assert.ok(lvs[4].baseball >= 3);
   assert.deepEqual(lvs.slice(4).map(l => l.typhoon), [1, 2, 2, 3]);
+  // 矽盾測試過（晶片 ≥8）：罩子把颱風推走，不多等
+  const s0 = createState(real);
+  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 5, chip: 8 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, turn: 9 };   // 颱風上回合剛登陸
+  assert.equal(advance(lingering, real).state.lv.typhoon, 3);
+  assert.equal(advance({ ...lingering, lv: { ...lingering.lv, chip: 6 } }, real).state.lv.typhoon, 2);
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   let s = place(createState(real), 'milk', real).state; s = advance(s, real).state;    // 鮮奶 2（早餐店）

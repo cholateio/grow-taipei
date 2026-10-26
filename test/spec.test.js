@@ -33,7 +33,7 @@ test('every up/jump condition references a level the other item can reach', () =
 test('jump and delay conditions compile; typhoon Lv3 has the dome delay', () => {
   const ctx = { max: Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max])) };
   for (const id of ORDER) for (const kind of ['jump', 'delay']) for (const n in ITEMS[id][kind] || {}) assert.doesNotThrow(() => compile(ITEMS[id][kind][n], ctx));
-  assert.deepEqual(ITEMS.typhoon.delay, { 3: { minLevel: ['baseball', 3] } });
+  assert.deepEqual(ITEMS.typhoon.delay, { 3: { and: [{ minLevel: ['baseball', 3] }, { maxLevel: ['chip', 7] }] } });
 });
 test('every level 2..max has an explicit up condition that compiles', () => {
   const ctx = { max: Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max])) };

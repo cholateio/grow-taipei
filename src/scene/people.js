@@ -32,6 +32,8 @@ function partDefs(THREE) {
     ['mortar', new THREE.BoxGeometry(0.13, 0.015, 0.13)], ['tassel', new THREE.BoxGeometry(0.008, 0.05, 0.008)],   // 大學生的學士帽
     // 黃背心（志工）、圍裙（店員）：身前一塊薄板；制服帽沿用 cap 幾何，只換顏色
     ['vest', new THREE.BoxGeometry(0.1, 0.08, 0.012)], ['apron', new THREE.BoxGeometry(0.1, 0.12, 0.012)],
+    // 蓋東西（build）時右手拿的鋤頭：木柄順著手臂往外伸，刃在柄尾垂直折向身後（揮下去時朝地）
+    ['toolHandle', new THREE.CylinderGeometry(0.006, 0.006, 0.14, 5)], ['toolBlade', new THREE.BoxGeometry(0.05, 0.012, 0.045)],
     ['shadow', new THREE.CircleGeometry(0.07, 16).rotateX(-Math.PI / 2)],
   ];
 }
@@ -59,7 +61,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     set('legL', w.pants); set('legR', w.pants); set('armL', shirt); set('armR', shirt); set('body', shirt);
     set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
     set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK); set('mortar', INK); set('tassel', 0xfcea8b);
-    set('vest', 0xfcea8b); set('apron', 0xdb6a41);
+    set('vest', 0xfcea8b); set('apron', 0xdb6a41); set('toolHandle', 0x9b6b43); set('toolBlade', 0x8a8f96);
     for (const m of Object.values(meshes)) m.instanceColor.needsUpdate = true;
   }
   function resize() { for (const m of Object.values(meshes)) m.count = walkers.length; walkers.forEach((w, i) => paint(i, w)); }
@@ -103,11 +105,11 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
   function place(w, t, k = 1) {
     const i = walkers.indexOf(w), p = locate(w), still = w.controlled ? !w.pose.walking : w.speed === 0, pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看（look 直接蓋掉朝向）
-    const g = w.gesture, gk = g?.k ?? 0, two = Math.PI * 2;
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就蓋掉朝向）
+    const g = w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
-    const yaw = g?.kind === 'look' ? (g.yaw ?? p.yaw) : p.yaw, wave = g?.kind === 'wave';
+    const yaw = g?.kind === 'look' || build ? (g.yaw ?? p.yaw) : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
@@ -115,7 +117,13 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg), tr(0, -0.045, 0));
     at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
     if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
-    else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
+    else if (build) {
+      // 鋤頭每秒揮兩下：rx −2.7（舉過頭）↔ −0.9（揮到身前地上）；節奏用秒數（k × dur），動作長短不同也一樣快
+      const sw = rx(-1.8 - 0.9 * Math.cos(gk * (g.dur ?? 1) * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
+      at('armR', i, L, sh, sw, tr(0, -0.04, 0));
+      at('toolHandle', i, L, sh, sw, tr(0, -0.12, 0)); at('toolBlade', i, L, sh, sw, tr(0, -0.19, -0.02));
+    } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
+    if (!build) { meshes.toolHandle.setMatrixAt(i, hidden); meshes.toolBlade.setMatrixAt(i, hidden); }
     at('body', i, L, tr(0, 0.15 + lift, 0));
     at('head', i, L, tr(0, 0.28 + lift, 0));
     show(acc !== 'helmet', 'hair', i, L, tr(0, 0.292 + lift, -0.006));

@@ -357,16 +357,19 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // ── 日常 ──
   // 走進來、走出去用走路速度，日常散步用 WANDER_SPEED（出發時定好）
   // offgrid：終點本來就在走路格外（屋頂、footprint 裡的站位、橋頭的折線），重新規劃時照樣走上去
+  // 速度：走進來、走出去、建築長在身上（人站在外擴後的 footprint 裡，§14.1）用走路速度，其餘閒晃速度
+  const caught = m => !nav.walkable(m.pos.x, m.pos.z);
   function go(m, path) {
-    const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' ? m.speed : WANDER_SPEED;
+    const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' || caught(m) ? m.speed : WANDER_SPEED;
     m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed, offgrid: !nav.walkable(last.x, last.z) } : null;
   }
-  // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築
+  // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築；
+  // 建築長在身上的人用走路速度走完這一趟（閒晃的 0.5 要一秒多才走得出底座）
   function replan(m) {
-    const { last, speed, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
+    const { last, speed, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1), fast = caught(m);
     if (offgrid && (end.x !== last.x || end.z !== last.z)) path.push(last);
     go(m, path);
-    if (m.trip) { m.trip.speed = speed; if (goal) m.trip.goal = goal; }
+    if (m.trip) { m.trip.speed = fast ? Math.max(speed, m.speed) : speed; if (goal) m.trip.goal = goal; }
   }
   function walk(m, dt) {
     const trip = m.trip, ds = Math.min(trip.speed * dt, trip.left);

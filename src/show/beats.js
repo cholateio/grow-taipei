@@ -10,7 +10,7 @@ import { worldToAxial } from '../scene/hex.js';
 import { createPathCursor } from '../scene/path.js';
 
 export { together };
-export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8 };
+export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6 };
 // 加速上限：一圈 2π / 0.35 ≈ 18 s，車剛開走時要 4.5 倍才趕得上 4 秒內進站（三倍會拖到 6 秒）
 export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');
@@ -108,7 +108,7 @@ export function bubble(who, kind, dur = 1.2) {
   };
 }
 
-// 小動作。people：交給小人的 gesture（look 另外帶 { at } 決定轉向，演完就一直朝那邊）；
+// 小動作。people：交給小人的 gesture（look、build 另外帶 { at } 決定轉向，演完就一直朝那邊；build 揮鋤頭的節奏要秒數，dur 一起帶）；
 // 模型：sniff 左右轉頭、jump 原地拋物線；零件鍵 + puff：零件鼓起來再縮回去
 export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   if (typeof dur === 'object') { at = dur.at; dur = GESTURE_DUR[kind]; }   // gesture(m, 'look', { at })
@@ -119,11 +119,11 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; base = obj.scale.clone(); return; }
       m = memberOf(who, ctx); if (!m) return false;
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
-      yaw = kind === 'look' && at ? Math.atan2(at.x - m.pos.x, at.z - m.pos.z) : undefined;
+      yaw = (kind === 'look' || kind === 'build') && at ? Math.atan2(at.x - m.pos.x, at.z - m.pos.z) : undefined;
     },
     step(k) {
       if (obj) { obj.scale.copy(base).multiplyScalar(1 + PUFF * Math.sin(Math.PI * k)); return; }
-      if (m.walker) { m.walker.gesture = yaw === undefined ? { kind, k } : { kind, k, yaw }; return; }
+      if (m.walker) { m.walker.gesture = yaw === undefined ? { kind, k, dur } : { kind, k, dur, yaw }; return; }
       if (!m.holder) return;
       if (kind === 'look' && yaw !== undefined) m.holder.rotation.y = m.yaw + turnBy(m.yaw, yaw) * k;   // 模型：慢慢轉過去
       if (kind === 'sniff') m.holder.rotation.y = m.yaw + 0.3 * Math.sin(k * TWO_PI * 2);

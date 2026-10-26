@@ -609,3 +609,14 @@ test('a walker whose route is cut by a new footprint replans around it and still
   for (let i = 0; i < 150; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at ${m.pos.x.toFixed(2)},${m.pos.z.toFixed(2)}`); }
   assert.ok(gap(m.pos, B) < 0.05, `arrived (${gap(m.pos, B).toFixed(2)})`);
 });
+// §14.1：建築長在身上（footprint 換了的那一幀人就在裡面）——用走路速度（不是閒晃的 0.5）走出來，走路中、休息中都一樣
+test('a wanderer caught inside a new footprint walks out at walking speed, not the wander dawdle', () => {
+  for (const moving of [true, false]) {
+    const { roster, nav } = setup(); roster.declare('k', kids(1)); roster.snap(); const [m] = roster.members('k');
+    let t = 0; for (let i = 0; i < 600 && m.walking !== moving; i++) { roster.update(1 / 30, t); t += 1 / 30; }
+    assert.equal(m.walking, moving);
+    nav.setFootprints([{ x: m.pos.x, z: m.pos.z, r: 0.6 }]);   // 外擴 PAD 後 0.72：閒晃速度要 1.44 s，走路速度 0.45 s
+    let out = null; for (let i = 0; i < 60 && out === null; i++) { roster.update(1 / 30, t); t += 1 / 30; if (!nav.inFootprint(m.pos.x, m.pos.z)) out = i / 30; }
+    assert.ok(out !== null && out < 0.7, `${moving ? 'walking' : 'resting'}: out after ${out} s`);
+  }
+});

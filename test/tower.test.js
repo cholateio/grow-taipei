@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as tower from '../src/actors/tower.js';
-import { anchorWorld } from '../src/actors/anchors.js';
+import { anchorWorld, frontOf } from '../src/actors/anchors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { B } from '../src/show/beats.js';
@@ -121,4 +121,26 @@ test('headless: the turn crossing 8→11 ends with the「101 蓋一半」label o
 test('headless: the first closing montage turn crossing into 點燈 still shows the label', async () => {
   const h = await headlessShow(), t = await liveTurn(h, SOLUTIONS[0], { closing: 1 });
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
+});
+
+// 蓋東西站鏡頭側（§14）：跨門檻的那個人走到 frontOf(101)，揮鋤頭 1.6 s（臉朝 101），揮完才閃白跳階
+test('the 101 stage upgrade hero stands at frontOf(tower) and plays build (1.6 s) before the parts change', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, at = anchorWorld('tower'), frames = [];
+  show.update = (dt, t) => {
+    update(dt, t);
+    const front = frontOf(at, tower.FRONT_R, show.nav);
+    for (const k of ['chip.worker', 'landmarks.islanders']) for (const m of show.roster.members(k)) {
+      const g = m.walker?.gesture; if (g?.kind === 'build' && Math.hypot(m.pos.x - front.x, m.pos.z - front.z) < 0.6) frames.push({ t, g, pos: { ...m.pos }, front, total: show.stage.meta.total });
+    }
+  };
+  await liveTurn(h, SOLUTIONS[0].slice(0, 5));
+  assert.ok(frames.length > 10, `build frames ${frames.length}`);
+  assert.ok(frames.at(-1).t - frames[0].t >= 1.4, `build lasted ${(frames.at(-1).t - frames[0].t).toFixed(2)} s`);
+  assert.equal(frames[0].g.dur, 1.6);
+  for (const f of frames) {
+    assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, `stands at the front ${f.pos.x.toFixed(2)},${f.pos.z.toFixed(2)}`);
+    const d = f.g.yaw - Math.atan2(at.x - f.pos.x, at.z - f.pos.z); assert.ok(Math.abs(Math.atan2(Math.sin(d), Math.cos(d))) < 1e-6, 'faces the tower');
+    assert.notEqual(f.total, 11, 'builds before the tower changes');
+  }
+  assert.equal(show.stage.meta.total, 11);
 });

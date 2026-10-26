@@ -6,7 +6,7 @@ import { RING_R } from '../src/scene/hex.js';
 import { lv, worldPoints, distToCell } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
-import { anchorWorld } from '../src/actors/anchors.js';
+import { anchorWorld, frontOf } from '../src/actors/anchors.js';
 import { offset } from '../src/actors/palette.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
@@ -283,4 +283,30 @@ test('focus: Lv4 the token cell then the dome; Lv6 the boba queue then the dome'
   const run = h.run; h.run = (evs, o) => { if (!o?.instant) r0 = h.rig.log.length; return run(evs, o); };
   await liveAt(h, SOLUTIONS[0], isBall(4));
   assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('token')), String(CELL), 'home']);
+});
+
+// 蓋東西站鏡頭側（§14）：大巨蛋那一級，幫手在巨蛋的鏡頭側揮兩次鋤頭；演唱會的電工照樣在門口敲門
+const gestureLog = (show, keys, frontAt) => {
+  const update = show.update, log = [];
+  show.update = (dt, t) => {
+    update(dt, t);
+    const front = frontAt?.(show.nav);
+    for (const k of keys) for (const m of show.roster.members(k)) { const g = m.walker?.gesture; if (g) log.push({ key: k, m, kind: g.kind, k: g.k, pos: { ...m.pos }, front }); }
+  };
+  return log;
+};
+// 同一個人連續兩個同樣的動作：k 往回跳就是下一個
+const runs = (log, kind) => log.filter(f => f.kind === kind).reduce((n, f, i, a) => n + (i === 0 || a[i - 1].m !== f.m || f.k < a[i - 1].k ? 1 : 0), 0);
+test('baseball Lv3: the helper builds twice at the dome front; electrician at GATE still knocks', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), log = gestureLog(h.show, KEYS, nav => frontOf(AT, baseball.FRONT_R, nav));
+    await liveAt(h, order, isBall(3));
+    const b = log.filter(f => f.kind === 'build');
+    assert.equal(runs(log, 'build'), 2, 'two builds'); assert.ok(!log.some(f => f.kind === 'knock'), 'no knock');
+    for (const f of b) assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, `at the dome front ${f.pos.x.toFixed(2)},${f.pos.z.toFixed(2)}`);
+  }
+  const h = await headlessShow(), log = gestureLog(h.show, KEYS), gate = offset(AT, 0, 1.1);
+  await liveAt(h, SOLUTIONS[0], isBall(5));
+  const k = log.filter(f => f.kind === 'knock'); assert.ok(k.length > 5 && !log.some(f => f.kind === 'build'), 'electrician knocks');
+  for (const f of k) assert.ok(Math.hypot(f.pos.x - gate.x, f.pos.z - gate.z) < 0.3, 'at the gate');
 });

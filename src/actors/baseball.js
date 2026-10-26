@@ -1,6 +1,6 @@
 // 棒球（§5.1）：沙地 → 木看台與兩個傳接球的球員 → 大巨蛋 → 比賽開打（頂縫透光、觀眾 4 人）→ 演唱會（藍色應援棒、觀眾 6 人）→ 跨年煙火。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
-import { anchorWorld } from './anchors.js';
+import { anchorWorld, frontOf } from './anchors.js';
 import { C, offset } from './palette.js';
 
 export const id = 'baseball';
@@ -89,7 +89,9 @@ export const builders = {
 
 // ── 劇本（§8.8）──
 // 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
-const GATE = offset(AT, 0, 1.1), DOME_EDGE = offset(AT, 0, 1.6);
+const GATE = offset(AT, 0, 1.1);
+// 蓋東西站的鏡頭側距離（§14）：巨蛋橢圓外擴 PAD 後 1.27 × 1.07，鏡頭方向 1.6 站在底座外、門前球員的東邊（跟原本站的巨蛋正前方一樣遠）
+export const FRONT_R = 1.6;
 const BASE_AT = BASES.map(([x, z]) => offset(AT, x, z));
 const RUN_SPEED = 0.7;   // 島民沿壘包慢慢走一圈（約 4 s）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
@@ -124,12 +126,12 @@ export const script = {
         B.home(c => c.roster.members('baseball.players')), B.levelUp('baseball'),
       ];
     },
-    // 大巨蛋：球員 …… → 圖框「巨蛋」→ 101 工地的工人（沒有就島民）走到巨蛋前 → 敲 ×2 → 閃白巨蛋 → 走回
+    // 大巨蛋：球員 …… → 圖框「巨蛋」→ 101 工地的工人（沒有就島民）走到巨蛋的鏡頭側 → 揮鋤頭 ×2 → 閃白巨蛋 → 走回
     3(e, s, ctx) {
-      const { B } = ctx, w = helper('chip.worker', DOME_EDGE);
+      const { B } = ctx, front = c => frontOf(AT, FRONT_R, c.nav), w = helper('chip.worker', frontOf(AT, FRONT_R));
       return [
         B.bubble(player(0), '……'), B.bubble(player(0), { icon: 'dome' }),
-        B.walk(w, DOME_EDGE), B.gesture(w, 'knock'), B.gesture(w, 'knock'), B.apply(e), B.home(w), B.levelUp('baseball'),
+        B.walk(w, front), B.gesture(w, 'build', { at: AT }), B.gesture(w, 'build', { at: AT }), B.apply(e), B.home(w), B.levelUp('baseball'),
       ];
     },
     // 開打：列車進站停 → 4 個觀眾在站前下車 → 列車開走，他們一起走到巨蛋門口 → 一起 ♪ → 閃白頂縫透光

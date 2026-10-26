@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ANCHORS, anchorWorld, LANDMARKS, landmarkWorld, routeBetween, cellOf, cellCentre } from '../src/actors/anchors.js';
+import { ANCHORS, anchorWorld, LANDMARKS, landmarkWorld, routeBetween, cellOf, cellCentre, frontOf } from '../src/actors/anchors.js';
+import { OVERVIEW_DIR } from '../src/scene/camera.js';
+import { createNav } from '../src/show/nav.js';
+import { WATER_Y } from '../src/scene/hex.js';
 import { MAIN_CELLS, axialToWorld, RING_R, cellTop, PLATEAU_TOP, TOP, edgeMidpoint } from '../src/scene/hex.js';
 import { ORDER } from '../src/rules/spec.js';
 test('every item and the tower have an anchor inside the walking ring of a main-island cell', () => {
@@ -32,4 +35,19 @@ test('cellOf gives the hex cell of an item or the tower; cellCentre is that cell
   assert.equal(cellOf('turn'), null); assert.equal(cellOf(undefined), null);
   const c = cellOf('milk'); c[0] = 9; assert.deepEqual(cellOf('milk'), [-1, 0], 'a copy, not the table');
   const w = axialToWorld(1, -1); assert.deepEqual(cellCentre([1, -1]), { x: w.x, y: PLATEAU_TOP, z: w.z });
+});
+// 蓋東西站鏡頭側（§14）：建築 at 往鏡頭方向（OVERVIEW_DIR 的水平分量）r；給 nav 就落到最近的可走點
+test('frontOf(at, r) is r from at along the camera direction; with nav it is walkable and within r ± 0.5 of at (dome front lands on the bridge head side, not in water)', () => {
+  const d = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z), at = anchorWorld('tower'), p = frontOf(at, 1.2);
+  assert.ok(Math.abs(Math.hypot(p.x - at.x, p.z - at.z) - 1.2) < 1e-9); assert.equal(p.y, at.y);
+  assert.ok(Math.abs((p.x - at.x) / 1.2 - OVERVIEW_DIR.x / d) < 1e-9 && Math.abs((p.z - at.z) / 1.2 - OVERVIEW_DIR.z / d) < 1e-9, 'toward the camera');
+  // 巨蛋（橢圓）、101 底座（1.6 方框）、晶片工地（含三角錐約 2.1 × 2.0）的 footprint；另放一個圓剛好蓋住 101 前那一點，nav 要把人挪出去
+  const dome = anchorWorld('baseball'), chip = anchorWorld('chip'), raw = frontOf(at, 1.1);
+  const nav = createNav(); nav.setFootprints([{ x: dome.x, z: dome.z, rx: 1.15, rz: 0.95 }, { x: at.x, z: at.z, w: 1.6, d: 1.6 }, { x: chip.x, z: chip.z + 0.1, w: 2.1, d: 2.0 }, { x: raw.x, z: raw.z, r: 0.15 }]);
+  for (const [id, r] of [['tower', 1.1], ['chip', 1.3], ['baseball', 1.6]]) {
+    const a = anchorWorld(id), q = frontOf(a, r, nav), dist = Math.hypot(q.x - a.x, q.z - a.z);
+    assert.ok(nav.walkable(q.x, q.z), `${id} front walkable`); assert.ok(Math.abs(dist - r) <= 0.5, `${id} front ${dist.toFixed(2)} from at (r ${r})`);
+    assert.ok(q.y > WATER_Y + 0.1, `${id} front not in water`);
+  }
+  assert.ok(Math.hypot(frontOf(at, 1.1, nav).x - raw.x, frontOf(at, 1.1, nav).z - raw.z) > 0.2, 'moved out of the footprint');
 });

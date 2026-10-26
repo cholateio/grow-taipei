@@ -101,3 +101,25 @@ test('look without a yaw keeps the walker facing and the body matrix finite', ()
   const m = new THREE.Matrix4(); people.group.getObjectByName('people:body').getMatrixAt(0, m);
   assert.ok(m.elements.every(Number.isFinite), 'body matrix is finite');
 });
+// 蓋東西（§14）：右手舉高往下揮（2 Hz），手上的鋤頭（握柄 + 刃）只在動作中出現
+test("gesture 'build' swings the right arm (armR rx spans ≥ 1.2 rad over one cycle) and shows the tool part only while the gesture runs", () => {
+  const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0, y: 0, z: 0, yaw: 0, walking: false });
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3();
+  // 手臂中心相對肩膀（0.065, 0.2）的方向 → 繞 x 的角度（rx 會超過 ±π/2，不用 Euler 拆）
+  const armRx = () => { people.group.getObjectByName('people:armR').getMatrixAt(0, m); p.setFromMatrixPosition(m); return Math.atan2(-p.z, -(p.y - 0.2)); };
+  const scaleOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); return s.x; };
+  people.update(0.016, 0);
+  assert.equal(scaleOf('people:toolHandle'), 0); assert.equal(scaleOf('people:toolBlade'), 0);
+  const angles = [];
+  for (let i = 0; i <= 20; i++) {   // 一個週期 0.5 s = 1.6 s 動作的 k 0 → 0.3125
+    w.gesture = { kind: 'build', k: i / 20 * 0.5 / 1.6, dur: 1.6 }; people.update(0.016, 0); angles.push(armRx());
+    assert.ok(scaleOf('people:toolHandle') > 0 && scaleOf('people:toolBlade') > 0, `tool shown at ${i}`);
+  }
+  assert.ok(Math.max(...angles) - Math.min(...angles) >= 1.2, `armR span ${(Math.max(...angles) - Math.min(...angles)).toFixed(2)}`);
+  assert.ok(Math.min(...angles) < -2.2, 'raised overhead at the top of the swing');
+  w.gesture = { kind: 'build', k: 0.5, dur: 1.6, yaw: 1.1 }; people.update(0.016, 0);
+  people.group.getObjectByName('people:body').getMatrixAt(0, m); const e = new THREE.Euler().setFromQuaternion(new THREE.Quaternion().setFromRotationMatrix(m));
+  assert.ok(Math.abs(e.y - 1.1) < 1e-6, 'faces the building (yaw)');
+  w.gesture = { kind: 'wave', k: 0.3 }; people.update(0.016, 0); assert.equal(scaleOf('people:toolHandle'), 0, 'not on other gestures');
+  w.gesture = null; people.update(0.016, 0); assert.equal(scaleOf('people:toolHandle'), 0); assert.equal(scaleOf('people:toolBlade'), 0);
+});

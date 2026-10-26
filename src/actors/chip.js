@@ -1,7 +1,7 @@
 // 晶片（§5.1）：北士科工地 → 冒煙的廠房、2 個工程師走去 101 → 園區三棟玻璃盒、4 個工程師騎 YouBike → 星群總部（弧形玻璃）→ 矽盾待命（閃光在 101）。
 // 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」。
 // 劇本（§8.2）：工人從 101 工地走來開工 → 工程師從廠門外走進來、過橋去 101 → 騎 YouBike 回來 → 小學生來園區門口 → 站前接箱子送到 101 → 看見彩虹、矽盾待命。
-import { anchorWorld, routeBetween } from './anchors.js';
+import { anchorWorld, routeBetween, frontOf } from './anchors.js';
 import { worldToAxial } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
@@ -11,6 +11,8 @@ export const labelY = 1.5;
 const AT = anchorWorld('chip'), TOWER = anchorWorld('tower');
 // 廠門外（工程師通勤的起點）：每一級的工地（三角錐）、廠房、園區、總部（含招牌）最南到 z +1.06，外擴 PAD 後 1.18；門口站在 1.25，不站進建築裡（§14.1）
 const DOOR = offset(AT, -0.3, 1.25), DOOR_WEST = offset(AT, -1.45, 1.25);   // DOOR_WEST：沿園區南緣往西走到這裡才轉去橋頭（不切過總部的西南角）
+// 蓋東西站的鏡頭側距離（§14）：工地的三角錐到 z +1.06、外擴 PAD 後 1.18，鏡頭方向（z 分量 0.96）1.3 才站得到外面
+export const FRONT_R = 1.3;
 const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地（0.6 會落在 101 的 footprint 裡）
 const FOOT = offset(TOWER, 0.95, 0.25);           // 101 腳下（通勤的終點）
 const KID_GATE = offset(AT, -1.5, 0.6);           // 園區西側門口（總部那回合小學生從中心格過橋來，停在這裡）
@@ -91,11 +93,11 @@ export const script = {
     return [B.apply(e, { hold: ['chip.worker'] }), B.spawn('chip.worker', WORKER_ENTRY), B.walk(w, DOOR), B.home(w)];
   },
   grow: {
-    // 廠房：工人 …… → 敲 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）走進來、過橋走去 101
+    // 廠房：工人 …… → 走到工地的鏡頭側揮鋤頭 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）走進來、過橋走去 101
     2(e, s, ctx) {
       const { B } = ctx, w = worker(ctx), foot = i => c => c.nav.slots(FOOT, 2, 0.2)[i];
       return [
-        B.bubble(w, '……'), B.gesture(w, 'knock'),
+        B.bubble(w, '……'), B.walk(w, c => frontOf(AT, FRONT_R, c.nav)), B.gesture(w, 'build', { at: AT }),
         B.apply(e, { hold: ['chip.engineers'] }),
         B.spawn('chip.engineers', ENGINEER_ENTRY[0]), B.spawn('chip.engineers', ENGINEER_ENTRY[1]),
         B.together([B.walk(eng(ctx, 0), foot(0)), B.walk(eng(ctx, 1), foot(1))]),

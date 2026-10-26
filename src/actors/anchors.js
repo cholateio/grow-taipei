@@ -1,5 +1,6 @@
 // 八個物品、101 與地標在主島上的位置（格 + 格內偏移）。純資料，演員都用這張表。
 import { axialToWorld, cellTop, edgeMidpoint, NEIGHBORS, RING_R } from '../scene/hex.js';
+import { OVERVIEW_DIR } from '../scene/camera.js';
 
 export const ANCHORS = {
   milk: { cell: [-1, 0], dx: 0, dz: 0.1 },       chip: { cell: [1, 0], dx: 0.1, dz: -0.2 },
@@ -20,6 +21,13 @@ export const landmarkWorld = name => toWorld(LANDMARKS[name]);
 // 物品（或 'tower'）所在的格子 [q, r]，不認得的 id（'turn'）回 null；格子中心（地面高度）——鏡頭跟主線平移的目標（§13.1）
 export const cellOf = id => (ANCHORS[id] ? [...ANCHORS[id].cell] : null);
 export const cellCentre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
+// 建築的鏡頭側（§14）：at 往鏡頭方向（OVERVIEW_DIR 的水平分量）走 r——蓋東西的人站這裡，臉朝建築、背對鏡頭也看得到手上的動作；
+// 給 nav 就落到最近的可走點（外擴 PAD 後的 footprint 之外、不在水裡）
+const FRONT_N = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z), FRONT_X = OVERVIEW_DIR.x / FRONT_N, FRONT_Z = OVERVIEW_DIR.z / FRONT_N;
+export function frontOf(at, r, nav = null) {
+  const p = { x: at.x + FRONT_X * r, y: at.y, z: at.z + FRONT_Z * r };
+  return nav ? nav.nearestWalkable(p) : p;
+}
 
 // 相鄰兩格之間的步行路線：起點 → A 的橋頭 → B 的橋頭 → 終點（橋的位置和 island.js 一樣）
 export function routeBetween(cellA, pA, cellB, pB) {

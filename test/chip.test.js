@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as chip from '../src/actors/chip.js';
-import { anchorWorld } from '../src/actors/anchors.js';
+import { anchorWorld, frontOf } from '../src/actors/anchors.js';
 import { cellAt, RING_R } from '../src/scene/hex.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
@@ -171,4 +171,18 @@ test('chip 5: the first beat focuses the station (token cell), the camera goes t
   assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], {}), [0, 1]);
   const last = beats.at(-1); assert.equal(last.kind, 'together'); assert.deepEqual(last.beats.map(b => b.kind).sort(), ['focus', 'levelUp']); assert.deepEqual(focusCell(last.beats.find(b => b.kind === 'focus'), {}), [1, 0]);
   for (const order of SOLUTIONS) assert.deepEqual(await trailOf(order, 5), [[0, 1], [0, 0], [1, 0], 'home'], order.join('>'));
+});
+
+// 蓋東西站鏡頭側（§14）：廠房那一級，工人走到工地的鏡頭側揮鋤頭（不再敲門），揮完才閃白廠房
+test('chip grow 2: the worker builds (not knocks) at the fab front', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, at = anchorWorld('chip'), seen = [];
+  show.update = (dt, t) => {
+    update(dt, t);
+    const front = frontOf(at, chip.FRONT_R, show.nav);
+    for (const m of show.roster.members('chip.worker')) { const g = m.walker?.gesture; if (g) seen.push({ kind: g.kind, pos: { ...m.pos }, front, lv: show.stage.lv.chip }); }
+  };
+  await liveAt(h, SOLUTIONS[0], isChip(2));
+  assert.ok(!seen.some(f => f.kind === 'knock'), 'no knock');
+  const b = seen.filter(f => f.kind === 'build'); assert.ok(b.length > 10, `build frames ${b.length}`);
+  for (const f of b) { assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, 'at the fab front'); assert.equal(f.lv, 1, 'before the factory appears'); }
 });

@@ -1,7 +1,7 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級 0–8 工地（吊車會動）、9–18 半成品、19–29 完工、30+ 點燈。
 // 晶片 Lv5 長出矽盾天線、Lv6 每 3 秒閃一圈淡藍光；燈泡 Lv5 做燈光秀。
-// 劇本（§8.9）：回合最後的 settle 跨門檻時，工人（沒有就島民）走到 101 腳下敲門 → 閃白跳階 → 頭上寫階段名。
-import { anchorWorld } from './anchors.js';
+// 劇本（§8.9）：回合最後的 settle 跨門檻時，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 閃白跳階 → 頭上寫階段名。
+import { anchorWorld, frontOf } from './anchors.js';
 import { offset } from './palette.js';
 
 export const id = 'tower';
@@ -9,6 +9,8 @@ export const id = 'tower';
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45;
 const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
+// 蓋東西站的鏡頭側距離（§14）：底座 1.6 見方外擴 PAD 後半寬 0.92，鏡頭方向（z 分量 0.96）1.1 才站得到底座外
+export const FRONT_R = 1.1;
 
 export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
 
@@ -98,7 +100,7 @@ export const script = {
   settle(e, s, ctx) {
     const stage = stageOf(s.total);
     if (stage === stageOf(s.prevTotal)) return [];
-    const { B } = ctx, hero = once(c => heroAt(c, FOOT));
-    return [B.walk(hero, FOOT), B.gesture(hero, 'knock'), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero)];
+    const { B } = ctx, hero = once(c => heroAt(c, FOOT)), front = c => frontOf(AT, FRONT_R, c.nav);
+    return [B.walk(hero, front), B.gesture(hero, 'build', { at: AT }), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero)];
   },
 };

@@ -16,6 +16,8 @@ const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 // 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
 export const POWERED = 7;
 export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout;
+// 珍奶連鎖店（物品 v2 §4.7 Lv5）：小森林島開分店、觀光船多兩艘
+export const BRANCH = 5;
 
 export function view(lv, flags) {
   const v = {}, storm = lv.typhoon === 2, on = powered(lv, flags);
@@ -32,12 +34,12 @@ export function view(lv, flags) {
   if (lv.token >= 8 && lv.milk >= 3) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: kidAccessory(lv.milk), home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
   }
-  // 小森林島的觀光客跟著珍奶分店（Lv4）一起來：珍奶 Lv4 的劇本鏡頭移過去時閃白出現（§8.7）
-  if (lv.boba >= 4) {
+  // 小森林島的觀光客跟著珍奶分店（物品 v2：Lv5 連鎖店）一起來：珍奶 Lv5 的劇本鏡頭移過去時閃白出現（§8.7）
+  if (lv.boba >= BRANCH) {
     const f = island('forest'), yaw = Math.atan2(-f.x, -f.z);   // 面向主島拍照
     v['sat.forest'] = { kind: 'roster', at: f, n: 2, accessory: 'suitcase', home: { kind: 'stand', spots: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] } };
   }
-  if (lv.boba >= 4) v['sat.forestShop'] = { kind: 'compound', at: at('forest', 1.0, 0.9), parts: [
+  if (lv.boba >= BRANCH) v['sat.forestShop'] = { kind: 'compound', at: at('forest', 1.0, 0.9), parts: [
     { kind: 'box', pos: [0, 0.22, 0], scale: [0.45, 0.44, 0.35], color: C.wall }, { kind: 'hip', pos: [0, 0.55, 0], scale: [0.55, 0.2, 0.45], color: C.coral },
     { kind: 'cylinder', pos: [0, 0.78, 0], scale: [0.16, 0.22, 0.16], color: 0xc9a27c },
   ] };
@@ -55,7 +57,7 @@ export function view(lv, flags) {
     { kind: 'sphere', pos: [0.2, 0.36, 0.2], scale: [0.4, 0.12, 0.28], color: GOLD, glow: GOLD },
     ...Array.from({ length: 6 }, (_, i) => ({ kind: 'cylinder', pos: [0.2 + Math.cos(i) * 0.5, 0.02, 0.2 + Math.sin(i) * 0.45], scale: [0.09, 0.02, 0.09], color: GOLD })),
   ] : [{ kind: 'rbox', pos: [0.2, 0.37, 0.2], scale: [0.58, 0.08, 0.43], color: GOLD }] };
-  if (!storm) v['sat.boats'] = { kind: 'boats', at: { x: 0, y: WATER_Y - 0.02, z: 0 }, n: 2 + (lv.boba >= 2 ? 2 : 0) + (lv.boba >= 4 ? 2 : 0) };
+  if (!storm) v['sat.boats'] = { kind: 'boats', at: { x: 0, y: WATER_Y - 0.02, z: 0 }, n: 2 + (lv.boba >= 2 ? 2 : 0) + (lv.boba >= BRANCH ? 2 : 0) };
   return v;
 }
 

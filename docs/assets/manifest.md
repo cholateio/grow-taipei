@@ -56,21 +56,21 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb`（搭捷運／泡溫泉） | CC0 | 現有 |
 | 老鼠 | 4 ◆ | `rat.pack` | `quat/enemies/Rat.glb`＋程式（機器鼠天線／三眼綠光） | CC0 | 現有 |
 | 老鼠 | 5 ◆ | `rat.pack`、`rat.ufo` | 機器鼠軍團 10 隻 = `quat/enemies/Rat.glb`；王冠、UFO = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 現有（10 隻、王冠待做） |
-| 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車） | — | 現有 |
-| 珍奶 | 2 | `boba.queue` | 程式名冊（人龍 6 人） | — | 現有 |
-| 珍奶 | 3 | `boba.main` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店）＋`kenney/food/cup-tea.glb`（招牌杯） | CC0 | 待做 |
-| 珍奶 | 4 | `boba.fountain` | 程式（噴泉在店側邊） | — | 現有（今天的噴泉在店的位置，要挪） |
-| 珍奶 | 5 | `boba.branch` | `quat/buildings/3Story_Small_Mat.glb`（小森林島分店）＋`kenney/food/cup-tea.glb`；觀光船 = `quat/ships/BoatWSail.glb`（現有） | CC0 | 待做 |
-| 珍奶 | 6 ★ | `boba.flagship`、`boba.drones` | `quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店）；無人機 = `kenney/space/craft_miner.glb` ×2 | CC0 | 待做 |
-| 珍奶 | 7 ◆ | `boba.flags` | 程式（珍奶旗、船隊、101 廣告） | — | 待做 |
-| 棒球 | 1 | `baseball.main` | 程式（沙地球場） | — | 現有 |
-| 棒球 | 2 | `baseball.main`、`baseball.players` | `kenney/racing/grandStand.glb`（木看台）；球員 = 程式名冊 | CC0 | 待做（程式版現有） |
-| 棒球 | 3 ◆ | `baseball.main` | `kenney/space/hangar_roundA.glb`（大巨蛋；Quaternius `GeodesicDome` 是 Draco 壓縮，沒收） | CC0 | 待做（程式版現有） |
-| 棒球 | 4 | `baseball.main`、`baseball.crowd` | 程式（頂縫透光、觀眾 4）；可配 `kenney/racing/grandStandCovered.glb` | — | 現有 |
-| 棒球 | 5 | `baseball.main`、`baseball.lawn` | 程式（藍色應援棒、觀眾 6） | — | 現有 |
+| 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車，錨點南邊 0.4：夜市第四攤擋不到） | — | 現有 |
+| 珍奶 | 2 | `boba.queue`、`boba.yard` | 程式名冊（人龍 4 人一排，人數預算）＋程式立牌（鮮奶 ≥4 白底藍字） | — | 現有 |
+| 珍奶 | 3 | `boba.main`、`boba.sign`、`boba.yard` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店，tint 牆奶油、磚與飾邊木色、招牌珊瑚）＋`kenney/food/cup-tea.glb`（屋頂招牌杯）＋程式遮雨棚、店前磚地 | CC0 | 換新 |
+| 珍奶 | 4 | `boba.fountain` | 程式（噴泉在店東側、往北退 0.3：不在店與鏡頭之間；水面不發光，整局截圖 draw call ≤ 150） | — | 換新（挪到店側邊） |
+| 珍奶 | 5 | `sat.forestShop`、`sat.forest`、`sat.boats` | 程式（小森林島分店、觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；門檻由 Lv4 改 Lv5（satellites.js `BRANCH`）。`3Story_Small_Mat.glb` 沒用 | CC0（船） | 現有 |
+| 珍奶 | 6 ★ | `boba.flagship`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | `quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店，同店面 tint）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`，繞店飛一小圈、停在屋頂）；觀光客 = 程式名冊 | CC0 | 換新 |
+| 珍奶 | 7 ◆ | `boba.yard`（旗子）、`boba.fleet` | 程式（主島 17 條靠海格邊的珍奶旗，併在院子零件裡；五艘小船一個零件繞島轉；101「世界珍奶節」是劇本字卡） | — | 換新 |
+| 棒球 | 1 | `baseball.main`、`baseball.lines.*` | 程式（沙地球場） | — | 現有 |
+| 棒球 | 2 | `baseball.stands`、`baseball.players` | `kenney/racing/grandStand.glb` ×2（木看台，tint 座椅珊瑚、骨架木色；零件 kind `stands`）；球員 = 程式名冊 | CC0 | 換新 |
+| 棒球 | 3 ◆ | `baseball.main`、`baseball.deco` | `kenney/space/hangar_roundA.glb`（大巨蛋，高 1.0，tint 圓頂白、殼奶油、飾條珊瑚）＋程式底座與門口；Quaternius `GeodesicDome` 是 Draco 壓縮，沒收 | CC0 | 換新 |
+| 棒球 | 4 | `baseball.deco`、`baseball.crowd` | 程式（頂縫透光、觀眾 3） | — | 現有 |
+| 棒球 | 5 | `baseball.deco`、`baseball.lawn` | 程式（藍色應援棒，頂縫改霓虹藍；觀眾 4＋草皮 1） | — | 現有 |
 | 棒球 | 6 | `baseball.fireworks` | 程式（跨年煙火） | — | 現有 |
-| 棒球 | 7 | `baseball.main`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（更大的圓頂）＋程式 LED 帶、觀眾 8 | CC0 | 待做 |
-| 棒球 | 8 ◆ | `baseball.platform` | 程式（月台連到巨蛋門口）＋`quat/cyberpunk/Platform_4x1_Empty.glb` | CC0 | 待做 |
+| 棒球 | 7 | `baseball.main`、`baseball.deco`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（擴建：同一個底、高 1.2）＋程式 LED 帶（`rail` 一圈霓虹藍）、觀眾 6 | CC0 | 換新 |
+| 棒球 | 8 ◆ | `baseball.platform`、`baseball.riders` | 程式（環狀線邊的高架月台、雨棚、站名牌、接到巨蛋門口的磚道；`Platform_4x1_Empty.glb` 沒用：月台要沿徑向斜放、一端接軌道一端上岸，程式畫比較好對齊）；坐新線來的觀眾 3 = 程式名冊 | — | 換新 |
 | 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭（沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

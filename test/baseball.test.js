@@ -1,296 +1,193 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import * as THREE from '../vendor/three/three.module.js';
 import * as baseball from '../src/actors/baseball.js';
-import { RING_R } from '../src/scene/hex.js';
-import { lv, worldPoints, distToCell } from './helpers/actors.js';
+import { RING_R, cellAt, axialToWorld } from '../src/scene/hex.js';
+import { lv, worldPoints, distToCell, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
-import { anchorWorld, frontOf } from '../src/actors/anchors.js';
-import { offset } from '../src/actors/palette.js';
+import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
+import { C, offset } from '../src/actors/palette.js';
+import { diffParts } from '../src/actors/stage.js';
+import { OLD_MAX } from '../src/actors/clamp.js';
+import { TRACK } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, DEFAULT_SECS } from './helpers/show.js';
-import { scripted } from '../src/actors/clamp.js';
+import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { createNav } from '../src/show/nav.js';
+import { B } from '../src/show/beats.js';
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const AT = anchorWorld('baseball'), CELL = cellOf('baseball'), GATE = offset(AT, 0, 1.1);
+const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
+const PALETTE = new Set(Object.values(C));
+const views = Array.from({ length: 9 }, (_, n) => baseball.view(lv({ baseball: n }), {}));
+const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
+const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]].map(([x, z]) => offset(AT, x, z));
 
-test('baseball lv1 sand lot; lv2 wooden stands + two players and a ball; lv3 the dome', () => {
-  const v1 = baseball.view(lv({ baseball: 1 }), {}); assert.deepEqual(Object.keys(v1), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3']);
-  const v2 = baseball.view(lv({ baseball: 2 }), {});
-  assert.ok(!v2['baseball.main'].parts.some(p => p.kind === 'dome')); assert.ok(v2['baseball.main'].parts.filter(p => p.stand).length >= 3, 'stands');
-  assert.equal(v2['baseball.players'].home.spots.length, 2); assert.equal(v2['baseball.ball'].kind, 'ball');
-  assert.ok(baseball.view(lv({ baseball: 3 }), {})['baseball.main'].parts.some(p => p.kind === 'dome'));
+test('baseball is off the transition clamp (max 8)', () => { assert.ok(!('baseball' in OLD_MAX)); assert.equal(spec.ITEMS.baseball.max, 8); });
+test('baseball has something new at every level 1–8: sand lot, stands, dome, roof slit, concert, fireworks, bigger dome, dome station', () => {
+  assert.deepEqual(Object.keys(views[1]), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3']);
+  for (let n = 2; n <= 8; n++) assert.ok(diffParts(nonRoster(views[n - 1]), nonRoster(views[n])).add.length, `lv${n}: something new`);
+  assert.ok(views[2]['baseball.stands'] && views[2]['baseball.players'].home.spots.length === 2 && views[2]['baseball.ball'].kind === 'ball');
+  assert.ok(views[4]['baseball.deco'].parts.some(p => p.glow === C.yellow), 'Lv4 roof slit');
+  assert.ok(views[5]['baseball.deco'].parts.filter(p => p.glow === C.neonBlue).length >= 8, 'Lv5 blue sticks');
+  assert.equal(views[6]['baseball.fireworks'].kind, 'fireworks'); assert.equal(views[5]['baseball.fireworks'], undefined);
+  assert.ok(views[7]['baseball.deco'].parts.some(p => p.led) && !views[6]['baseball.deco'].parts.some(p => p.led), 'Lv7 LED band');
+  assert.ok(views[8]['baseball.platform'] && !views[7]['baseball.platform'], 'Lv8 platform');
+  assert.ok(baseball.script.placed && [2, 3, 4, 5, 6, 7, 8].every(n => baseball.script.grow[n]) && baseball.script.fx && baseball.script.rep);
 });
-test('lv4 crowd of 4 + roof slit; lv5 six fans (4 at the gate, 2 on the lawn) + blue sticks; lv6 fireworks over the dome', () => {
-  const v4 = baseball.view(lv({ baseball: 4 }), {}), v5 = baseball.view(lv({ baseball: 5 }), {}), v6 = baseball.view(lv({ baseball: 6 }), {});
-  assert.equal(v4['baseball.crowd'].n, 4); assert.ok(v4['baseball.main'].parts.some(p => p.glow === 0xfcea8b));
-  assert.equal(v5['baseball.crowd'].n + v5['baseball.lawn'].n, 6); assert.ok(v5['baseball.main'].parts.filter(p => p.glow === 0x3fe0ff).length >= 8);
-  assert.equal(v6['baseball.fireworks'].kind, 'fireworks'); assert.equal(v5['baseball.fireworks'], undefined);
+// 木看台、巨蛋兩種大小（§7.2：Racing Kit grandStand、Space Kit hangar_roundA／B），經 tint 重上色票
+test('Lv2 stands are Racing Kit grandstands; the dome is hangar_roundA at Lv3–6 and the taller hangar_roundB at Lv7–8, same footprint', () => {
+  const s = views[2]['baseball.stands'];
+  assert.equal(s.models.length, 2); assert.ok(s.models.every(m => m.path === baseball.MODELS.stand.path));
+  for (let n = 3; n <= 8; n++) {
+    const m = views[n]['baseball.main'], want = n >= 7 ? baseball.MODELS.domeB : baseball.MODELS.domeA;
+    assert.equal(m.kind, 'glb'); assert.equal(m.path, want.path); assert.deepEqual(m.footprint, { rx: 1.15, rz: 0.95 }, `lv${n} dome footprint (§14.1)`);
+    for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `lv${n} tint`);
+  }
+  assert.ok(views[7]['baseball.main'].h >= 1.15 * views[6]['baseball.main'].h, 'the expanded dome is bigger');
+  for (const m of Object.values(baseball.MODELS)) assert.ok(existsSync(new URL(`../assets/${m.path}`, import.meta.url)), m.path);
+  for (const c of Object.values(s.models[0].tint)) assert.ok(PALETTE.has(c));
+});
+// 人數預算（使用者 2026-10-26）：觀眾 Lv4 3、Lv5 4、Lv7 6（Lv8 一半坐新線來，合計照樣 6）、草皮 1；球員 2
+test('people budget: fans 3 / 4 / 6 (Lv8 half of them came by the new line, still 6), lawn 1, players 2', () => {
+  const fans = v => (v['baseball.crowd']?.n ?? 0) + (v['baseball.riders']?.n ?? 0);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => fans(views[n])), [0, 0, 0, 3, 4, 4, 6, 6]);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => views[n]['baseball.lawn']?.n ?? 0), [0, 0, 0, 0, 1, 1, 1, 1]);
+  for (let n = 2; n <= 8; n++) assert.equal(views[n]['baseball.players'].n, 2);
+  // 加人不換位置：同一批人的站位一樣；Lv8 門口 + 新線的站位剛好是 Lv7 那六個位置
+  assert.deepEqual(views[4]['baseball.crowd'].home.spots, views[5]['baseball.crowd'].home.spots.slice(0, 3));
+  assert.deepEqual(views[5]['baseball.crowd'].home.spots, views[7]['baseball.crowd'].home.spots.slice(0, 4));
+  assert.deepEqual([...views[8]['baseball.crowd'].home.spots, ...views[8]['baseball.riders'].home.spots].map(p => `${p.x},${p.z}`).sort(), views[7]['baseball.crowd'].home.spots.map(p => `${p.x},${p.z}`).sort());
+});
+test('fans stand on the gate arc and leave an aisle for the players (no fan within 0.35 of a player)', () => {
+  const v = views[8], spots = [...views[7]['baseball.crowd'].home.spots, ...v['baseball.riders'].home.spots];
+  for (const f of spots) {
+    assert.ok(Math.abs(Math.hypot(f.x - AT.x, f.z - AT.z) - 1.75) < 1e-9, 'on the gate arc');
+    for (const p of v['baseball.players'].home.spots) assert.ok(Math.hypot(f.x - p.x, f.z - p.z) > 0.35);
+  }
 });
 test('domeRats flag adds two helmeted staff running around the gate', () => {
-  const v = baseball.view(lv({ baseball: 2 }), { domeRats: true });
+  const v = baseball.view(lv({ baseball: 3 }), { domeRats: true });
   assert.equal(v['baseball.staff'].n, 2); assert.equal(v['baseball.staff'].accessory, 'helmet');
 });
 test('the ball flies back and forth between the players', () => {
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: baseball.builders });
-  const spec = baseball.view(lv({ baseball: 2 }), {})['baseball.ball'], p = f.build(spec), ball = p.object.children[0];
+  const sp = views[2]['baseball.ball'], p = f.build(sp), ball = p.object.children[0];
   p.update(0, 0); const x0 = ball.position.x; p.update(0, 0.3); assert.ok(ball.position.y > 0.2); p.update(0, 0.6); assert.ok(Math.sign(ball.position.x) !== Math.sign(x0) || Math.abs(ball.position.x - x0) > 0.5);
 });
-test('every baseball part stays inside its cell', () => {
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const s of Object.values(baseball.view(lv({ baseball: n }), { domeRats: true }))) if (s.kind !== 'fireworks') for (const p of [...worldPoints(s), ...(s.home?.spots ?? [])]) assert.ok(distToCell(p, [-1, 1]) < RING_R, `lv${n} ${JSON.stringify(p)}`);
+// ◆ Lv8 巨蛋捷運站：月台從環狀線（停車的方位 DOME_STOP）接到球場格的格邊，磚道接到門口；下車點在月台靠軌道那頭
+test('Lv8 platform: from the ring line at the dome stop to the cell edge, a paved walk to the gate; riders step off by the track', () => {
+  const p = views[8]['baseball.platform'], pts = worldPoints(p);
+  assert.equal(p.footprint, false);
+  const r = q => Math.hypot(q.x, q.z), a = q => Math.atan2(q.z, q.x);
+  assert.ok(Math.max(...pts.map(r)) > TRACK.radius - 0.5, 'reaches the track');
+  assert.ok(pts.some(q => cellAt(q.x, q.z) && String(cellAt(q.x, q.z)) === String(CELL)), 'lands on the baseball cell');
+  assert.ok(pts.filter(q => !cellAt(q.x, q.z)).every(q => Math.abs(a(q) - baseball.DOME_STOP) < 0.12), 'the deck runs out along the stop bearing');
+  assert.ok(Math.abs(baseball.DOME_STOP - Math.atan2(GATE.z, GATE.x)) < 1e-9, 'the stop faces the gate');
+  for (let k = 0; k < 12; k++) { const pa = k / 12 * Math.PI * 2 + 0.13; assert.ok(Math.hypot(Math.cos(pa) - Math.cos(baseball.DOME_STOP), Math.sin(pa) - Math.sin(baseball.DOME_STOP)) * TRACK.radius > 0.8, 'clear of the track pylons'); }
+  for (const q of baseball.RIDE_OFF) { assert.equal(cellAt(q.x, q.z), null); assert.ok(r(q) > TRACK.radius - 0.6 && r(q) < TRACK.radius - 0.2, 'beside the track'); }
 });
-test('crowd leaves an aisle for the players: no fan within 0.35 of a player', () => {
-  const v = baseball.view(lv({ baseball: 5 }), {});
-  for (const f of v['baseball.crowd'].home.spots) for (const p of v['baseball.players'].home.spots) assert.ok(Math.hypot(f.x - p.x, f.z - p.z) > 0.35);
+// ── draw call：整格 ≤ 16 ──
+function drawCalls(v) {
+  const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size;
+  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'glb' ? 1 + (p.glow ? 1 : 0)
+    : p.kind === 'stands' ? p.models.length : p.kind === 'ball' || p.kind === 'fireworks' ? 1 : 0), 0);
+}
+test('baseball draw calls ≤ 16 at every level', () => {
+  for (let n = 1; n <= 8; n++) { const d = drawCalls(baseball.view(lv({ baseball: n, rat: 4 }), { domeRats: true })); assert.ok(d <= 16, `lv${n}: ${d}`); }
 });
-
-// ── Task 18：名冊與劇本（§8.8）──
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
-const AT = anchorWorld('baseball'), PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);
-const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
-const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]].map(([x, z]) => offset(AT, x, z));
-
-test('view: players and crowd are rosters standing (crowd fidgets with jumps); four base lines at Lv1–2; footprints leave the field and the apron', () => {
-  const v1 = baseball.view(lv({ baseball: 1 }), {}), v2 = baseball.view(lv({ baseball: 2 }), {});
-  for (const v of [v1, v2]) for (let i = 0; i < 4; i++) {
-    const l = v[`baseball.lines.${i}`]; assert.equal(l.kind, 'compound'); assert.equal(l.footprint, false); assert.equal(l.parts.length, 1);
+// ── 不出格：footprint 的角都在球場格裡；零件與站位都在球場格裡（煙火在天上、月台伸到海上的那段例外）──
+test('every baseball footprint corner and part stays inside its cell', () => {
+  for (let n = 1; n <= 8; n++) for (const [key, s] of Object.entries(baseball.view(lv({ baseball: n }), { domeRats: true }))) {
+    for (const f of [].concat(s.footprint || [])) {
+      const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : f.rx != null ? [f.rx, f.rz] : [f.w / 2, f.d / 2];
+      for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), CELL, `lv${n} ${key} corner`);
+    }
+    if (key === 'baseball.fireworks' || key === 'baseball.platform') continue;
+    for (const p of [...(s.parts ? worldPoints(s) : [s.at]), ...(s.home?.spots ?? [])]) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key}`);
   }
-  assert.ok(!v1['baseball.main'].footprint || !('r' in v1['baseball.main'].footprint), 'the sand lot is walkable');
-  const p = v2['baseball.players'];
-  assert.deepEqual([p.kind, p.n, p.accessory, p.home.kind, p.home.rescue], ['roster', 2, 'cap', 'stand', true]);
-  assert.deepEqual(p.shirt, [0xffffff, 0x3f5a8a]);
-  for (const n of [3, 4, 5, 6]) {
-    const v = baseball.view(lv({ baseball: n }), {});
-    assert.equal(v['baseball.lines.0'], undefined); assert.deepEqual(v['baseball.main'].footprint, { rx: 1.15, rz: 0.95 });   // 巨蛋底座的橢圓（§14.1）
-    assert.equal(v['baseball.players'].kind, 'roster');
-  }
-  for (const [n, k] of [[4, 4], [5, 4], [6, 4]]) {
-    const c = baseball.view(lv({ baseball: n }), {})['baseball.crowd'];
-    assert.deepEqual([c.kind, c.n, c.home.kind, c.home.spots.length, c.home.fidget, c.home.rescue], ['roster', k, 'stand', k, 'jump', true]);
-    assert.ok(Array.isArray(c.shirt));
-  }
-  assert.equal(baseball.view(lv({ baseball: 3 }), {})['baseball.crowd'], undefined);
-  assert.ok(baseball.script?.placed && [2, 3, 4, 5, 6].every(n => baseball.script.grow[n]) && baseball.script.fx && baseball.script.rep);
 });
 
-const KEYS = ['baseball.players', 'baseball.crowd', 'baseball.lawn', 'chip.worker', 'bulb.electrician', 'boba.queue', 'boba.strollers', 'landmarks.islanders'];
+// ── 劇本 ──
+const KEYS = ['baseball.players', 'baseball.crowd', 'baseball.riders', 'baseball.lawn', 'boba.queue', 'landmarks.islanders'];
 const isBall = to => e => e.kind === 'grow' && e.item === 'baseball' && e.to === to;
-// 照 order（放完再長 CLOSING_TURNS 回合）瞬間演到 pred 命中的那個事件，單獨 live 演（whole：整回合 live）
-async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) {
+async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } = {}) {
   let s = engine.createState(spec);
   const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   for (const step of steps) {
     const r = step(s); s = r.state;
-    if (whole && r.events.some(pred)) { const n = bubblesLog.length; return { events: r.events, secs: await run([...r.events, { kind: 'settle' }]), n }; }
+    if (whole && r.events.some(pred)) { const n = bubblesLog.length; return { events: r.events, secs: await run([...r.events, { kind: 'settle' }]), n, r: rig.log.length }; }
     for (const e of r.events) {
-      if (!whole && pred(e)) { const n = bubblesLog.length; return { e, secs: await run([e]), n }; }
+      if (!whole && pred(e)) { const n = bubblesLog.length, c = rig.log.length; return { e, secs: await run([e]), n, r: c }; }
       await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });
   }
   throw new Error('event not found');
 }
-// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
-// 5：物品 v2 任務 7——燈泡 Lv7 之後電工住在風車島，改由門口附近的島民走來敲門，下限 4 → 3（§6 一級 3–5 秒）
-const RANGE = { 1: [4, 9], 2: [2, 8], 3: [5, 12], 4: [6, 15], 5: [3, 10], 6: [4, 10] };
-function checkBall({ show, bubblesLog }, e, secs, n) {
-  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
-  const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = scripted('baseball', lvl) ? RANGE[lvl] : DEFAULT_SECS;
-  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
+// 物品 v2 §6：一級 3–5 s；◆ Lv3、Lv8 6–10 s（含鏡頭平移與回全景的整段，show.elapsed）
+const KEY = [3, 8];
+function checkBall({ show, bubblesLog }, e, secs, n, timing) {
+  const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
+  (timing[to] ??= []).push(+secs.toFixed(1));
+  assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : 5), `${what} took ${secs.toFixed(2)} s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('baseball');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over baseball`);
   }
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
   const v = baseball.view(show.stage.lv, show.stage.flags);
-  assert.equal(show.roster.members('baseball.players').length, v['baseball.players']?.n ?? 0, `${what} players`);
-  assert.equal(show.roster.members('baseball.crowd').length, v['baseball.crowd']?.n ?? 0, `${what} crowd`);
-  assert.equal(show.roster.members('baseball.lawn').length, v['baseball.lawn']?.n ?? 0, `${what} lawn`);
+  for (const k of ['baseball.players', 'baseball.crowd', 'baseball.riders', 'baseball.lawn']) assert.equal(show.roster.members(k).length, v[k]?.n ?? 0, `${what} ${k}`);
 }
-test('scripts: every baseball level in both solutions plays in range, ends with LEVEL UP on baseball, everyone home', async () => {
+test('scripts: every baseball level in both solutions plays 3–5 s (◆ Lv3/Lv8 6–10 s whole), ends with LEVEL UP on baseball, everyone home', async () => {
+  const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
     let n = 0;
     const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
-    const seen = new Set();
-    await playItem(show, tracked, order, 'baseball', (e, secs) => { seen.add(e.kind === 'grow' ? e.to : 1); checkBall(h, e, secs, n); });
-    assert.ok([1, 2, 3, 4].every(l => seen.has(l)), `baseball events seen: ${[...seen]}`);
-    // Lv5、Lv6 落在倒數回合（蒙太奇），playItem 演不到，自己演
-    for (const to of [5, 6].filter(t => !seen.has(t))) {
-      show.reset();
-      const { e, secs, n: before } = await liveAt(h, order, isBall(to));
-      checkBall(h, e, secs, before);
-    }
+    const seen = [];
+    await playItem(show, tracked, order, 'baseball', (e, secs) => { seen.push(e.kind === 'grow' ? e.to : 1); checkBall(h, e, secs, n, timing); });
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8], `baseball events seen: ${seen}`);
+  }
+  console.log('baseball script seconds', JSON.stringify(timing));
+});
+test('◆ Lv3 and Lv8 are the key nodes and end on the overview before the LEVEL UP; the others are short scripts', () => {
+  assert.deepEqual(Object.entries(baseball.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [3, 8]);
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  for (const n of [3, 8]) {
+    const beats = flat(baseball.script.grow[n]({ kind: 'grow', item: 'baseball', to: n }, { lv: lv({ baseball: n }), flags: {} }, ctx));
+    const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
+    assert.ok(i > 0 && beats[i].dur >= 1 && beats.at(-1).kind === 'levelUp', `lv${n}`);
   }
 });
 test('placed: an islander walks to home plate and round the four bases; each base line appears as he runs its leg', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, visits = [], shown = [];
+  const h = await headlessShow(), { show } = h, update = show.update, visits = [], shownAt = [];
   let runner = null;
   show.update = (dt, t) => {
     update(dt, t);
-    for (let i = 0; i < 4; i++) { const o = show.stage.partObject(`baseball.lines.${i}`); if (o?.visible && shown[i] === undefined) shown[i] = t; }
+    for (let i = 0; i < 4; i++) { const o = show.stage.partObject(`baseball.lines.${i}`); if (o?.visible && shownAt[i] === undefined) shownAt[i] = t; }
     const m = runner ?? show.roster.members('landmarks.islanders').find(x => x.mode !== 'home');
     if (m && m.mode !== 'home') { runner = m; BASES.forEach((b, i) => { if (near(m.pos, b, 0.15) && visits.at(-1) !== i) visits.push(i); }); }
   };
   await liveAt(h, SOLUTIONS[0], e => e.kind === 'placed' && e.item === 'baseball');
-  // 走向本壘的路上可能先經過三壘：從第一次到本壘算起
   assert.deepEqual(visits.slice(visits.indexOf(0)), [0, 1, 2, 3, 0], `home → 1st → 2nd → 3rd → home: ${visits}`);
-  assert.ok(shown.length === 4 && shown.every((t, i) => i === 0 || t > shown[i - 1] + 0.3), `lines appear one by one: ${shown}`);
+  assert.ok(shownAt.length === 4 && shownAt.every((t, i) => i === 0 || t > shownAt[i - 1] + 0.3), `lines appear one by one: ${shownAt}`);
   assert.equal(runner.mode, 'home');
 });
-test('Lv2: two players come down from the stands onto the field', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
-  show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('baseball.players')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
-  await liveAt(h, SOLUTIONS[0], isBall(2));
-  assert.equal(firsts.size, 2);
-  for (const p of firsts.values()) assert.ok(p.z < AT.z - 0.8, 'spawned behind the stands');
-  const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots;
-  show.roster.members("baseball.players").forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.15), `player ${i} on the field ${JSON.stringify([m.pos, spots[i], show.nav.walkable(spots[i].x, spots[i].z)])}`));
-});
-test('Lv3: a player …… and the dome icon; the 101 worker (or an islander) walks over and knocks', async () => {
-  for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show, bubblesLog } = h, setPose = show.roster.setPose, walked = new Set();
-    show.roster.setPose = (m, p) => { if (p.walking && m.mode === 'script') walked.add(m.key); return setPose(m, p); };
-    const { n } = await liveAt(h, order, isBall(3));
-    const kinds = bubblesLog.slice(n).map(b => b.kind ?? b.text);
-    assert.ok(kinds.indexOf('……') >= 0 && kinds.findIndex(k => k?.icon === 'dome') > kinds.indexOf('……'));
-    assert.ok(walked.has(show.roster.members('chip.worker').length ? 'chip.worker' : 'landmarks.islanders'), `the worker (or an islander) walks over: ${[...walked]}`);
-    assert.ok(show.stage.partObject('baseball.main'));
-  }
-});
-test('Lv3+: the dome footprint leaves the players, the fans and the gate walkable', async () => {
-  const h = await headlessShow(), { show } = h;
-  await liveAt(h, SOLUTIONS[0], isBall(4));
-  const v = baseball.view(show.stage.lv, show.stage.flags);
-  for (const p of [...v['baseball.players'].home.spots, ...v['baseball.crowd'].home.spots, offset(AT, 0, 1.1)]) assert.ok(show.nav.walkable(p.x, p.z), `${p.x.toFixed(2)},${p.z.toFixed(2)} walkable`);
-  assert.ok(!show.nav.walkable(AT.x, AT.z), 'the dome blocks');
-});
-test('Lv4: four fans spawn at the station during the train stop and end at their fan spots, then ♪', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, firsts = new Map();
-  let clock = null;   // 列車時鐘（now + rail.offset）：停站時不動
-  show.update = (dt, t) => {
-    update(dt, t);
-    const c = t + h.rail.offset;
-    for (const f of firsts.values()) if (f.stopped === undefined) f.stopped = Math.abs(c - clock) < 1e-6;   // 下車後那一幀車沒動
-    for (const m of show.roster.members('baseball.crowd')) if (!firsts.has(m)) firsts.set(m, { ...m.pos });
-    clock = c;
-  };
-  const { n } = await liveAt(h, SOLUTIONS[0], isBall(4));
-  assert.equal(firsts.size, 4);
-  for (const p of firsts.values()) { assert.ok(near(p, PLATFORM, 0.7), 'spawned at the platform'); assert.ok(p.stopped, 'while the train is stopped'); }
-  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♪').length >= 4);
-  const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.crowd'].home.spots;
-  show.roster.members('baseball.crowd').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.15), `fan ${i} at the gate`));
-});
-test('Lv6: the boba queue walks to the dome gate, fireworks, everyone ♪, and the tourists walk back', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, closest = new Map();
-  const gate = offset(AT, 0, 1.1);
-  show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('boba.queue')) closest.set(m, Math.min(closest.get(m) ?? Infinity, Math.hypot(m.pos.x - gate.x, m.pos.z - gate.z))); };
-  const { n } = await liveAt(h, SOLUTIONS[0], isBall(6));
-  const q = show.roster.members('boba.queue');
-  assert.ok(q.length >= 6);
-  for (const m of q) assert.ok(closest.get(m) < 1.6, `tourist came to the gate (${closest.get(m).toFixed(2)})`);
-  assert.ok(show.stage.partObject('baseball.fireworks'));
-  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♪').length >= 2 + 6 + q.length);
-  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
-  const boba = await import('../src/actors/boba.js'), spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;
-  // 站位間距 ≥ 0.25（計畫 3.8 Task 7）：站著的人不必再滑開，每個人走回自己的站位
-  q.forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.1), `tourist ${i} back in line`));
-});
-// 兩個事件以上的回合整段 live：島民、球員、工人都是演到才找
-test('the Lv2 turn plays whole and live: everyone ends at home', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h;
-  const { events, secs, n } = await liveAt(h, SOLUTIONS[0], isBall(2), { whole: true });
-  assert.ok(events.length >= 2, 'a multi-event turn');
-  assert.ok(secs > 5, `${secs.toFixed(1)} s`);
-  assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP'));
-  assert.equal(show.roster.members('baseball.players').length, 2);
-  for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
-});
-
-// ── 計畫 3.8 Task 7：入口點、Lv4 下車不瞬移、鏡頭焦點 ──
-import { entryProblems, focusCell, focusTrail } from './helpers/actors.js';
-import { entriesThroughSolutions } from './helpers/show.js';
-import { createNav } from '../src/show/nav.js';
-import { cellAt, axialToWorld } from '../src/scene/hex.js';
-import { cellOf } from '../src/actors/anchors.js';
-import { B } from '../src/show/beats.js';
-const CELL = cellOf('baseball');
-// 球員從看台後方的格邊走出來；觀眾（含 Lv5 補的兩個）從捷運站前走來。入口走得到、離站位 ≥ 1.5（每一級、鼠災與否；兩條正解每一刻的真 footprint）
-test('baseball rosters: players enter from behind the stands at the cell edge, the crowd from the station platform; walkable and ≥ 1.5 from every spot', async () => {
-  const c = axialToWorld(...CELL);
-  for (const p of baseball.PLAYER_ENTRY) {
-    assert.deepEqual(cellAt(p.x, p.z), CELL);
-    assert.ok(p.z < AT.z - 1.33, 'behind the stands (north of their middle row)');
-    assert.ok(Math.abs(p.z - c.z) + Math.abs(p.x - c.x) / Math.sqrt(3) > 1.8, 'at the cell edge');
-  }
-  for (const p of baseball.CROWD_ENTRY) assert.ok(near(p, PLATFORM, 0.7), 'at the platform');
-  const nav = createNav(), bad = [];
-  for (const n of [1, 2, 3, 4, 5, 6]) for (const domeRats of [false, true]) {
-    const v = baseball.view(lv({ baseball: n, rat: 2 }), { domeRats });
-    if (v['baseball.players']) assert.deepEqual(v['baseball.players'].home.entry, baseball.PLAYER_ENTRY, `lv${n} players entry`);
-    if (v['baseball.crowd']) assert.deepEqual(v['baseball.crowd'].home.entry, baseball.CROWD_ENTRY, `lv${n} crowd entry`);
-    bad.push(...entryProblems(v, nav, `lv${n}${domeRats ? ' domeRats' : ''}`));
-  }
-  bad.push(...await entriesThroughSolutions(baseball, SOLUTIONS));
-  assert.deepEqual(bad, []);
-});
-test('Lv2: the players spawn at their entry behind the stands', async () => {
+test('Lv2: two players spawn at their entry behind the stands and walk onto the field', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('baseball.players')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
   await liveAt(h, SOLUTIONS[0], isBall(2));
   assert.equal(firsts.size, 2);
   for (const p of firsts.values()) assert.ok(baseball.PLAYER_ENTRY.some(e => near(p, e, 0.2)), `spawned at the entry (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+  const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots;
+  show.roster.members('baseball.players').forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.15), `player ${i} on the field`));
 });
-test('Lv5: the two extra fans walk in from the platform entry', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
-  let before = null;
-  show.update = (dt, t) => {
-    before ??= new Set(show.roster.members('baseball.lawn'));
-    update(dt, t);
-    for (const m of show.roster.members('baseball.lawn')) if (!before.has(m) && !firsts.has(m)) firsts.set(m, { ...m.pos });
-  };
-  await liveAt(h, SOLUTIONS[0], isBall(5));
-  assert.equal(before.size, 0); assert.equal(firsts.size, 2);   // §14.3：多的兩個是草皮上散步的觀眾（baseball.lawn）
-  for (const p of firsts.values()) assert.ok(baseball.CROWD_ENTRY.some(e => near(p, e, 0.3)), `came from the platform (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
-  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
-  const v = baseball.view(show.stage.lv, show.stage.flags), spots = v['baseball.crowd'].home.spots, lawn = v['baseball.lawn'].home;
-  show.roster.members('baseball.crowd').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.15), `fan ${i} at the gate`));
-  show.roster.members('baseball.lawn').forEach((m, i) => assert.ok(near(m.pos, lawn.at, lawn.r + 0.3), `lawn fan ${i} on the lawn`));
-});
-// Task 5 審查：trainStop 的 during 裡那段 together 的走路，目標是稍後才 spawn 的人，估計 0 秒——列車開走時不能把還在走的人瞬移到終點
-test('Lv4: nobody jumps — no roster member moves faster than walking speed in any frame', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, last = new Map(), bad = [];
-  let live = false;
-  const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
-  show.update = (dt, t) => {
-    update(dt, t);
-    if (!live) { last.clear(); return; }
-    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
-      if (k === 'rat.pack') continue;   // 老鼠會坐車頂（ride）、跳車，不在這裡查
-      const p = last.get(m), v = (m.speed ?? 1.6) * dt;
-      if (p && !m.hidden && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > v + 1e-6) bad.push(`${k} ${m.i} moved ${Math.hypot(m.pos.x - p.x, m.pos.z - p.z).toFixed(2)} in one frame`);
-      last.set(m, { ...m.pos });
-    }
-  };
-  await liveAt(h, SOLUTIONS[0], isBall(4));
-  assert.deepEqual(bad, []);
-});
-// 鏡頭（§13.1）：Lv4 先對著捷運站（代幣格）等觀眾下車，他們走向巨蛋時轉到巨蛋格；Lv6 先對著珍奶人龍，觀光客走向巨蛋時轉到巨蛋格
-test('focus: Lv4 the token cell then the dome; Lv6 the boba queue then the dome', async () => {
-  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-  for (const [to, first] of [[4, 'token'], [6, 'boba']]) {
-    const beats = baseball.script.grow[to]({ kind: 'grow', item: 'baseball', from: to - 1, to }, { lv: lv({ baseball: to }), flags: {} }, ctx);
-    assert.equal(beats[0].kind, 'focus', `lv${to} starts with its own focus`);
-    assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), [cellOf(first), CELL], `lv${to} focus cells`);
-  }
-  const h = await headlessShow(); let r0 = 0;
-  const run = h.run; h.run = (evs, o) => { if (!o?.instant) r0 = h.rig.log.length; return run(evs, o); };
-  await liveAt(h, SOLUTIONS[0], isBall(4));
-  assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('token')), String(CELL), 'home']);
-});
-
-// 蓋東西站鏡頭側（§14）：大巨蛋那一級，幫手在巨蛋的鏡頭側揮兩次鋤頭；演唱會的電工照樣在門口敲門
+// 蓋東西站鏡頭側（§14）：大巨蛋那一級，離巨蛋最近的島民在巨蛋的鏡頭側揮兩次鋤頭
 const gestureLog = (show, keys, frontAt) => {
   const update = show.update, log = [];
   show.update = (dt, t) => {
@@ -300,63 +197,148 @@ const gestureLog = (show, keys, frontAt) => {
   };
   return log;
 };
-// 同一個人連續兩個同樣的動作：k 往回跳就是下一個
 const runs = (log, kind) => log.filter(f => f.kind === kind).reduce((n, f, i, a) => n + (i === 0 || a[i - 1].m !== f.m || f.k < a[i - 1].k ? 1 : 0), 0);
-test('baseball Lv3: the helper builds twice at the dome front; electrician at GATE still knocks', async () => {
+test('◆ Lv3: a player …… and the dome icon; the nearest islander builds twice at the dome front; the dome blocks, the gate stays walkable', async () => {
   for (const order of SOLUTIONS) {
-    const h = await headlessShow(), log = gestureLog(h.show, KEYS, nav => frontOf(AT, baseball.FRONT_R, nav));
-    await liveAt(h, order, isBall(3));
-    const b = log.filter(f => f.kind === 'build');
-    assert.equal(runs(log, 'build'), 2, 'two builds'); assert.ok(!log.some(f => f.kind === 'knock'), 'no knock');
-    for (const f of b) assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, `at the dome front ${f.pos.x.toFixed(2)},${f.pos.z.toFixed(2)}`);
+    const h = await headlessShow(), { show, bubblesLog } = h, log = gestureLog(show, KEYS, nav => frontOf(AT, baseball.FRONT_R, nav));
+    const { n } = await liveAt(h, order, isBall(3));
+    const kinds = bubblesLog.slice(n).map(b => b.kind ?? b.text);
+    assert.ok(kinds.indexOf('……') >= 0 && kinds.findIndex(k => k?.icon === 'dome') > kinds.indexOf('……'));
+    assert.equal(runs(log, 'build'), 2, 'two builds');
+    for (const f of log.filter(x => x.kind === 'build')) assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, 'at the dome front');
+    for (const p of [...baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots, GATE]) assert.ok(show.nav.walkable(p.x, p.z));
+    assert.ok(!show.nav.walkable(AT.x, AT.z), 'the dome blocks');
   }
-  const h = await headlessShow(), log = gestureLog(h.show, KEYS), gate = offset(AT, 0, 1.1);
+});
+// Lv4：三個觀眾從往捷運站那座橋的橋頭（剛下車過橋）走到門口；入口離站位 ≥ 1.5；沒有人一幀跳超過走路速度
+test('Lv4: three fans walk in from the station-side bridge head to the gate arc and ♪; nobody jumps', async () => {
+  for (const p of baseball.BRIDGE_IN) for (const s of baseball.fanSpots(3)) assert.ok(Math.hypot(p.x - s.x, p.z - s.z) >= 1.5);
+  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, firsts = new Map(), last = new Map(), bad = [];
+  let live = false;
+  const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
+  show.update = (dt, t) => {
+    update(dt, t);
+    if (!live) { last.clear(); return; }
+    for (const m of show.roster.members('baseball.crowd')) if (!firsts.has(m)) firsts.set(m, { ...m.pos });
+    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+      if (k === 'rat.pack') continue;
+      const p = last.get(m), v = (m.speed ?? 1.6) * dt;
+      if (p && !m.hidden && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > v + 1e-6) bad.push(`${k} ${m.i}`);
+      last.set(m, { ...m.pos });
+    }
+  };
+  const { n } = await liveAt(h, SOLUTIONS[0], isBall(4));
+  assert.equal(firsts.size, 3);
+  for (const p of firsts.values()) assert.ok(baseball.BRIDGE_IN.some(q => near(p, show.nav.nearestWalkable(q), 0.2)), 'from the bridge head');
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♪').length >= 3);
+  assert.deepEqual(bad, []);
+  const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.crowd'].home.spots;
+  show.roster.members('baseball.crowd').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.15), `fan ${i} at the gate`));
+});
+// Lv5：門口最近的觀眾走到門口敲門（燈泡 Lv7 起電工住在風車島，不叫他）；多的觀眾與草皮那一個從月台入口走來
+test('Lv5: the fan nearest the gate knocks there; the extra fan and the lawn fan walk in from the platform entry', async () => {
+  const h = await headlessShow(), { show } = h, log = gestureLog(show, KEYS), update = show.update, firsts = new Map();
+  let before = null;
+  show.update = (dt, t) => {
+    before ??= new Set([...show.roster.members('baseball.crowd'), ...show.roster.members('baseball.lawn')]);
+    update(dt, t);
+    for (const m of [...show.roster.members('baseball.crowd'), ...show.roster.members('baseball.lawn')]) if (!before.has(m) && !firsts.has(m)) firsts.set(m, { ...m.pos });
+  };
   await liveAt(h, SOLUTIONS[0], isBall(5));
-  const k = log.filter(f => f.kind === 'knock'); assert.ok(k.length > 5 && !log.some(f => f.kind === 'build'), 'electrician knocks');
-  for (const f of k) assert.ok(Math.hypot(f.pos.x - gate.x, f.pos.z - gate.z) < 0.3, 'at the gate');
+  const k = log.filter(f => f.kind === 'knock'); assert.ok(k.length > 5 && k.every(f => f.key === 'baseball.crowd'), 'a fan knocks');
+  for (const f of k) assert.ok(near(f.pos, GATE, 0.3), 'at the gate');
+  assert.equal(firsts.size, 2);
+  for (const p of firsts.values()) assert.ok(baseball.CROWD_ENTRY.some(e => near(p, e, 0.3)), 'came from the platform');
+  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
+  const lawn = baseball.view(show.stage.lv, show.stage.flags)['baseball.lawn'].home;
+  for (const m of show.roster.members('baseball.lawn')) { assert.ok(near(m.pos, lawn.at, lawn.r + 0.3)); assert.ok(!show.nav.inFootprint(m.pos.x, m.pos.z)); }
+});
+// Lv6：珍奶的觀光客（≤ 2）走到巨蛋門口 → 煙火 → ♪ → 走回人龍；鏡頭先對珍奶格、再轉巨蛋格
+test('Lv6: two boba tourists come to the gate for the fireworks and walk back; the camera starts on the queue', async () => {
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  const beats = baseball.script.grow[6]({ kind: 'grow', item: 'baseball', to: 6 }, { lv: lv({ baseball: 6 }), flags: {} }, ctx);
+  assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), [cellOf('boba'), CELL]);
+  const h = await headlessShow(), { show } = h, update = show.update, closest = new Map();
+  let live = false;
+  const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
+  show.update = (dt, t) => { update(dt, t); if (live) for (const m of show.roster.members('boba.queue')) closest.set(m, Math.min(closest.get(m) ?? Infinity, Math.hypot(m.pos.x - GATE.x, m.pos.z - GATE.z))); };
+  await liveAt(h, SOLUTIONS[0], isBall(6));
+  assert.equal([...closest.values()].filter(d => d < 1.6).length, 2, 'two tourists at the gate');
+  assert.ok(show.stage.partObject('baseball.fireworks'));
+  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
+  const boba = await import('../src/actors/boba.js'), spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;
+  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.1), `tourist ${i} back in line`));
+});
+// ◆ Lv8：列車停在巨蛋站（車頭在 DOME_STOP），三個觀眾在列車停著的時候從月台靠軌道那頭下車、沿月台走到門口；沒有人瞬移
+test('◆ Lv8 live: the train stops at the dome station, three riders step off while it stands and walk along the platform to the gate', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map(), last = new Map(), bad = [];
+    let live = false, clock = null;
+    const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
+    show.update = (dt, t) => {
+      update(dt, t); if (!live) return;
+      const c = t + h.rail.offset;
+      for (const f of firsts.values()) if (f.stopped === undefined) f.stopped = Math.abs(c - clock) < 1e-6;   // 下車後那一幀車沒動
+      clock = c;
+      for (const m of show.roster.members('baseball.riders')) {
+        if (!firsts.has(m)) firsts.set(m, { ...m.pos, head: (c * 0.35) % (2 * Math.PI) });
+        const p = last.get(m); if (p && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 1.6 * 1.05 * dt + 1e-6) bad.push(m.i); last.set(m, { ...m.pos });
+      }
+    };
+    const { r } = await liveAt(h, order, isBall(8));
+    const what = order.join('>');
+    assert.equal(firsts.size, 3, what);
+    for (const p of firsts.values()) {
+      assert.ok(baseball.RIDE_OFF.some(q => near(p, q, 0.05)), `${what}: steps off at the platform`); assert.ok(p.stopped, `${what}: while the train stands`);
+      const d = Math.atan2(Math.sin(p.head - baseball.DOME_STOP), Math.cos(p.head - baseball.DOME_STOP)); assert.ok(Math.abs(d) < 0.02, `${what}: train head at the dome stop (${d.toFixed(3)})`);
+    }
+    assert.deepEqual(bad, [], `${what}: no teleport`);
+    for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
+    show.roster.members('baseball.riders').forEach((m, i) => assert.ok(near(m.pos, baseball.RIDER_SPOTS[i], 0.15), `${what}: rider ${i} at the gate`));
+    assert.ok(show.stage.partObject('baseball.platform'));
+    assert.equal(focusTrail(h.rig.log, r).at(-1), 'home');
+  }
+});
+// 兩個事件以上的回合整段 live：島民、球員都是演到才找
+test('the Lv2 turn plays whole and live: everyone ends at home', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h;
+  const { events, secs, n } = await liveAt(h, SOLUTIONS[0], isBall(2), { whole: true });
+  assert.ok(events.length >= 2, 'a multi-event turn'); assert.ok(secs > 5, `${secs.toFixed(1)} s`);
+  assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP'));
+  for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
 });
 
-// ── §14.3 人分散：Lv5 起觀眾 4 人站門口、2 人在巨蛋旁的草皮散步；Lv4 照舊 4 人在門口 ──
-test('baseball Lv5: 4 fans at the gate, 2 wander on the dome lawn; Lv4 stays 4 at the gate', async () => {
-  const v4 = baseball.view(lv({ baseball: 4 }), {});
-  assert.equal(v4['baseball.crowd'].n, 4); assert.equal(v4['baseball.lawn'], undefined);
-  for (const n of [5, 6]) {
-    const v = baseball.view(lv({ baseball: n }), {}), c = v['baseball.crowd'], l = v['baseball.lawn'];
-    assert.deepEqual([c.n, c.home.kind, c.home.spots.length, c.home.fidget], [4, 'stand', 4, 'jump'], `lv${n} gate`);
-    for (const p of c.home.spots) assert.ok(Math.abs(Math.hypot(p.x - AT.x, p.z - AT.z) - 1.75) < 1e-9, `lv${n} fan on the gate arc`);
-    assert.deepEqual([l.kind, l.n, l.home.kind, l.home.r, l.home.entry], ['roster', 2, 'wander', 0.6, baseball.CROWD_ENTRY], `lv${n} lawn`);
-    // 應援棒沒有 footprint：散步圈外擴 0.12（PAD）也碰不到任何一根（審查）
-    const sticks = v['baseball.main'].parts.filter(p => p.color === 0x3fe0ff);
-    assert.equal(sticks.length, 8);
-    for (const p of sticks) assert.ok(Math.hypot(AT.x + p.pos[0] - l.home.at.x, AT.z + p.pos[2] - l.home.at.z) - l.home.r >= 0.12, `lv${n} stick (${p.pos[0].toFixed(2)}, ${p.pos[2].toFixed(2)}) clear of the lawn`);
-    assert.ok(Array.isArray(l.shirt));
-    const a = l.home.at, e = Math.hypot((a.x - AT.x) / (1.15 + 0.12), (a.z - AT.z) / (0.95 + 0.12));
-    assert.ok(e > 1.25, `lv${n} lawn centre clear of the padded dome (${e.toFixed(2)})`);
-    assert.deepEqual(cellAt(a.x, a.z), CELL, `lv${n} lawn in the baseball cell`);
-    for (const p of c.home.spots) assert.ok(Math.hypot(p.x - a.x, p.z - a.z) >= 0.9, `lv${n} lawn away from the gate fans`);
+// ── 入口點（§13.2）：球員從看台後方的格邊、觀眾（含 Lv8 坐新線來的）從捷運站前走來；走得到、離站位 ≥ 1.5（每一級、鼠災與否；兩條正解每一刻）──
+test('baseball rosters: players enter from behind the stands, the crowd from the station platform; walkable and ≥ 1.5 from every spot', async () => {
+  const c = axialToWorld(...CELL), PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);
+  for (const p of baseball.PLAYER_ENTRY) {
+    assert.deepEqual(cellAt(p.x, p.z), CELL); assert.ok(p.z < AT.z - 1.33, 'behind the stands');
+    assert.ok(Math.abs(p.z - c.z) + Math.abs(p.x - c.x) / Math.sqrt(3) > 1.8, 'at the cell edge');
   }
-  // 真舞台：散步的人一直在可走點上、離巨蛋（外擴後）之外
-  const h = await headlessShow(), { show } = h;
-  await liveAt(h, SOLUTIONS[0], isBall(5));
-  const sticks = baseball.STICKS.map(([x, z]) => ({ x: AT.x + x, z: AT.z + z })), clear = p => sticks.every(s => Math.hypot(s.x - p.x, s.z - p.z) >= 0.12);
-  // 閒晃挑的點（nav.wander）都離應援棒 ≥ 0.12
-  for (let i = 0; i < 300; i++) assert.ok(clear(show.nav.wander(baseball.LAWN, baseball.LAWN_R)), 'wander target clear of the sticks');
-  for (let i = 0; i < 600; i++) {
-    show.update(1 / 30, 100 + i / 30);
-    for (const m of show.roster.members('baseball.lawn')) {
-      assert.ok(!show.nav.inFootprint(m.pos.x, m.pos.z), `lawn fan ${m.i} outside every footprint`);
-      if (!m.walking) assert.ok(clear(m.pos), `lawn fan ${m.i} does not stop on a stick`);
-    }
+  for (const p of baseball.CROWD_ENTRY) assert.ok(near(p, PLATFORM, 0.7), 'at the platform');
+  const nav = createNav(), bad = [];
+  for (let n = 1; n <= 8; n++) for (const domeRats of [false, true]) {
+    const v = baseball.view(lv({ baseball: n, rat: 2 }), { domeRats });
+    if (v['baseball.players']) assert.deepEqual(v['baseball.players'].home.entry, baseball.PLAYER_ENTRY);
+    for (const k of ['baseball.crowd', 'baseball.riders', 'baseball.lawn']) if (v[k]) assert.deepEqual(v[k].home.entry, baseball.CROWD_ENTRY, `lv${n} ${k}`);
+    bad.push(...entryProblems(v, nav, `lv${n}${domeRats ? ' domeRats' : ''}`));
   }
-  assert.equal(show.roster.members('baseball.lawn').length, 2);
+  bad.push(...await entriesThroughSolutions(baseball, SOLUTIONS));
+  assert.deepEqual(bad, []);
 });
-// 物品 v2 任務 7：燈泡 Lv7 起電工住在風車島上——演唱會那級（兩條正解都在燈泡 Lv7 之後）不叫他從海上走過來，改找離門口最近的島民
-test('Lv5 concert: the electrician is skipped once he lives on the windmill island (an islander knocks instead)', async () => {
-  const { B } = await import('../src/show/beats.js'), { island } = await import('../src/actors/satellites.js');
-  const w = island('windmill'), off = { pos: { ...w }, head: () => w }, isl = { pos: { ...offset(anchorWorld('baseball'), 0, 1.5) }, head: () => isl.pos };
-  const claimed = [], ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [off] : k === 'landmarks.islanders' ? [isl] : []), claim: m => claimed.push(m) },
-    nav: { route: (a, b) => [a, b], routeLength: () => 1 } };
-  const walk = baseball.script.grow[5]({ kind: 'grow', item: 'baseball', to: 5 }, { lv: lv({ baseball: 5, bulb: 7 }), flags: {} }, ctx).find(b => b.kind === 'walk');
-  walk.start(ctx);
-  assert.deepEqual(claimed, [isl]);
+// ── §14.3：草皮的散步圈離巨蛋、門口觀眾、應援棒都夠遠 ──
+test('the lawn wanders clear of the padded dome, the gate fans and the light sticks', () => {
+  for (const n of [5, 6, 7, 8]) {
+    const v = baseball.view(lv({ baseball: n }), {}), l = v['baseball.lawn'].home;
+    assert.deepEqual([v['baseball.lawn'].n, l.kind, l.r], [1, 'wander', 0.6]);
+    for (const [x, z] of baseball.STICKS) assert.ok(Math.hypot(AT.x + x - l.at.x, AT.z + z - l.at.z) - l.r >= 0.12, `lv${n} stick clear of the lawn`);
+    assert.ok(Math.hypot((l.at.x - AT.x) / 1.27, (l.at.z - AT.z) / 1.07) > 1.25, 'clear of the padded dome');
+    for (const p of [...(v['baseball.crowd']?.home.spots ?? []), ...(v['baseball.riders']?.home.spots ?? [])]) assert.ok(Math.hypot(p.x - l.at.x, p.z - l.at.z) >= 0.9);
+  }
+});
+// 物品 v2 任務 7：燈泡 Lv7 起電工住在風車島上——演唱會不叫他從海上走過來
+test('Lv5 concert never sends the electrician (he may live on the windmill island)', () => {
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  const src = baseball.script.grow[5].toString(); assert.ok(!src.includes('bulb.electrician'));
+  assert.ok(flat(baseball.script.grow[5]({ kind: 'grow', item: 'baseball', to: 5 }, { lv: lv({ baseball: 5 }), flags: {} }, ctx)).some(b => b.kind === 'gesture'));
 });

@@ -305,14 +305,16 @@ test('landing turn live: people vanish at their doors without a blink; the next 
   // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.4 以上；日常散步 0.5/s 只走得到 0.25）。
   // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、走回家那段平均每秒 1.0 以上也算
   // （只算 arriving 那段的走路幀：走到家之後日常散步接著走開的不算進去，物品 v2 任務 4）
-  const update = show.update, walked = new Set(), first = new Map(), early = new Map(); let frames = 0;
+  // 走了多遠用沿路累加的距離（不是離起點的直線距離）：門口到家要繞過建築轉彎時，0.5 秒的直線位移會比走的路短（任務 8）
+  const update = show.update, walked = new Set(), first = new Map(), early = new Map(), trip = new Map(); let frames = 0;
   show.update = (dt, t) => {
     update(dt, t); frames++;
     for (const x of indoors) {
       if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
       const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0, home: false };
       if (frames <= 15 && !r.home) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); r.home = r.walk > 0 && !x.m.arriving; early.set(x.m, r); }
-      if (frames <= 15 && x.m.walking && d > 0.4) walked.add(x.m);
+      const tr = trip.get(x.m) ?? { len: 0, at: { ...x.m.pos } }; tr.len += Math.hypot(x.m.pos.x - tr.at.x, x.m.pos.z - tr.at.z); tr.at = { ...x.m.pos }; trip.set(x.m, tr);
+      if (frames <= 15 && x.m.walking && tr.len > 0.4) walked.add(x.m);
     }
   };
   const p = run(next);

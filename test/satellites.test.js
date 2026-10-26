@@ -43,8 +43,9 @@ test('playground kids come with the shuttle and need a school; forest tourists a
   assert.ok(Math.hypot(kids.home.at.x - c.x, kids.home.at.z - c.z) < 0.5, 'wanders on the playground island');
   // 配件跟鮮奶格的小孩一樣（物品 v2 §4.2：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了）
   assert.deepEqual([3, 5, 6, 7, 8, 9, 10].map(n => sat.view(lv({ token: 8, milk: n }), {})['sat.playground'].accessory), ['none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
-  assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 3 }), {})['sat.forestShop'], undefined);
-  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forestShop'].kind, 'compound');
+  // 物品 v2：珍奶 Lv5 連鎖店（Lv4 是噴泉廣場）
+  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forestShop'], undefined);
+  assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forestShop'].kind, 'compound');
 });
 test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), chest opens only when everything is MAX', () => {
   assert.equal(sat.view(lv({ chip: 2 }), {})['sat.camp'], undefined); assert.ok(sat.view(lv({ chip: 3 }), {})['sat.camp'].parts.some(p => p.glow));
@@ -55,11 +56,11 @@ test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), ch
 });
 test('boats: 2, 4 with a queue, 6 with the chain, none in the storm', () => {
   assert.equal(sat.view(lv({}), {})['sat.boats'].n, 2); assert.equal(sat.view(lv({ boba: 2 }), {})['sat.boats'].n, 4);
-  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.boats'].n, 6); assert.equal(sat.view(lv({ boba: 4, typhoon: 2 }), {})['sat.boats'], undefined);
+  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.boats'].n, 4); assert.equal(sat.view(lv({ boba: 5 }), {})['sat.boats'].n, 6); assert.equal(sat.view(lv({ boba: 5, typhoon: 2 }), {})['sat.boats'], undefined);
 });
 test('every satellite part sits on its island (within R of the island centre) except boats', () => {
   const centres = SATELLITES.map(s => axialToWorld(s.q, s.r));
-  for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 4, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
+  for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 5, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
     const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
@@ -84,7 +85,7 @@ import { cellAt } from '../src/scene/hex.js';
 import { createNav } from '../src/show/nav.js';
 test('satellite rosters live off the main island: no entry declared, nothing for the entry check', () => {
   const nav = createNav();
-  for (const extra of [{ token: 8, milk: 3 }, { token: 6, milk: 5, boba: 4 }, allMax]) {
+  for (const extra of [{ token: 8, milk: 3 }, { token: 6, milk: 5, boba: 5 }, allMax]) {
     const v = sat.view(lv(extra), {}), rosters = Object.entries(v).filter(([, d]) => d.kind === 'roster');
     assert.ok(rosters.length, JSON.stringify(extra));
     for (const [k, d] of rosters) {

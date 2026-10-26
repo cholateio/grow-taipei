@@ -703,8 +703,8 @@ test('live, both solutions: everyone on a bridge stays on the deck (y within 0.0
 // （走路經過別人身邊、別人走過他身邊：身體不相碰、貼近不超過 0.5 秒）
 // 隔離（控制者裁決，任務 7 審稿第 1 輪）：這條不變式對整局的時間極敏感——正面擦身的兩個人分不開（show layer 待辦），
 // 任何物品改了劇本秒數就可能撞上，前幾個任務都是靠調秒數過的。先跳過，不再讓任何任務繞著它調時間；
-// 任務 8 拿掉珍奶散步客後、任務 12 重新打開（或修好分離）
-test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', { skip: 'known-flaky: head-on passer separation — show-layer backlog, re-enable after Task 8' }, async () => {
+// 任務 8 拿掉珍奶散步客後重跑過：還是有 2 幀太近，照裁決留著跳過；任務 12 重新打開（或修好分離）
+test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', { skip: 'known-flaky: head-on passer separation — show-layer backlog; still 2 frames after Task 8, re-enable in Task 12' }, async () => {
   const { crowd, detectiveFrames } = await livePlay();
   assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);
   assert.deepEqual([...crowd].slice(0, 20), [], `${crowd.size} frames too close`);

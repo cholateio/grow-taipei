@@ -18,11 +18,16 @@
 // 走進來、走出去、家搬了走過去都是有目的的走路，用走路速度（小人 1.6、老鼠 2.0）；日常散步、走回站位仍是 WANDER_SPEED。
 // 站著的 stand 成員彼此 < 0.25 → nav.separateStanding 沿 x 錯開（改 m.pos、不改 spot；每幀最多滑走路速度 × dt，
 //   站定後就留在錯開的位置，不走回 spot）
+// 不在焦點也不疊著（final review）：休息中的 wander 成員、焦點外停下的 path 成員離別人（任何露出來的成員）< 0.25 就不停——
+//   wander 馬上走下一趟、path 沿路接著走，走到不擠了才停。
+// 不瞬移（final review）：日常、退場中的人每幀最多移動自己的走路速度 × dt（nav.separate 的推擠、開始／停下走路時推擠突然消失，
+//   都是滑過去的，不會一幀跳 0.3–0.5）；劇本手上的人、ride、藏起來的人不限
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
+import { SEPARATION } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
@@ -370,16 +375,21 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   // 不在焦點：停在原地（沿線走的游標留著，恢復時接著走）
   function halt(m) { if (m.walking) setPose(m, { ...m.pos, walking: false }); }
+  // 離其他露出來的成員（任何名冊、任何模式）< SEPARATION：不在焦點也不在這裡停（final review）
+  function crowded(m) {
+    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < SEPARATION) return true;
+    return false;
+  }
 
   function idle(m, spec, dt, t) {
     const h = spec.home ?? {};
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
     if (h.kind === 'follow') { follow(m, spec, dt); return; }
     const ring = h.kind === 'wander' ? ringHome(spec, m.i) : null;
-    if (h.kind === 'path' || ring) { if (m.trip || m.arriving || inFocus(m, spec)) onPath(m, ring ?? h, dt, spec); else halt(m); return; }
+    if (h.kind === 'path' || ring) { if (m.trip || m.arriving || inFocus(m, spec) || crowded(m)) onPath(m, ring ?? h, dt, spec); else halt(m); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
-      if (!m.arriving && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;   // 走進來的第一趟不等、不看焦點
+      if (!m.arriving && !crowded(m) && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;   // 走進來的第一趟、擠著別人時不等、不看焦點
       const { at, r } = wanderHome(spec, m.i);
       go(m, nav.route(m.pos, nav.wander(at, r)));
       if (!m.trip) { m.rest = pause(); m.arriving = false; }
@@ -439,11 +449,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   function update(dt, t) {
     now = t;
-    const moving = [], standing = [];
+    const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
+    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt]); };
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home' && !m.hidden) { idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
+        if (m.mode === 'home' && !m.hidden) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           m.holder.rotation.z = spec.model?.wave ? Math.sin(t * 3) * 0.15 : 0;
@@ -451,9 +462,16 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       }
     }
     // 走出去的人：走到入口就拿掉
-    exits = exits.filter(m => { if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
+    exits = exits.filter(m => { keep(m, null); if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
     nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
-    for (const m of [...moving, ...nav.separateStanding(standing, WALK_SPEED.people * dt)]) place(m);
+    nav.separateStanding(standing, WALK_SPEED.people * dt);
+    // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）
+    for (const [m, p, max] of was) {
+      if (m.gone || m.hidden || m.mode === 'script') continue;
+      const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
+      if (d > max) { const k = max / d; m.pos = { x: p.x + dx * k, y: p.y + (m.pos.y - p.y) * k, z: p.z + dz * k }; }
+      place(m);
+    }
   }
 
   function reset() {

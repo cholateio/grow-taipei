@@ -329,7 +329,8 @@ test('setFocus limits idle wandering and fidgets to members whose home cell is i
   assert.ok(moved(b, pb), 'null frees everyone');
 });
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
-test('a path member whose route touches the focus cell keeps walking and never ends up within 0.25 of another member; a route off the focus halts', async () => {
+// final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
+test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {
   const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
   for (const cell of [[1, 0], [0, 0]]) {
     const { roster } = setup();
@@ -337,13 +338,16 @@ test('a path member whose route touches the focus cell keeps walking and never e
     for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
     roster.setFocus([cell]);
     const ms = roster.members('eng'), start = ms.map(m => ({ ...m.pos }));
-    let minGap = Infinity;
+    const close = new Map(); let longest = 0;
     for (let i = 0; i < 30 * 25; i++) {
       roster.update(1 / 30, 2 + i / 30);
-      if (i > 30 * 3) for (let a = 0; a < ms.length; a++) for (let b = a + 1; b < ms.length; b++) minGap = Math.min(minGap, Math.hypot(ms[a].pos.x - ms[b].pos.x, ms[a].pos.z - ms[b].pos.z));
+      for (let a = 0; a < ms.length; a++) for (let b = a + 1; b < ms.length; b++) {
+        const k = a * 8 + b, n = gap(ms[a].pos, ms[b].pos) < 0.25 - 1e-6 ? (close.get(k) ?? 0) + 1 : 0;
+        close.set(k, n); longest = Math.max(longest, n);
+      }
     }
     assert.ok(ms.some((m, i) => Math.hypot(m.pos.x - start[i].x, m.pos.z - start[i].z) > 0.5), `focus ${cell}: still walking`);
-    assert.ok(minGap >= 0.25 - 1e-6, `focus ${cell}: min gap ${minGap.toFixed(3)}`);   // 走動的人之間 nav.separate 推到剛好 0.25
+    assert.ok(longest <= 30, `focus ${cell}: a pair stayed within 0.25 for ${(longest / 30).toFixed(2)} s`);
   }
   // 整條路都不在焦點格：原地停下
   const { roster } = setup();
@@ -477,4 +481,61 @@ test('a layout that re-adds a member while a leaver of the same key is walking o
   // 退掉整個名冊再宣告回來也一樣
   roster.retire('k'); roster.flush(); run(roster, 5, 4); roster.declare('k', queue(3, QENTRY[0])); roster.flush();
   assert.equal(people.walkers.length, 3); assert.ok(roster.members('k').every(x => !x.gone));
+});
+
+// ── final review（計畫 3.8）──
+// 每幀最大位移（只看兩幀都露出來的人）；ok：沒有人超過自己的走路速度 × dt
+function maxStep(roster, ms, frames, t0 = 0) {
+  let max = 0, who = null, ok = true;
+  for (let i = 0; i < frames; i++) {
+    const p = ms.map(m => ({ ...m.pos, hidden: m.hidden })); roster.update(1 / 30, t0 + i / 30);
+    ms.forEach((m, j) => {
+      if (p[j].hidden || m.hidden) return;
+      const d = gap(m.pos, p[j]), over = d > m.speed / 30 + 1e-6;
+      if ((over && ok) || (over === !ok && d > max)) { max = d; who = m; } ok &&= !over;
+    });
+  }
+  return { max, who, ok };
+}
+// 1. 焦點在別格時，休息中的 wander 成員跟別人擠在 0.25 內：走開一小段（用走的），不會一直疊著
+test('out-of-focus wanderers resting within 0.25 of someone walk apart smoothly, then stand still', () => {
+  const { roster } = setup();
+  const spot = { x: Q.x + 0.5, y: Q.y, z: Q.z, yaw: 0 };
+  roster.declare('w', { kind: 'roster', at: Q, n: 3, home: { kind: 'wander', at: Q, r: 0.6 } });
+  roster.declare('s', { kind: 'roster', at: spot, n: 1, home: { kind: 'stand', spots: [spot] } }); roster.snap();
+  const [a, b, c] = roster.members('w'), [s] = roster.members('s');
+  roster.setPose(a, { x: Q.x, z: Q.z }); roster.setPose(b, { x: Q.x + 0.08, z: Q.z + 0.03 }); roster.setPose(c, { x: spot.x - 0.06, z: spot.z + 0.02 });
+  roster.setFocus([[-1, 0]]);
+  const step = maxStep(roster, [a, b, c, s], 30 * 6);
+  assert.ok(step.ok, `max per-frame move ${step.max.toFixed(3)} (${step.who?.key})`);
+  const all = [a, b, c, s];
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(gap(all[i].pos, all[j].pos) >= 0.25 - 1e-9, `${all[i].key}#${all[i].i}-${all[j].key}#${all[j].i} ${gap(all[i].pos, all[j].pos).toFixed(3)}`);
+  assert.ok(Math.abs(s.pos.x - spot.x) < 1e-9 && s.pos.z === spot.z, 'the stand member keeps its spot');
+  const p = all.map(m => ({ ...m.pos })); run(roster, 60, 7);
+  all.forEach((m, i) => { assert.equal(m.walking, false); assert.deepEqual(m.pos, p[i], 'then stands still (out of focus)'); });
+});
+// 焦點在別格時停下來的 path 成員跟站著的人擠在 0.25 內：沿路再走一點才停
+test('an out-of-focus path member halted within 0.25 of a standing member walks on along its route until clear', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
+  const { roster } = setup(), R0 = ENGINEER_ROUTE[0], spot = { x: R0.x + 0.08, y: R0.y, z: R0.z, yaw: 0 };
+  roster.declare('eng', { kind: 'roster', at: R0, n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+  roster.declare('s', { kind: 'roster', at: spot, n: 1, home: { kind: 'stand', spots: [spot] } }); roster.snap();
+  roster.setFocus([[-1, 1]]);
+  const [e] = roster.members('eng'), [s] = roster.members('s');
+  const step = maxStep(roster, [e, s], 30 * 4);
+  assert.ok(step.ok, `max per-frame move ${step.max.toFixed(3)}`);
+  assert.ok(gap(e.pos, s.pos) >= 0.25 - 1e-9, `apart (${gap(e.pos, s.pos).toFixed(3)})`); assert.equal(e.walking, false, 'then halts');
+});
+// 3. path 成員被一串人推的時候不閃：每幀不超過自己的走路速度 × dt（小人 1.6、老鼠 2.0）
+test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking speed × dt in a frame', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
+  for (const focus of [null, [[1, 0]]]) {
+    const { roster } = setup();
+    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+    roster.declare('rats', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 5, model: { path: 'rat.glb', h: 0.2 }, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 } });
+    roster.snap(); roster.setFocus(focus);
+    const ms = [...roster.members('eng'), ...roster.members('rats')], step = maxStep(roster, ms, 30 * 30);
+    assert.ok(step.ok, `focus ${JSON.stringify(focus)}: ${step.who?.key}#${step.who?.i} moved ${step.max.toFixed(3)} in one frame`);
+    assert.ok(ms.every(m => m.cursor), 'still on the route');
+  }
 });

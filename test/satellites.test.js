@@ -17,11 +17,11 @@ const allMax = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max])
 
 // 物品 v2 §5（review focus 5）：風車與燈塔開局是暗的、不轉的；燈泡 Lv7 電工去按開關（離岸風電啟動）才轉、才亮。
 // 颱風時不管有沒有電，風車都被風吹得狂轉、整座搖（那是風不是電）；大停電時沒有颱風就停
-test('windmill blades: still at the opening and below bulb 7, turn at bulb 7; the storm spins them with or without power; blackout stops them', () => {
+test('windmill blades: still at the opening and below bulb 7, turn at bulb 7; the storm spins them (3 unpowered, 6 powered) and wobbles; blackout stops them', () => {
   for (const bulb of [0, 1, 2, 3, 5, 6]) { const w = sat.view(lv({ bulb }), {})['sat.windmill']; assert.equal(w.speed, 0, `bulb ${bulb}`); assert.ok(!w.wobble); }
   for (const bulb of [7, 8, 9]) assert.equal(sat.view(lv({ bulb }), {})['sat.windmill'].speed, 1, `bulb ${bulb}`);
-  for (const bulb of [0, 2, 6, 7, 9]) { const storm = sat.view(lv({ bulb, typhoon: 2 }), {})['sat.windmill']; assert.equal(storm.speed, 6, `storm, bulb ${bulb}`); assert.ok(storm.wobble); }
-  assert.equal(sat.view(lv({ bulb: 2, typhoon: 2 }), { blackout: true })['sat.windmill'].speed, 6, 'blackout in the storm: the wind still turns it');
+  for (const bulb of [0, 2, 6, 7, 9]) { const storm = sat.view(lv({ bulb, typhoon: 2 }), {})['sat.windmill']; assert.equal(storm.speed, bulb >= 7 ? 6 : 3, `storm, bulb ${bulb}`); assert.ok(storm.wobble); }
+  assert.equal(sat.view(lv({ bulb: 2, typhoon: 2 }), { blackout: true })['sat.windmill'].speed, 3, 'blackout in the storm: the wind still turns it');
   assert.equal(sat.view(lv({ bulb: 2 }), { blackout: true })['sat.windmill'].speed, 0);
   assert.equal(sat.view(lv({ bulb: 7, typhoon: 3 }), {})['sat.windmill'].speed, 1, 'after the storm back to the powered turn');
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: sat.builders });

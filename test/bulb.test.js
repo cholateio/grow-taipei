@@ -107,16 +107,16 @@ const onlys = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).fla
 const E = to => ({ kind: 'grow', item: 'bulb', to });
 // only 可能是 ctx => 鍵（演到才算）：用假 ctx 解開
 const applies = (beats, ctx) => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => (typeof b.only === 'function' ? b.only(ctx) : b.only));
-// 物品 v2：燈塔改到燈泡 Lv7（離岸風電啟動）才亮，Lv2 只開夜市
-const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market'] : [])]);
-test('grow 2 lights the stops one by one along the road (posts with the first; the market while he walks the last leg)', () => {
+// 物品 v2：燈塔改到燈泡 Lv7（離岸風電啟動）才亮；Lv2 走過去點最近的三站，其餘六站回全景後一站站亮，夜市跟最後一站一起開
+const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 1 ? ['bulb.market'] : [])]);
+test('grow 2 lights the stops one by one along the road (posts with the first; the market with the last)', () => {
   const s = { lv: lv({ bulb: 2 }), flags: {} };
   const c0 = fakeCtx(); assert.deepEqual(applies(bulb.script.grow[2](E(2), s, c0), c0), stopOrder(0));
   // 電工在半路上：從他最近的那站開始，沿路繞一圈（順序照樣沿路）；第 9 盞是第 5 站
   const p = bulb.lampApproach(9), c9 = fakeCtx({ pos: p, head: () => p }), got = applies(bulb.script.grow[2](E(2), s, c9), c9);
   assert.ok(bulb.LAMP_STOPS[5].includes(9)); assert.deepEqual(got, stopOrder(5));
   // 直接找 walk 的速度：快走 2.8（節奏驗收的裁定），不衝刺
-  assert.ok(flat(bulb.script.grow[2](E(2), s, fakeCtx())).filter(b => b.kind === 'walk').length === N_STOPS);
+  assert.equal(bulb.WALKED, 3); assert.equal(flat(bulb.script.grow[2](E(2), s, fakeCtx())).filter(b => b.kind === 'walk').length, bulb.WALKED);
   assert.equal(bulb.LIGHTING_SPEED, 2.8);
 });
 test('world beats: Lv3 fades to dusk, Lv5 to night', () => {
@@ -139,9 +139,9 @@ async function liveAt({ run, bubblesLog }, order, pred) {
   throw new Error('event not found');
 }
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
-// 物品 v2 §6：一級 3–5 s；Lv2 電工快走（2.8）繞全島一圈點燈是燈泡保留的長旅程（§6「保留一兩段最好看的」，實測 15–17.5 s，上限照舊 22）；
+// 物品 v2 §6：一級 3–5 s；Lv2 點最近三站＋其餘一站站亮 ≤ 8 s（裁決）；
 // ◆ Lv7（離岸風電）、Lv9（全島霓虹）6–10 s——含鏡頭平移與回全景的整段（show.elapsed，裁決 R8）
-const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, 22] : KEY.includes(to) ? [3, 10] : [3, 5]);
+const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, 8] : KEY.includes(to) ? [3, 10] : [3, 5]);
 const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
 const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
 function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
@@ -159,7 +159,7 @@ function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
   assert.equal(onWindmill(els[0].pos), to >= 7, `${what} electrician on the windmill island: ${JSON.stringify(els[0].pos)}`);
   for (const m of show.roster.members('landmarks.islanders')) assert.equal(m.mode, 'home', `${what} islanders`);
 }
-test('scripts: every bulb level in both solutions plays within its budget (3–5 s; Lv2 journey ≤ 22; ◆ Lv7/Lv9 6–10 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
+test('scripts: every bulb level in both solutions plays within its budget (3–5 s; Lv2 ≤ 8; ◆ Lv7/Lv9 6–10 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
@@ -269,26 +269,26 @@ test('bulb.electrician enters from the 101 site, walkable and ≥ 1.5 from his s
 });
 
 // 鏡頭（§13.1、計畫 3.8 Task 5）
-test('grow 2: the first beat focuses the first stop\'s cell; each walk into another cell pans with it; LEVEL UP pans back to the centre cell', () => {
+test('grow 2: the first beat focuses the first stop\'s cell; each walk into another cell pans with it; then the overview for the other stops and LEVEL UP', () => {
   const s2 = { lv: lv({ bulb: 2 }), flags: {} }, p = bulb.lampApproach(9), ctx = fakeCtx({ pos: p, head: () => p });
   const beats = bulb.script.grow[2](E(2), s2, ctx);
   assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], ctx), bulb.stopCell(5), 'first stop is stop 5');
   // 第 i 段走路（走向第 5+i 站）一起的 focus：換格才有目標，同一格回 null（跳過）
   const pans = beats.filter(b => b.kind === 'together' && b.beats.some(x => x.kind === 'walk')).map(b => focusCell(b.beats.find(x => x.kind === 'focus'), ctx));
-  const cells = Array.from({ length: N_STOPS }, (_, i) => bulb.stopCell((5 + i) % N_STOPS));
+  const cells = Array.from({ length: bulb.WALKED }, (_, i) => bulb.stopCell((5 + i) % N_STOPS));
   assert.deepEqual(pans, cells.slice(1).map((c, i) => (String(c) === String(cells[i]) ? null : c)));
-  assert.ok(pans.filter(Boolean).length >= 4, `pans ${JSON.stringify(pans)}`);
-  const last = beats.at(-1); assert.deepEqual(last.beats.map(b => b.kind).sort(), ['focus', 'levelUp']);
-  assert.deepEqual(focusCell(last.beats.find(b => b.kind === 'focus'), ctx), String(cells.at(-1)) === '0,0' ? null : [0, 0]);
+  const home = beats.findIndex(b => b.kind === 'focus' && b.target === 'home'), rest = beats.slice(home + 1);
+  assert.ok(home > 0 && rest.filter(b => b.kind === 'apply').length === N_STOPS - bulb.WALKED, 'the other six stops flash after the overview');
+  assert.equal(beats.at(-1).kind, 'levelUp');
 });
-test('grow 2 live: each pan reaches a cell as the electrician walks into it; LEVEL UP comes with the pan back to the centre cell', async () => {
+test('grow 2 live: each pan reaches a cell as the electrician walks into it; the camera then goes home for the rest', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, rig } = h, update = show.update, frames = [];
     let t = 0;
     show.update = (dt, tt) => { update(dt, tt); t += dt; const m = show.roster.members('bulb.electrician')[0]; frames.push([t, m && cellAt(m.pos.x, m.pos.z), rig.log.length]); };
     let n0 = 0; await liveAt({ ...h, run: (evs, opts) => { if (!opts?.instant) { n0 = rig.log.length; frames.length = 0; t = 0; } return h.run(evs, opts); } }, order, isBulb(2));
     const trail = focusTrail(rig.log, n0), pans = trail.slice(0, -2);
-    assert.deepEqual(trail.slice(-2), [[0, 0], 'home']); assert.ok(pans.length >= 5, JSON.stringify(trail));
+    assert.deepEqual(trail.slice(-2), ['home', 'home']); assert.ok(pans.length >= 1 && pans.length <= bulb.WALKED, JSON.stringify(trail));
     pans.forEach((c, i) => {
       if (i) assert.notDeepEqual(c, pans[i - 1], 'no re-pan to the same cell');
       // 鏡頭飛 1 秒：第一拍那次之後，每次到的時候（呼叫 + 1 s）他前後 0.5 s 內剛走進那一格
@@ -368,10 +368,10 @@ test('Lv9 neon: every main-island bridge gets glowing deck strips; the floating 
   assert.ok(Object.values(bulb.view(atLv(9), { blackout: true })).every(p => !p.parts?.some(q => q.glow)), 'dark in a blackout');
 });
 // 霓虹：一站一個發光色（沿路粉藍交錯），燈頭一站一個 draw call
-test('Lv3+ lamp heads: one neon colour per stop, alternating pink and blue along the road', () => {
+test('Lv3+ lamp heads: one neon colour per stop, neighbours (wrap-around included) always differ', () => {
   const v = bulb.view(atLv(3), {}), cols = LAMPS(v).map(s => new Set(s.parts.map(p => p.glow)));
   assert.ok(cols.every(c => c.size === 1), 'one colour per stop');
-  cols.forEach((c, k) => { if (k) assert.notDeepEqual([...c], [...cols[k - 1]], `stop ${k} differs from stop ${k - 1}`); });
+  cols.forEach((c, k) => { const prev = cols[(k + N_STOPS - 1) % N_STOPS]; assert.notDeepEqual([...c], [...prev], `stop ${k} differs from the stop before it`); });
 });
 
 // ── draw call（§10）：燈泡自己的零件（路燈、夜市、變電所、霓虹）≤ 24 ──
@@ -435,31 +435,54 @@ async function liveFrames(order, pred, onFrame) {
 // 全程不瞬移（每幀位移 ≤ 0.6：環上趕路最快 4.5 倍約 0.45／幀）；最後住在風車島上
 test('Lv7 live: the electrician walks to the station, rides the train out to the windmill island, flips the switch; only then the blades turn and the lighthouse lights', async () => {
   for (const order of SOLUTIONS) {
-    let prev = null, maxStep = 0, at = 0, rode = 0, station = false, firstBuild = null, firstSpin = null, firstLight = null, rot = null;
+    let prev = null, maxWalk = 0, maxRide = 0, at = 0, rode = 0, station = false, firstBuild = null, firstSpin = null, firstLight = null, rot = null;
     const what = order.join('>');
     const { show, secs } = await liveFrames(order, isBulb(7), (h, dt) => {
       at += dt;
       const [m] = h.show.roster.members('bulb.electrician'); if (!m) return;
-      if (prev) maxStep = Math.max(maxStep, Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z)); prev = { ...m.pos };
+      // 坐在車頂（主島外、比軌道與島面都高：環上、支線高架上）的那幾幀跟著列車（環上最快 4.5 倍約 0.45／幀）；
+      // 其他時候是走路（≤ 0.15／幀）
+      const riding = !cellAt(m.pos.x, m.pos.z) && m.pos.y > TRACK.y + 0.1;
+      if (prev) { const d = Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z); if (riding && prev.riding) maxRide = Math.max(maxRide, d); else maxWalk = Math.max(maxWalk, d); }
+      prev = { ...m.pos, riding };
+      if (riding) rode++;
       if (String(cellAt(m.pos.x, m.pos.z)) === '0,1') station = true;
-      const car = trainPose(h.show.ctx?.now ?? 0, 0, {});   // 只用來判斷「在海上、比軌道高」：坐在車頂
-      if (!cellAt(m.pos.x, m.pos.z) && satelliteAt(m.pos) < 0 && m.pos.y > TRACK.y + 0.1) rode++;
       if (firstBuild === null && m.walker?.gesture?.kind === 'build') firstBuild = at;
       const o = h.show.stage.partObject('sat.windmill'), z = o?.visible ? o.children[0].rotation.z : null;
       if (z !== null && rot !== null && Math.abs(z - rot) > 1e-9 && firstSpin === null) firstSpin = at;
       rot = z;
       if (firstLight === null && h.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;
-      void car;
     });
     assert.ok(station, `${what}: walked into the station cell`);
-    assert.ok(rode > 20, `${what}: rode on the train over the sea (${rode} frames)`);
-    assert.ok(maxStep <= 0.6, `${what}: no teleport (max step ${maxStep.toFixed(2)})`);
+    assert.ok(rode > 20, `${what}: rode on the train (${rode} frames)`);
+    assert.ok(maxWalk <= 0.15, `${what}: no teleport off the train (max step ${maxWalk.toFixed(3)})`);
+    assert.ok(maxRide <= 0.5, `${what}: no teleport on the train (max step ${maxRide.toFixed(3)})`);
     assert.ok(firstBuild !== null && firstSpin !== null && firstSpin > firstBuild, `${what}: blades turn after the switch (${firstBuild}, ${firstSpin})`);
-    assert.ok(firstLight !== null && firstLight >= firstSpin, `${what}: lighthouse lights after the turbine (${firstSpin}, ${firstLight})`);
+    assert.ok(firstLight !== null && firstLight >= firstSpin + 0.9, `${what}: lighthouse lights in the settled overview after the turbine (${firstSpin}, ${firstLight})`);
     const [m] = show.roster.members('bulb.electrician'); assert.ok(onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
     assert.ok(show.roster.members('sat.keeper').length === 1, 'the keeper comes with the light');
     assert.ok(secs <= 10, `${what}: ${secs.toFixed(2)} s`);
   }
+});
+// 最壞的列車位置（審稿第 1 輪）：車頭剛開過站 0.05 rad（倒車回來接他），和剛過倒車上限（要往前繞四分之三圈）——整段 ≤ 10 s
+test('Lv7 with the train badly placed (just left the station / just past the back-up limit): the whole event still ≤ 10 s, no overspeed', async () => {
+  for (const order of SOLUTIONS) for (const behind of [0.05, Math.PI / 2 + 0.05]) {
+    const h = await headlessShow(), update = h.show.update, rates = [];
+    let on = false;
+    h.show.update = (dt, t) => { const o = h.rail.offset; update(dt, t); if (on) rates.push(1 + (h.rail.offset - o) / dt); };
+    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) h.rail.offset = (STATION_A + behind) / 0.35; return h.run(evs, opts); } }, order, isBulb(7));
+    const what = `${order.join('>')} behind ${behind.toFixed(2)}`;
+    assert.ok(h.show.elapsed <= 10, `${what}: whole event ${h.show.elapsed.toFixed(2)} s`);
+    assert.ok(Math.max(...rates.map(Math.abs)) <= TRAIN_MAX_BOOST + 1e-6, `${what}: max ${Math.max(...rates.map(Math.abs)).toFixed(2)}×`);
+    if (behind < 0.1) assert.ok(rates.some(r => r < -0.5), `${what}: backs up into the station`);
+  }
+});
+// 沒有列車在跑就不演（照規則不會發生）：直接報錯，不讓他從海上瞬移過去
+test('Lv7 without a running train throws instead of teleporting the electrician', () => {
+  const m = { pos: { x: 0, y: 0.65, z: 2 }, head: () => m.pos };
+  const ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [m] : []), claim() {} }, stage: { partObject: () => null, flags: {} }, nav: { route: (a, b) => [a, b], routeLength: () => 1, nearestWalkable: p => p }, now: 0, rail: { offset: 0 } };
+  const beats = bulb.script.grow[7](E(7), { lv: atLv(7), flags: {} }, ctx), board = beats[0].beats.find(b => b.kind === 'board');
+  assert.throws(() => board.start(ctx), /running train/);
 });
 // 坐車那段列車不超速、不瞬移：環上每幀轉的角度 ≤ 原速 4.5 倍；從站上出發（launch）是慢慢加速的
 test('Lv7: every frame the train moves at most 4.5× normal speed, and it eases out of the station', async () => {

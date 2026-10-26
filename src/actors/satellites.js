@@ -19,8 +19,8 @@ export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout
 
 export function view(lv, flags) {
   const v = {}, storm = lv.typhoon === 2, on = powered(lv, flags);
-  // 風車：通電後慢慢轉；颱風時不管有沒有電都被風吹得狂轉、整座搖（那是風不是電）
-  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? 6 : on ? 1 : 0, wobble: storm };
+  // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）
+  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? (on ? 6 : 3) : on ? 1 : 0, wobble: storm };
   if (on) {
     v['sat.lighthouse'] = { kind: 'compound', at: at('lighthouse'), parts: [{ kind: 'sphere', pos: [0, 1.45, 0], scale: 0.38, color: C.yellow, glow: C.yellow }] };
     v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };

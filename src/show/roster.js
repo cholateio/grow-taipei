@@ -33,7 +33,8 @@ import { SEPARATION } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
-const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
+const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;
+const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
@@ -388,8 +389,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (trip.calm !== undefined && !caught(m)) { trip.speed = trip.calm; delete trip.calm; }
     const ds = Math.min(trip.speed * dt, trip.left);
     trip.cursor.advance(ds); trip.left -= ds;
-    // 走到底：開放路徑的游標會折返（yaw 翻面），所以直接停在終點、保留原本朝向
-    if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); m.arriving = false; setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }
+    // 走到底：開放路徑的游標會折返（yaw 翻面），所以直接停在終點、保留原本朝向。
+    // 人被防穿牆擋在半路（游標自己走完了、人還離終點很遠）：不跳到終點（下一幀會被限速從牆裡拖過去），停在原地，下一趟從這裡重新找路
+    if (trip.left <= 1e-9) {
+      const blocked = Math.hypot(trip.last.x - m.pos.x, trip.last.z - m.pos.z) > trip.speed * dt + 2 * ARRIVE;
+      m.trip = null; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
+    }
     setPose(m, { ...trip.cursor.locate(), walking: true });
   }
   // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）
@@ -462,11 +467,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (m.trip) { walk(m, dt); if (m.trip) return; }
     const P = pathOf(h), s = m.arriving ? P.total * m.i / Math.max(1, spec.n) : nearestS(P, m.pos), p = pointAt(P, s);
     if (Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE) {
-      // 折線可能在走路格外（橋頭）：最後一段直接走上去（這一段也貼地，落在橋上不陷）
-      const path = nav.route(m.pos, p); path.push(...nav.ground([path.at(-1), p]).slice(1));
+      // 折線可能在走路格外（橋頭）：最後一段直接走上去（這一段也貼地，落在橋上不陷）——只在路線真的走到它旁邊時；
+      // 找不到路（卡在死角裡，路線只有起點）就不畫一條直線穿牆過去
+      const path = nav.route(m.pos, p), end = path.at(-1);
+      if (Math.hypot(end.x - p.x, end.z - p.z) <= NEAR_PATH) path.push(...nav.ground([end, p]).slice(1));
       go(m, path); if (m.trip) return;
     }
-    m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s });
+    // 走不過去（卡在走不出去的死角裡，找不到路）也照樣接上游標，但標 offPath：每幀限速拉過去的那一段照樣不穿 footprint（擋住就停在牆外），
+    // 拉到游標上才算回到折線（任務 7 審稿第 1 輪：卡住的機器鼠被直線拖過廠房）
+    m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s }); m.offPath = Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE;
   }
   // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
   // 不擠（最終審查：偵防師貼著泡湯客停了整個結局）：動身時就在目標周圍挑一個離每個人 ≥ SEPARATION 的站位走過去
@@ -517,8 +526,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       for (const m of exits) if (m.trip) replan(m);
     }
     const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
-    // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）
-    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, !!(m.cursor || m.trip?.offgrid) || !nav.walkable(m.pos.x, m.pos.z)]); };
+    // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）
+    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, m.cursor && m.offPath ? !nav.passable(m.pos.x, m.pos.z) : !!(m.cursor || m.trip?.offgrid) || !nav.walkable(m.pos.x, m.pos.z)]); };
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
@@ -542,6 +551,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       // 只走到一半時 y 不用兩點的直線內插（拱橋上那條弦會陷進橋面）：落在走路格上就貼那裡的地面
       if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.passable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
       if (!loose && !nav.passable(m.pos.x, m.pos.z)) m.pos = p;
+      // 追上游標了：回到折線上，之後照手畫的線走（可以走到走路格外的橋頭）
+      if (m.offPath && m.cursor) { const c = m.cursor.locate(); if (Math.hypot(c.x - m.pos.x, c.z - m.pos.z) <= 2 * ARRIVE) m.offPath = false; }
       place(m);
     }
   }

@@ -5,7 +5,7 @@
 // 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡閃白補上（沒剩就 0 秒）。
 // 上一回合被撞歪的零件（stage.tilted）在回合一開頭閃白扶正（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
 // 鏡頭跟主線（§13.1）：有東西演的事件，劇本前面先 focus 到事件的格子（同一格連續不重複），不同物品之間先空 GAP 秒；
-//   劇本第一拍自己就是 focus 的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
+//   劇本第一拍自己就是 focus（或 together 裡有 focus）的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——第二個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
@@ -41,6 +41,8 @@ const some = (beats, f) => beats.some(b => f(b) || (b.kind === 'together' && b.b
 // 有東西演：除了不閃白的套用（瞬間換上、沒有畫面）以外還有別的拍
 const shows = beats => some(beats, b => b.kind !== 'together' && !(b.kind === 'apply' && b.blink === false));
 const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
+// 劇本第一拍自己動鏡頭：是 focus，或是一起演的 together 裡有 focus（鏡頭邊飛主角邊走，燈泡 Lv7）——不補平移
+const opensOnFocus = b => b?.kind === 'focus' || (b?.kind === 'together' && !!b.beats?.some(x => x.kind === 'focus'));
 
 // 關鍵劇本：每一拍（together 裡也是）標 keep
 function markKeep(beats) { for (const b of beats) { b.keep = true; if (b.kind === 'together' && b.beats) markKeep(b.beats); } return beats; }
@@ -133,7 +135,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
       if (cell) {
         if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));
-        if (beats[0]?.kind !== 'focus' && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
+        if (!opensOnFocus(beats[0]) && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
         lastItem = item;
       }
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移

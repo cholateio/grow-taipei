@@ -701,7 +701,10 @@ test('live, both solutions: everyone on a bridge stays on the deck (y within 0.0
 });
 // 最終審查修正：偵防師（follow 老鼠）停下來時不貼著別人（泡湯客）——外星結局 closing 起站著時離每個露出來的人 ≥ 0.25
 // （走路經過別人身邊、別人走過他身邊：身體不相碰、貼近不超過 0.5 秒）
-test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
+// 隔離（控制者裁決，任務 7 審稿第 1 輪）：這條不變式對整局的時間極敏感——正面擦身的兩個人分不開（show layer 待辦），
+// 任何物品改了劇本秒數就可能撞上，前幾個任務都是靠調秒數過的。先跳過，不再讓任何任務繞著它調時間；
+// 任務 8 拿掉珍奶散步客後、任務 12 重新打開（或修好分離）
+test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', { skip: 'known-flaky: head-on passer separation — show-layer backlog, re-enable after Task 8' }, async () => {
   const { crowd, detectiveFrames } = await livePlay();
   assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);
   assert.deepEqual([...crowd].slice(0, 20), [], `${crowd.size} frames too close`);
@@ -746,4 +749,28 @@ test('a wanderer caught inside a new footprint walks out at walking speed, not t
     roster.update(1 / 30, t);   // 走出來之後這一趟回到閒晃速度
     assert.ok(m.trip, 'still on the trip'); assert.equal(m.trip.speed, WANDER_SPEED, 'boost ends once outside the footprint');
   }
+});
+// 任務 7 審稿第 1 輪（賽博第 11 回合，機器鼠被拖過廠房）：沿折線過日常的人卡在走不出去的死角（從他到折線上最近一點找不到路）時，
+// 不能接上遠處的游標、每幀被限速拉著直線穿過建築——拉過去的那一段照樣不進 footprint（擋住就停在牆外）
+test('a path member boxed into a pocket is never dragged through a building toward its far-off path', () => {
+  const { roster, nav } = setup(), P = { x: Q.x - 1.0, y: Q.y, z: Q.z };
+  // 四面牆圍出一個小口袋（裡面走得到、出不去），折線在口袋東邊 1.5
+  nav.setFootprints([{ x: P.x - 0.55, z: P.z, w: 0.2, d: 1.3 }, { x: P.x + 0.55, z: P.z, w: 0.2, d: 1.3 }, { x: P.x, z: P.z - 0.55, w: 1.3, d: 0.2 }, { x: P.x, z: P.z + 0.55, w: 1.3, d: 0.2 }]);
+  const path = [{ x: P.x + 1.5, y: P.y, z: P.z - 0.8 }, { x: P.x + 1.5, y: P.y, z: P.z + 0.8 }];
+  roster.declare('k', { kind: 'roster', at: P, n: 1, home: { kind: 'stand', spots: [{ ...P, yaw: 0 }] } }); roster.snap(); const [m] = roster.members('k');
+  assert.ok(nav.walkable(m.pos.x, m.pos.z) && nav.route(m.pos, path[0]).length <= 1, 'really boxed in');
+  roster.declare('k', { kind: 'roster', at: P, n: 1, home: { kind: 'path', path, loop: false, speed: 0.5 } }); roster.flush();
+  for (let i = 0; i < 300; i++) { roster.update(1 / 30, i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside a padded footprint at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`); }
+});
+// 同上：走進來的路線擦進外擴 footprint（路線拉直的誤差），人被每幀的防穿牆擋在半路——游標走完了也不跳到終點、之後不被拖過建築
+test('a walk-in blocked by a wall mid-trip is not snapped to its trip end nor dragged through the building afterwards', () => {
+  const { roster, nav } = setup(), A = { x: Q.x - 1.0, y: Q.y, z: Q.z, yaw: 0 }, G = { x: Q.x + 1.0, y: Q.y, z: Q.z, yaw: 0 };
+  const wall = { x: Q.x, z: Q.z, w: 0.3, d: 0.3 }, route = nav.route;
+  nav.route = (a, b) => (Math.hypot(b.x - G.x, b.z - G.z) < 1e-6 ? [{ ...a }, { ...G }] : route(a, b));   // 路線直直穿過牆（模擬拉直的誤差）
+  roster.declare('k', { kind: 'roster', at: A, n: 1, home: { kind: 'stand', spots: [A] } }); roster.snap(); const [m] = roster.members('k');
+  nav.setFootprints([wall]); roster.update(1 / 30, 0);
+  // 家換成牆另一邊的折線（沿線過日常的人是「鬆」的：跟著游標可以走出走路格），走進去的那一趟被牆擋住
+  roster.declare('k', { kind: 'roster', at: A, n: 1, home: { kind: 'path', path: [G, { ...G, z: G.z + 1 }], loop: false, speed: 0.5 } }); roster.flush();
+  for (let i = 0; i < 240; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`); }
+  assert.ok(m.pos.x < Q.x, 'stayed on its side of the wall');
 });

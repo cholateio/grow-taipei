@@ -56,10 +56,16 @@ export function trainHead(ctx) {
 export function seat(i, ctx) {
   return () => {
     const seats = SEATS[trainCars(ctx.stage.lv.token) === 5 ? 5 : 3], [car, off] = seats[i % seats.length];
-    const p = trainPose(ctx.now + ctx.rail.offset, car, { speed: trainSpeed(ctx), trip: ctx.rail.trip });
-    return { x: p.x + Math.sin(p.yaw) * off, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * off, yaw: p.yaw };
+    return ridePose(ctx, car, off);
   };
 }
+// 第 car 節車頂、沿車身往前 off 的位置（老鼠的座位、燈泡電工的座位共用）
+export function ridePose(ctx, car, off = 0) {
+  const p = trainPose(ctx.now + ctx.rail.offset, car, { speed: trainSpeed(ctx), trip: ctx.rail.trip });
+  return { x: p.x + Math.sin(p.yaw) * off, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * off, yaw: p.yaw };
+}
+// 列車有在跑嗎（有列車零件、沒淹水停駛）
+export const trainRuns = ctx => !!partOf('token.train', ctx) && trainSpeed(ctx) > 0;
 
 // 從 hold 住的名冊拿一個人出來，直接站在 at（§13.2 不閃、不佔時間，之後由 walk 帶進場）；拍演完後 beat.member 就是他
 export function spawn(key, at) {
@@ -297,6 +303,7 @@ export function trainDepart() {
 //   環上的時鐘停住，ctx.rail.trip 帶著車頭在支線上的位置 s：開出去（SPUR_SPEED）→ 在島那頭停 stop 秒 → 倒回環上，再照常開。
 //   支線版進出都緩：趕路（最多 boost 倍）的最後 SPUR_BRAKE 秒線性減速停在入口；倒回環上後 SPUR_PULL 秒從 0 加速回原速
 //   （這段算在拍裡）。during 在車頭到島那頭時才開始演；跳過、中止時 trip 收掉（列車回到環上原本的時鐘）
+// back：車頭剛開過 at 不到 back 弧度就倒車回來（trainRun）；spurSpeed：支線上的車速（預設 SPUR_SPEED）
 // launch：列車原本停著（上一個 trainStop 剛停在站上、拍一結束就接這一拍）——趕路從 0 加速（trainRun），不一幀跳到 k 倍
 // during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
@@ -311,9 +318,21 @@ export const SPUR_BRAKE = 0.6, SPUR_PULL = 0.7;
 //   run(u)：第 u 秒（< arrive）環上走了多少（以原速的秒計）。速度曲線：（launch：先 SPUR_PULL 秒從 0 加速到 k）→ 等速 k → 最後 SPUR_BRAKE 秒減速到 0；
 //   路太短：沒有 launch 就從原速直接減速；launch 照同樣的加減速度跑一個三角形（峰值降低）。
 //   launch：車原本停著（上一個 trainStop 剛停在站上），從 0 慢慢加速，不一幀跳到 k 倍
-export function trainRun(ctx, target, { within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST, launch = false } = {}) {
+//   back（弧度）：車頭剛開過 target 不到 back 時倒車回去（先 SPUR_BRAKE 秒從原速煞停、再照 launch 曲線倒回）——剛開走的車不用繞一整圈；
+//   這時 need 是負的（環上要倒退幾秒）
+const wrap2pi = a => ((a % TWO_PI) + TWO_PI) % TWO_PI;
+export function trainRun(ctx, target, { within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST, launch = false, back = 0 } = {}) {
   const speed = trainSpeed(ctx), a0 = (ctx.now + ctx.rail.offset) * speed;
-  const need = speed ? ((((target - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed : 0;
+  if (!speed) return { need: 0, k: 1, arrive: 0, run: () => 0 };
+  const behind = wrap2pi(a0 - target);
+  if (!launch && behind > 1e-9 && behind <= back) {
+    const B0 = SPUR_BRAKE, r = ramp(behind / speed + B0 / 2, within, boost, true);
+    return { need: -behind / speed, k: -r.k, arrive: B0 + r.arrive, run: u => (u < B0 ? u - u * u / (2 * B0) : B0 / 2 - r.run(u - B0)) };
+  }
+  return ramp(wrap2pi(target - a0) / speed, within, boost, launch);
+}
+// 走 need 秒（原速）的速度曲線（見 trainRun）
+function ramp(need, within, boost, launch) {
   let k = need <= within ? 1 : Math.min(boost, need / within), p = launch ? SPUR_PULL : 0, b = SPUR_BRAKE;
   if (need < 1e-9) return { need: 0, k, arrive: 0, run: () => 0 };
   if (need < k * (p + b) / 2) {
@@ -328,8 +347,8 @@ export function trainRun(ctx, target, { within = TRAIN_ARRIVE, boost = TRAIN_MAX
   };
   return { need, k, arrive, run };
 }
-export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur = null, arrive: within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST, launch = false } = {}) {
-  const subs = [].concat(during), trip = spur ? spurTrip(spur) : null, out = trip ? trip.total / SPUR_SPEED : 0;
+export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur = null, arrive: within = TRAIN_ARRIVE, boost = TRAIN_MAX_BOOST, launch = false, back = 0, spurSpeed = SPUR_SPEED } = {}) {
+  const subs = [].concat(during), trip = spur ? spurTrip(spur) : null, out = trip ? trip.total / spurSpeed : 0;
   const hold = trip ? out + stop + out : stop;   // 環上的時鐘停多久：支線來回加上在島那頭停的
   // 進支線後第 u 秒車頭在支線上第幾公尺（緩起緩停）
   const tripS = u => trip.total * (u < out ? ease(u / out) : u < out + stop ? 1 : 1 - ease(Math.min(1, (u - out - stop) / out)));
@@ -356,7 +375,7 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
     start(ctx) {
       i = 0; cur = null;
       if (!partOf('token.train', ctx) || !trainSpeed(ctx)) return false;
-      ({ need, arrive, run } = trainRun(ctx, trip ? trip.a : at, { within, boost, launch }));
+      ({ need, arrive, run } = trainRun(ctx, trip ? trip.a : at, { within, boost, launch, back }));
       t = 0; offset0 = ctx.rail.offset;
       const sub = subs.reduce((a, b) => a + durOf(b, ctx), 0);
       total = trip ? out + Math.max(stop + out + SPUR_PULL, sub) : Math.max(stop, sub);
@@ -397,5 +416,5 @@ export function jump(who, target, dur = 0.5) {
 
 export const B = {
   spawn, walk, bubble, gesture, apply, levelUp, focus, world, wait, home, together, move, scaleIn,
-  hideParts, showParts, trainDepart, trainStop, trainRun, trainHead, seat, jump, tilt, partHead,
+  hideParts, showParts, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
 };

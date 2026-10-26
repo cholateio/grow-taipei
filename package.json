@@ -10,7 +10,7 @@
     "solutions": "node tools/solutions.mjs",
     "pace": "node tools/pace.mjs",
     "serve": "node tools/serve.mjs",
-    "shot": "node tools/shot.mjs open= mid=auto=rat,typhoon,baseball,chip turn5=auto=rat,typhoon,baseball,chip,token storm=auto=typhoon,boba seven=auto=rat,typhoon,baseball,chip,token,milk,bulb end=auto=rat,typhoon,baseball,chip,token,milk,bulb,boba alien=auto=rat,typhoon,baseball,milk,token,chip,bulb,boba night=time=night phone=quality=low 'live-rat=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=24' 'live-storm=auto=bulb,token,typhoon&live=1&warp=5' 'phone-live=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=24&quality=low' 'wide-live=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=4.5' wide=auto=rat,typhoon,baseball,chip,token,milk,bulb,boba",
+    "shot": "node tools/shot.mjs open= mid=auto=rat,typhoon,baseball,chip turn5=auto=rat,typhoon,baseball,chip,token storm=auto=typhoon,boba seven=auto=rat,typhoon,baseball,chip,token,milk,bulb end=auto=rat,typhoon,baseball,chip,token,milk,bulb,boba alien=auto=rat,typhoon,baseball,milk,token,chip,bulb,boba night=time=night phone=quality=low 'live-rat=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=24' 'live-storm=auto=bulb,token,typhoon&live=1&warp=5' 'phone-live=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=24&quality=low' 'wide-live=auto=rat,typhoon,baseball,chip,token,milk&live=1&warp=4.5' wide=auto=rat,typhoon,baseball,chip,token,milk,bulb,boba 'bridge-live=auto=chip,milk&live=1&warp=11.8'",
     "vendor": "bash tools/vendor.sh"
   },
   "engines": {

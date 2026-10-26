@@ -457,7 +457,7 @@ test('Lv7 live: the electrician walks to the station, rides the train out to the
     assert.ok(maxWalk <= 0.15, `${what}: no teleport off the train (max step ${maxWalk.toFixed(3)})`);
     assert.ok(maxRide <= 0.5, `${what}: no teleport on the train (max step ${maxRide.toFixed(3)})`);
     assert.ok(firstBuild !== null && firstSpin !== null && firstSpin > firstBuild, `${what}: blades turn after the switch (${firstBuild}, ${firstSpin})`);
-    // 裁決 R17（◆ ≤ 8 s）：全景只停 0.1 s 燈塔就亮（原 ≥ 0.9 s 等鏡頭停好）
+    // 裁決 R17（◆ ≤ 8 s）：不等鏡頭停好，風車閃白之後燈塔就亮（原 ≥ 0.9 s）
     assert.ok(firstLight !== null && firstLight >= firstSpin + 0.1, `${what}: lighthouse lights on the way to the overview after the turbine (${firstSpin}, ${firstLight})`);
     const [m] = show.roster.members('bulb.electrician'); assert.ok(onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
     assert.ok(show.roster.members('sat.keeper').length === 1, 'the keeper comes with the light');
@@ -530,4 +530,12 @@ test('quality low: neon parts drop their strips and keep only the sign models', 
     assert.ok(meshes('high') > 0, `${key} has strips at high`); assert.equal(meshes('low'), 0, `${key} no strips at low`);
   }
   assert.ok(spawned.length >= 2, 'signs still load at low');
+});
+// 審稿（裁決 R17）：◆ Lv7 在兩條正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）
+test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s in the real turn', async () => {
+  const { playLive, KEY_MAX } = await import('./helpers/show.js');
+  for (const order of SOLUTIONS) {
+    const ev = (await playLive(order)).find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === 7);
+    assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn}: ${ev?.live.toFixed(2)} s`);
+  }
 });

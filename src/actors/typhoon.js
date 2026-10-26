@@ -40,7 +40,7 @@ export const LEVEE_EDGES = MAIN_CELLS.flatMap(cell => NEIGHBORS
     return wallPieces(c.x + ux * LEVEE_R, c.z + uz * LEVEE_R, uz, -ux, len, RAT_LANDING).map(p => ({ ...p, y: cellTop(cell), yaw }));
   }));
 function levee() {
-  return { kind: 'compound', at: { x: 0, y: 0, z: 0 }, shadow: false, footprint: false,
+  return { kind: 'compound', at: { x: 0, y: 0, z: 0 }, shadow: false, footprint: false, low: false,
     parts: LEVEE_EDGES.map(e => ({ kind: 'box', pos: [e.x, e.y + LEVEE_H / 2, e.z], scale: [e.len, LEVEE_H, 0.07], rot: [0, e.yaw, 0], color: C.window })) };
 }
 

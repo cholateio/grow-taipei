@@ -29,10 +29,11 @@ import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
-import { SEPARATION, YIELD_CLEAR, yieldOffset } from './nav.js';
+import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
-const ROUTE_TRIES = 6, LOW_MODELS = 3;   // LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）   // 散步挑點：路線借道別格就重挑，最多幾次（wanderRoute）
+// ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
+const ROUTE_TRIES = 6, LOW_MODELS = 3;
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
@@ -401,18 +402,24 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 人被防穿牆擋在半路（游標自己走完了、人還離終點很遠）：不跳到終點（下一幀會被限速從牆裡拖過去），停在原地，下一趟從這裡重新找路
     if (trip.left <= 1e-9) {
       const blocked = Math.hypot(trip.last.x - m.pos.x, trip.last.z - m.pos.z) > trip.speed * dt + 2 * ARRIVE;
-      m.trip = null; m.side = 0; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
+      m.trip = null; m.side = 0; m.yielding = null; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
     }
-    setPose(m, { ...sidestep(m, trip.cursor.locate(), Math.max(trip.speed, m.speed) * dt), walking: true });
+    setPose(m, { ...sidestep(m, trip.cursor.locate(), trip.speed * dt), walking: true });
   }
   // 正面擦身（任務 12）：前方 YIELD_LOOK 內有人擋著（走著或站著都算）就往旁邊讓開再走過去（nav.yieldOffset），
-  // 橫移每幀最多走路速度 × dt（散步慢，讓路照一般走路的速度；不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
+  // 橫移每幀最多 trip.speed × dt（不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
   function sidestep(m, c, max) {
     const others = [];
-    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone) others.push(o.pos);
+    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone) others.push(o);
     const at = side => ({ x: c.x - Math.cos(c.yaw) * side, z: c.z + Math.sin(c.yaw) * side });
     const toward = (a, b) => a + Math.max(-max, Math.min(max, b - a));
-    let side = toward(m.side ?? 0, yieldOffset(c, c.yaw, others)), p = at(side);
+    // 遲滯：前方有人擋就記住他和要讓的量；沒人擋時，記住的那個人還沒落到身後 SEPARATION 以外就照樣讓著
+    // 橋上（不在格子裡）不讓：橋面只有 0.5 寬，讓出去就踩到橋外，拱橋的高度也對不上
+    const onBridge = !cellAt(c.x, c.z), t = onBridge ? null : yieldTarget(c, c.yaw, others.map(o => o.pos));
+    if (onBridge) m.yielding = null;
+    else if (t) m.yielding = { who: others[t.index], side: t.side };
+    else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -SEPARATION) m.yielding = null; }
+    let side = toward(m.side ?? 0, m.yielding?.side ?? 0), p = at(side);
     if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
     m.side = side;
     return side ? { ...c, x: p.x, y: nav.groundY(p.x, p.z), z: p.z } : c;

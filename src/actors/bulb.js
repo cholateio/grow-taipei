@@ -242,13 +242,12 @@ const levelUpAtHome = (B, last) => B.together([B.focus(c => (last && sameCell(la
 
 // ── ★◆ Lv7 離岸風電啟動：電工走到站前島緣 → 列車進站停下、他跳上車頂 → 列車慢慢加速、沿環（鏡頭那一側）開到風車島的支線、開進島上
 //   → 他從車頂跳到開關箱前、揮手按開關 → 風車閃白開始轉 → 回全景、燈塔閃白亮起、守塔人出來 → LEVEL UP。全程沒有瞬移 ──
-const JUMP = 0.35, JUMP_ON = 0.45, SWITCH_PUSH = 0.3, DASH = 3.2;   // 跳下車、跳上車頂（離島緣 1.4，慢一點）的秒數、按開關（build 揮一下）的秒數、趕車小跑的速度（點燈快走 2.8）
+const JUMP = 0.35, JUMP_ON = 0.45, SWITCH_PUSH = 0.25, DASH = 3.2;   // 跳下車、跳上車頂（離島緣 1.4，慢一點）的秒數、按開關（build 揮一下）的秒數、趕車小跑的速度（點燈快走 2.8）
 // 站前島緣（老鼠搭車也在這裡上車）：捷運站對島心方位上、離島心 7 的點拉回走得到的地方
 const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.sin(STATION_A) * 7 });
-// 進站：最快 1.0 秒趕到（他還在走的話等他走到），最多 4.5 倍（beats 的 TRAIN_MAX_BOOST）；車頭剛開過站不到四分之一圈就倒車回來，
-// 不繞一整圈（最壞的情況少 2 秒多）。開往支線：最快 0.6 秒、從站上慢慢加速；支線上開快一點（每秒 5 公尺，平常 2.5）
-// （裁決 R17 ◆ ≤ 8 s：進站 1.5 → 1.0、開往支線 1.0 → 0.6、支線車速 4 → 5、按開關 0.6 → 0.3）
-const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI / 2, RIDE_WITHIN = 0.6, RIDE_SPUR = 5;
+// 進站：最快 1.0 秒趕到（他還在走的話等他走到），最多 4.5 倍（beats 的 TRAIN_MAX_BOOST）；車頭剛開過站不到半圈時，倒車比往前繞快就倒車回來。開往支線：最快 0.6 秒、從站上慢慢加速；支線上開快一點（每秒 7 公尺，平常 2.5）
+// （裁決 R17 ◆ ≤ 8 s：進站 1.5 → 1.0、開往支線 1.0 → 0.6、支線車速 4 → 7、按開關 0.6 → 0.25）
+const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7;
 // 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
 const SEAT_CAR = 0, SEAT_OFF = -0.2;
 // 沒有列車在跑（沒車、淹水停駛）就演不了：照規則燈泡 Lv7 一定有代幣 ≥7 的列車；萬一沒有，直接報錯，不讓他從海上瞬移過去
@@ -263,8 +262,10 @@ function board(B, who) {
       const m = who(c); if (!m) return false;
       needTrain(B, c);
       const walk = B.walk(m, SHORE, { speed: DASH }), wt = walk.estimate(c), within = Math.max(BOARD_WITHIN, wt);
-      const wait = Math.max(0, wt - B.trainRun(c, STATION_A, { within, back: BOARD_BACK }).arrive), seat = cc => B.ridePose(cc, SEAT_CAR, SEAT_OFF);
-      inner = B.together([walk, B.trainStop({ arrive: within, back: BOARD_BACK, stop: wait + JUMP_ON + 0.05, during: [B.wait(wait), B.jump(m, seat, JUMP_ON)] })]);
+      // 倒車回來和往前繞，哪個比較快進站就走哪個（倒車要先煞車再起步，剛開過頭一點才划算；裁決 R17 ◆ ≤ 8 s）
+      const run = back => B.trainRun(c, STATION_A, { within, back }), back = run(BOARD_BACK).arrive < run(0).arrive ? BOARD_BACK : 0;
+      const wait = Math.max(0, wt - run(back).arrive), seat = cc => B.ridePose(cc, SEAT_CAR, SEAT_OFF);
+      inner = B.together([walk, B.trainStop({ arrive: within, back, stop: wait + JUMP_ON + 0.05, during: [B.wait(wait), B.jump(m, seat, JUMP_ON)] })]);
       inner.start(c);
     },
     step(k, dt, c) { inner.step(k, dt, c); },
@@ -355,9 +356,9 @@ export const script = {
       return [
         B.together([B.focus(TOKEN_CELL), board(B, m)]),   // 鏡頭飛去站前的同時他就出發、列車同時趕來
         B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ride(B, m, [
-          // 按下開關 → 風車閃白開始轉 → 回全景、停一下等鏡頭（裁決 R17 ◆ ≤ 8 s：停 1.0 → 0.1，燈塔在鏡頭飛往全景時亮）
+          // 按下開關 → 風車閃白開始轉 → 回全景（裁決 R17 ◆ ≤ 8 s：不再停 1 秒等鏡頭，燈塔在鏡頭飛往全景時亮）
           B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }), applyN(B, e, ['sat.windmill'], 1),
-          B.focus('home', { hold: 0.1 }),
+          B.focus('home'),
           B.home(m), B.together([applyN(B, e, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'bulb.electrician'], 2), B.levelUp('bulb')]),
         ])]),
       ];

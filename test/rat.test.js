@@ -453,3 +453,11 @@ test('alien solution: rat Lv5 in its countdown turn (montage, typhoon ≥ 2) sti
   assert.ok(high > 2, `the UFO came down from the sky (max dy ${high.toFixed(2)})`);
   assert.ok(show.roster.members('rat.pack')[0].dress.crown, 'crowned'); assert.ok(show.stage.partObject('sat.rocksRing'), 'ring on the rocks');
 });
+// 審稿（裁決 R15）：Lv3 在兩條正解整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——外星是第 8 回合搭捷運，賽博落在倒數蒙太奇
+test('live play, both solutions: rat Lv3 script ≤ 4.5 s in the real turn', async () => {
+  const { playLive, SCRIPT_MAX } = await import('./helpers/show.js');
+  for (const order of SOLUTIONS) {
+    const ev = (await playLive(order)).find(x => x.e.kind === 'grow' && x.e.item === 'rat' && x.e.to === 3);
+    assert.ok(ev && ev.script <= SCRIPT_MAX, `${order.join('>')} turn ${ev?.turn}${ev?.montage ? ' (montage)' : ''}: ${ev?.script.toFixed(2)} s`);
+  }
+});

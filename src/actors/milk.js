@@ -139,7 +139,7 @@ export function view(lv, flags, meta = {}) {
   // footprint 只算早餐店的桌子（操場、旗桿、布條可以走）
   v['milk.yard'] = { kind: 'compound', at, parts: yard, footprint: n === 2 ? [{ x: -0.6, z: 0.3, r: 0.4 }, { x: 0.3, z: 0.45, r: 0.4 }] : false };
   // 旗子自己一個零件：Lv5 劇本讓它沿著旗桿升上去（scale.y 0→1，以地面為基準）
-  if (n >= 5) v['milk.flag'] = { kind: 'compound', at, footprint: false, parts: [{ kind: 'box', pos: [0.86, 0.72, 0.95], scale: [0.2, 0.13, 0.02], color: C.coral, flag: true }] };
+  if (n >= 5) v['milk.flag'] = { kind: 'compound', at, footprint: false, low: false, parts: [{ kind: 'box', pos: [0.86, 0.72, 0.95], scale: [0.2, 0.13, 0.02], color: C.coral, flag: true }] };
   // 大學校門：兩根柱子 + 半圈拱；Lv8 起旁邊 YouBike 站。footprint 只算兩根柱子（拱門中間可以穿過去；
   // 單車跟旗桿一樣是小東西，不擋往橋頭的路）
   const pillars = [-PILLAR, PILLAR].map(dx => ({ x: ARCH.x - at.x + dx, z: ARCH.z - at.z }));

@@ -95,7 +95,7 @@ export function createPartFactory(THREE, ctx) {
   function compound(spec) {
     const object = new THREE.Group(), groups = new Map(), owned = [];
     for (const p of spec.parts) {
-      const key = p.glow ?? 'clay';
+      const key = ctx.quality === 'low' ? 'clay' : p.glow ?? 'clay';   // ?quality=low：發光的部分照顏色併進同一個 mesh（一個零件一個 draw call，裁決 R18）
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(partGeometry(p));
     }
@@ -125,7 +125,8 @@ export function createPartFactory(THREE, ctx) {
     let model = null, disposed = false;
     const cursor = spec.loop ? createPathCursor(spec.loop.path, { loop: spec.loop.loop ?? true }) : null;
     if (cursor && spec.loop.phase) cursor.advance(spec.loop.phase * cursor.total);
-    ctx.assets.spawn(spec.path, { h: spec.h, anim: spec.anim, speed: spec.animSpeed, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 }).then(m => {
+    // ?quality=low：不分發光材質（合併後一個模型一個 mesh，裁決 R18）
+    ctx.assets.spawn(spec.path, { h: spec.h, anim: spec.anim, speed: spec.animSpeed, tint: spec.tint, glow: ctx.quality === 'low' ? null : spec.glow, ry: spec.ry ?? 0 }).then(m => {
       if (disposed) { ctx.assets.release?.(m); return; }
       model = m; object.add(m);
       m.traverse(o => { if (o.isMesh) for (const mt of [].concat(o.material)) if (mt.emissiveIntensity > 0 && mt.emissive?.getHex()) { ctx.glow.add(mt); mats.push(mt); } });
@@ -144,7 +145,8 @@ export function createPartFactory(THREE, ctx) {
   }
 
   function smoke(spec) {
-    const { n = 4, size = 0.2, rise = 1.2, color: hex = 0xffffff, opacity = 0.8, offsetY = 0 } = spec, object = new THREE.Group();
+    const { size = 0.2, rise = 1.2, color: hex = 0xffffff, opacity = 0.8, offsetY = 0 } = spec, object = new THREE.Group();
+    const n = Math.min(spec.n ?? 4, ctx.quality === 'low' ? 2 : Infinity);   // ?quality=low 最多兩團煙（一團一個 draw call）
     const puffs = Array.from({ length: n }, (_, i) => {
       const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ color: hex, transparent: true, depthWrite: false }));
       object.add(m); return { m, ph: i / n };
@@ -255,7 +257,9 @@ export function createPartFactory(THREE, ctx) {
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 
+  // low: false 的零件（燈光秀、堤防、旗子、煙火、船隊這類點綴）在 ?quality=low 不畫：給一個空的 Group（footprint 照宣告的算，劇本照樣找得到零件）
   function build(spec) {
+    if (ctx.quality === 'low' && spec.low === false) { const object = new THREE.Group(), { x = 0, y = 0, z = 0 } = spec.at ?? {}; object.position.set(x, y, z); return { object, dispose() {} }; }
     const make = ctx.builders?.[spec.kind] ? s => ctx.builders[spec.kind](THREE, s, builderCtx) : KINDS[spec.kind];
     if (!make) throw new Error(`unknown part kind ${spec.kind}`);
     const part = make(spec);

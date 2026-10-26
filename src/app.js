@@ -52,7 +52,7 @@ export async function start({ params, loading }) {
   const simplex = new SimplexNoise({ random: mulberry32(99) });
   const terrain = buildTerrain(THREE, { noise2: (x, z) => simplex.noise(x, z), quality });
   view.scene.add(terrain.group);
-  const people = createPeople(THREE);
+  const people = createPeople(THREE, { low: quality === 'low' });
   view.scene.add(people.group);   // 島民六人是 landmarks.js 的名冊（演出層管）
   // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品）。海上的船是演員（satellites.js）。載入失敗不擋開機。
   const assets = createAssets(THREE);
@@ -136,7 +136,7 @@ export async function start({ params, loading }) {
   view.renderer.setAnimationLoop(() => {
     frame(Math.min(clock.getDelta(), 0.08));
     view.render();
-    // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最少，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）
+    // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最多，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）
     const r = autoDone && sampleCalls({ calls: view.renderer.info.render.calls, tris: view.renderer.info.render.triangles, pending: assets.pending });
     if (r) console.warn(`[grow] calls=${r.calls} tris=${r.tris}`);
   });

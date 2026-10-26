@@ -159,3 +159,10 @@ test('accessory meshes nobody wears this frame are not drawn', () => {
   people.update(0.1, 0.2);
   assert.equal(mesh('mortar').visible, true); assert.equal(mesh('tassel').visible, true); assert.equal(mesh('helmet').visible, false);
 });
+// 裁決 R18 審稿：?quality=low 不畫眼睛與影子圓片
+test('low people skip the eyes and the shadow disc', () => {
+  const people = createPeople(THREE, { max: 4, low: true }), mesh = n => people.group.getObjectByName(`people:${n}`);
+  people.spawn({ path: ringPath({ x: 0, z: 0 }, 1, 0.65, 8) }); people.update(0.1, 0.1);
+  for (const n of ['eyeL', 'eyeR', 'shadow']) assert.equal(mesh(n).visible, false, n);
+  assert.equal(mesh('body').visible, true);
+});

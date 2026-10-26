@@ -66,7 +66,7 @@ export function view(lv, flags, meta = {}) {
   }
   if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
-  if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, parts: Array.from({ length: 8 }, (_, i) => {
+  if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, low: false, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = 1.0 + (i % 4) * (top - 1.2) / 4;
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相
   }) };

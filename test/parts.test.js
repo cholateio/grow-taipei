@@ -169,3 +169,17 @@ test('quality low: an orbit part builds nothing but keeps fly/land callable', ()
   assert.equal(p.object.children.length, 0); assert.equal(loaded.length, 0, 'no glb spawned');
   assert.doesNotThrow(() => { p.object.userData.fly({ delay: 0, speed: 2 }); p.object.userData.land(); p.update?.(0.1, 0.1); });
 });
+// 裁決 R18 審稿：?quality=low——compound 發光的部分照顏色併進同一個 mesh；low: false 的點綴零件不畫；煙最多兩團
+test('quality low: a compound is one mesh (glow merged into clay), low:false parts build empty, smoke has ≤ 2 puffs', () => {
+  const { f } = setup({ quality: 'low' }), meshes = o => { let n = 0; o.traverse(x => { if (x.isMesh) n++; }); return n; };
+  const parts = [{ kind: 'box', pos: [0, 0, 0], scale: 1, color: 0xffffff }, { kind: 'box', pos: [1, 0, 0], scale: 1, color: 0xff0000, glow: 0xff0000 }];
+  assert.equal(meshes(f.build({ kind: 'compound', at, parts }).object), 1);
+  assert.equal(meshes(setup().f.build({ kind: 'compound', at, parts }).object), 2, 'normal quality keeps the glow mesh');
+  const skip = f.build({ kind: 'compound', at, parts, low: false }); assert.equal(meshes(skip.object), 0); assert.deepEqual(skip.object.position.toArray(), [1, 2, 3]);
+  assert.equal(meshes(f.build({ kind: 'smoke', at, n: 6 }).object), 2);
+});
+test('quality low: glb parts are spawned without glow (one merged mesh per model)', async () => {
+  const seen = [], assets = { spawn: async (path, o) => { seen.push(o.glow); return new THREE.Group(); } };
+  for (const quality of ['high', 'low']) setup({ quality, assets }).f.build({ kind: 'glb', at, path: 'x.glb', h: 1, glow: { Sign: 0xff3fa0 } });
+  await Promise.resolve(); assert.deepEqual(seen, [{ Sign: 0xff3fa0 }, null]);
+});

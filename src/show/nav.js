@@ -7,17 +7,20 @@ export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕�
 // 正面擦身（任務 12）：走路的人前方 YIELD_LOOK 內、橫向不到 YIELD_CLEAR 有人，就往遠離他的那一側橫移到橫向 YIELD_CLEAR 再走過去
 export const YIELD_LOOK = 0.5, YIELD_CLEAR = SEPARATION + 0.05;
 // 該橫移多少：沿右手邊（朝 yaw 走時的 (−cos yaw, sin yaw)）的有號距離；前方沒人擋回 0。前方好幾個人照最近的那個讓
-export function yieldOffset(p, yaw, others) {
+export function yieldOffset(p, yaw, others) { return yieldTarget(p, yaw, others)?.side ?? 0; }
+// 同上，另外回讓的是 others 裡的第幾個（roster 記住他：直到他落在身後超過 SEPARATION 才收回，不在擦身的那一刻就切回路線上）
+export function yieldTarget(p, yaw, others) {
   const ux = Math.sin(yaw), uz = Math.cos(yaw), rx = -uz, rz = ux;
   let best = null;
-  for (const o of others) {
+  others.forEach((o, index) => {
     const dx = o.x - p.x, dz = o.z - p.z, ahead = dx * ux + dz * uz, lat = dx * rx + dz * rz;
-    if (ahead <= 0 || ahead >= YIELD_LOOK || Math.abs(lat) >= YIELD_CLEAR) continue;
-    if (!best || ahead < best.ahead) best = { ahead, lat };
-  }
-  if (!best) return 0;
-  return best.lat > 0 ? best.lat - YIELD_CLEAR : best.lat + YIELD_CLEAR;
+    if (ahead <= 0 || ahead >= YIELD_LOOK || Math.abs(lat) >= YIELD_CLEAR) return;
+    if (!best || ahead < best.ahead) best = { ahead, lat, index };
+  });
+  return best && { index: best.index, side: best.lat > 0 ? best.lat - YIELD_CLEAR : best.lat + YIELD_CLEAR };
 }
+// p 前方 yaw 方向上 o 在多遠（負的 = 在身後）
+export const aheadOf = (p, yaw, o) => (o.x - p.x) * Math.sin(yaw) + (o.z - p.z) * Math.cos(yaw);
 // 同高兩格之間的拱橋（island.js addBridge → bridgeDecks(a, b, { arch: 0.08 })）：甲板中心 base + sin(π·t)·ARCH，板厚 DECK；
 // 9 片甲板各長 len/9 × 1.08，兩端的板子超出端點半片（PLANK·len）。DENSE：路線過橋那一段每隔多遠補一個點（游標直線內插才貼著拱）
 const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05, STEP_Y = 0.03;   // STEP_Y：相鄰取樣差這麼多就是一階（拱的弧每 0.05 只差 0.02 以內）

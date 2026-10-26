@@ -139,6 +139,24 @@ const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m)
 // 偵防師 ！：晶片 ≥3 時老鼠一生窩，名冊就把一個工程師換成偵防師（晶片 grow 3 那邊也補這一拍，哪邊先成立哪邊演）
 const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.bubble(detective, '！', 0.8)] : []);
 // 列車停在 at 方位，車頂的老鼠一起跳到島緣 slots 裡自己的位置；這次升級前不在車上（鼠災後在巨蛋）就不等車
+// 搭車（老鼠 Lv3）：五隻跑到窩那側島緣的 spots 上，列車同時趕來（最快 TRAIN_IN 秒，牠們還在跑就照牠們跑到的時間）；
+// 到站後等最後一隻跑到再一起跳上車頂。拍長在 start 才知道（看牠們現在在哪、列車在哪）
+function catchTrain(B, ids, spots, ctx) {
+  let inner = null;
+  return {
+    kind: 'catchTrain',
+    dur: c => (inner ? inner.dur(c) : 0),
+    start(c) {
+      const walks = ids.map(i => B.walk(rat(i), cc => spots(cc)[i])), wt = Math.max(0, ...walks.map(w => w.estimate(c))), within = Math.max(TRAIN_IN, wt);
+      const pause = Math.max(0, wt - B.trainRun(c, NEST_A, { within, back: TRAIN_BACK }).arrive);
+      inner = B.together([B.bubble(rat(0), '！', 0.8), ...walks,
+        B.trainStop({ at: NEST_A, arrive: within, back: TRAIN_BACK, stop: pause + HOLD, during: [B.wait(pause), B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] })]);
+      inner.start(c);
+    },
+    step(k, dt, c) { inner.step(k, dt, c); },
+    end(c) { inner?.end(c); inner = null; },
+  };
+}
 function hopOff(B, s, ids, at, centre, r) {
   if (!riding(s)) return [];
   const spots = once(c => c.nav.slots(centre(c), ids.length, r));
@@ -196,9 +214,9 @@ export const script = {
         const wait = once(c => c.nav.slots(NEST_SHORE(c), 5, 0.3));
         return [
           B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
-          B.together([B.bubble(rat(0), '！', 0.8), ...ids.map(i => B.walk(rat(i), c => wait(c)[i]))]),
-          B.trainStop({ at: NEST_A, arrive: TRAIN_IN, back: TRAIN_BACK, stop: HOLD, during: [B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] }),
-          B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃（裁決 R15 一級 ≤ 4.5 s）
+          // 老鼠跑到島緣的同時列車就趕過來（不是跑到了才叫車；裁決 R15 一級 ≤ 4.5 s）
+          catchTrain(B, ids, wait, ctx),
+          B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃
         ];
       }
       // 泡溫泉（列車還沒有）：五隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）

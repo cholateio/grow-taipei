@@ -193,3 +193,20 @@ export function gameInvariants(show, { cam = null } = {}) {
     },
   };
 }
+
+// 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, montage, e, key, secs, live, script }——
+// secs：事件秒數（含平移、空拍）；live：扣掉物品之間的空拍；script：不含 focus 拍、扣掉空拍（各物品測試的劇本秒數）
+export async function playLive(order, { seed = 21 } = {}) {
+  const { show, run, scriptElapsed } = await headlessShow({ seed }), out = [];
+  let s = engine.createState(spec);
+  for (const [i, step] of turnSteps(order).entries()) {
+    const r = step(s); s = r.state;
+    const montage = i >= order.length, marks = [];
+    await run([...r.events, { kind: 'settle' }], { montage, onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
+    marks.forEach(([e, at, sc, info], j) => {
+      const next = marks[j + 1], secs = (next?.[1] ?? show.elapsed) - at, gap = info?.gap ?? 0;
+      out.push({ turn: i + 1, montage, e, key: !!info?.key, secs, live: secs - gap, script: (next?.[2] ?? scriptElapsed()) - sc - gap });
+    });
+  }
+  return out;
+}

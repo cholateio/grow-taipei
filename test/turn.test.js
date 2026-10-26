@@ -63,6 +63,9 @@ test('only the last wait event of a turn shows the hint; the hint target falls b
   const [hint] = buildTurn([w('bulb')], base([tower, bulb]), ctx).filter(b => b.kind === 'bubble');
   hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } });
   assert.deepEqual(shown, { x: 9, y: 9, z: 9 });
+  // 蒙太奇裡等待圖框是給玩家讀的提示：倍速除回來，真實秒數照舊 1.2
+  const mctx = fakeCtx({ roster: ctx.roster }), [mhint] = buildTurn([w('chip')], { ...base(), montage: true }, mctx).filter(b => b.kind === 'bubble' && typeof b.dur === 'number' && b.dur > 2);
+  assert.equal(mhint?.dur / MONTAGE_SPEED, 1.2);
 });
 
 // 外面一個看得到的人都沒有（颱風登陸大家躲進門裡）：等待圖框掛在物品頭上（終審 Important 2）
@@ -106,7 +109,8 @@ test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bub
   assert.equal(short.montage, true); assert.equal(MONTAGE_SPEED, 2); assert.equal(short.speed, MONTAGE_SPEED, 'R15: the montage plays at ×2');
   const kinds = kindsOf(beats);
   assert.deepEqual(kinds.slice(0, 3), ['bubble', 'bubble', 'bubble']);
-  assert.deepEqual(beats.slice(0, 3).map(b => b.dur), [0.6, 0.6, 0.6]);
+  // 3、2、1 是給玩家讀的字：倍速除回來，真實秒數照舊 0.6（演出時間 0.6 × MONTAGE_SPEED）
+  assert.deepEqual(beats.slice(0, 3).map(b => b.dur / MONTAGE_SPEED), [0.6, 0.6, 0.6]);
   assert.deepEqual(kinds.slice(3), ['focus', 'walk', 'together', 'levelUp', 'apply', 'home', 'world', 'focus']);
   assert.deepEqual(kindsOf(noMarks(beats)[5].beats), ['walk']);
   assert.ok(estimateTurn(beats, short) <= MONTAGE_CAP);

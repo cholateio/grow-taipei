@@ -9,6 +9,8 @@
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉；
 //   整串拍用 MONTAGE_SPEED 倍速演（裁決 R15：ctx.speed，時間軸統一換算——等待、泡泡、停格、小動作、走路、關鍵劇本一起快）。
+//   例外：開頭的 3、2、1 與等待圖框是給玩家讀的字，長度乘回 MONTAGE_SPEED（真實秒數照舊 0.6／1.2 s）。
+//   MONTAGE_CAP（20）比的是真實秒數：estimateTurn 已經除以倍速，所以超過 20 秒真實時間才拿掉走路。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
@@ -110,7 +112,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
   const out = [...(ctx.stage?.tilted ?? [])].map(upright);
-  if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR)));
+  if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR * ctx.speed)));   // 倍速除回來：真實 0.6 s 一個字
 
   events.forEach((e, i) => {
     const prev = view; view = foldEvent(view, e);
@@ -135,7 +137,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       if (i === lastWait && e.waits?.length) {
         // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上
         const w = e.waits[0], rep = c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item;
-        beats.push(B.bubble(rep, { icon: w.for[0] }, HINT_DUR));
+        beats.push(Object.assign(B.bubble(rep, { icon: w.for[0] }, HINT_DUR * ctx.speed), { keep: true }));   // 謎題提示：蒙太奇裡也留著、真實 1.2 s
       }
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;

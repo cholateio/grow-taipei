@@ -463,9 +463,9 @@
 
 - `tools/pace.mjs --check`（種子 21）：放置回合 4 s 起、上限 50 + 8 × max(0, ◆ − 1)（裁決 R17）、倒數回合 ≤ 30 s（原 22）；非關鍵劇本 > 4.5 s、◆ > 8 s 只印 ⚠（各物品測試單獨量 `SCRIPT_MAX`／`KEY_MAX`；只有走路的例外表 `SCRIPT_EXCEPT`）。每回合印「秒數／上限」。
 - 物品之間的空拍 GAP 0.6 → 0.4 s。
-- 倒數蒙太奇整串 2 倍速：時間軸讀 `ctx.speed`（`MONTAGE_SPEED` 2，turn.js 設），拍的 t 與 step 的 dt 一起乘；`elapsed`、`currentDur`、`estimateTurn` 是真實秒數。走路不再自己加倍；泡泡、LEVEL UP（CSS 動畫一起縮短）、鏡頭飛行、列車時鐘（trainStop 扣真實秒數）、飛天車、矽盾測試自己換算。
+- 倒數蒙太奇整串 2 倍速（3、2、1 與等待圖框除外，真實 0.6／1.2 s；`MONTAGE_CAP` 20 比真實秒數）：時間軸讀 `ctx.speed`（`MONTAGE_SPEED` 2，turn.js 設），拍的 t 與 step 的 dt 一起乘；`elapsed`、`currentDur`、`estimateTurn` 是真實秒數。走路不再自己加倍；泡泡、LEVEL UP（CSS 動畫一起縮短）、鏡頭飛行、列車時鐘（trainStop 扣真實秒數）、飛天車、矽盾測試自己換算。
 - 實測（R17 之後）：外星 4.4／11.8／14.0／27.8／27.9／25.3／53.4（上限 66）／49.6／倒數 14.6／20.3／15.1；賽博 4.4／11.5／14.2／27.8／27.9／25.5／63.5（上限 66）／44.8／倒數 11.8／19.9／15.5。
 - 人數預算：兩條正解每回合結束（與再放 5 秒日常之後）主島可見名冊成員 ≤ 30、任一格 ≤ 8（老鼠不算，`test/budget.test.js`）；實測最多 30／8，離島另外最多 8 人。
 - 正面擦身：走路的人前方 0.5 內有人就往旁邊讓到橫向 0.3（`nav.yieldOffset`、roster `sidestep`）；散步不借道別格、不挑別人身邊的點。
-- 截圖的 draw call 改在模型都載好、穩定 5 幀之後回報（`createCallSampler`、`assets.pending`）。以前回報的是 ?auto 演完那一幀，模型還沒載完——載好之後的真數字多了 30–90。預算（裁決 R18）：一般 ≤ 250、手機（名稱含 phone 或 `?quality=low`）≤ 150；`tools/shot.mjs` 印整趟最多與超過預算的截圖。
+- 截圖的 draw call 改在模型都載好、穩定 5 幀之後回報這 5 幀裡最多的（`createCallSampler`、`assets.pending`）。以前回報的是 ?auto 演完那一幀，模型還沒載完——載好之後的真數字多了 30–90。預算（裁決 R18）：一般 ≤ 250、手機（名稱含 phone 或 `?quality=low`）≤ 150；`tools/shot.mjs` 印整趟最多與超過預算的截圖。
 

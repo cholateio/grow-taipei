@@ -36,7 +36,8 @@ function partDefs(THREE) {
   ];
 }
 
-export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
+// low（?quality=low，裁決 R18）：眼睛與腳下的影子圓片不畫（省三個 draw call）
+export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   const rnd = mulberry32(seed), group = new THREE.Group(), meshes = {};
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0 });
   const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false });
@@ -96,8 +97,8 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
 
   const W = new THREE.Matrix4(), M = new THREE.Matrix4(), T = new THREE.Matrix4(), Rm = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
   // used：這一幀有人畫到的零件；update 最後把沒人用到的 InstancedMesh 整個藏起來（空的 instanced draw 也算一個 draw call，§10 ≤ 150）
-  const used = new Set();
-  const at = (name, i, ...ops) => { M.copy(W); for (const op of ops) M.multiply(op); meshes[name].setMatrixAt(i, M); used.add(name); meshes[name].visible = true; };
+  const used = new Set(), SKIP = new Set(low ? ['eyeL', 'eyeR', 'shadow'] : []);
+  const at = (name, i, ...ops) => { M.copy(W); for (const op of ops) M.multiply(op); meshes[name].setMatrixAt(i, M); used.add(name); meshes[name].visible = !SKIP.has(name); };
   const tr = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
   const rx = a => new THREE.Matrix4().makeRotationX(a);
   const rz = a => new THREE.Matrix4().makeRotationZ(a);
@@ -148,7 +149,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     show(acc === 'mortar', 'mortar', i, L, tr(0, 0.36, 0)); show(acc === 'mortar', 'tassel', i, L, tr(0.055, 0.34, 0.03));
     const ry = new THREE.Matrix4().makeRotationY(Math.PI / 2);
     show(bike, 'wheelF', i, tr(0, 0.01, 0.07), ry); show(bike, 'wheelB', i, tr(0, 0.01, -0.07), ry);
-    W.compose(new THREE.Vector3(p.x, p.y + 0.005, p.z), q, new THREE.Vector3(ks, ks, ks)); meshes.shadow.setMatrixAt(i, W); used.add('shadow'); meshes.shadow.visible = true;
+    W.compose(new THREE.Vector3(p.x, p.y + 0.005, p.z), q, new THREE.Vector3(ks, ks, ks)); meshes.shadow.setMatrixAt(i, W); used.add('shadow'); meshes.shadow.visible = !SKIP.has('shadow');
   }
 
   function update(dt, t, cameraDistance = 20) {
@@ -161,7 +162,7 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
       }
       place(w, t, k);
     }
-    for (const [name, m] of Object.entries(meshes)) { m.instanceMatrix.needsUpdate = true; m.visible = used.has(name); }
+    for (const [name, m] of Object.entries(meshes)) { m.instanceMatrix.needsUpdate = true; m.visible = used.has(name) && !SKIP.has(name); }
   }
 
   // 閃白：on 整個實例塗白，off 重塗原色；已經移除的小人不動

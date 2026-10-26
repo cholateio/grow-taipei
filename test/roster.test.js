@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { installFakeDom } from './helpers/fakedom.js';
 import { createPeople } from '../src/scene/people.js';
-import { createNav } from '../src/show/nav.js';
+import { createNav, SEPARATION } from '../src/show/nav.js';
 import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
@@ -789,4 +789,33 @@ test('quality low: a model roster loads at most 3 glb holders; the rest exist wi
   const roster = createRoster(THREE, { people, assets, build: null, nav: createNav({ rnd: mulberry32(7) }), blink: null, rail: { offset: 0 }, rnd: mulberry32(11), quality: 'low' });
   roster.declare('rat.pack', { kind: 'roster', at: AT, n: 10, model: { path: 'rat.glb', h: 0.2 }, home: { kind: 'wander', at: AT, r: 1 } });
   assert.equal(roster.members('rat.pack').length, 10); assert.equal(spawned.length, 3);
+});
+// 審稿（任務 12 第 1 輪）：正面擦身——兩個人在同一條線上對走、一個人走過站著的人：全程距離 ≥ 0.25 − 0.02，每幀位移不超過走路速度 × dt
+function passRun(roster, ms, frames) {
+  let min = Infinity, worst = 0; const last = new Map(ms.map(m => [m, { ...m.pos }]));
+  for (let f = 0; f < frames; f++) {
+    roster.update(1 / 30, f / 30);
+    min = Math.min(min, gap(ms[0].pos, ms[1].pos));
+    for (const m of ms) { const p = last.get(m); worst = Math.max(worst, gap(m.pos, p) / (m.speed / 30)); last.set(m, { ...m.pos }); }
+  }
+  return { min, worst };
+}
+test('head-on pair on the same line pass each other ≥ 0.23 apart, never faster than walking speed', () => {
+  const { roster } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  roster.declare('a', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  roster.declare('b', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [L], entry: R } });
+  const ms = [roster.members('a')[0], roster.members('b')[0]];
+  const { min, worst } = passRun(roster, ms, 120);
+  assert.ok(gap(ms[0].pos, R) < 0.1 && gap(ms[1].pos, L) < 0.1, 'both arrived');
+  assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`); assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+});
+test('walking past someone standing on the line keeps ≥ 0.23 from them, never faster than walking speed', () => {
+  const { roster } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  roster.declare('s', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const ms = [roster.members('w')[0], roster.members('s')[0]];
+  const { min, worst } = passRun(roster, ms, 120);
+  assert.ok(gap(ms[0].pos, R) < 0.1, 'arrived');
+  assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`); assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
 });

@@ -171,7 +171,7 @@ export function view(lv, flags = {}) {
     DRONE_KEYS.forEach((k, i) => { v[k] = drone(i); });
   }
   if (n >= 7 && !storm) {
-    v['boba.fleet'] = { kind: 'fleet', at: { x: 0, y: SEA_Y, z: 0 }, speed: 0.04, footprint: false, parts: fleetParts() };
+    v['boba.fleet'] = { kind: 'fleet', at: { x: 0, y: SEA_Y, z: 0 }, speed: 0.04, footprint: false, low: false, parts: fleetParts() };
   }
   return v;
 }

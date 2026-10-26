@@ -2,7 +2,7 @@
 //   npm run pace              印表
 //   node tools/pace.mjs --verbose   多印每回合每個事件的秒數（mark 拍之間的 elapsed 差值；括號裡是劇本秒數）
 //   node tools/pace.mjs --check     任一放置回合 < 4 s 或超過那回合的上限、倒數回合 > 30 s 就列出並 exit 1；
-//                                   放置回合裡非關鍵劇本 > 4.5 s、◆ 關鍵事件 > 8 s 只印 ⚠（live 秒數跟日常的人在哪有關）
+//                                   放置回合裡非關鍵劇本 > 4.5 s、◆ 關鍵事件 > 8 s 超過 0.3 s 以上只印 ⚠（live 秒數跟日常的人在哪有關；硬門檻是各物品測試）
 // 放置回合上限（裁決 R17）：50 + 8 × max(0, ◆ 個數 − 1)——一回合三個 ◆ 最多 66 s；◆ 個數看 mark 的 info.key
 // 劇本秒數 = 不含鏡頭 focus 拍的秒數（跟各物品測試的 secs 同一把尺，helpers/show.js 的 scriptElapsed）再扣掉 turn.js 補的空拍（mark 的 info.gap）；
 // ◆ 關鍵劇本（info.key）與 101 跳階（settle）不受 4.5 s 限，只印出來
@@ -13,7 +13,7 @@ import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helper
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45／20 → 50／22；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）、
 // 倒數 22 → 30（蒙太奇整串 2 倍速）；放置回合的非關鍵劇本 ≤ 4.5 s
-const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30;   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
+const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 const args = new Set(process.argv.slice(2));
 const verbose = args.has('--verbose'), check = args.has('--check');
 const name = id => spec.ITEMS[id].name;
@@ -49,10 +49,10 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
     if (kind === 'place') marks.forEach(([e, , , info], j) => {
       const script = span(j)[1];
       const cap = SCRIPT_EXCEPT[`${e.item} ${e.kind === 'placed' ? 1 : e.to}`] ?? SCRIPT_MAX;
-      if (!info?.key && e.kind !== 'settle' && script > cap + 1e-6) warnings.push(`${ending.title} 第 ${i + 1} 回合 ${label(e)} 劇本 ${s1(script)} s（> ${cap}）`);
+      if (!info?.key && e.kind !== 'settle' && script > cap + WARN_OVER) warnings.push(`${ending.title} 第 ${i + 1} 回合 ${label(e)} 劇本 ${s1(script)} s（> ${cap}）`);
       // ◆ 關鍵事件 live ≤ KEY_MAX（裁決 R17）：事件秒數（含鏡頭平移）扣掉物品之間的空拍
       const live = span(j)[0] - (info?.gap ?? 0);
-      if (info?.key && live > KEY_MAX + 1e-6) warnings.push(`${ending.title} 第 ${i + 1} 回合 ◆${label(e)} ${s1(live)} s（> ${KEY_MAX}）`);
+      if (info?.key && live > KEY_MAX + WARN_OVER) warnings.push(`${ending.title} 第 ${i + 1} 回合 ◆${label(e)} ${s1(live)} s（> ${KEY_MAX}）`);
     });
     if (verbose) {
       // 每個事件的秒數 = 下一個 mark（最後一個用回合結束）減自己的 mark；第一個 mark 之前是蒙太奇的 3-2-1

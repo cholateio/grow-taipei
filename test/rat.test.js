@@ -430,6 +430,20 @@ test('focus: train Lv3 at the nest; cyber Lv4 chip, Lv5 101 then the overview; s
     assert.deepEqual(focusCells(beats), want, `${what} focus cells`);
   }
 });
+// 審稿（計畫 4 最後一輪）：撞攤車（fx、沒有 delta）的 e.item 是老鼠，turn.js 會平移到老鼠格——攤車和老闆的 ！ 在珍奶格，劇本自己先對著珍奶格
+test('the cart crash opens on the boba cell (the rat walks over, the tilt and the owner ！ are there)', () => {
+  const ctx = { B, roster: { members: () => [], nearest: () => null } };
+  const beats = rat.script.fx({ kind: 'fx', item: 'rat', cause: 'rat' }, { lv: lv({ rat: 1, boba: 1 }), flags: {} }, ctx);
+  assert.equal(beats[0].kind, 'focus');
+  assert.deepEqual(focusCells([beats[0]]), [cellOf('boba')]);
+});
+// 偵防師（晶片 ≥3 時老鼠 Lv2 才成立）是晶片格的工程師原地換的：鏡頭在老鼠窩格看不到他——先回全景再冒 ！，LEVEL UP 也在全景
+test('Lv2 with the detective: the camera goes to the overview before his ！ (he turns up on the chip cell)', () => {
+  const beats = grow(2, { chip: 3 }), i = beats.findIndex(b => b.kind === 'bubble' && b !== beats[0]);
+  assert.ok(i > 0, `the detective ！ (${beats.map(b => b.kind)})`);
+  assert.equal(beats[i - 1].kind, 'focus'); assert.equal(beats[i - 1].target, 'home');
+  assert.ok(!grow(2, { chip: 2 }).some(b => b.kind === 'focus'), 'no detective, no camera move');
+});
 test('Lv3 train live: the camera goes to the nest, then home', async () => {
   const h = await headlessShow(); let r0 = 0;
   const run = h.run; h.run = (evs, o) => { if (!o?.instant) r0 = h.rig.log.length; return run(evs, o); };

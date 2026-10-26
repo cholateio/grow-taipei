@@ -262,6 +262,13 @@ test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `token events seen: ${seen}`);
   }
 });
+// 審稿（計畫 4 最後一輪）：Lv8 從遊樂場島回代幣格，鏡頭先飛到站上（自己一拍）才打 LEVEL UP（一起演的話字有一半時間在畫面外）
+test('Lv8: the camera is back on the token cell before the LEVEL UP (the label never shares a beat with a focus)', () => {
+  const beats = token.script.grow[8]({ kind: 'grow', item: 'token', to: 8 }, { lv: L({ token: 8, milk: 5 }), flags: {} }, fakeCtx);
+  const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'token');
+  assert.ok(i >= 0 && beats[i + 1].kind === 'levelUp' && i + 2 === beats.length, `focus token, then LEVEL UP last (${beats.map(b => b.kind)})`);
+  assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
+});
 test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8', () => {
   for (const n of [7, 10]) {
     const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n, milk: 5 }), flags: {} }, fakeCtx));

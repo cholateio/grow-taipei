@@ -274,14 +274,15 @@ export const script = {
         B.levelUp('milk'), B.home(allKids),
       ];
     },
-    // 畢業典禮：小孩聚到操場中間 → 跳起來、學士帽從空中落下滿地 → 101 頭上打「恭喜畢業」→ 布條閃白 → LEVEL UP
+    // 畢業典禮：小孩聚到操場中間 → 跳起來、學士帽從空中落下滿地 → 回全景、101 頭上打「恭喜畢業」→ 回鮮奶格 → 布條閃白 → LEVEL UP
     9(e, s, ctx) {
       const { B } = ctx;
       return [
         gather(ctx, PLAY, 0.35),
         B.apply(e, { only: ['milk.hats', 'milk.kids'], blink: false }),
         B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'jump')), B.move('milk.hats', { from: { dy: 1.0 }, to: { dy: 0 }, dur: 0.8 })]),
-        B.together([B.focus('tower'), B.levelUp('tower', { text: '恭喜畢業' })]), B.focus(MILK),
+        // 鏡頭先回全景停一下才打字（全景裝得下 101 頭頂，§14.4；拉近 101 格會切掉頭頂，跟 focus 一起演字出來時鏡頭還在鮮奶格）
+        B.focus('home', { hold: 0.8 }), B.levelUp('tower', { text: '恭喜畢業' }), B.focus(MILK),
         B.apply(e), B.levelUp('milk'), B.home(allKids),
       ];
     },

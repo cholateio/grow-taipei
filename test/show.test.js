@@ -401,22 +401,25 @@ test('skip during a jump lands both levels', async () => {
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
 });
 
-// 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿
-test('both new solutions play to the end without a script error at every level', async () => {
+// 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。
+// 手機畫質（quality 'low'，裁決 R18：名冊少載模型、零件省 draw call）也演一次——少掉的模型不能讓劇本出錯或卡住
+test('both new solutions play to the end without a script error at every level (high and low quality)', async () => {
   const top = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));
   for (const mod of ALL) for (const id of spec.ORDER) for (let n = 0; n <= top[id]; n++) assert.doesNotThrow(() => mod.view({ ...top, [id]: n }, {}, {}), `${mod.id} with ${id} ${n}`);
-  const { show, run, bubblesLog } = await headlessShow();
-  for (const order of SOLUTIONS) {
-    show.reset(); bubblesLog.length = 0;
-    let s = engine.createState(spec), grows = 0;
-    const steps = [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
-    for (const [i, step] of steps.entries()) {
-      const r = step(s); s = r.state; grows += r.events.filter(e => e.kind === 'grow').length;
-      await run([...r.events, { kind: 'settle' }], { montage: i >= order.length });
-      assert.deepEqual(show.stage.lv, s.lv, `${order.join('>')} step ${i + 1}`);
+  for (const quality of ['high', 'low']) {
+    const { show, run, bubblesLog } = await headlessShow({ quality });
+    for (const order of SOLUTIONS) {
+      show.reset(); bubblesLog.length = 0;
+      let s = engine.createState(spec), grows = 0;
+      const steps = [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+      for (const [i, step] of steps.entries()) {
+        const r = step(s); s = r.state; grows += r.events.filter(e => e.kind === 'grow').length;
+        await run([...r.events, { kind: 'settle' }], { montage: i >= order.length });
+        assert.deepEqual(show.stage.lv, s.lv, `${order.join('>')} step ${i + 1}`);
+      }
+      assert.deepEqual(show.stage.lv, top, `${quality}: all max`);
+      assert.ok(bubblesLog.filter(b => b.text === 'LEVEL UP').length >= grows, `${quality} ${order.join('>')}: a LEVEL UP for every grow (${grows})`);
     }
-    assert.deepEqual(show.stage.lv, top, 'all max');
-    assert.ok(bubblesLog.filter(b => b.text === 'LEVEL UP').length >= grows, `${order.join('>')}: a LEVEL UP for every grow (${grows})`);
   }
 });
 
@@ -424,7 +427,7 @@ test('both new solutions play to the end without a script error at every level',
 // 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；等待圖框照舊（謎題提示，代表角色躲起來就掛在建築上）。
 // 裁決 R14：◆ 關鍵級（script.grow[n].key）照演劇本（老鼠不躲雨、霓虹不用人；藏起來的人由拍自己跳過）
 const isKey = e => e.kind === 'grow' && !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
-test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP (◆ key levels excepted): no walk, gesture, bubble or lead focus; blinks still happen', async () => {
+test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP (◆ key levels excepted): no walk, gesture, bubble or lead focus except one back home after a key script moved the camera; blinks still happen', async () => {
   const { buildTurn } = await import('../src/show/turn.js');
   const { B: beats } = await import('../src/show/beats.js');
   const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
@@ -446,16 +449,27 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP 
       const seg = new Map(); let cur = null;
       for (const b of out) { if (b.kind === 'mark') { b.start({ onMark: e => { cur = e; } }); seg.set(cur, []); } else if (cur) seg.get(cur).push(b); }
       assert.ok(flat(seg.get(events[i0])).some(b => b.kind === 'crowd' || b.kind === 'walk'), 'the landing itself still sends people to the doors');
+      // 鏡頭：登陸回全景；◆ 關鍵劇本把鏡頭帶走（最後一個 focus 不是全景）之後，下一個 indoors 事件前面補一拍回全景（審稿：外星倒數 1
+      // 老鼠 Lv4 對著溫泉，之後珍奶 5、棒球 6 的 LEVEL UP 在畫面外），其他 indoors 事件不平移
+      let away = false, homed = 0;
       for (const e of events.slice(i0 + 1)) {
         const kinds = flat(seg.get(e)).map(b => b.kind), what = `${montage ? 'montage ' : ''}${e.kind} ${e.item ?? ''} ${e.to ?? e.flag?.name ?? e.story ?? ''}`;
         if (e.kind === 'wait') continue;
-        if (isKey(e)) { assert.ok(kinds.some(k => k !== 'apply' && k !== 'levelUp'), `${what}: the key script plays (${kinds})`); assert.ok(kinds.includes('levelUp'), what); continue; }
+        if (isKey(e)) {
+          assert.ok(kinds.some(k => k !== 'apply' && k !== 'levelUp'), `${what}: the key script plays (${kinds})`); assert.ok(kinds.includes('levelUp'), what);
+          const focuses = flat(seg.get(e)).filter(b => b.kind === 'focus');
+          if (focuses.length) away = focuses.at(-1).target !== 'home';
+          continue;
+        }
         for (const k of ['walk', 'gesture', 'bubble', 'jump', 'spawn', 'crowd', 'trainStop', 'wait']) assert.ok(!kinds.includes(k), `${what}: no ${k} (${kinds})`);
         if (e.kind === 'settle') continue;
-        assert.ok(!kinds.includes('focus'), `${what}: no lead focus (${kinds})`);
-        assert.ok(flat(seg.get(e)).some(b => b.kind === 'apply' && b.blink !== false), `${what}: blinks`);
-        if (e.kind === 'grow') assert.deepEqual(kinds, ['apply', 'levelUp', 'apply'], what);
+        let rest = flat(seg.get(e));
+        if (away) { assert.equal(rest[0]?.kind, 'focus', `${what}: back to the overview first (${kinds})`); assert.equal(rest[0].target, 'home', what); rest = rest.slice(1); away = false; homed++; }
+        assert.ok(!rest.some(b => b.kind === 'focus'), `${what}: no lead focus (${kinds})`);
+        assert.ok(rest.some(b => b.kind === 'apply' && b.blink !== false), `${what}: blinks`);
+        if (e.kind === 'grow') assert.deepEqual(rest.map(b => b.kind), ['apply', 'levelUp', 'apply'], what);
       }
+      if (order.indexOf('rat') < order.indexOf('boba')) assert.equal(homed, 1, `${order.join('>')}: one lead home after rat 4 (alien)`);
     }
   }
 });

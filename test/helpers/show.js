@@ -25,7 +25,8 @@ export const KEY_MAX = 8;
 
 // seed：名冊與走路格的亂數種子，同一個種子每次演出的秒數一模一樣
 // rig：換成真的鏡頭 rig（測試鏡頭最後停在哪）；run 每幀也推它
-export async function headlessShow({ modules = ALL, reducedMotion = false, seed = 21, rig: realRig = null } = {}) {
+// quality：'low' 時零件與名冊省 draw call（手機畫質，裁決 R18），演出要照樣演完
+export async function headlessShow({ modules = ALL, reducedMotion = false, seed = 21, rig: realRig = null, quality = 'high' } = {}) {
   const spawned = [], released = [];
   const assets = {
     spawned, released,
@@ -44,7 +45,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   const worldLog = [], bubblesLog = [], rail = { offset: 0 };
   const scene = new THREE.Scene(); scene.add(people.group);
   const show = createShow(THREE, {
-    scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail },
+    scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail, quality },
     rig, world: (effects, instant) => worldLog.push([effects, instant]), reducedMotion, rnd: mulberry32(seed),
   });
   // 每次 bubbles.show／levelUp 記下 { kind | text, at }（at = 出現那一刻頭上的位置）
@@ -151,11 +152,29 @@ export function overviewRig() {
 //          站位本來就畫在外擴 footprint 裡的 stand——泡溫泉的老鼠、攤車後的老闆——例外）
 //   jumps：日常的人（前後兩幀都是 home、都露出來、不坐車頂）一幀走超過 max(自己的走路速度, 家的速度) × dt（瞬移）
 //   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）
+//   labels（有 cam 才查）：每個 LEVEL UP 字樣與頭頂泡泡（bubbles.levelUp／show）活著的那幾秒（dur），頭上的點投影在 NDC [-1, 1] 裡的幀數
+//          要 ≥ LABEL_ON（一半）——鏡頭沒跟上、演出的那一刻在畫面外（審稿：颱風登陸後的 LEVEL UP、101 頭上的字、撞攤車的 ！、等待圖框）
 // label(text)：之後的問題都標這個字串（例如「第幾回合」）
-export const CAUGHT_MAX = 1.5;
+export const CAUGHT_MAX = 1.5, LABEL_ON = 0.5;
 export function gameInvariants(show, { cam = null } = {}) {
   const walls = new Set(), jumps = new Set(), camera = [], caught = new Map(), last = new Map(), update = show.update;
   let label = '', t = 0, viewKey = null, view = {};
+  // 標籤：出現時記下 { head, until, n（活著的幀數）, out（在畫面外的幀數）}；過了 until 就結算
+  const labels = [], live = [];
+  if (cam) {
+    const { show: showBubble, levelUp } = show.bubbles;
+    const watch = (head, text, dur) => live.push({ head, until: t + dur, n: 0, out: 0, what: `${label}: "${text}"` });
+    show.bubbles.show = (head, kind, dur) => { watch(head, typeof kind === 'string' ? kind : JSON.stringify(kind), dur); return showBubble(head, kind, dur); };
+    show.bubbles.levelUp = (head, opts = {}) => { watch(head, opts.text ?? 'LEVEL UP', opts.dur ?? 1.0); return levelUp(head, opts); };
+  }
+  const ndc = p => { cam.camera.lookAt(cam.controls.target); cam.camera.updateMatrixWorld(); cam.camera.updateProjectionMatrix(); return new THREE.Vector3(p.x, p.y, p.z).project(cam.camera); };
+  const settle = L => { live.splice(live.indexOf(L), 1); if (L.n && L.out / L.n > 1 - LABEL_ON) labels.push(`${L.what} off screen ${L.out}/${L.n} frames`); };
+  const watchLabels = () => {
+    for (const L of [...live]) {
+      if (t > L.until + 1e-9) { settle(L); continue; }
+      const p = ndc(L.head()); L.n++; if (Math.abs(p.x) > 1 || Math.abs(p.y) > 1) L.out++;
+    }
+  };
   const homeOf = k => {
     const st = show.stage;
     if (viewKey?.lv !== st.lv || viewKey.flags !== st.flags || viewKey.meta !== st.meta) { viewKey = { lv: st.lv, flags: st.flags, meta: st.meta }; view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))); }
@@ -178,14 +197,15 @@ export function gameInvariants(show, { cam = null } = {}) {
       else if (t - caught.get(m) > CAUGHT_MAX) walls.add(`${what} inside a building for > ${CAUGHT_MAX} s`);
     }
   };
-  show.update = (dt, tt) => { update(dt, tt); t += dt; check(dt); };
+  show.update = (dt, tt) => { update(dt, tt); t += dt; check(dt); if (cam) watchLabels(); };
   return {
-    walls, jumps, camera,
+    walls, jumps, camera, labels,
     label(text) { label = text; },
     // 回合演完：鏡頭飛完（最多 3 秒，照樣推演出層），再查全景與 101 頭頂
     turnEnd() {
       if (!cam) return;
       for (let i = 0; i < 90 && cam.rig.flying; i++) { show.update(1 / 30, 1000 + t); cam.rig.update(1 / 30); }
+      for (const L of [...live]) settle(L);
       const { camera: c, controls } = cam, dir = c.position.clone().sub(controls.target).normalize(), p = cam.topNdc(show);
       const off = Math.hypot(dir.x - OVERVIEW_DIR.x, dir.y - OVERVIEW_DIR.y, dir.z - OVERVIEW_DIR.z);
       if (cam.rig.flying || off > 1e-6 || Math.hypot(controls.target.x - 0.4, controls.target.z) > 1e-6) camera.push(`${label}: not at the overview (flying ${cam.rig.flying}, dir off ${off.toExponential(1)}, target ${controls.target.x.toFixed(2)}, ${controls.target.z.toFixed(2)})`);

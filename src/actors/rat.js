@@ -5,7 +5,7 @@
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
 // 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）。
 // 劇本（物品 v2 §6）：一級 3–5 秒；◆ Lv4、Lv5 6–10 秒（Lv5 回全景定格）。
-import { anchorWorld, landmarkWorld } from './anchors.js';
+import { anchorWorld, cellOf, landmarkWorld } from './anchors.js';
 import { ENGINEER_ROUTE } from './chip.js';
 import { CRATE } from './milk.js';
 import { C, offset } from './palette.js';
@@ -137,7 +137,8 @@ const claim = who => ({ kind: 'claim', dur: 0, start(c) { for (const m of who(c)
 // 0 秒：走到目的地就藏起來（小學生躲進校舍；回合末的 apply 收掉藏著的人不閃白）
 const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m) c.roster.hide(m); return false; } });
 // 偵防師 ！：晶片 ≥3 時老鼠一生窩，名冊就把一個工程師換成偵防師（晶片 grow 3 那邊也補這一拍，哪邊先成立哪邊演）
-const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.bubble(detective, '！', 0.8)] : []);
+// 他是晶片格的工程師原地換的，鏡頭在老鼠窩格看不到：先回全景停一下再冒 ！（之後的 LEVEL UP 也在全景）
+const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.focus('home', { hold: 0.6 }), ctx.B.bubble(detective, '！', 0.8)] : []);
 // 列車停在 at 方位，車頂的老鼠一起跳到島緣 slots 裡自己的位置；這次升級前不在車上（鼠災後在巨蛋）就不等車
 // 搭車（老鼠 Lv3）：五隻跑到窩那側島緣的 spots 上，列車同時趕來（最快 TRAIN_IN 秒，牠們還在跑就照牠們跑到的時間）；
 // 到站後等最後一隻跑到再一起跳上車頂。拍長在 start 才知道（看牠們現在在哪、列車在哪）
@@ -177,10 +178,11 @@ function bite(e, ctx) {
   ];
 }
 // 撞珍奶：一隻走到攤車旁 → 攤車歪掉（下一次重建回正）→ 老闆 ！（老闆名冊還沒有就跳過）
+// 鏡頭自己先對著珍奶格：這個 fx 沒有 delta，turn.js 會照 e.item（老鼠）平移到老鼠格，攤車和老闆就在畫面外
 function crash(e, ctx) {
   const { B } = ctx, BOBA = anchorWorld('boba'), r = once(c => c.roster.nearest(KEY, BOBA));
   return [
-    B.walk(r, offset(BOBA, -0.5, 0.3)), B.tilt('boba.main', { rz: 0.25, dur: 0.3 }),
+    B.focus(cellOf('boba')), B.walk(r, offset(BOBA, -0.5, 0.3)), B.tilt('boba.main', { rz: 0.25, dur: 0.3 }),
     B.bubble(c => c.roster.members('boba.owner')?.[0] ?? null, '！'), B.home(r),
   ];
 }

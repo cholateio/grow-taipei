@@ -266,13 +266,15 @@ test('skip during the door walks: everyone home and visible, world snapped to th
   assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.storm, 1);
 });
 
-// 颱風賴在巨蛋（棒球 ≥3）：登陸回合過後，暴風雲停在巨蛋上空
-test('view: the lingering Lv2 storm sits over the dome once baseball ≥ 3 (not on the landing turn)', () => {
+// 颱風賴在巨蛋（spec.js delay[3]：棒球 ≥3 且晶片 ≤7）：登陸回合過後，暴風雲停在巨蛋上空；晶片 ≥8（矽盾測過）巨蛋就擋不住它，雲不去巨蛋
+test('view: the lingering Lv2 storm sits over the dome only while the delay holds (baseball ≥ 3, chip ≤ 7; not on the landing turn)', () => {
   const dome = anchorWorld('baseball'), at = anchorWorld('typhoon'), near = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) < 1e-9;
   assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3 }), {}, { landing: false })['typhoon.main'].at, dome));
   assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3 }), {}, { landing: true })['typhoon.main'].at, at));
   assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 2 }), {}, { landing: false })['typhoon.main'].at, at));
   assert.ok(near(typhoon.view(lv({ typhoon: 1, baseball: 3 }), {}, {})['typhoon.main'].at, at));
+  assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3, chip: 7 }), {}, { landing: false })['typhoon.main'].at, dome), 'chip 7: still delayed');
+  assert.ok(near(typhoon.view(lv({ typhoon: 2, baseball: 3, chip: 8 }), {}, { landing: false })['typhoon.main'].at, at), 'chip 8: the delay no longer holds, the cloud stays put');
 });
 test('after a landing turn with baseball ≥ 3, the next turn ends with the storm cloud over the dome', async () => {
   const h = await headlessShow(), { show, run } = h, dome = anchorWorld('baseball');

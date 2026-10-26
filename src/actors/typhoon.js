@@ -9,14 +9,18 @@ import { R, TOP, MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, cellAt } from '..
 import { mulberry32 } from '../scene/random.js';
 import { C } from './palette.js';
 import { RAT_LANDING } from './rat.js';
+import { ITEMS } from '../rules/spec.js';
+import { compile } from '../rules/conditions.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
 const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 
-// 颱風賴在巨蛋（§8.5、物品 v2 §3）：棒球 ≥3 時 Lv3 要多等一回合（不放電也一直不走）——登陸回合過後，
-// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台閃白換到那裡），玩家看得到它卡在什麼上面
-const lingers = (lv, meta) => lv.typhoon === 2 && lv.baseball >= 3 && !meta.landing;
+// 颱風賴在巨蛋（§8.5、物品 v2 §3）：spec.js delay[3]（棒球 ≥3 且晶片 ≤7）成立時 Lv3 要多等一回合——登陸回合過後，
+// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台閃白換到那裡），玩家看得到它卡在什麼上面；條件直接用 spec 的，
+// 延後不成立（晶片 ≥8）時雲不去巨蛋
+const DELAYED = compile(ITEMS.typhoon.delay[3], {});
+const lingers = (lv, meta) => lv.typhoon === 2 && DELAYED({ lv }) && !meta.landing;
 
 // 堤防（Lv3）：主島外圍每一條靠海的格邊、離格心 LEVEE_R 的一道矮牆（走路格離格邊 0.35 以外、格面還在的那一圈邊上，
 // 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶旗），第一隻老鼠爬上岸的那道牆在爬上來的地方留 LEVEE_OPEN 寬的缺口

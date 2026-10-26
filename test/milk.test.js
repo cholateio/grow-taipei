@@ -198,6 +198,14 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
     assert.ok(i > 0 && beats[i].dur >= 1, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
   }
 });
+// 審稿（計畫 4 最後一輪）：「恭喜畢業」打在 101 頭頂上——鏡頭先回全景停一下（全景照天際線裝得下 101 頭頂，§14.4；拉近 101 格會把頭頂切掉），
+// 字才打出來；跟 focus 擺在同一個 together 裡，字出現時鏡頭還在鮮奶格
+test('Lv9: the camera reaches the overview first, then 恭喜畢業 over 101 (the label never shares a beat with a focus)', () => {
+  const beats = milk.script.grow[9]({ kind: 'grow', item: 'milk', to: 9 }, { lv: lv({ milk: 9 }), flags: {} }, fakeCtx);
+  const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
+  assert.ok(i >= 0 && beats[i].dur > 0 && beats[i + 1].kind === 'levelUp', `overview with a hold, then the label (${beats.map(b => b.kind)})`);
+  assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
+});
 test('lv10 live: the three festival kids walk in, the truck and boat appear, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), trail = await trailAt(h, order, isMilk(10));

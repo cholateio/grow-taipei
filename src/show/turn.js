@@ -19,6 +19,8 @@
 //   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。◆ 關鍵級例外（裁決 R14）：照演完整劇本
 //   （老鼠不躲雨、霓虹不用人；劇本要拉的人若躲在門裡，walk／gesture／bubble／jump 拍自己跳過，beats.js）。等待圖框照舊（謎題提示）；
 //   回合末的 settle 照 101 的劇本，但只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）。
+//   鏡頭：登陸自己回全景；◆ 關鍵劇本把鏡頭帶走之後（最後一個 focus 不是全景），下一個 indoors 事件前面補一拍 focus('home')，
+//   之後的 LEVEL UP 才在畫面裡（審稿：外星倒數 1 老鼠 Lv4 對著溫泉）；其他 indoors 事件照樣不平移。
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
@@ -47,6 +49,8 @@ const some = (beats, f) => beats.some(b => f(b) || (b.kind === 'together' && b.b
 // 有東西演：除了不閃白的套用（瞬間換上、沒有畫面）以外還有別的拍
 const shows = beats => some(beats, b => b.kind !== 'together' && !(b.kind === 'apply' && b.blink === false));
 const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
+// 一串拍裡所有 focus 拍（together 裡也算），照演出順序
+const focusesOf = beats => beats.flatMap(b => (b.kind === 'together' && b.beats ? focusesOf(b.beats) : b.kind === 'focus' ? [b] : []));
 // 劇本第一拍自己動鏡頭：是 focus，或是一起演的 together 裡有 focus（鏡頭邊飛主角邊走，燈泡 Lv7）——不補平移
 const opensOnFocus = b => b?.kind === 'focus' || (b?.kind === 'together' && !!b.beats?.some(x => x.kind === 'focus'));
 
@@ -99,6 +103,9 @@ function upright(key) {
 // 再扣掉它；key 是不是 ◆ 關鍵劇本
 const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e, info); } });
 
+// 演到才找、找到第一次就記住（等待圖框的平移和泡泡對著同一個人）
+const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
@@ -111,6 +118,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
+  let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
   const out = [...(ctx.stage?.tilted ?? [])].map(upright);
   if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR * ctx.speed)));   // 倍速除回來：真實 0.6 s 一個字
 
@@ -123,7 +131,10 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
     const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
-    if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') { out.push(mark(e), ...indoors(e), B.apply(e)); return; }
+    if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') {
+      out.push(mark(e), ...(away ? [B.focus('home')] : []), ...indoors(e), B.apply(e)); away = false;
+      return;
+    }
     // 跳級的第二級：只看 e.jump（引擎只把它標在同物品 +2 的第二個 grow 上；中間插了第一級的 fx 也一樣）
     const jumped = e.kind === 'grow' && e.jump;
     let beats;
@@ -135,9 +146,12 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近、看得到的島民
       beats = [B.apply(e, { blink: false })];
       if (i === lastWait && e.waits?.length) {
-        // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上
-        const w = e.waits[0], rep = c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item;
-        beats.push(Object.assign(B.bubble(rep, { icon: w.for[0] }, HINT_DUR * ctx.speed), { keep: true }));   // 謎題提示：蒙太奇裡也留著、真實 1.2 s
+        // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上。演到才找、找到就記住：平移與圖框同一個對象
+        const w = e.waits[0], rep = once(c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item);
+        // 鏡頭先平移到他身上（人：他站的地方；物品：它的格子），圖框才在畫面裡（審稿：兩條正解唯一的等待圖框在畫面外）
+        const pan = Object.assign(B.focus(c => { const r = rep(c); return typeof r === 'string' ? r : r?.pos ? { x: r.pos.x, y: r.pos.y, z: r.pos.z } : null; }), { keep: true });
+        beats.push(pan, Object.assign(B.bubble(rep, { icon: w.for[0] }, HINT_DUR * ctx.speed), { keep: true }));   // 謎題提示：蒙太奇裡也留著、真實 1.2 s
+        lastCell = null;
       }
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
@@ -147,7 +161,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     }
     if (key) markKeep(beats);
     if (montage) beats = keepOnly(beats, b => b.keep || MONTAGE_KEEP.includes(b.kind));
-    // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
+    // 鏡頭：等待事件不補平移（演圖框的那個自己平移到代表角色）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
     if (e.kind !== 'wait' && (!landed || key) && shows(beats)) {
@@ -160,6 +174,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
+    const last = focusesOf([...lead, ...beats]).at(-1);
+    if (last) away = last.target !== 'home';
     out.push(mark(e, { gap: estimateTurn(lead.filter(b => b.kind === 'wait'), ctx), key }), ...lead, ...beats, B.apply(e));
     if (landsTyphoon(e)) landed = true;
   });

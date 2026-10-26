@@ -250,6 +250,15 @@ test('◆ Lv7 is the only key node; it puts 世界珍奶節 over 101 and ends on
   const homes = beats.map((b, i) => (b.kind === 'focus' && b.target === 'home' ? i : -1)).filter(i => i >= 0);
   assert.ok(homes.length && beats[homes.at(-1)].dur >= 1 && beats.at(-1).kind === 'levelUp', 'holds the overview, then LEVEL UP');
 });
+// 審稿（計畫 4 最後一輪）：「世界珍奶節」打在 101 頭頂上——鏡頭停在全景（裝得下 101 頭頂，§14.4）時打字；
+// 原本跟 focus('tower') 一起演，拉近 101 格把頭頂切掉、字在畫面外
+test('Lv7: 世界珍奶節 goes up over 101 while the camera holds the overview (the label never shares a beat with a focus)', () => {
+  const beats = boba.script.grow[7]({ kind: 'grow', item: 'boba', to: 7 }, { lv: lv({ boba: 7 }), flags: {} }, { B, roster: { members: () => [] } });
+  const i = beats.findIndex(b => b.kind === 'levelUp'), flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  const before = flat(beats.slice(0, i)).filter(b => b.kind === 'focus');
+  assert.ok(i > 0 && before.length && before.at(-1).target === 'home' && before.at(-1).dur >= 1, `on the overview before the label (${beats.map(b => b.kind)})`);
+  assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
+});
 test('Lv7 live: the flags and the fleet appear, 101 reads 世界珍奶節, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, bubblesLog } = h;

@@ -316,7 +316,7 @@ export const script = {
       return [
         B.bubble(owner, '！', 0.8),
         B.together([B.focus('home', { hold: 1.2 }), B.apply(e, { only: ['boba.yard', 'boba.fleet'] })]),
-        B.together([B.focus('tower'), B.levelUp('tower', { text: '世界珍奶節' })]),
+        B.levelUp('tower', { text: '世界珍奶節' }),   // 鏡頭停在全景時打字（全景裝得下 101 頭頂，§14.4；拉近 101 格會切掉頭頂）
         B.together([B.focus('home', { hold: 1.5 }), ...[0, 1, 2, 3].map(i => B.bubble(tourist(i), '♥', 1.0))]),
         B.apply(e), B.levelUp('boba'),
       ];

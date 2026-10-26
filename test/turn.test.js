@@ -6,6 +6,7 @@ import { installFakeDom } from './helpers/fakedom.js';
 installFakeDom();
 const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP, MONTAGE_SPEED, GAP } = await import('../src/show/turn.js');
 const { B } = await import('../src/show/beats.js');
+const { cellOf } = await import('../src/actors/anchors.js');
 
 const zero = Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 const fakeCtx = (extra = {}) => ({
@@ -37,8 +38,8 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-3).map(b => b.kind), ['home', 'world', 'focus']);
   assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
   const beats = noMarks(raw), kinds = kindsOf(raw);
-  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件不平移；回合最後回全景
-  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'bubble', 'wait', 'focus', 'home', 'world', 'focus']);
+  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件只在演圖框時平移到代表角色（不空拍）；回合最後回全景
+  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'focus', 'bubble', 'wait', 'focus', 'home', 'world', 'focus']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
   // placed：平移 + 預設 apply + 補的 apply；每個事件至少一個 apply
@@ -57,6 +58,12 @@ test('only the last wait event of a turn shows the hint; the hint target falls b
   let shown = null;
   bubbles[0].start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });
   assert.equal(asked[0][0], 'landmarks.islanders'); assert.deepEqual(asked[0][2], { visible: true }, 'hidden islanders do not count'); assert.deepEqual(shown.kind, { icon: 'baseball' }); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 });
+  // 圖框前面鏡頭先平移到代表角色身上（審稿：兩條正解唯一的等待圖框在畫面外）；只有演圖框的那個 wait 平移
+  assert.equal(noMarks(beats).filter(b => b.kind === 'focus' && !b.final).length, 1, 'one pan for the hint, none for the silent wait');
+  const pan = noMarks(beats)[noMarks(beats).indexOf(bubbles[0]) - 1], got = [];
+  assert.equal(pan.kind, 'focus');
+  pan.start({ ...ctx, roster: { ...ctx.roster, setFocus: c => got.push(['cells', c]) }, rig: { grabbed: false, focus: (p, o) => got.push(['rig', { ...p }, o.zoom]) } });
+  assert.deepEqual(got, [['cells', [[0, 0]]], ['rig', { x: 0, y: 0, z: 0 }, 0.6]], 'the camera centres on the islander');
   // 模組 rep 劇本優先
   const rep = { ...walker, head: () => ({ x: 9, y: 9, z: 9 }) };
   const bulb = { id: 'bulb', view() {}, script: { rep: (s, c) => (s.lv && c ? rep : null) } };
@@ -75,6 +82,11 @@ test('the wait hint hangs over the item when no visible islander is around', () 
   let shown = null;
   assert.notEqual(hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } }), false, 'the hint still shows');
   assert.deepEqual(shown, { x: 7, y: 2, z: 0 });
+  // 鏡頭平移到物品的格子
+  const pan = buildTurn([{ kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }], base(), ctx).find(b => b.kind === 'focus');
+  let cells = null;
+  pan.start({ ...ctx, roster: { ...ctx.roster, setFocus: c => { cells = c; } }, rig: { grabbed: false, focus() {} } });
+  assert.deepEqual(cells, [cellOf('bulb')]);
 });
 
 test('a module script replaces the default and still gets a trailing apply', () => {

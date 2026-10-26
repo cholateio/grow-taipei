@@ -1,6 +1,7 @@
 // test/chain.test.js：離島鏈（物品 v2 §5）整局 live 演完——代幣 Lv7 通車 → 燈泡 Lv7 風車轉、燈塔亮 → 燈泡 Lv8 海底電纜
 // → 晶片 Lv6 通電 → Lv7 天線 → Lv8 測試閃三下 → Lv9 待命，每個零件在對的回合出現（不早、不晚）；結局接點（§8）讀新的狀態。
-// 兩條正解各演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂）
+// 兩條正解各演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂、
+// 每個 LEVEL UP 與泡泡至少一半的時間在畫面裡）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
@@ -33,9 +34,10 @@ async function playChain(order) {
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
     const r = step(s); s = r.state; flashes = 0;
-    inv.label(`${order.join('>')} turn ${i + 1}`);
+    const turn = `${order.join('>')} turn ${i + 1}`;
+    inv.label(turn);
     grows.push(...r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`));
-    await run([...r.events, { kind: 'settle' }], { montage: i >= order.length, onMark: e => { done(); prev = e; } });
+    await run([...r.events, { kind: 'settle' }], { montage: i >= order.length, onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); } });
     done(); inv.turnEnd();
     const z0 = blades(); for (let f = 0; f < 6; f++) show.update(1 / 30, 2000 + f / 30);
     const shield = show.stage.partObject('tower.shield')?.children[0];
@@ -119,4 +121,10 @@ test('both solutions live: nobody stays inside a building > 1.5 s, no daily memb
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
     assert.deepEqual(inv.camera, []);
   }
+});
+
+// 審稿（計畫 4 最後一輪）：演出的那一刻要在畫面裡——颱風登陸後的 LEVEL UP、101 頭上的「恭喜畢業」「世界珍奶節」、代幣 Lv8 站上的 LEVEL UP、
+// 老鼠撞攤車時老闆的 ！、等待圖框，鏡頭都要跟上（gameInvariants 的 labels：活著的時間至少一半投影在 NDC [-1, 1] 裡）
+test('both solutions live: every LEVEL UP label and bubble is on screen for at least half its life', async () => {
+  assert.deepEqual((await playBoth()).flatMap(({ inv }) => inv.labels), []);
 });

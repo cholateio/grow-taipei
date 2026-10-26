@@ -10,7 +10,7 @@ import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R, MAIN_CELLS, adjace
 import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
 import { BLINK } from '../show/blink.js';
-import { STATION_A } from '../show/beats.js';
+import { STATION_A, SPUR_BRAKE } from '../show/beats.js';
 import { DECK_AT } from './token.js';
 import { C, offset } from './palette.js';
 
@@ -261,7 +261,8 @@ function board(B, who) {
     start(c) {
       const m = who(c); if (!m) return false;
       needTrain(B, c);
-      const walk = B.walk(m, SHORE, { speed: DASH }), wt = walk.estimate(c), within = Math.max(BOARD_WITHIN, wt);
+      // 列車算的是「within 秒內開到、再花煞車時間停穩」：目標先扣掉 SPUR_BRAKE，停穩的時候才剛好是他走到的時候（加速上限照舊 4.5 倍）
+      const walk = B.walk(m, SHORE, { speed: DASH }), wt = walk.estimate(c), within = Math.max(BOARD_WITHIN, wt - SPUR_BRAKE);
       // 倒車回來和往前繞，哪個比較快進站就走哪個（倒車要先煞車再起步，剛開過頭一點才划算；裁決 R17 ◆ ≤ 8 s）
       const run = back => B.trainRun(c, STATION_A, { within, back }), back = run(BOARD_BACK).arrive < run(0).arrive ? BOARD_BACK : 0;
       const wait = Math.max(0, wt - run(back).arrive), seat = cc => B.ridePose(cc, SEAT_CAR, SEAT_OFF);

@@ -268,9 +268,10 @@ const WINDMILL = satCentre('windmill'), PLAYGROUND = satCentre('playground');
 // 接駁車在遊樂場島那頭的終點往島心收 0.3：小孩下車的地方；溜滑梯腳下兩個點（相距 0.4）
 const KID_OFF = (() => { const e = spurPath('playground').at(-1), d = Math.hypot(e.x, e.z), k = (d + 0.3) / d; return { x: e.x * k, y: TOP - 0.2, z: e.z * k }; })();
 const SLIDE = [offset(PLAYGROUND, 0.1, 1.1), offset(PLAYGROUND, 0.5, 1.1)];
-// 鏡頭（§13.1）：衛星島拉近 0.8（島和支線都要進畫面）；Lv8 的 LEVEL UP 在站上，鏡頭跟 LEVEL UP 一起轉回代幣格
+// 鏡頭（§13.1）：衛星島拉近 0.8（島和支線都要進畫面）；Lv8 的 LEVEL UP 在站上：鏡頭先轉回代幣格再打 LEVEL UP
+// （跟 focus 一起演的話，從遊樂場島轉回來的路上字有一半時間在畫面外）
 const ISLAND_ZOOM = 0.8;
-const levelUpAtStation = B => B.together([B.focus('token'), B.levelUp('token')]);
+const levelUpAtStation = B => [B.focus('token'), B.levelUp('token')];
 const CAR_KEYS = [0, 1, 2].map(i => `token.cars.${i}`);
 // 飛天車起飛：三台錯開 FLY_STAGGER 秒從海上飛進來（零件的 userData.fly）；跳過時 land 立刻停好
 const fly = () => ({
@@ -346,7 +347,7 @@ export const script = {
           B.spawn('sat.playground', KID_OFF), B.spawn('sat.playground', offset(KID_OFF, 0.25, 0.15)),
           B.together([0, 1].map(i => B.walk(kid(i), SLIDE[i]))), B.home([kid(0), kid(1)]),
         ] : [B.wait(0.4)]),
-        B.apply(e), levelUpAtStation(B),
+        B.apply(e), ...levelUpAtStation(B),
       ];
     },
     // 豪華賽博站：站務員看站、！ → 閃白霓虹站體 → 懸浮月台（連欄杆、招牌）在地面閃白出現、浮上來 → ♪、跳 → LEVEL UP

@@ -12,7 +12,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
-import { B, STATION_A } from '../src/show/beats.js';
+import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
 import { OLD_MAX } from '../src/actors/clamp.js';
 import { createNav } from '../src/show/nav.js';
@@ -69,6 +69,14 @@ test('engineers: 2 in coats commute to 101 at Lv2, 4 on bikes from Lv3; rats ≥
   }
   assert.equal(chip.view(lv({ chip: 2, rat: 2 }), {})['chip.detective'], undefined, 'needs chip ≥3');
   assert.deepEqual(chip.view(lv({ chip: 1 }), {})['chip.worker'].home, { kind: 'wander', at: AT, r: 0.9, entry: chip.WORKER_ENTRY });
+});
+// 審稿第 2 輪：老鼠坐在環狀線的車上時偵防師追不到（一直對著列車重新規劃只會在別人路上原地踏步）——在捷運站北側等，老鼠下車再跟
+test('detective: follows the rats, but waits by the station while they ride the train', () => {
+  const ride = chip.view(lv({ chip: 5, rat: 3, token: 4 }), {})['chip.detective'];
+  assert.equal(ride.home.kind, 'stand'); assert.equal(ride.home.spots.length, 1); assert.equal(ride.home.entry, chip.ENGINEER_ENTRY[0]);
+  const w = ride.home.spots[0], st = anchorWorld('token'); assert.deepEqual(cellAt(w.x, w.z), cellOf('token'), 'in the station cell'); assert.ok(Math.hypot(w.x - st.x, w.z - st.z) < 1.5, 'by the station');
+  assert.ok(Math.hypot(w.x - chip.ENGINEER_ENTRY[0].x, w.z - chip.ENGINEER_ENTRY[0].z) >= 1.5, 'entry ≥ 1.5 from the spot');
+  for (const [r, t, flags] of [[2, 4, {}], [3, 3, {}], [4, 7, { ratBranch: 'alien' }], [4, 7, { ratBranch: 'cyber' }]]) assert.equal(chip.view(lv({ chip: 5, rat: r, token: t }), flags)['chip.detective'].home.kind, 'follow', `rat ${r} token ${t}`);
 });
 test('ENGINEER_ROUTE starts in the chip cell and ends at the tower foot', () => {
   const r = chip.ENGINEER_ROUTE;
@@ -138,13 +146,17 @@ test('every chip part and footprint corner stays inside the chip cell (the cable
     for (const p of pts) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   }
 });
-test('chip buildings declare footprints (factory, glass boxes and dome, substation and poles); the factory door path stays walkable', () => {
+test('chip buildings declare footprints (factory, glass boxes and dome, substation; the poles stand inside the back box\'s padded outline); the factory door path stays walkable', () => {
   const nav = createNav();
   for (let n = 2; n <= 9; n++) {
     const v = chip.view(at(n), {});
     assert.deepEqual(v['chip.main'].footprint.length, 1, `lv${n} the factory (the chimney stands on its roof)`);
     if (n >= 3) assert.ok(v['chip.campus'].footprint.length >= 3, `lv${n} campus`);
-    if (n >= 5) { assert.ok(v['chip.substation'].footprint.length >= 3); assert.equal(v['chip.solar'].footprint, false, 'panels are on the roof'); }
+    if (n >= 5) {
+      assert.equal(v['chip.substation'].footprint.length, 1, 'the house; the poles stand inside the back glass box\'s padded outline'); assert.equal(v['chip.solar'].footprint, false, 'panels are on the roof');
+      const b = v['chip.campus'].footprint[0], PAD = 0.12;
+      for (const p of v['chip.substation'].parts.filter(q => q.kind === 'cylinder' && q.color === C.wood)) assert.ok(Math.abs(p.pos[0] - b.x) <= b.w / 2 + PAD && Math.abs(p.pos[2] - b.z) <= b.d / 2 + PAD, `pole (${p.pos[0]}, ${p.pos[2]}) inside the padded box`);
+    }
     nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
     for (const p of chip.ENGINEER_ROUTE.slice(0, 2)) assert.ok(nav.walkable(p.x, p.z), `lv${n} door path (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
     assert.ok(nav.walkable(frontOf(AT, chip.FRONT_R).x, frontOf(AT, chip.FRONT_R).z), `lv${n} the front stays open`);
@@ -179,7 +191,8 @@ test('scripts: every chip event in both solutions plays 3–5 s (◆ Lv9 6–10 
     const seen = [];
     await playItem(show, tracked, order, 'chip', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      assert.ok(secs >= 3 && secs <= (to === 9 ? 10 : 5), `${what} took ${secs.toFixed(2)}s`);
+      // Lv7：列車從現在的位置趕來（≤ 4.5 倍、減速進站，不瞬移）最多 4.3 s，加上停站、抱箱子、LEVEL UP，上限放到 7.3 s（審稿第 2 輪）
+      assert.ok(secs >= 3 && secs <= (to === 9 ? 10 : to === 7 ? TRAIN_ARRIVE + SPUR_BRAKE / 2 + 3 : 5), `${what} took ${secs.toFixed(2)}s`);
       if (to === 9) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('chip');
@@ -289,7 +302,7 @@ test('Lv8 live: the lookers are released right after the look (nobody in script 
     assert.deepEqual(pulled, [], `${order.join('>')} walk-ins claimed`); assert.deepEqual(frozen, [], `${order.join('>')} still in script mode at LEVEL UP`);
   }
 });
-// 審稿第 1 輪：電纜換成通電的那一幀就從頭開始跑光，不會先整條亮一幀
+// 審稿第 1 輪（守門用：舊版套用與歸零本來就在同一個時間軸 tick 裡，這條測試在舊版也會過）：電纜換成通電的那一幀就從頭開始跑光，不會先整條亮一幀
 test('Lv6 live: the lit cable never shows fully lit before the light starts running', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, seen = [];
   show.update = (dt, t) => {
@@ -299,19 +312,18 @@ test('Lv6 live: the lit cable never shows fully lit before the light starts runn
   await liveAt(h, SOLUTIONS[0], isChip(6));
   assert.ok(seen.length > 20 && seen[0] < 0.1, `first lit frame ${seen[0]}`);
 });
-// 審稿第 1 輪：天線那級不再超過列車 4.5 倍的上限，進站有減速（不會一幀停下）
-test('Lv7: the train never runs faster than 4.5× and brakes into the station (no one-frame stop)', async () => {
-  for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show } = h, update = show.update, steps = [];
+// 審稿第 1、2 輪：天線那級列車從它現在的位置趕來——每一幀（包括鏡頭飛去站前那段）車頭在環上轉的角度都不超過原速的 4.5 倍
+//（不瞬移、不超速），進站有減速（不會一幀停下）。正解照常演一次、再演一次最壞的情況（車頭剛過站 0.05 rad，要繞一整圈）
+test('Lv7: every frame the train head moves at most 4.5× normal speed (no pop, no overspeed) and it brakes into the station', async () => {
+  for (const order of SOLUTIONS) for (const worst of [false, true]) {
+    const h = await headlessShow(), { show } = h, update = show.update, rates = [];
     let on = false;
-    show.update = (dt, t) => { const a0 = (show.now ?? t) + h.rail.offset; update(dt, t); if (on) steps.push({ d: (dt + h.rail.offset) - (a0 - (show.now ?? t)) , dt }); };
-    const run = h.run;
-    // 最壞的情況：列車剛開走（車頭剛過站 0.05 rad，要繞一整圈）；live 那一拍的時鐘從 0 開始
-    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) h.rail.offset = (STATION_A + 0.05) / 0.35; return run(evs, opts); } }, order, isChip(7));
-    // 每幀列車時鐘走了 dt + Δoffset（原速 = dt）；最快 4.5 倍
-    const rate = steps.map(x => x.d / x.dt), held = rate.findIndex(r => Math.abs(r) < 1e-6);
-    assert.ok(Math.max(...rate) <= 4.5 + 1e-6, `${order.join('>')} max ${Math.max(...rate).toFixed(2)}×`);
-    assert.ok(held > 3 && rate[held - 1] <= 1.0, `${order.join('>')} eases to a stop (${rate.slice(Math.max(0, held - 4), held + 1).map(r => r.toFixed(2))})`);
+    show.update = (dt, t) => { const o = h.rail.offset; update(dt, t); if (on) rates.push(1 + (h.rail.offset - o) / dt); };   // 列車時鐘每幀走 dt + Δoffset（原速 = 1）
+    const run = h.run, what = `${order.join('>')}${worst ? ' worst' : ''}`;
+    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on && worst) h.rail.offset = (STATION_A + 0.05) / 0.35; return run(evs, opts); } }, order, isChip(7));
+    const held = rates.findIndex(r => Math.abs(r) < 1e-6);
+    assert.ok(rates.length > 60 && Math.max(...rates.map(Math.abs)) <= TRAIN_MAX_BOOST + 1e-6, `${what} max ${Math.max(...rates.map(Math.abs)).toFixed(2)}×`);
+    assert.ok(held > 3 && rates[held - 1] < 1, `${what} eases to a stop (${rates.slice(Math.max(0, held - 4), held + 1).map(r => r.toFixed(2))})`);
   }
 });
 // Lv9 ★◆ 矽盾待命：罩子從地面長起來、之後淡淡常駐（之後的回合也在）

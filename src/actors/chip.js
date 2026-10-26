@@ -5,7 +5,7 @@
 // 廠房、煙囪、太陽能板用 Kenney City Kit Industrial 的 glb（零件 kind 'campus'，同鮮奶的校舍），經載入器重上色票；
 //   電線桿、海底電纜是程式畫的（§7.2 找不到 CC0 的那幾樣）；玻璃盒、總部圓頂、變電站也是程式畫的（玻璃要一整塊玻璃色）。
 // 海底電纜（零件 kind 'cable'，parts.js）歸晶片管：燈泡 Lv8 先鋪好（暗），晶片 Lv6 通電發光（控制者裁決：燈泡只點亮風車與燈塔）。
-// 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」。
+// 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」，跟著老鼠；老鼠坐上環狀線的車時在捷運站北側等牠們下車。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv9 6–10 秒、回全景定格。
 import { anchorWorld, routeBetween, frontOf } from './anchors.js';
 import { SATELLITES, axialToWorld, TOP, WATER_Y, cellAt } from '../scene/hex.js';
@@ -13,6 +13,7 @@ import { builders as towerBuilders } from './tower.js';
 import { builders as milkBuilders } from './milk.js';
 import { SHIELD_TEST_DUR } from './parts.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
+import { ratMode } from './rat.js';   // rat.js 也 import 這裡的 ENGINEER_ROUTE：兩邊都只在函式裡用到對方，循環 import 沒問題
 
 export const id = 'chip';
 export const labelY = 1.5;
@@ -26,6 +27,8 @@ export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（通勤的終�
 // 入口（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來——廠房西北、上台地那座階梯旁
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
+// 偵防師等老鼠下車的地方：捷運站北側（不在散步客繞的西橋頭、不在工程師通勤的園區南緣）——老鼠坐在環狀線的車上時追不到，站在這裡等
+const WATCH = { ...offset(anchorWorld('token'), 0.3, -1.0), yaw: 0 };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
 // 工程師上下班：廠門 → 沿園區南緣往西 → 橋 → 101 腳下（開放路徑，走到底折返）
 const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
@@ -81,10 +84,12 @@ function campus(n) {
   return { parts, footprint, top: Math.max(...boxes.map(b => b.h), n >= 4 ? 0.95 : 0) };
 }
 
-// ── 變電站（Lv5）：園區東側兩棟玻璃盒之間的小房子＋變壓器礙子，兩根電線桿沿北緣把電拉到廠房屋頂；Lv6 通電礙子發淡藍光。
+// ── 變電站（Lv5）：園區東側兩棟玻璃盒之間的小房子＋變壓器礙子，兩根電線桿從玻璃盒背後把電拉到廠房屋頂；Lv6 通電礙子發淡藍光。
 // 燈泡電工的主路沿晶片格外圈走（東邊那段在 x +1.81、330° 那盞燈的站位在 (1.56, −0.76)）：變電站與桿子外擴 PAD 後都不碰到 ──
 const SUB = { x: 1.48, z: 0.03, w: 0.34, d: 0.32, h: 0.32 };
-const POLES = [{ x: 1.3, z: -0.95, h: 0.9 }, { x: 0.75, z: -1.25, h: 0.9 }];
+// 兩根桿子立在後排那棟玻璃盒（BOXES[0]，Lv3 起一直在）背面、它外擴後的範圍裡，自己不另外擋：細桿的外擴圓比走路格的一格小，
+// 路線會擦著它走、每幀的防穿牆又擋住，下車走進來的老鼠就卡在桿子旁（審稿第 2 輪）。桿子比玻璃盒高，從鏡頭看得到桿頭與電線
+const POLES = [{ x: 1.2, z: -0.8, h: 1.4 }, { x: 0.75, z: -0.8, h: 1.4 }];
 const INSULATOR_Y = SUB.h + 0.1;
 // 兩點之間的細線（box 沿 z 拉長）：rot = [atan2(−dy, dz), asin(dx / L), 0]（Euler XYZ）
 const wire = (a, b, t = 0.014) => {
@@ -106,7 +111,7 @@ function substation(n) {
     ]),
     ...sagging([SUB.x, INSULATOR_Y + 0.04, SUB.z], top[0]), ...sagging(top[0], top[1]), ...sagging(top[1], [FACTORY.pos[0] + 0.55, ROOF_Y + 0.02, -0.95], 0.06),
   ];
-  return { parts, footprint: [{ x: SUB.x, z: SUB.z, w: SUB.w + 0.04, d: SUB.d + 0.04 }, ...POLES.map(p => ({ x: p.x, z: p.z, r: 0.05 }))] };
+  return { parts, footprint: [{ x: SUB.x, z: SUB.z, w: SUB.w + 0.04, d: SUB.d + 0.04 }] };
 }
 
 // ── 海底電纜（§5）：風車島的風車腳下 → 島的東南岸下水 → 沿主島南側的海面繞半圈（半徑 7.6，在主島與環狀線之間、鏡頭那一側）
@@ -130,7 +135,7 @@ const cable = (lit, landed) => ({
   parts: [{ kind: 'cylinder', pos: [0, LANDING_H / 2, 0], scale: [0.05, LANDING_H, 0.05], color: C.wood }, { kind: 'box', pos: [0, LANDING_H - 0.03, 0], scale: [0.04, 0.03, 0.16], color: C.wood }],
 });
 
-export function view(lv) {
+export function view(lv, flags = {}) {
   const n = lv.chip, at = AT, v = {};
   // 電纜：燈泡 Lv8 鋪好（暗的、還沒通電）或晶片 Lv6 通電；晶片沒放也照鋪（接到晶片格東岸）
   const wired = lv.bulb >= 8 || n >= 6;
@@ -165,7 +170,10 @@ export function view(lv) {
     const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 4 : 2) - (detective ? 1 : 0);
     v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: n >= 3 ? 'bike' : 'coat', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: n >= 3 ? 0.8 : 0.45, entry: ENGINEER_ENTRY } };
     // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
-    if (detective) v['chip.detective'] = { kind: 'roster', at, n: 1, accessory: 'glass', from: 'chip.engineers', home: { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: ENGINEER_ENTRY[0] } };
+    // 老鼠坐車（rat 的 'train' 模式）時改成在捷運站北側等（審稿第 2 輪：一直對著飛快的列車重新規劃只會在站旁的橋頭原地踏步、擋住散步客）
+    const riding = ratMode(lv, flags) === 'train';
+    if (detective) v['chip.detective'] = { kind: 'roster', at, n: 1, accessory: 'glass', from: 'chip.engineers',
+      home: riding ? { kind: 'stand', spots: [WATCH], rescue: true, entry: ENGINEER_ENTRY[0] } : { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: ENGINEER_ENTRY[0] } };
   }
   return v;
 }
@@ -208,8 +216,6 @@ const surge = (e, dur) => replay(e, 'chip.cable', dur, {
 const shieldTest = e => replay(e, 'tower.shield', SHIELD_TEST_DUR, {
   begin: o => { if (!o.userData.test) return false; o.userData.test(); return true; }, finish: o => o.userData.finish?.(),
 });
-// 鏡頭飛去站前（第一拍要是 focus，turn.js 才不另外補一拍）：起飛那一刻順便把列車時鐘撥到車頭在站後（trainDepart），鏡頭飛到時車正要進站
-const flyToStation = B => { const f = B.focus(TOKEN), depart = B.trainDepart(); return { ...f, start(c) { depart.start(c); return f.start(c); } }; };
 // 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 LOOKERS 個。
 // 這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）
 const LOOKERS = 24;
@@ -260,7 +266,8 @@ export const script = {
     6(e, s, ctx) {
       const { B } = ctx;
       return [
-        // surge 1.5 s：這個長度剛好讓老鼠測試的「偵防師與散步客不相碰」live 不變式通過（1.6 會撞，見任務 6 報告）；任務 8 改了時間要再驗
+        // surge 1.5 s：roster 的 live 不變式（偵防師與散步客不相碰、下車的老鼠不進建築）對整局的時間很敏感，審稿第 1、2 輪都是調時間才翻出來的；
+        //   偵防師改成老鼠坐車時在站旁等之後 1.5、1.6 都過。任務 8 改了時間要再驗（見任務 6 報告）
         B.focus('home'), surge(e, 1.5),
         B.focus(CHIP), B.apply(e), B.together([B.bubble(eng(0), '♪', 0.9), engineersLook(B, offset(AT, FACTORY.pos[0], FACTORY.pos[2]), 0.9)]),
         B.home(ENGINEERS), B.levelUp('chip'),
@@ -269,12 +276,11 @@ export const script = {
     // ★ 矽盾天線（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
     //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 天線在塔頂閃白 → LEVEL UP 時轉回晶片格。
     //   （工程師平常在廠門與 101 腳下之間通勤，離站前都很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
-    //   一級 ≤ 5 秒：鏡頭飛去站前的那 0.8 秒裡把列車時鐘撥到車頭在站後 0.6 rad（trainDepart，原速 1.7 秒到站），
-    //   不用加速、減速進站
+    //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒
     7(e, s, ctx) {
       const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(FOOT);
       return [
-        flyToStation(B), B.trainStop({ stop: 0.6, during: [B.gesture(staff, 'knock', 0.6)] }),
+        B.focus(TOKEN), B.trainStop({ stop: 0.6, during: [B.gesture(staff, 'knock', 0.6)] }),
         B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT), B.bubble(e0, { icon: 'chip' }, 0.8)]),
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];

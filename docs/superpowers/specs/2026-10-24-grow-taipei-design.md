@@ -414,7 +414,7 @@ grow_taipei/
 ```
 
 - 無建置步驟。`npm run check` 跑求解器；`npm test` 跑 node:test；`npm run shot` 用 headless Chromium 截 6 張固定畫面（開場、第 4 回合、颱風、飛彈、結局 A、結局 B）放到 `shots/` 供肉眼比對。
-- 效能目標：中階手機 30 fps；主島 draw call ≤ 150（靠 kit instancing）；骨架動畫角色同時 ≤ 12 個。
+- 效能目標：中階手機 30 fps；draw call（`npm run shot` 在模型都載好、穩定之後回報）一般畫質 ≤ 250、`?quality=low`（手機）≤ 150（物品 v2 裁決 R18；原本 41 級時全部 ≤ 150）——low 不畫霓虹燈條、飛天車與無人機，模型名冊最多 3 隻 glb；骨架動畫角色同時 ≤ 12 個。
 - 品質分級：`?quality=low` 關陰影、減背景樹；偵測 `innerWidth ≤ 800` 或行動裝置 UA 自動用 medium（陰影 1024）。
 - 狀態持久：只有結局圖鑑與音效開關進 localStorage。
 

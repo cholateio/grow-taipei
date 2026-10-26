@@ -162,3 +162,10 @@ test('shield test({ speed: 2 }) runs the flashes at double speed (hidden by half
   run(s, 0.3); assert.equal(m.visible, false, 'retracted by half time');
   s.object.userData.test(); run(s, SHIELD_TEST_DUR / 2 + 0.1); assert.ok(m.visible, 'a plain test() is back to ×1');
 });
+// 裁決 R18：?quality=low（手機）的 draw call 預算 ≤ 150——飛天車、無人機（orbit）不畫；fly／land 照樣叫得動（劇本不用分）
+test('quality low: an orbit part builds nothing but keeps fly/land callable', () => {
+  const { f, loaded } = setup({ quality: 'low' });
+  const p = f.build({ kind: 'orbit', at, path: 'x.glb', size: 0.3, r: 1, h: 2, speed: 1, from: at, park: { ...at, yaw: 0 } });
+  assert.equal(p.object.children.length, 0); assert.equal(loaded.length, 0, 'no glb spawned');
+  assert.doesNotThrow(() => { p.object.userData.fly({ delay: 0, speed: 2 }); p.object.userData.land(); p.update?.(0.1, 0.1); });
+});

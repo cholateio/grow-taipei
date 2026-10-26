@@ -97,7 +97,7 @@ export async function start({ params, loading }) {
   const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || instantAuto()) { world = w; showWorld(w); } };
   const show = createShow(THREE, {
     scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites],
-    ctx: { people, assets, glow: view.glow, weather, rail }, rig,
+    ctx: { people, assets, glow: view.glow, weather, rail, quality }, rig,
     world: (effects, instant) => aimWorld({ ...worldTarget, ...effects }, instant),
     reducedMotion: motion.matches || instantAuto(),
     rnd: live ? mulberry32(21) : Math.random,   // ?live 截圖：散步點、停頓用固定種子，同一個 warp 每次拍到同一刻

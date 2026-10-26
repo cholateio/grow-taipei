@@ -377,7 +377,7 @@ test('Lv3+ lamp heads: one neon colour per stop, neighbours (wrap-around include
 // compound：有黏土零件一個 + 每種發光色一個；neon：compound 那份 + 每個 glb（有 glow 再 +1）；名冊不算
 function drawCalls(v) {
   const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size, glb = m => 1 + (m.glow ? 1 : 0);
-  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'neon' ? compound(p.parts) + p.models.reduce((a, m) => a + glb(m), 0) : 0), 0);
+  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'neon' ? compound(p.parts) + (p.models ?? []).reduce((a, m) => a + glb(m), 0) : 0), 0);
 }
 test('bulb draw calls ≤ 24 at every level (blackout included)', () => {
   for (let n = 1; n <= 9; n++) for (const flags of [{}, { blackout: true }]) {
@@ -519,4 +519,15 @@ test('Lv9 live: the neon parts light up one after another within 1.5 s, with one
     const trail = focusTrail(h.rig.log, h.r0);
     assert.deepEqual(trail.slice(0, 2).map(String), ['0,1', 'home'], JSON.stringify(trail));
   }
+});
+// 裁決 R18：?quality=low 不畫霓虹燈條（橋面、月台、夜市屋簷），招牌 glb 留著
+test('quality low: neon parts drop their strips and keep only the sign models', async () => {
+  const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
+  const spawned = [], f = q => createPartFactory(THREE, { glow: createGlowRegistry(), builders: bulb.builders, quality: q, assets: { spawn: async (p, o) => { spawned.push(p); const g = new THREE.Group(); o?.parent?.add(g); return g; } } });
+  const v = bulb.view(lv({ bulb: 9, token: 9 }), {});
+  for (const key of ['bulb.neon.bridges', 'bulb.neon.station', 'bulb.neon.market']) {
+    const meshes = q => { let n = 0; f(q).build(v[key]).object.traverse(o => { if (o.isMesh) n++; }); return n; };
+    assert.ok(meshes('high') > 0, `${key} has strips at high`); assert.equal(meshes('low'), 0, `${key} no strips at low`);
+  }
+  assert.ok(spawned.length >= 2, 'signs still load at low');
 });

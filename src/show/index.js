@@ -13,15 +13,15 @@ import { worldEffects } from '../actors/world.js';
 
 // rnd：走路格散步點、名冊停頓用的亂數（測試與 tools/pace.mjs 傳固定種子，秒數每次一樣）
 export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world, reducedMotion = false, rnd = Math.random }) {
-  const { people, assets, glow, weather, rail } = parts;
+  const { people, assets, glow, weather, rail, quality } = parts;   // quality：'low' 時零件與名冊省 draw call（裁決 R18）
   const nav = createNav({ rnd });
   const labels = new THREE.Group(); labels.name = 'show:labels'; scene.add(labels);
   const blink = createBlink(THREE, { people }), bubbles = createBubbles(THREE, { group: labels });
   // 名冊先建：模型成員的天線／眼睛要用舞台的零件工廠，等舞台建好才用得到（載入模型是非同步的，那時舞台早就在了）
   let stage = null;
-  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, blink, rail, rnd });
+  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, blink, rail, rnd, quality });
   scene.add(roster.group);
-  stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster, blink });
+  stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail, quality }, roster, blink });
 
   // 鏡頭：拍會平移／拉近；記住這回合有沒有離開全景，reduced-motion 回合結束才知道要不要拉回來。
   // 玩家拖過鏡頭（grabbed）focus 拍就跳過；回合開始 release 放開記號（§13.1，計畫 3.8 R4）

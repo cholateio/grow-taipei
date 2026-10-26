@@ -32,7 +32,7 @@ import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 import { SEPARATION, YIELD_CLEAR, yieldOffset } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
-const ROUTE_TRIES = 6;   // 散步挑點：路線借道別格就重挑，最多幾次（wanderRoute）
+const ROUTE_TRIES = 6, LOW_MODELS = 3;   // LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）   // 散步挑點：路線借道別格就重挑，最多幾次（wanderRoute）
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
@@ -87,7 +87,7 @@ export function modelExtras(md, h) {
 }
 
 // blink：show/blink.js 的閃白（換配件、換模型、換身分時閃一下；新生的、退場的不閃，§13.2）
-export function createRoster(THREE, { people, assets, build = null, nav, blink = null, rail = { offset: 0 }, rnd = Math.random }) {
+export function createRoster(THREE, { people, assets, build = null, nav, blink = null, rail = { offset: 0 }, rnd = Math.random, quality = 'high' }) {
   const group = new THREE.Group(); group.name = 'roster:models';
   const groups = new Map();
   const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
@@ -196,6 +196,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 載入模型 holder；換過模型（gen 變了）或成員已退，晚到的 holder 直接放掉
   function load(m, md) {
     const gen = m.gen = (m.gen ?? 0) + 1;
+    if (quality === 'low' && m.i >= LOW_MODELS) return;   // ?quality=low：一份名冊最多 LOW_MODELS 個模型，其餘不畫（裁決 R18）
     assets.spawn(md.path, { h: md.h * m.scale, anim: md.anim, tint: md.tint, glow: md.glow, parent: group }).then(holder => {
       if (m.gone || m.gen !== gen) { assets.release(holder); return; }
       m.holder = holder; dress(m, m.dress); place(m);

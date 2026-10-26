@@ -165,6 +165,8 @@ export function createPartFactory(THREE, ctx) {
   // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 從 from 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，蒙太奇 2），land() 立刻停好（跳過）；
   // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。模型在 at 底下，位置相對 at
   function orbit(spec) {
+    // ?quality=low（手機，裁決 R18 draw call ≤ 150）：飛天車、無人機不畫；fly／land 留著給劇本叫
+    if (ctx.quality === 'low') { const object = new THREE.Group(); object.userData.fly = () => {}; object.userData.land = () => {}; return { object, update() {}, dispose() {} }; }
     const object = new THREE.Group(), at = spec.at;
     const model = glb({ path: spec.path, h: spec.size, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 });
     object.add(model.object);

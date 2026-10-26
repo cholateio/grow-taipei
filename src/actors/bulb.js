@@ -167,7 +167,7 @@ export function view(lv, flags = {}) {
   }
   if (n >= 6) v['bulb.substation'] = { kind: 'compound', at: SUBSTATION, parts: substationParts(lit), footprint: { x: 0, z: 0, w: SUB.w, d: SUB.d } };
   if (n >= 9) {
-    v['bulb.neon.bridges'] = { kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: bridgeStrips(glowOf(C.neonBlue)), footprint: false };
+    v['bulb.neon.bridges'] = { kind: 'neon', at: { x: 0, y: 0, z: 0 }, parts: bridgeStrips(glowOf(C.neonBlue)), footprint: false };
     // 懸浮月台是代幣 Lv9 的（燈泡 Lv9 要代幣 ≥9，一定在；淹水的站沒有月台）
     if (lv.token >= 9 && !flags.flooded) v['bulb.neon.station'] = { kind: 'neon', at: DECK_AT, footprint: false, parts: deckStrips(glowOf(C.neonPink)),
       models: [sign('TV_1', [0.52, 0.07, -0.06], 0.36, C.neonBlue, lit)] };
@@ -176,10 +176,11 @@ export function view(lv, flags = {}) {
 }
 
 export const builders = {
-  // 霓虹：一份燈條（compound）＋幾個 glb 招牌併成一個零件（位置相對零件的 at），一起閃白
+  // 霓虹：一份燈條（compound）＋幾個 glb 招牌併成一個零件（位置相對零件的 at），一起閃白。
+  // ?quality=low（手機，裁決 R18 draw call ≤ 150）：燈條不畫，只留招牌
   neon(THREE, spec, ctx) {
     const object = new THREE.Group(), subs = [];
-    if (spec.parts?.length) subs.push(ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts }));
+    if (spec.parts?.length && ctx.quality !== 'low') subs.push(ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts }));
     for (const m of spec.models ?? []) subs.push(ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint, glow: m.glow }));
     for (const p of subs) object.add(p.object);
     return { object, dispose() { for (const p of subs) p.dispose?.(); } };

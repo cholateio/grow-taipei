@@ -206,14 +206,18 @@ export function createPartFactory(THREE, ctx) {
 
   // 矽盾罩：半徑 r 的半球立在 at（101 底座）；格紋貼圖共用，材質每個零件自己一份（不透明度各演各的）。
   // 單面（FrontSide）：從全景看得到靠鏡頭的那半面，罩裡的島透得出來；不寫深度、不投影，一個 draw call。
-  // 演法照 shieldPose；縮放與藏起來動的是裡面的 mesh，劇本的 scaleIn／閃白照樣作用在外層
+  // 演法照 shieldPose；縮放與藏起來動的是裡面的 mesh，劇本的 scaleIn／閃白照樣作用在外層。
+  // test 建好時就是演完的樣子（收起來、藏著）：閃三下由劇本叫 object.userData.test() 開演、finish() 跳到收好
+  //   （跳過、reduced-motion、舞台重建零件都不會重閃）
   function shield(spec) {
     const geo = new THREE.SphereGeometry(spec.r, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), map = hexGrid(THREE).clone();
     map.repeat.set(24, 3.5); map.needsUpdate = true;
     const mat = new THREE.MeshBasicMaterial({ color: SHIELD.color, map, transparent: true, depthWrite: false, side: THREE.FrontSide });
     const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group(); mesh.castShadow = mesh.receiveShadow = false; mesh.renderOrder = 2; object.add(mesh);
-    let t = 0;
+    let t = spec.state === 'test' ? Infinity : 0;
     const put = () => { const p = shieldPose(spec.state, t); mesh.visible = p.visible; mesh.scale.setScalar(p.scale); mat.opacity = p.opacity; };
+    object.userData.test = () => { t = 0; put(); };
+    object.userData.finish = () => { t = Infinity; put(); };
     put();
     return {
       object,
@@ -223,7 +227,8 @@ export function createPartFactory(THREE, ctx) {
   }
 
   // 海底電纜：path（世界座標）連成平滑的管子。暗的管子和 parts（登陸桿等，相對 at）併成一個黏土 mesh；
-  // lit 時外面多一條略粗的自發光管（MeshBasicMaterial，白天也亮），object.userData.progress(k) 讓光從 path 的頭跑到 k
+  // lit 時外面多一條略粗的自發光管（MeshBasicMaterial，白天也亮），建好時整條亮；object.userData.progress(k) 讓光從 path 的頭跑到 k
+  // （劇本在套用這個零件的同一拍把它歸零再跑，中間沒有畫面）
   function cable(spec) {
     const at = spec.at, pts = spec.path.map(p => new THREE.Vector3(p.x - at.x, p.y - at.y, p.z - at.z));
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal'), segs = Math.max(16, pts.length * 6), r = spec.r ?? 0.05;

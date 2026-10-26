@@ -289,8 +289,10 @@ export function trainDepart() {
   };
 }
 
-// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 boost，預設 4.5 倍）在 arrive 秒（預設 4）內進站，
-// 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
+// 列車進站：車頭還要 need 秒才到 at；太久就把列車時鐘加速 k 倍（最多 boost，預設 4.5 倍）在 arrive 秒（預設 4）內趕到，
+// 進站跟支線版一樣緩：最後 SPUR_BRAKE 秒線性減速停住（所以到站多 SPUR_BRAKE / 2 秒；路太短就從原速直接減速），
+// 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），拍還沒演完就 SPUR_PULL 秒緩緩開走，之後照常開。
+// 跳過時什麼都不改（車照原本的時鐘跑）
 // spur（'windmill'／'playground'）：停的不是站，是支線那頭的離島站——車頭先進到支線入口（token.spurTrip 的角 a），
 //   環上的時鐘停住，ctx.rail.trip 帶著車頭在支線上的位置 s：開出去（SPUR_SPEED）→ 在島那頭停 stop 秒 → 倒回環上，再照常開。
 //   支線版進出都緩：趕路（最多 boost 倍）的最後 SPUR_BRAKE 秒線性減速停在入口；倒回環上後 SPUR_PULL 秒從 0 加速回原速
@@ -309,8 +311,8 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
   // 進支線後第 u 秒車頭在支線上第幾公尺（緩起緩停）
   const tripS = u => trip.total * (u < out ? ease(u / out) : u < out + stop ? 1 : 1 - ease(Math.min(1, (u - out - stop) / out)));
   let k = 1, arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }
-  let need = 0, offset0 = 0, cruise = true;   // 支線版：要趕的環上時間、開始時的時鐘偏移（每幀直接算偏移 = offset0 + 環上走了多少 − t）、路夠長先等速再減速
-  // 支線版第 u 秒環上走了多少（以原速的秒計）：趕路（k 倍、最後 SPUR_BRAKE 秒減速到 0；路太短就從原速直接減速）→ 停住 → 加速回原速
+  let need = 0, offset0 = 0, cruise = true;   // 要趕的環上時間、開始時的時鐘偏移（每幀直接算偏移 = offset0 + 環上走了多少 − t）、路夠長先等速再減速
+  // 第 u 秒環上走了多少（以原速的秒計）：趕路（k 倍、最後 SPUR_BRAKE 秒減速到 0；路太短就從原速直接減速）→ 停住 → 加速回原速
   const ringRun = u => {
     if (u < arrive) {
       if (!cruise) return u - u * u / (2 * arrive);
@@ -339,20 +341,13 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
       const a0 = (ctx.now + ctx.rail.offset) * speed, target = trip ? trip.a : at;
       need = ((((target - a0) % TWO_PI) + TWO_PI) % TWO_PI) / speed;
       k = need <= within ? 1 : Math.min(boost, need / within);
-      arrive = need / k; t = 0;
-      if (trip) { offset0 = ctx.rail.offset; cruise = need >= k * SPUR_BRAKE / 2; arrive = cruise ? need / k + SPUR_BRAKE / 2 : 2 * need; }
+      t = 0; offset0 = ctx.rail.offset; cruise = need >= k * SPUR_BRAKE / 2; arrive = cruise ? need / k + SPUR_BRAKE / 2 : 2 * need;
       const sub = subs.reduce((a, b) => a + durOf(b, ctx), 0);
       total = trip ? out + Math.max(stop + out + SPUR_PULL, sub) : Math.max(stop, sub);
     },
     step(_k, dt, ctx) {
-      // 跨過到站、開車那一刻的一幀拆開：進站的部分加速、停站的部分停住、之後照常
-      if (trip) {
-        t += dt; ctx.rail.offset = offset0 + ringRun(t) - t;
-        ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
-      } else {
-        const run = Math.max(0, Math.min(dt, arrive - t)), held = Math.max(0, Math.min(dt - run, arrive + hold - t - run));
-        ctx.rail.offset += run * (k - 1) - held; t += dt;
-      }
+      t += dt; ctx.rail.offset = offset0 + ringRun(t) - t;
+      if (trip) ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
       if (t < arrive + out) return;
       if (!cur && i === 0) open(ctx, arrive + out);
       while (cur) {

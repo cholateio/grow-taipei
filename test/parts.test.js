@@ -126,10 +126,14 @@ test('shieldPose standby stays a faint outline forever (visible, opacity 0.06–
   assert.ok(Math.abs(shieldPose('standby', 1) .opacity - shieldPose('standby', 4).opacity) < 1e-9, 'period 3 s');
   assert.ok(shieldPose('full', 2).opacity >= 0.45 && shieldPose('full', 2).visible);
 });
-test('shield part follows shieldPose: test flashes then hides (mesh scale 0), standby keeps a scrolling faint outline', () => {
+test('shield part follows shieldPose: a test shield is built already retracted; test() plays the flashes then hides, finish() jumps to the end; standby keeps a scrolling faint outline', () => {
   const { f } = setup(), p = shieldOf(f, 'test'), [m] = p.object.children, ops = [];
+  assert.equal(m.visible, false, 'built retracted (a rebuild never replays the flashes)');
+  run(p, 1); assert.equal(m.visible, false, 'stays retracted until the script starts the test');
+  p.object.userData.test();
   run(p, SHIELD_TEST_DUR + 0.5, () => ops.push(m.visible ? m.material.opacity : 0));
   assert.ok(Math.max(...ops) > 0.4); assert.equal(m.visible, false); assert.equal(m.scale.x, 0);
+  p.object.userData.test(); run(p, 0.5); assert.ok(m.visible); p.object.userData.finish(); assert.equal(m.visible, false); run(p, 1); assert.equal(m.visible, false);
   const s = shieldOf(f, 'standby'), [ms] = s.object.children, y0 = ms.material.map.offset.y;
   run(s, 2); assert.ok(ms.visible && ms.material.opacity < 0.25); assert.notEqual(ms.material.map.offset.y, y0, 'hex grid scrolls');
   for (const x of [p, s]) x.dispose();

@@ -54,7 +54,7 @@ test('the antenna sits on the spire top of whatever stage the tower is in', () =
     for (const m of a.models) assert.ok(m.pos[1] > top - 0.7 && m.pos[1] <= top + 0.01, `${m.path} on the spire (${total})`);
   }
 });
-test('the shield is a hemisphere centred on the 101 base that covers every corner of the six main cells around it', () => {
+test('the shield is a hemisphere centred on the 101 base that covers every corner of all seven main cells', () => {
   const s = tower.view({ ...zero, chip: 9 }, {})['tower.shield'], a = anchorWorld('tower');
   assert.equal(s.kind, 'shield'); assert.deepEqual(s.at, a); assert.equal(s.footprint, false);
   assert.ok(s.r >= 7 && s.r <= 8, `r ${s.r}`);

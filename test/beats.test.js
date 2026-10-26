@@ -9,7 +9,7 @@ import { axialToWorld, cellTop } from '../src/scene/hex.js';
 import { createPeople } from '../src/scene/people.js';
 import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
-const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, partHead } = await import('../src/show/beats.js');
+const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead } = await import('../src/show/beats.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 const ev = { kind: 'grow', item: 'milk' };
@@ -161,31 +161,44 @@ test('bubble shows over the target and is cancelled when the beat ends; a dotted
   tl.update(1.2); assert.equal(bubbles.cancelled, 1); assert.deepEqual(bubbles.shown[1].head(), { x: 1, y: 2, z: 3 });
   tl.skip(); assert.equal(bubbles.cancelled, 2);
 });
-test('trainStop speeds the clock up (at most 4.5×) to arrive within 4 s, holds 3 s, then resumes; no train → skipped', () => {
+// 進站有減速（審稿：晶片 Lv7 一幀停下）：等速趕路後最後 SPUR_BRAKE 秒線性減到 0，所以到站時間多 SPUR_BRAKE / 2
+test('trainStop speeds the clock up (at most 4.5×) to arrive within 4 s (+ half the brake), holds 3 s, then resumes; no train → skipped', () => {
   const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
   ctx.now = (STATION_A - Math.PI) / 0.35;   // 車頭現在在站的對面（差 π rad，照 0.35 rad/s 要 8.98 s → 加速 2.24× 剛好 4 s 進站）
   tl.play([B.trainStop()], ctx); tl.update(0);
-  assert.ok(Math.abs(tl.currentDur - (TRAIN_ARRIVE + TRAIN_STOP)) < 1e-6);
-  for (let i = 0; i < 40; i++) { ctx.now += 0.1; tl.update(0.1); }
-  const a = ((ctx.now + rail.offset) * 0.35 - STATION_A) % (2 * Math.PI); assert.ok(Math.abs(a) < 0.05 || Math.abs(a - 2 * Math.PI) < 0.05, 'head at the station after 4 s');
+  assert.ok(Math.abs(tl.currentDur - (TRAIN_ARRIVE + SPUR_BRAKE / 2 + TRAIN_STOP)) < 1e-6);
+  for (let i = 0; i < 43; i++) { ctx.now += 0.1; tl.update(0.1); }
+  const a = ((ctx.now + rail.offset) * 0.35 - STATION_A) % (2 * Math.PI); assert.ok(Math.abs(a) < 0.05 || Math.abs(a - 2 * Math.PI) < 0.05, 'head at the station after 4.3 s');
   const o = rail.offset; ctx.now += 1; tl.update(1); assert.ok(Math.abs(rail.offset - (o - 1)) < 1e-6, 'held: offset falls as fast as time rises');
   const far = fake({ parts: ['token.train'] }); far.ctx.now = (STATION_A - 1.9 * Math.PI) / 0.35; far.tl.play([B.trainStop()], far.ctx); far.tl.update(0);
-  assert.ok(Math.abs(far.tl.currentDur - (TRAIN_ARRIVE + TRAIN_STOP)) < 1e-6, 'just missed the train (1.9π away, 4.26×): still in by 4 s');
+  assert.ok(Math.abs(far.tl.currentDur - (TRAIN_ARRIVE + SPUR_BRAKE / 2 + TRAIN_STOP)) < 1e-6, 'just missed the train (1.9π away, 4.26×): still in by 4.3 s');
   assert.ok(TRAIN_MAX_BOOST * TRAIN_ARRIVE >= 2 * Math.PI / 0.35, 'the cap covers a full lap');
   const none = fake({ parts: [] }); none.tl.play([B.trainStop(), B.wait(0.1)], none.ctx); none.tl.update(0); assert.equal(none.tl.currentKind, 'wait');
 });
+test('trainStop brakes into the station: never above the cap, slows to a stop over the last frames (no one-frame stop), even at 1×', () => {
+  for (const away of [1.9 * Math.PI, 0.5]) {   // 剛開走（趕路 4.26×）、快到站（原速）
+    const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0; ctx.now = (STATION_A - away) / 0.35;
+    tl.play([B.trainStop()], ctx); tl.update(0);
+    const rates = [];
+    for (let i = 0; i < 200 && tl.busy; i++) { const o = rail.offset; ctx.now += 1 / 30; tl.update(1 / 30); rates.push(1 + (rail.offset - o) * 30); }
+    const held = rates.findIndex(r => Math.abs(r) < 1e-6);
+    assert.ok(Math.max(...rates) <= TRAIN_MAX_BOOST + 1e-6, `${away}: max ${Math.max(...rates).toFixed(2)}×`);
+    assert.ok(held > 3, `${away}: holds`);
+    for (let j = held - 3; j < held; j++) assert.ok(rates[j] < rates[j - 1] + 1e-9 && rates[held - 1] < 0.35, `${away}: decelerating into the stop (${rates.slice(held - 4, held + 1).map(r => r.toFixed(2))})`);
+  }
+});
 test('trainStop during: beats start at arrival in order; the train still leaves after stop; skip starts and ends them', () => {
   const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
-  ctx.now = (STATION_A - 0.35) / 0.35;   // 差 0.35 rad → 1 s 到站
+  ctx.now = (STATION_A - 0.35) / 0.35;   // 差 0.35 rad → 1 s 的路，減速進站多 SPUR_BRAKE / 2 → 1.3 s 到站
   const log = [], sub = (name, dur) => ({ kind: name, dur, start: () => log.push(`${name}+`), end: () => log.push(`${name}-`) });
   tl.play([B.trainStop({ stop: 1, during: [sub('a', 0.5), sub('b', 2)] })], ctx); tl.update(0);
-  assert.ok(Math.abs(tl.currentDur - (1 + 2.5)) < 1e-6, 'lasts until during is done');
+  assert.ok(Math.abs(tl.currentDur - (1 + SPUR_BRAKE / 2 + 2.5)) < 1e-6, 'lasts until during is done');
   const tick = () => { ctx.now += 0.1; tl.update(0.1); };
-  for (let i = 0; i < 9; i++) tick(); assert.deepEqual(log, [], 'nothing before arrival');
+  for (let i = 0; i < 12; i++) tick(); assert.deepEqual(log, [], 'nothing before arrival');
   tick(); tick(); assert.deepEqual(log, ['a+']);
   for (let i = 0; i < 5; i++) tick(); assert.deepEqual(log, ['a+', 'a-', 'b+']);
   let o = rail.offset; tick(); assert.ok(Math.abs(rail.offset - (o - 0.1)) < 1e-6, 'held inside stop');
-  for (let i = 0; i < 5; i++) tick(); o = rail.offset; tick(); assert.ok(Math.abs(rail.offset - o) < 1e-6, 'running again after stop 1 s');
+  for (let i = 0; i < 10; i++) tick(); o = rail.offset; tick(); assert.ok(Math.abs(rail.offset - o) < 1e-6, 'running again at full speed after stop 1 s and the pull-away');
   const s2 = fake({ parts: ['token.train'] }), log2 = []; s2.ctx.now = 3;
   s2.tl.play([B.trainStop({ during: [{ kind: 'x', dur: 1, start: () => log2.push('x+'), end: () => log2.push('x-') }] })], s2.ctx); s2.tl.skip();
   assert.deepEqual(log2, ['x+', 'x-']);
@@ -286,10 +299,10 @@ test('focus with a function target resolves it when the beat starts; null skips 
 // trainStop 的 during 長度在 start 前就要估：together 取子拍估計的最長（不估成 0，不然車開走時還沒走完的人被瞬移到終點）
 test('trainStop during: a together sub-beat counts as its longest child', () => {
   const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
-  ctx.now = (STATION_A - 0.35) / 0.35;   // 1 s 到站
+  ctx.now = (STATION_A - 0.35) / 0.35;   // 1 s 的路（減速進站 1.3 s 到站）
   const sub = dur => ({ kind: 'x', dur });
   tl.play([B.trainStop({ stop: 1, during: [sub(0.5), B.together([sub(2), sub(0.8)])] })], ctx); tl.update(0);
-  assert.ok(Math.abs(tl.currentDur - (1 + 2.5)) < 1e-6, `lasts until the together is done (${tl.currentDur})`);
+  assert.ok(Math.abs(tl.currentDur - (1 + SPUR_BRAKE / 2 + 2.5)) < 1e-6, `lasts until the together is done (${tl.currentDur})`);
   tl.skip();
 });
 // §13.2：spawn 不閃、不佔時間（之後由 walk 帶進場）

@@ -12,7 +12,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
-import { B } from '../src/show/beats.js';
+import { B, STATION_A } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
 import { OLD_MAX } from '../src/actors/clamp.js';
 import { createNav } from '../src/show/nav.js';
@@ -259,6 +259,59 @@ test('Lv8 live: the shield flashes three times and retracts within the event; vi
     assert.equal(peaks, 3, `${order[5]}: flashes`);
     assert.equal(ops.at(-1), 0, 'retracted (hidden) by the end of the event');
     assert.ok(lookers.size >= 5, `${lookers.size} people look up`);
+  }
+});
+// 審稿第 1 輪：測試罩建好就是收好的樣子，閃三下只在劇本演的時候——瞬間演完（跳過、reduced-motion）之後不會再閃
+test('Lv8 instant: the test shield is retracted from the first frame and never replays its flashes', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h;
+    let s = engine.createState(spec), done = false;
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const step of steps) {
+      const r = step(s); s = r.state;
+      for (const e of r.events) { await h.run([e], { instant: true }); if (isChip(8)(e)) { done = true; break; } }
+      if (done) break;
+      await h.run([{ kind: 'settle' }], { instant: true });
+    }
+    const [m] = show.stage.partObject('tower.shield').children;
+    for (let i = 0; i < 150; i++) { show.update(1 / 30, 500 + i / 30); assert.equal(m.visible, false, `${order.join('>')} frame ${i}`); }
+  }
+});
+// 審稿第 1 輪：全島抬頭只叫日常裡、不是正在走進場的人；看完馬上放回日常（不凍到回合結束）
+test('Lv8 live: the lookers are released right after the look (nobody in script mode at LEVEL UP) and no walk-in is pulled off its arrival', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h, claim = show.roster.claim, levelUp = show.bubbles.levelUp, pulled = [], frozen = [];
+    let on = false;
+    show.roster.claim = m => { if (on && m.arriving) pulled.push(`${m.key}#${m.i}`); return claim(m); };
+    show.bubbles.levelUp = (head, o) => { if (on) for (const k of show.roster.keys()) for (const m of show.roster.members(k)) if (m.mode === 'script') frozen.push(`${k}#${m.i}`); return levelUp(head, o); };
+    const run = h.run;
+    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; return run(evs, opts); } }, order, isChip(8));
+    assert.deepEqual(pulled, [], `${order.join('>')} walk-ins claimed`); assert.deepEqual(frozen, [], `${order.join('>')} still in script mode at LEVEL UP`);
+  }
+});
+// 審稿第 1 輪：電纜換成通電的那一幀就從頭開始跑光，不會先整條亮一幀
+test('Lv6 live: the lit cable never shows fully lit before the light starts running', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, seen = [];
+  show.update = (dt, t) => {
+    update(dt, t); const o = show.stage.partObject('chip.cable'), g = o?.children.find(c => c.material.isMeshBasicMaterial)?.geometry;
+    if (g) seen.push(g.drawRange.count / g.index.count);
+  };
+  await liveAt(h, SOLUTIONS[0], isChip(6));
+  assert.ok(seen.length > 20 && seen[0] < 0.1, `first lit frame ${seen[0]}`);
+});
+// 審稿第 1 輪：天線那級不再超過列車 4.5 倍的上限，進站有減速（不會一幀停下）
+test('Lv7: the train never runs faster than 4.5× and brakes into the station (no one-frame stop)', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h, update = show.update, steps = [];
+    let on = false;
+    show.update = (dt, t) => { const a0 = (show.now ?? t) + h.rail.offset; update(dt, t); if (on) steps.push({ d: (dt + h.rail.offset) - (a0 - (show.now ?? t)) , dt }); };
+    const run = h.run;
+    // 最壞的情況：列車剛開走（車頭剛過站 0.05 rad，要繞一整圈）；live 那一拍的時鐘從 0 開始
+    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) h.rail.offset = (STATION_A + 0.05) / 0.35; return run(evs, opts); } }, order, isChip(7));
+    // 每幀列車時鐘走了 dt + Δoffset（原速 = dt）；最快 4.5 倍
+    const rate = steps.map(x => x.d / x.dt), held = rate.findIndex(r => Math.abs(r) < 1e-6);
+    assert.ok(Math.max(...rate) <= 4.5 + 1e-6, `${order.join('>')} max ${Math.max(...rate).toFixed(2)}×`);
+    assert.ok(held > 3 && rate[held - 1] <= 1.0, `${order.join('>')} eases to a stop (${rate.slice(Math.max(0, held - 4), held + 1).map(r => r.toFixed(2))})`);
   }
 });
 // Lv9 ★◆ 矽盾待命：罩子從地面長起來、之後淡淡常駐（之後的回合也在）

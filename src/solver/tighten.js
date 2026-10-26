@@ -32,10 +32,11 @@ export function score(spec = defaultSpec) {
   const s = stats(results, spec), c = check(results, spec);
   const ends = s.full.map(r => r.ending.id).sort().join('+');
   const softFails = c.failures.filter(f => /沒有任何順序|晶片未 MAX/.test(f)).length;
+  const paceFails = c.failures.filter(f => /^節奏/.test(f)).length;   // 加條件救不了節奏，但 score 0 必須等於 check 通過
   // 某一種真結局一條都不剩：之後再怎麼加條件都救不回來，重罰
   const lostEnding = s.full.length > 0 && !['cyber', 'alien'].every(id => s.full.some(r => r.ending.id === id));
   return Math.abs(s.full.length - 2) * 100 + (ends === 'alien+cyber' ? 0 : 50) + (lostEnding ? 5000 : 0)
-    + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3.5) * 10 + softFails * 30;
+    + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3.5) * 10 + softFails * 30 + paceFails * 10;
 }
 
 const fullResults = spec => stats(enumerate(spec), spec).full;

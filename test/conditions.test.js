@@ -35,3 +35,8 @@ test('flag / locked / and / or / not / always', () => {
 test('unknown condition throws', () => {
   assert.throws(() => compile({ nope: 1 }, ctx), /bad cond/);
 });
+test('flag with is: compares the flag value (ratBranch cyber / alien)', () => {
+  assert.equal(compile({ flag: 'ratBranch', is: 'alien' }, ctx)(S({}, {}, { ratBranch: 'alien' })), true);
+  assert.equal(compile({ flag: 'ratBranch', is: 'alien' }, ctx)(S({}, {}, { ratBranch: 'cyber' })), false);
+  assert.equal(compile({ flag: 'ratBranch', is: 'alien' }, ctx)(S()), false);
+});

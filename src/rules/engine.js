@@ -50,11 +50,13 @@ function rulesOf(spec) {
   const r = { ctx, items: {} };
   for (const id of spec.ORDER) {
     const it = spec.ITEMS[id];
-    const up = {}, deps = {};
+    const up = {}, deps = {}, jump = {}, jumpDeps = {}, delay = {};
     for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = helperDeps(it.up[n], id, spec); }
+    for (const n in it.jump || {}) { jump[n] = compile(it.jump[n], ctx); jumpDeps[n] = helperDeps(it.jump[n], id, spec); }
+    for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, deps, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, deps, jump, jumpDeps, delay, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -62,9 +64,9 @@ function rulesOf(spec) {
 }
 
 export function createState(spec = defaultSpec) {
-  const lv = {}, age = {};
-  for (const id of spec.ORDER) { lv[id] = 0; age[id] = -1; }
-  return { lv, age, locked: {}, flags: {}, order: [], turn: 0 };
+  const lv = {}, age = {}, held = {};
+  for (const id of spec.ORDER) { lv[id] = 0; age[id] = -1; held[id] = -1; }
+  return { lv, age, held, locked: {}, flags: {}, order: [], turn: 0 };
 }
 
 // 演出層共用：把一個事件疊到 { lv, flags } 上（舞台的鏡像、遊戲逐事件回報全島狀態）。純函數，不改輸入。
@@ -108,7 +110,7 @@ function actionEvent(s, a, kind, cause, rules) {
     const { target, by } = a.delta;
     if (!(s.lv[target] > 0)) return null;
     const from = s.lv[target], to = Math.max(1, Math.min(rules.items[target].max, from + by));
-    s.lv[target] = to;
+    s.lv[target] = to; if (to !== from) s.held[target] = 0;
     ev.item = target;
     ev.delta = { target, from, to };
   }
@@ -130,37 +132,58 @@ export function place(state, id, spec = defaultSpec) {
 export function advance(state, spec = defaultSpec) { return turn(state, null, spec, rulesOf(spec)); }
 
 function turn(state, id, spec, rules) {
-  const s = { lv: { ...state.lv }, age: { ...state.age }, locked: { ...state.locked }, flags: { ...state.flags }, order: id ? [...state.order, id] : [...state.order], turn: state.turn + 1 };
+  const s = { lv: { ...state.lv }, age: { ...state.age }, held: { ...state.held }, locked: { ...state.locked }, flags: { ...state.flags }, order: id ? [...state.order, id] : [...state.order], turn: state.turn + 1 };
   const events = [];
 
-  for (const k of spec.ORDER) if (s.lv[k] > 0) s.age[k] += 1;
+  // age = 放下幾回合；held = 停在目前這一級幾回合（delay 用；升級或被 delta 改級就歸零）
+  for (const k of spec.ORDER) if (s.lv[k] > 0) { s.age[k] += 1; s.held[k] = (s.held[k] ?? 0) + 1; }
   if (id) {
-    s.lv[id] = 1; s.age[id] = 0;
+    s.lv[id] = 1; s.age[id] = 0; s.held[id] = 0;
     events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
     for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
   }
 
-  // GROW 的節奏（使用者 2026-10-25）：每回合每個物品最多升一級，剛放下的物品當回合不升。
-  // 掃描仍反覆到不動為止，所以 A 升了讓 B 升的連鎖還在，只是每人每回合一步。
+  // GROW 的節奏（使用者 2026-10-25、物品 v2 §3）：每回合每個物品只走一步——跳級（+2）或 +1，剛放下的物品當回合不長。
+  // 掃描反覆到不動為止，A 升了讓 B 升的連鎖還在。同一輪裡先看跳級：先做成立的跳級，再做沒有跳級可等的 +1，
+  // 最後才一個一個做「跳級條件還沒成立」的 +1（別人這回合長上來可能讓它改成跳級，所以讓它最後走）。
+  // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。
   const stalled = new Set(), grown = new Set(id ? [id] : []);
   let lastGrown = null;
+  const step = (k, it, lv, to, jump) => {
+    for (let n = lv + 1; n <= to; n++) {
+      s.lv[k] = n; s.held[k] = 0;
+      const e = { kind: 'grow', item: k, from: n - 1, to: n, story: spec.STORIES.grow[k][n], via: jump ? it.jumpDeps[to] : it.deps[n] };
+      if (jump && n === to) e.jump = true;
+      events.push(e);
+      for (const a of it.onLevel[n] || []) applyAction(s, a, 'fx', k, rules, events);
+    }
+    lastGrown = k; grown.add(k);
+  };
+  // 這一刻 k 能走哪一步：'jump' | 'up' | 'later'（只有 +1、但跳級可能稍後成立）| null
+  const option = k => {
+    const it = rules.items[k], lv = s.lv[k];
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) return null;
+    const st = it.stall.find(r => r.test(s));
+    if (st) {
+      if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
+      return null;
+    }
+    const ready = n => !(it.delay[n] && it.delay[n](s) && s.held[k] < 2);
+    const canJump = lv + 2 <= it.max && !!it.jump[lv + 2];
+    if (canJump && it.jump[lv + 2](s) && ready(lv + 2)) return 'jump';
+    if (!it.up[lv + 1](s) || !ready(lv + 1)) return null;
+    return canJump ? 'later' : 'up';
+  };
   for (let scan = 0; ; scan++) {
     if (scan >= SCAN_LIMIT) throw new Error(`scan limit ${SCAN_LIMIT} exceeded while growing ${lastGrown}`);
     let changed = false;
-    for (const k of spec.ORDER) {
-      const it = rules.items[k], lv = s.lv[k];
-      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) continue;
-      const st = it.stall.find(r => r.test(s));
-      if (st) {
-        if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
-        continue;
-      }
-      if (!it.up[lv + 1](s)) continue;
-      s.lv[k] = lv + 1; lastGrown = k; changed = true; grown.add(k);
-      events.push({ kind: 'grow', item: k, from: lv, to: lv + 1, story: spec.STORIES.grow[k][lv + 1], via: it.deps[lv + 1] });
-      for (const a of it.onLevel[lv + 1] || []) applyAction(s, a, 'fx', k, rules, events);
-    }
-    if (!changed) break;
+    for (const k of spec.ORDER) if (option(k) === 'jump') { step(k, rules.items[k], s.lv[k], s.lv[k] + 2, true); changed = true; }
+    if (changed) continue;
+    for (const k of spec.ORDER) if (option(k) === 'up') { step(k, rules.items[k], s.lv[k], s.lv[k] + 1, false); changed = true; }
+    if (changed) continue;
+    const k = spec.ORDER.find(k => option(k) === 'later');
+    if (!k) break;
+    step(k, rules.items[k], s.lv[k], s.lv[k] + 1, false);
   }
 
   // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；

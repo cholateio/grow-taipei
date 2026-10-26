@@ -1,4 +1,4 @@
-// 求解器：跑完 8! 種放置順序，做統計與 §6.5 的五條驗收。
+// 求解器：跑完 8! 種放置順序，做統計與 §6.5 的六條驗收，外加「晶片放第 8 個」的報告項（只印，不算失敗）。
 // node src/solver/run.js          印統計
 // node src/solver/run.js --check  另跑驗收，失敗 exit 1
 import { fileURLToPath } from 'node:url';
@@ -96,6 +96,19 @@ export function pacing(full, spec = defaultSpec) {
   return { ok: failures.length === 0, maxGrowsPerTurn, maxMaxesPerTurn, maxTurns, failures };
 }
 
+// 反目標「晶片不能變成樞紐」（物品 v2 §2，報告項、不是驗收）：晶片放第 8 個時，
+// 是否有某一種順序讓其餘七個都到 MAX−1 以上。best = 差最少的那條（short = 沒到 MAX−1 的物品）。
+export function chipEighth(results, spec = defaultSpec) {
+  let best = null, count = 0;
+  for (const r of results) {
+    if (r.error || r.order[r.order.length - 1] !== 'chip') continue;
+    const short = spec.ORDER.filter(id => id !== 'chip' && r.state.lv[id] < spec.ITEMS[id].max - 1);
+    if (!short.length) count++;
+    if (!best || short.length < best.short.length) best = { order: r.order, short };
+  }
+  return { ok: count > 0, count, best };
+}
+
 export function stats(results, spec = defaultSpec) {
   const byEnding = {}, maxHist = new Array(spec.ORDER.length + 1).fill(0);
   let sumMax = 0;
@@ -139,6 +152,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   console.log(`平均 MAX 數：${s.avgMax.toFixed(2)}`);
   const g = greedyOrder(defaultSpec), gr = playOrder(g, defaultSpec);
   console.log(`貪婪順序：${g.map(name).join(' → ')}  ⇒ ${gr.ending.title}（${gr.maxCount} 個 MAX）`);
+  const ce = chipEighth(results, defaultSpec);
+  console.log(ce.ok ? `晶片放第 8 個：其餘七個都到 MAX−1 的順序 ${ce.count} 種（例：${ce.best.order.map(name).join(' → ')}）`
+    : `晶片放第 8 個：沒有順序讓其餘七個都到 MAX−1（最接近：${ce.best.order.map(name).join(' → ')}，差 ${ce.best.short.map(name).join('、')}）`);
   if (process.argv.includes('--check')) {
     const c = check(results, defaultSpec);
     console.log(c.ok ? '\n驗收：ok' : `\n驗收失敗：\n${c.failures.map(f => '  ✖ ' + f).join('\n')}`);

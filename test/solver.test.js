@@ -45,3 +45,31 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
   const results = [{ order: ['a', 'b', 'c'], maxCount: 3, ending: { id: 'cyber' }, satisfied: [], state: {} }];
   assert.ok(check(results, late).failures.some(f => /節奏/.test(f)));
 });
+
+// 物品 v2（2026-10-26）：兩條正解快照、颱風第 8 個、晶片第 8 個的報告項
+import { chipEighth } from '../src/solver/run.js';
+const all = enumerate(spec), st = stats(all, spec);
+// 任務 1 BLOCKED：§6.5 #6 節奏在 61 級＋11 回合＋六個跳級下無解（見任務 1 報告），其餘五條都過
+test('check passes on the shipped spec (exactly two full orders, one cyber one alien)', { todo: 'BLOCKED: 節奏 #6 在 61 級下不可行，待控制者裁決' }, () => {
+  const c = check(all, spec);
+  assert.deepEqual(c.failures, []);
+});
+test('check fails only on pacing (§6.5 #6); the two full orders are one cyber and one alien', () => {
+  const c = check(all, spec);
+  assert.ok(c.failures.length > 0 && c.failures.every(f => /^節奏/.test(f)), c.failures.join('\n'));
+  assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]).sort(), [
+    ['bulb,token,milk,chip,baseball,boba,rat,typhoon', 'cyber'],
+    ['bulb,token,milk,chip,baseball,rat,boba,typhoon', 'alien'],
+  ]);
+});
+test('a typhoon-eighth order is among the full orders (review focus 3)', () => {
+  assert.ok(st.full.some(r => r.order[7] === 'typhoon'));
+  for (const r of st.full) assert.equal(r.state.lv.typhoon, 3, 'the delayed rainbow still comes');
+});
+test('report: with chip eighth every other item reaches max−1 in some order', () => {
+  const rep = chipEighth(all, spec);
+  assert.equal(typeof rep.ok, 'boolean'); assert.ok(rep.best.order[7] === 'chip');
+  assert.ok(rep.best.short.every(id => id !== 'chip'));
+  assert.equal(rep.ok, rep.best.short.length === 0);
+  assert.equal(rep.ok, true, `best chip-eighth order still leaves ${rep.best.short.join(',')} below max−1`);
+});

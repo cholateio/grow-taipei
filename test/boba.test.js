@@ -234,12 +234,13 @@ test('the queue is a horizontal row: one z per layout (cart front +0.9, fountain
   // 劇本 Lv3 的兩個工程師排在攤車人龍的第 7、8 位，同一排
   assert.deepEqual(boba.queue(AT, 8).slice(0, 6), boba.view(lv({ boba: 2 }), {})['boba.queue'].home.spots);
 });
-// 碼頭：珍奶格靠海的東邊（東鄰格是海）。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，夜市（燈泡 ≥2）蓋住那一段 → 取它最近的可走點（格子東角）
-test('the pier entry is by the sea-side east edge of the boba cell, walkable and ≥ 1.5 from every queue spot at every level', async () => {
+// 碼頭：珍奶格靠海的東邊（東鄰格是海）。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，夜市（燈泡 ≥2）蓋住那一段 → 取離那一段最近的可走點（格子東角）；
+// 這裡量的是「離東邊那條邊 < 0.85、還在珍奶格裡」，不是站在邊上
+test('the pier entry is the nearest walkable point to the blocked sea-side east edge of the boba cell, walkable and ≥ 1.5 from every queue spot at every level', async () => {
   const c = axialToWorld(...cellOf('boba'));
   assert.ok(!MAIN_CELLS.some(([q, r]) => q === cellOf('boba')[0] + 1 && r === cellOf('boba')[1]), 'east of the boba cell is sea');
   const [p0] = boba.PIER;
-  assert.ok(c.x + HEX_R * Math.sqrt(3) / 2 - p0.x < 0.85, `(${p0.x.toFixed(2)}, ${p0.z.toFixed(2)}) by the east edge`);
+  assert.ok(c.x + HEX_R * Math.sqrt(3) / 2 - p0.x < 0.85, `(${p0.x.toFixed(2)}, ${p0.z.toFixed(2)}) within 0.85 of the blocked east edge`);
   for (const p of boba.PIER) { assert.deepEqual(cellAt(p.x, p.z), cellOf('boba')); assert.ok(near(p, p0, 0.6), 'the three pier points side by side'); }
   const nav = createNav(), bad = [];
   for (const n of [1, 2, 3, 4]) for (const milk of [0, 2]) {

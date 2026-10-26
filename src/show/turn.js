@@ -116,8 +116,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
         if (beats[0]?.kind !== 'focus' && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
         lastItem = item;
       }
-      // 劇本自己動了鏡頭（focus、舊的 camera 拍）：不知道停在哪，下一個事件一定重新平移
-      if (some(beats, b => b.kind === 'focus' || b.kind === 'camera')) lastCell = null;
+      // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
+      if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
     // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
     out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...lead, ...beats, B.apply(e));

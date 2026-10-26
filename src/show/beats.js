@@ -176,13 +176,6 @@ export function levelUp(target, { text = 'LEVEL UP', down = false } = {}) {
   };
 }
 
-export function camera(target) {
-  return {
-    kind: 'camera', dur: 1.0,
-    start(ctx) { const ms = ctx.instant ? 0 : 1000; if (target === 'home') ctx.rig.home(ms); else ctx.rig.panTo(target, ms); },
-  };
-}
-
 // 鏡頭跟主線（§13.1）：target 是格子 [q, r]（平移到格子中心）、物品 id（那個物品的格子）或點 { x, y, z }，
 // 也可以是 ctx => 上面三種（演到這拍才算：主角到時候在哪一格；回 null 這拍跳過）；
 // 1 秒平移＋拉近到全景距離 × zoom，名冊只讓那一格的人做日常（§13.4）。玩家拖過鏡頭 → 不動、不佔時間。
@@ -347,6 +340,6 @@ export function jump(who, target, dur = 0.5) {
 }
 
 export const B = {
-  spawn, walk, bubble, gesture, apply, levelUp, camera, focus, world, wait, home, together, move, scaleIn,
+  spawn, walk, bubble, gesture, apply, levelUp, focus, world, wait, home, together, move, scaleIn,
   hideParts, showParts, trainDepart, trainStop, trainHead, seat, jump, tilt, partHead,
 };

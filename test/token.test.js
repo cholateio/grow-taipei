@@ -234,11 +234,10 @@ test('token rosters enter from outside the platform, walkable and ≥ 1.5 from e
   sp.start({ roster: { spawnHeld: (k, p) => { at.push([k, p]); return null; } } });
   assert.deepEqual(at, [['token.staff', token.STAFF_ENTRY]]);
 });
-test('token 4 / 5: the satellite island is a focus at zoom 0.8 (no camera beats); LEVEL UP pans back to the token cell', () => {
+test('token 4 / 5: the satellite island is a focus at zoom 0.8; LEVEL UP pans back to the token cell', () => {
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   for (const [to, kind] of [[4, 'lighthouse'], [5, 'playground']]) {
     const beats = token.script.grow[to]({ kind: 'grow', item: 'token', to }, { lv: LV({ token: to, milk: 2 }), flags: {} }, ctx);
-    assert.ok(!flat(beats).some(b => b.kind === 'camera'), `lv${to} no camera beat`);
     const focus = flat(beats).filter(b => b.kind === 'focus');
     assert.deepEqual(focus.map(b => focusCell(b, ctx)), [satCell(kind), cellOf('token')], `lv${to} focus cells`);
     if (to === 5) assert.equal(beats[0].kind, 'focus', 'lv5 starts on the playground island');

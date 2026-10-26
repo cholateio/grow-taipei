@@ -27,7 +27,6 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   // 玩家拖過鏡頭（grabbed）focus 拍就跳過；回合開始 release 放開記號（§13.1，計畫 3.8 R4）
   let panned = false;
   const camRig = {
-    panTo(t, ms) { panned = true; rig.panTo(t, ms); },
     focus(t, opts) { panned = true; return rig.focus(t, opts); },
     home(ms) { panned = false; rig.home(ms); },
     get grabbed() { return !!rig.grabbed; },

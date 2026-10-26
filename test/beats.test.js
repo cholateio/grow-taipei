@@ -52,7 +52,7 @@ function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
   };
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 4 }) });
   const rig = {
-    calls: [], grabbed: false, panTo: (p, ms) => rig.calls.push(['panTo', p, ms]), home: ms => rig.calls.push(['home', ms]),
+    calls: [], grabbed: false, home: ms => rig.calls.push(['home', ms]),
     focus: (p, opts) => rig.calls.push(['focus', p, opts]),
   };
   const rail = { offset: 0 }, worlds = [];
@@ -241,12 +241,11 @@ test('gesture drives the walker gesture for people, the holder for models, the p
   tl.skip(); assert.equal(cloud.scale.x, 1);
   tl.play([B.gesture('typhoon.gone', 'puff'), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentKind, 'wait', 'missing part → skipped');
 });
-test('camera home/pan and world pass through to rig and ctx.world; instant camera uses 0 ms', () => {
-  const { ctx, tl, rig } = fake(); const p = { x: 1, y: 0, z: 2 };
-  tl.play([B.camera(p), B.camera('home')], ctx); tl.update(0); assert.equal(tl.currentDur, 1); assert.deepEqual(rig.calls[0], ['panTo', p, 1000]);
-  tl.update(1); assert.deepEqual(rig.calls[1], ['home', 1000]); tl.skip();
-  ctx.instant = true; tl.play([B.camera(p), B.world({ storm: true })], ctx); tl.skip();
-  assert.deepEqual(rig.calls[2], ['panTo', p, 0]); assert.deepEqual(ctx.worlds, [[{ storm: true }, true]]);
+test('world passes through to ctx.world (instant flag included); the old camera beat is gone', () => {
+  const { ctx, tl } = fake();
+  ctx.instant = true; tl.play([B.world({ storm: true })], ctx); tl.skip();
+  assert.deepEqual(ctx.worlds, [[{ storm: true }, true]]);
+  assert.equal(B.camera, undefined, 'camera beat replaced by focus (plan 3.8)');
 });
 // §13.1 鏡頭跟主線：focus 平移拉近到格子中心 1 秒、名冊只讓那一格的人做日常；拖過鏡頭就跳過（0 秒）；home 一定回全景
 test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and narrows the roster focus; grabbed skips it; mid-turn home respects it, the final home always runs', () => {

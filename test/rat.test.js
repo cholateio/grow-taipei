@@ -296,7 +296,7 @@ const PARK = offset(anchorWorld('chip'), -0.5, 1.2);
 // 老鼠的入口：每一種模式、每一級走得到、離站位 ≥ 1.5（兩條正解每一刻的真 footprint）；第一隻從巨蛋格東南岸外的海裡（LANDING）爬上來
 // （劇本的 spawn，不是名冊入口：上岸點離窩只有 0.4，但牠是從海裡爬上來、再沿岸繞一圈才回窩，不是在窩邊冒出來）；
 // 賽博 Lv5 補的五隻機器鼠從園區門口（原本五隻變身的地方）走去 101
-test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the landing is ≥ 1.5 from the nest; the cyber legion comes out of the park gate', async () => {
+test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the first rat spawns at the landing in the sea off the dome cell; the cyber legion comes out of the park gate', async () => {
   const nav = createNav(), bad = [];
   const modes = [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 2 }, {}], [{ rat: 4, chip: 3 }, { ratBranch: 'cyber' }], [{ rat: 5, chip: 3 }, { ratBranch: 'cyber' }],
     [{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 4, baseball: 3 }, { domeRats: true }]];

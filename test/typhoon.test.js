@@ -56,6 +56,7 @@ import { offset } from '../src/actors/palette.js';
 import { LAMP_STOPS } from '../src/actors/bulb.js';
 import * as baseball from '../src/actors/baseball.js';
 import * as milk from '../src/actors/milk.js';
+import * as landmarks from '../src/actors/landmarks.js';
 import { worldEffects } from '../src/actors/world.js';
 import { B } from '../src/show/beats.js';
 import { headlessShow, playItem } from './helpers/show.js';
@@ -310,8 +311,10 @@ test('landing turn live: people vanish at their doors without a blink; the next 
     const f = first.get(x.m);
     assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
     assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
-    assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
+    // 家就在門口的人（溫泉客躲在池邊、站位離藏身處 < 0.4）出來就到家了，不必走
+    const h = landmarks.view(show.stage.lv, show.stage.flags)[x.m.key]?.home, spot = h?.kind === 'stand' ? h.spots[x.m.i % h.spots.length] : null;
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
+    if (!spot || Math.hypot(spot.x - x.at.x, spot.z - x.at.z) >= 0.4) assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
   }
 });
 // R13：玩家在回合中途拖過鏡頭 → 登陸的 focus('home') 不把鏡頭拉回全景、不清拖過的記號；只有回合最後的 home 照回並清掉

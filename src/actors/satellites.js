@@ -19,6 +19,8 @@ export function view(lv, flags) {
     v['sat.lighthouse'] = { kind: 'compound', at: at('lighthouse'), parts: [{ kind: 'sphere', pos: [0, 1.45, 0], scale: 0.38, color: C.yellow, glow: C.yellow }] };
     if (lv.bulb >= 3) v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };
   }
+  // 守塔人（§14.3）：燈塔亮了之後一位守塔人繞著燈塔走（衛星島的 wander 是 ringPath，半徑 0.6 在塔身外、樹的內側）；停電也還在
+  if (lv.bulb >= 2) v['sat.keeper'] = { kind: 'roster', at: at('lighthouse'), n: 1, shirt: C.navy, accessory: 'cap', home: { kind: 'wander', at: at('lighthouse'), r: 0.6 } };
   // 遊樂場的小孩是坐接駁車（代幣 Lv5）來的：代幣的劇本 hold 住這個名冊、在車旁 spawn；日常在島上繞圈（名冊的衛星島 wander）
   if (lv.token >= 5 && lv.milk >= 2) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: lv.milk >= 5 ? 'cap' : 'none', home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };

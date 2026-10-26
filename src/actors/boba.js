@@ -1,4 +1,4 @@
-// 珍奶（§5.1）：路邊攤車 → 6 個拿行李箱的觀光客排隊 → 珍奶噴泉廣場（有鮮奶 ≥2 → 招牌變「鮮奶珍奶」、排 10 人）。
+// 珍奶（§5.1）：路邊攤車 → 6 個拿行李箱的觀光客排隊 → 珍奶噴泉廣場（有鮮奶 ≥2 → 招牌變「鮮奶珍奶」、多 4 個觀光客在旁邊閒晃）。
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；老鼠撞翻攤車、颱風外送是那兩個模組的劇本，不在這裡。
 import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
@@ -25,6 +25,11 @@ const AT = anchorWorld('boba'), BEHIND = offset(AT, 0, -0.45), BESIDE = offset(A
 // 碼頭（觀光客的入口，§13.2）：珍奶格靠海的東邊。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，而夜市（燈泡 ≥2）蓋住那一段，
 // 所以取那一段最近的可走點——格子東角、夜市北邊（夜市 footprint 外擴 PAD 之外）；三個點沿 −x 錯開 0.25（一批三個人一人一個）
 export const PIER = [0, 1, 2].map(k => offset(AT, 0.35 - 0.25 * k, -1.7));
+// 人龍最多 6 人一排（§14.3，原本鮮奶珍奶時 10 人，排太長擠成一團）
+export const QUEUE_MAX = 6;
+// 閒晃的觀光客：噴泉（外擴後 0.92）幾乎蓋滿攤位半徑 1.0 的圈子，散步圈的中心改放在噴泉西南、人龍尾巴再過去一點
+// （捷運站南邊的空地，半徑 1.0 裡約六成是可走點）
+const STROLL = offset(AT, -1.5, 0.9);
 
 export function view(lv) {
   const n = lv.boba, at = AT, v = {};
@@ -52,7 +57,9 @@ export function view(lv) {
   // 攤車後面和夜市之間（夜市 ≥2 攤時）外擴 PAD 後沒有空隙：rescue 讓老闆站到最近的可走點，不從攤車中間穿過去（§14.1）
   v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave', rescue: true } };
   // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點
-  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k, n >= 3), rescue: true, entry: PIER } }; }
+  if (n >= 2) v['boba.queue'] = { kind: 'roster', at, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
+  // 鮮奶珍奶廣場多來的 4 個觀光客不排隊，在噴泉西南、捷運站前的空地閒晃（§14.3）；一樣從碼頭走來
+  if (n >= 3 && fresh) v['boba.strollers'] = { kind: 'roster', at: STROLL, n: 4, accessory: 'suitcase', shirt: SHIRTS.slice(4), home: { kind: 'wander', at: STROLL, r: 1.0, entry: PIER } };
   return v;
 }
 
@@ -120,7 +127,7 @@ export const script = {
       const batch = js => { const sp = js.map((j, k) => B.spawn('boba.queue', pier(k))); return [...sp, B.together(js.map((j, k) => B.walk(() => sp[k].member, spots[j])))]; };
       return [B.apply(e, { hold: ['boba.queue'] }), ...batch([0, 1, 2]), ...batch([3, 4, 5]), B.home(c => c.roster.members('boba.queue')), B.levelUp('boba')];
     },
-    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 閃白噴泉廣場（人龍補到 10、老闆走到噴泉旁）；糖分超標：島民一起 ♥
+    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 閃白噴泉廣場（鮮奶 ≥2 時 4 個觀光客從碼頭走來閒晃、老闆走到噴泉旁）；糖分超標：島民一起 ♥
     3(e, s, ctx) {
       const { B } = ctx, tail = queue(AT, 8).slice(6), engs = [0, 1].map(engineer);
       return [

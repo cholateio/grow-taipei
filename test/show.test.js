@@ -290,3 +290,24 @@ test('after the player grabs the camera, no focus moves the rig for the rest of 
   await run([...r2.events, { kind: 'settle' }]);
   assert.ok(cam.calls.some(c => c[0] === 'focus'), 'a grab between turns does not stop the next turn');
 });
+
+// §14.3 人分散：兩條正解整局 live 演完，最後沒有哪一格主島的格子站了超過所有露出來的人（主島上）的 40%
+test('live both solutions: at the end no main cell has more than 40% of all visible members (spread check)', async () => {
+  const { cellAt } = await import('../src/scene/hex.js');
+  for (const order of SOLUTIONS) {
+    const { show, run } = await headlessShow();
+    let s = engine.createState(spec);
+    const steps = [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const [i, step] of steps.entries()) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { montage: i >= order.length }); }
+    for (let i = 0; i < 300; i++) show.update(1 / 30, 1000 + i / 30);
+    const per = new Map(); let total = 0;
+    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+      const c = !m.hidden && cellAt(m.pos.x, m.pos.z); if (!c) continue;
+      per.set(String(c), (per.get(String(c)) ?? 0) + 1); total++;
+    }
+    const counts = JSON.stringify(Object.fromEntries(per));
+    assert.ok(total >= 20, `${order.join('>')}: ${total} on the island`);
+    for (const [c, n] of per) assert.ok(n <= 0.4 * total, `${order.join('>')}: cell ${c} holds ${n}/${total} ${counts}`);
+    assert.equal(per.size, 7, `${order.join('>')}: someone on every main cell ${counts}`);
+  }
+});

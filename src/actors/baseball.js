@@ -1,4 +1,4 @@
-// 棒球（§5.1）：沙地 → 木看台與兩個傳接球的球員 → 大巨蛋 → 比賽開打（頂縫透光、觀眾 4 人）→ 演唱會（藍色應援棒、觀眾 6 人）→ 跨年煙火。
+// 棒球（§5.1）：沙地 → 木看台與兩個傳接球的球員 → 大巨蛋 → 比賽開打（頂縫透光、觀眾 4 人）→ 演唱會（藍色應援棒、觀眾 6 人：4 人站門口、2 人在草皮散步）→ 跨年煙火。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
 import { anchorWorld, frontOf } from './anchors.js';
 import { C, offset } from './palette.js';
@@ -25,6 +25,8 @@ const AT = anchorWorld('baseball');
 export const PLAYER_ENTRY = [offset(AT, 0.95, -1.45), offset(AT, 1.15, -1.6)];
 const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前：觀眾下車的地方
 export const CROWD_ENTRY = [0, 1, 2, 3].map(k => offset(PLATFORM, (k - 2.7) * 0.25, 0.15));
+// 巨蛋東邊的草皮（散步的觀眾）：在外擴 PAD 後的巨蛋橢圓外（約 1.36 倍）、離門口弧線最東的觀眾 1.0，半徑 0.8 裡約七成是可走點
+const LAWN = offset(AT, 1.7, -0.2);
 
 // 觀眾站在巨蛋門前的弧線上，正中間留一條走道給球員；人數少一點，不然和小孩、老鼠擠成一團
 function fans(at, n) {
@@ -57,7 +59,9 @@ export function view(lv, flags) {
   if (n >= 2) {
     v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
     v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
-    if (n >= 4) { const k = n >= 5 ? 6 : 4; v['baseball.crowd'] = { kind: 'roster', at, n: k, shirt: SHIRTS, home: { kind: 'stand', spots: fans(at, k), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } }; }
+    if (n >= 4) v['baseball.crowd'] = { kind: 'roster', at, n: 4, shirt: SHIRTS, home: { kind: 'stand', spots: fans(at, 4), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
+    // 演唱會起多來的兩個觀眾不擠門口，在巨蛋東邊的草皮散步（§14.3）；一樣從月台走來
+    if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 2, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: 0.8, entry: CROWD_ENTRY } };
   }
   // 跨年煙火：巨蛋上空循環放
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };
@@ -102,7 +106,8 @@ const helper = (key, p) => once(c => c.roster.members(key).find(m => !m.hidden) 
 // 冒泡泡的人跳過藏起來的（颱風登陸回合躲進門裡的人）
 const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const player = i => c => shown('baseball.players')(c)[i] ?? null;
-const fan = i => c => shown('baseball.crowd')(c)[i] ?? null;
+const fans6 = c => [...shown('baseball.crowd')(c), ...shown('baseball.lawn')(c)];   // 門口的 4 人 + 草皮的 2 人
+const fan = i => c => fans6(c)[i] ?? null;
 const ALL_FANS = 6;
 
 export const script = {
@@ -148,7 +153,7 @@ export const script = {
         B.home(c => c.roster.members('baseball.crowd')), B.levelUp('baseball'),
       ];
     },
-    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 閃白應援棒、觀眾補到 6（多的兩個從月台入口走來）→ 觀眾一起 ♪
+    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 閃白應援棒、多兩個觀眾（從月台入口走來，在草皮散步）→ 觀眾一起 ♪
     5(e, s, ctx) {
       const { B } = ctx, el = helper('bulb.electrician', GATE);
       return [
@@ -156,13 +161,13 @@ export const script = {
         B.together(Array.from({ length: ALL_FANS }, (_, i) => B.bubble(fan(i), '♪'))), B.home(el), B.levelUp('baseball'),
       ];
     },
-    // 煙火：珍奶的觀光客人龍一起走到巨蛋門口 → 煙火 → 在場的球員、觀眾、觀光客全部 ♪ → 觀光客走回人龍
+    // 煙火：珍奶的觀光客（人龍 + 閒晃的）一起走到巨蛋門口 → 煙火 → 在場的球員、觀眾、觀光客全部 ♪ → 觀光客走回人龍
     // 鏡頭（§13.1）：先對著珍奶人龍（珍奶格），他們出發就轉到巨蛋格
     6(e, s, ctx) {
-      const { B } = ctx, tourists = once(c => c.roster.members('boba.queue').filter(m => !m.hidden));
-      const n = 10;   // 人龍最多 10 人（珍奶 Lv3 + 鮮奶 ≥2）；沒那麼多人的拍跳過
+      const { B } = ctx, tourists = once(c => ['boba.queue', 'boba.strollers'].flatMap(k => c.roster.members(k)).filter(m => !m.hidden));
+      const n = 10;   // 觀光客最多 10 人（人龍 6 + 珍奶 Lv3 鮮奶 ≥2 時閒晃的 4 人）；沒那麼多人的拍跳過
       const tourist = i => c => tourists(c)[i] ?? null, slot = i => c => c.nav.slots(GATE, tourists(c).length, 1.2)[i];
-      const everyone = c => [...shown('baseball.players')(c), ...shown('baseball.crowd')(c), ...tourists(c)];
+      const everyone = c => [...shown('baseball.players')(c), ...fans6(c), ...tourists(c)];
       return [
         B.focus('boba'), B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i)))]), B.apply(e),
         B.together(Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪'))),

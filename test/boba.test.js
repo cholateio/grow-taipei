@@ -19,9 +19,10 @@ test('boba lv1 is the cart and its owner', () => assert.deepEqual(Object.keys(bo
 test('lv2 queues six tourists with suitcases facing the cart', () => {
   const q = boba.view(lv({ boba: 2 }), {})['boba.queue']; assert.equal(q.n, 6); assert.equal(spotsOf(q).length, 6); assert.equal(q.accessory, 'suitcase');
 });
-test('lv3 fountain plaza; milk ≥2 makes it ten with a fresh-milk sign', () => {
+test('lv3 fountain plaza; milk ≥2 brings four strollers (queue stays 6) and a fresh-milk sign', () => {
   const a = boba.view(lv({ boba: 3 }), {}), b = boba.view(lv({ boba: 3, milk: 2 }), {});
-  assert.ok(a['boba.main'].parts.some(p => p.kind === 'dome')); assert.equal(a['boba.queue'].n, 6); assert.equal(b['boba.queue'].n, 10);
+  assert.ok(a['boba.main'].parts.some(p => p.kind === 'dome')); assert.equal(a['boba.queue'].n, 6); assert.equal(b['boba.queue'].n, 6);
+  assert.equal(a['boba.strollers'], undefined); assert.equal(b['boba.strollers'].n, 4);
   const sign = v => v['boba.main'].parts.find(p => p.sign).color; assert.notEqual(sign(a), sign(b));
 });
 test('boba parts, owner and queue stay in the token cell', () => {
@@ -45,7 +46,7 @@ test('view: the owner is an apron roster standing behind the cart (beside the fo
   assert.ok(Math.hypot(v3['boba.owner'].home.spots[0].x - AT.x, v3['boba.owner'].home.spots[0].z - AT.z) > 0.8 + 0.12, 'outside the fountain footprint (with PAD)');
   assert.deepEqual(v3['boba.main'].footprint, { r: 0.8 });   // 外擴 PAD 後 0.92，蓋住半徑 0.9 的台階（§14.1）
   const q = v3['boba.queue'];
-  assert.deepEqual([q.kind, q.n, q.accessory, q.home.kind, q.home.spots.length], ['roster', 10, 'suitcase', 'stand', 10]);
+  assert.deepEqual([q.kind, q.n, q.accessory, q.home.kind, q.home.spots.length], ['roster', 6, 'suitcase', 'stand', 6]);
   assert.ok(Array.isArray(q.shirt));
   assert.equal(boba.view(lv({ boba: 1 }), {})['boba.queue'], undefined);
   assert.ok(boba.script?.placed && [2, 3, 4].every(n => boba.script.grow[n]) && boba.script.fx && boba.script.rep);
@@ -57,7 +58,7 @@ test('view: the forest island tourists are a roster that arrives with the branch
   for (const p of f.home.spots) assert.ok(near(p, c, 1.5), 'on the forest island');
 });
 
-const KEYS = ['boba.owner', 'boba.queue', 'sat.forest', 'chip.engineers', 'landmarks.islanders'];
+const KEYS = ['boba.owner', 'boba.queue', 'boba.strollers', 'sat.forest', 'chip.engineers', 'landmarks.islanders'];
 const isBoba = to => e => e.kind === 'grow' && e.item === 'boba' && e.to === to;
 // 照 order（放完再長 CLOSING_TURNS 回合）瞬間演到 pred 命中的那個事件，單獨 live 演（whole：整回合 live）
 async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } = {}) {
@@ -146,7 +147,7 @@ test('Lv3: every queue spot is outside the fountain and walkable once the footpr
   const h = await headlessShow(), { show } = h;
   await liveAt(h, SOLUTIONS[0], isBoba(3));
   const q = boba.view(show.stage.lv, show.stage.flags)['boba.queue'];
-  assert.equal(q.n, 10);
+  assert.equal(q.n, 6);
   for (const [i, p] of q.home.spots.entries()) {
     assert.ok(Math.hypot(p.x - AT.x, p.z - AT.z) >= 0.95, `spot ${i} outside the fountain`);
     assert.ok(show.nav.walkable(p.x, p.z), `spot ${i} walkable`);
@@ -250,4 +251,31 @@ test('the pier entry is the nearest walkable point to the blocked sea-side east 
   }
   bad.push(...await entriesThroughSolutions(boba, SOLUTIONS));
   assert.deepEqual(bad, []);
+});
+
+// ── §14.3 人分散：人龍最多 6 人一排，鮮奶 ≥2 的另外 4 人在珍奶格閒晃 ──
+test('boba Lv3 fresh: queue 6 in one row (x spacing 0.25), 4 strollers wander within r 1.0 of the shop, all entries ≥ 1.5 from spots', async () => {
+  for (const n of [2, 3, 4]) for (const milk of [0, 2]) {
+    const v = boba.view(lv({ boba: n, milk }), {}), q = v['boba.queue'], what = `lv${n} milk${milk}`;
+    assert.equal(q.n, 6, what); assert.equal(q.home.spots.length, 6, what);
+    assert.ok(q.home.spots.every(p => Math.abs(p.z - q.home.spots[0].z) < 1e-9), `${what}: one row`);
+    for (let i = 1; i < 6; i++) assert.ok(Math.abs(q.home.spots[i - 1].x - q.home.spots[i].x - 0.25) < 1e-9, `${what}: spacing`);
+    const st = v['boba.strollers'];
+    if (n < 3 || milk < 2) { assert.equal(st, undefined, what); continue; }
+    assert.deepEqual([st.kind, st.n, st.accessory, st.home.kind, st.home.r, st.home.entry], ['roster', 4, 'suitcase', 'wander', 1.0, boba.PIER], what);
+    assert.deepEqual(cellAt(st.home.at.x, st.home.at.z), cellOf('boba'), `${what}: strolling in the boba cell`);
+    assert.ok(Math.hypot(st.home.at.x - AT.x, st.home.at.z - AT.z) < 2, `${what}: next to the shop`);
+  }
+  // 真舞台：鮮奶珍奶廣場時 4 個人走一陣子都在散步圈（r 1.0）裡、站在可走點上；入口檢查（兩條正解每一刻）
+  const h = await headlessShow(), { show } = h;
+  await liveAt(h, SOLUTIONS[0], isBoba(3));
+  const st = boba.view(show.stage.lv, show.stage.flags)['boba.strollers'];
+  assert.ok(st, 'fresh milk at Lv3 in the cyber solution');
+  for (let i = 0; i < 900; i++) {
+    show.update(1 / 30, 100 + i / 30);
+    if (i < 450) continue;   // 先讓從碼頭走進來的人走到
+    for (const m of show.roster.members('boba.strollers')) assert.ok(Math.hypot(m.pos.x - st.home.at.x, m.pos.z - st.home.at.z) <= 1.0 + 0.3, `stroller ${m.i} near the shop`);
+  }
+  assert.equal(show.roster.members('boba.strollers').length, 4);
+  assert.deepEqual(await entriesThroughSolutions(boba, SOLUTIONS), []);
 });

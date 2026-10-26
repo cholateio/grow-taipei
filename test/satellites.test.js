@@ -88,3 +88,31 @@ test('satellite rosters live off the main island: no entry declared, nothing for
     assert.deepEqual(entryProblems(v, nav), []);
   }
 });
+
+// §14.3：燈塔亮了（燈泡 ≥2）之後有一位守塔人在燈塔島上繞圈（衛星島的 wander 走 ringPath）；燈還沒亮就沒有
+test('satellites: lighthouse keeper appears at bulb ≥ 2 and rings the island; absent below', async () => {
+  assert.equal(sat.view(lv({ bulb: 1 }), {})['sat.keeper'], undefined);
+  const s = SATELLITES.find(x => x.kind === 'lighthouse'), c = axialToWorld(s.q, s.r);
+  for (const bulb of [2, 3, 5]) {
+    const k = sat.view(lv({ bulb }), {})['sat.keeper'];
+    assert.deepEqual([k.kind, k.n, k.home.kind, k.home.entry], ['roster', 1, 'wander', undefined], `bulb ${bulb}`);
+    assert.ok(Math.hypot(k.home.at.x - c.x, k.home.at.z - c.z) < 0.3, 'circles the lighthouse');
+    assert.ok(k.home.r > 0.3 && k.home.r < 0.9, `ring r ${k.home.r} clear of the tower, on the island`);
+  }
+  const { headlessShow } = await import('./helpers/show.js'), { show, run } = await headlessShow();
+  let st = engine.createState(spec);
+  for (const id of stats(enumerate(spec), spec).full[0].order) {
+    const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true });
+    if (st.lv.bulb >= 2) break;
+    assert.equal(show.roster.members('sat.keeper').length, 0, 'no keeper before the light');
+  }
+  const [m] = show.roster.members('sat.keeper'), k = sat.view(show.stage.lv, show.stage.flags)['sat.keeper'].home, start = { ...m.pos };
+  let far = 0;
+  for (let i = 0; i < 120; i++) {
+    show.update(1 / 30, 100 + i / 30);
+    assert.equal(cellAt(m.pos.x, m.pos.z), null, 'stays on the lighthouse island');
+    assert.ok(Math.abs(Math.hypot(m.pos.x - k.at.x, m.pos.z - k.at.z) - k.r) < 0.05, 'on the ring');
+    far = Math.max(far, Math.hypot(m.pos.x - start.x, m.pos.z - start.z));
+  }
+  assert.ok(far > 0.3, 'walks round');
+});

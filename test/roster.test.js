@@ -574,10 +574,9 @@ let livePlayed = null;
 const livePlay = () => (livePlayed ??= playBoth());
 async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
-  const { headlessShow, ALL } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
+  const { headlessShow, ALL, inShape } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
   const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set();
   let detectiveFrames = 0, bridgeFrames = 0;
-  const inShape = (f, x, z) => (f.r != null ? Math.hypot(x - f.x, z - f.z) <= f.r : f.rx != null ? ((x - f.x) / f.rx) ** 2 + ((z - f.z) / f.rz) ** 2 <= 1 : Math.abs(x - f.x) <= f.w / 2 && Math.abs(z - f.z) <= f.d / 2);
   // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
   const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });

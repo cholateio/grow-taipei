@@ -62,3 +62,35 @@ test('typhoon placed 8th is still Lv1 at the end, so the missile is never deflec
   assert.equal(s.lv.typhoon, 1);
   assert.notEqual(missile(s, spec), 'deflect');
 });
+
+// 物品 v2 §8（任務 11）：結局讀新的狀態——兩條正解（引擎演完放置 + 倒數三回合）都是晶片 9 矽盾擋下、全 MAX、沒有災難旗標，
+// 外星正解（ratBranch alien）是外星結局、另一條是賽博；矽盾只看晶片 9：晶片停在 8（測過、沒待命）的一局是矽盾未就緒
+import { enumerate, stats } from '../src/solver/run.js';
+import { advance } from '../src/rules/engine.js';
+const playOut = order => {
+  let s = createState(spec);
+  for (const id of order) s = place(s, id, spec).state;
+  for (let i = 0; i < spec.CLOSING_TURNS; i++) s = advance(s, spec).state;
+  return s;
+};
+test('the two solutions end with the shield up and the true ending of their rat branch', () => {
+  const ends = stats(enumerate(spec), spec).full.map(r => playOut(r.order));
+  assert.equal(ends.length, 2);
+  for (const s of ends) {
+    assert.ok(ORDER.every(id => s.lv[id] === ITEMS[id].max), JSON.stringify(s.lv));
+    assert.equal(s.lv.chip, 9); assert.equal(missile(s, spec), 'shield');
+    assert.deepEqual(Object.keys(s.flags), ['ratBranch'], 'no disaster flag');
+    assert.deepEqual(satisfied(s, spec), []);
+    assert.deepEqual(resolve(s, spec), { id: s.flags.ratBranch, title: ENDINGS[s.flags.ratBranch].title, missile: 'shield', extras: [] });
+  }
+  assert.deepEqual(ends.map(s => s.flags.ratBranch).sort(), ['alien', 'cyber']);
+});
+test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shieldDown, also in a played-out game', () => {
+  assert.equal(missile(full({ lv: { ...full().lv, chip: 8 } }), spec), 'hit');
+  assert.equal(resolve(full({ lv: { ...full().lv, chip: 8 } }, { ratBranch: 'cyber' }), spec).id, 'shieldDown', 'one short of MAX is not a true ending');
+  const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
+  const s = perms(ORDER).map(playOut).find(st => st.lv.chip === 8 && st.lv.typhoon !== 2 && !['blackout', 'flooded', 'domeRats', 'milkExpired', 'bobaSugar'].some(f => st.flags[f]));
+  assert.ok(s, 'some order stops the chip at 8 with no disaster');
+  assert.equal(missile(s, spec), 'hit');
+  assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
+});

@@ -140,3 +140,23 @@ test('the keeper appears on the same frame as the lighthouse light during bulb L
   assert.ok(done && light !== null, 'the light comes on during the live bulb Lv7');
   assert.equal(keeper, light, `keeper on frame ${keeper}, light on frame ${light}`);
 });
+
+// 物品 v2 任務 11：衛星島的門檻跟著新的階梯與離島鏈——沒有留下舊門檻（燈塔看燈泡 ≥2、小孩看鮮奶 ≥2、分店看珍奶 ≥4）。
+// 小孩坐接駁車來：遊樂場島有小孩的每一個等級，代幣的支線與接駁車都在（代幣 Lv7 支線、Lv8 接駁車），也有小學（鮮奶 ≥3）；
+// 燈塔亮、守塔人、風車轉（沒颱風）都在燈泡 ≥7，而引擎保證燈泡到 7 時代幣已 ≥7（電工搭支線過去）；石堆綠光圈只在外星
+test('satellite gates follow the island chain: kids ride the shuttle, the light needs the spur, the ring is alien-only', async () => {
+  const token = await import('../src/actors/token.js');
+  for (let t = 0; t <= 10; t++) for (let m = 0; m <= 10; m++) {
+    const v = sat.view(lv({ token: t, milk: m }), {}), tv = token.view(lv({ token: t, milk: m }), {}, {});
+    assert.equal(!!v['sat.playground'], t >= 8 && m >= 3, `token ${t} milk ${m}`);
+    if (v['sat.playground']) assert.ok(tv['token.spur.playground'] && tv['token.shuttle'], `token ${t}: kids only where the spur and the shuttle run`);
+  }
+  for (let b = 0; b <= 9; b++) {
+    const v = sat.view(lv({ bulb: b }), {}), on = b >= 7;
+    assert.deepEqual([!!v['sat.lighthouse'], !!v['sat.beam'], !!v['sat.keeper'], v['sat.windmill'].speed > 0], [on, on, on, on], `bulb ${b}`);
+  }
+  assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 7] }, 'the electrician rides the spur');
+  assert.ok(Object.keys(spec.ITEMS.bulb.jump ?? {}).every(n => +n < 7), 'no jump lands on bulb 7 or later');
+  for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forestShop'], b >= 5, `boba ${b}`); }
+  for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
+});

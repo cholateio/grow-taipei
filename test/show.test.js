@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, ALL, turnSteps, towerCrossings } from './helpers/show.js';
+import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
@@ -316,13 +316,8 @@ test('live both solutions: at the end no main cell has more than 40% of all visi
   }
 });
 
-// §14.4 全景跟 101 高度：真的 rig（controls.update 像 OrbitControls 一樣看著注視點），量 101 頭頂在畫面上的 NDC y
-function skylineRig() {
-  const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
-  const rig = createCameraRig({ THREE, camera, controls }); rig.fit(16 / 9);
-  const topNdc = show => { camera.lookAt(controls.target); camera.updateMatrixWorld(); const h = show.stage.headOf('tower'); return new THREE.Vector3(h.x, h.y, h.z).project(camera).y; };
-  return { rig, camera, controls, topNdc };
-}
+// §14.4 全景跟 101 高度：真的 rig（helpers/show.js 的 overviewRig），量 101 頭頂在畫面上的 NDC y
+const skylineRig = () => { const r = overviewRig(); return { ...r, topNdc: show => r.topNdc(show).y }; };
 // 第一條正解 instant 演到跨進 101 完工（頭頂 7.75）的前一回合，回傳跨進那一回合的事件（回合數從總等級曲線找）
 async function beforeTurn(h, n) {
   const steps = turnSteps(SOLUTIONS[0]); let s = engine.createState(spec);

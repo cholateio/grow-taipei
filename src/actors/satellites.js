@@ -13,15 +13,20 @@ export const island = kind => { const s = SATELLITES.find(x => x.kind === kind),
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
 const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 
+// 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
+export const POWERED = 7;
+export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout;
+
 export function view(lv, flags) {
-  const v = {}, storm = lv.typhoon === 2, dark = !!flags.blackout;
-  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: dark ? 0 : storm ? 6 : 1, wobble: storm };
-  if (lv.bulb >= 2 && !dark) {
+  const v = {}, storm = lv.typhoon === 2, on = powered(lv, flags);
+  // 風車：通電後慢慢轉；颱風時不管有沒有電都被風吹得狂轉、整座搖（那是風不是電）
+  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? 6 : on ? 1 : 0, wobble: storm };
+  if (on) {
     v['sat.lighthouse'] = { kind: 'compound', at: at('lighthouse'), parts: [{ kind: 'sphere', pos: [0, 1.45, 0], scale: 0.38, color: C.yellow, glow: C.yellow }] };
-    if (lv.bulb >= 3) v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };
+    v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };
   }
-  // 守塔人（§14.3）：燈塔亮了之後一位守塔人繞著燈塔走（衛星島的 wander 是 ringPath，半徑 0.6 在塔身外、樹的內側）；停電也還在
-  if (lv.bulb >= 2) v['sat.keeper'] = { kind: 'roster', at: at('lighthouse'), n: 1, shirt: C.navy, accessory: 'cap', home: { kind: 'wander', at: at('lighthouse'), r: 0.6 } };
+  // 守塔人（§14.3）：燈塔亮了（燈泡 Lv7）之後一位守塔人繞著燈塔走（衛星島的 wander 是 ringPath，半徑 0.6 在塔身外、樹的內側）
+  if (lv.bulb >= POWERED) v['sat.keeper'] = { kind: 'roster', at: at('lighthouse'), n: 1, shirt: C.navy, accessory: 'cap', home: { kind: 'wander', at: at('lighthouse'), r: 0.6 } };
   // 遊樂場的小孩是坐接駁車（代幣 Lv8）來的：代幣的劇本 hold 住這個名冊、在車旁 spawn；日常在島上繞圈（名冊的衛星島 wander）
   // 物品 v2：鮮奶 Lv3 才有小學生（Lv2 是早餐店），配件跟鮮奶格的小孩同一張表
   if (lv.token >= 8 && lv.milk >= 3) {

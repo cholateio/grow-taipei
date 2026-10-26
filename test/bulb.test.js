@@ -9,9 +9,19 @@ import { createNav } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, DEFAULT_SECS } from './helpers/show.js';
-import { scripted } from '../src/actors/clamp.js';
-import { lv, worldPoints, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { OLD_MAX } from '../src/actors/clamp.js';
+import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
+import * as sat from '../src/actors/satellites.js';
+import * as chip from '../src/actors/chip.js';
+import * as tower from '../src/actors/tower.js';
+import { diffParts } from '../src/actors/stage.js';
+import { C } from '../src/actors/palette.js';
+import { MAIN_CELLS, adjacentPairs, SATELLITES, axialToWorld, R } from '../src/scene/hex.js';
+import { satelliteAt } from '../src/show/nav.js';
+import { trainPose, TRACK } from '../src/actors/token.js';
+import { STATION_A, TRAIN_MAX_BOOST } from '../src/show/beats.js';
+import { existsSync } from 'node:fs';
 const heads = s => s.parts.filter(p => p.kind === 'sphere');
 
 test('bulb lv1 is one street lamp', () => {
@@ -65,7 +75,7 @@ test('view: posts are one part, heads are one part per lighting stop in road ord
     const el = bulb.view(lv({ bulb: n }), {})['bulb.electrician'];
     assert.deepEqual([el.kind, el.n, el.accessory], ['roster', 1, 'vest']); assert.deepEqual(el.home, { kind: 'path', path: bulb.ROAD, loop: true, speed: 0.5, entry: bulb.ELECTRICIAN_ENTRY });
   }
-  assert.ok(bulb.script?.placed && [2, 3, 4, 5].every(n => bulb.script.grow[n]) && bulb.script.fx() === null);
+  assert.ok(bulb.script?.placed && [2, 3, 4, 5, 6, 7, 8, 9].every(n => bulb.script.grow[n]) && bulb.script.fx() === null);
 });
 test('lampApproach is walkable, 0.45 in from each lamp toward its cell centre', () => {
   const nav = createNav();
@@ -97,8 +107,9 @@ const onlys = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).fla
 const E = to => ({ kind: 'grow', item: 'bulb', to });
 // only 可能是 ctx => 鍵（演到才算）：用假 ctx 解開
 const applies = (beats, ctx) => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => (typeof b.only === 'function' ? b.only(ctx) : b.only));
-const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market', 'sat.lighthouse', 'sat.keeper'] : [])]);
-test('grow 2 lights the stops one by one along the road (posts with the first; market, lighthouse and keeper while he walks the last leg)', () => {
+// 物品 v2：燈塔改到燈泡 Lv7（離岸風電啟動）才亮，Lv2 只開夜市
+const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market'] : [])]);
+test('grow 2 lights the stops one by one along the road (posts with the first; the market while he walks the last leg)', () => {
   const s = { lv: lv({ bulb: 2 }), flags: {} };
   const c0 = fakeCtx(); assert.deepEqual(applies(bulb.script.grow[2](E(2), s, c0), c0), stopOrder(0));
   // 電工在半路上：從他最近的那站開始，沿路繞一圈（順序照樣沿路）；第 9 盞是第 5 站
@@ -128,37 +139,36 @@ async function liveAt({ run, bubblesLog }, order, pred) {
   throw new Error('event not found');
 }
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
-// Lv2 電工快走（2.8）繞全島一圈（實測 15–17.5 s；回合 8–50 s 由 pace 管）；計畫 3.8 Task 5 入口點、鏡頭焦點：上限各 +3 s，
-// 放置的下限 3 → 2.5（101 工地挪到走得到的空地，離第一盞燈近了一點，實測 2.8 s）
-const MAX_SECS = { 1: 11, 2: 22, 3: 13, 4: 13, 5: 13 }, MIN_SECS = { 1: 2.5, 2: 3, 3: 3, 4: 3, 5: 3 };
-function checkBulb({ show, bubblesLog }, e, secs, n) {
-  const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1;
-  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
-  const [lo, hi] = scripted('bulb', to) ? [MIN_SECS[to], MAX_SECS[to]] : DEFAULT_SECS;
+// 物品 v2 §6：一級 3–5 s；Lv2 電工快走（2.8）繞全島一圈點燈是燈泡保留的長旅程（§6「保留一兩段最好看的」，實測 15–17.5 s，上限照舊 22）；
+// ◆ Lv7（離岸風電）、Lv9（全島霓虹）6–10 s——含鏡頭平移與回全景的整段（show.elapsed，裁決 R8）
+const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, 22] : KEY.includes(to) ? [3, 10] : [3, 5]);
+const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
+const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
+function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
+  const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1, [lo, hi] = BUDGET(to);
+  (timing[to] ??= []).push(+secs.toFixed(1));
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('bulb');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);
   }
   const els = show.roster.members('bulb.electrician'); assert.equal(els.length, 1, what);
   assert.equal(els[0].mode, 'home', `${what} electrician home`);
+  // Lv7 起電工住在風車島上（搭列車過去的，不瞬移）；之前在主島巡路
+  assert.equal(onWindmill(els[0].pos), to >= 7, `${what} electrician on the windmill island: ${JSON.stringify(els[0].pos)}`);
   for (const m of show.roster.members('landmarks.islanders')) assert.equal(m.mode, 'home', `${what} islanders`);
 }
-test('scripts: every bulb level in both solutions plays within its budget, ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
+test('scripts: every bulb level in both solutions plays within its budget (3–5 s; Lv2 journey ≤ 22; ◆ Lv7/Lv9 6–10 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
   for (const order of SOLUTIONS) {
     show.reset();
-    const seen = new Set();
-    await playItem(show, tracked, order, 'bulb', (e, secs) => { seen.add(e.kind === 'grow' ? e.to : 1); checkBulb(h, e, secs, n); });
-    assert.ok(seen.has(1) && seen.has(2), `bulb events seen: ${[...seen]}`);
-    // playItem 碰不到的等級（落在倒數蒙太奇回合）：自己堆出前置狀態，單獨 live 演
-    for (const to of [2, 3, 4, 5].filter(t => !seen.has(t))) {
-      show.reset();
-      const { e, secs, n: before } = await liveAt(h, order, isBulb(to));
-      checkBulb(h, e, secs, before);
-    }
+    const seen = [];
+    await playItem(show, tracked, order, 'bulb', (e, secs) => { seen.push(e.kind === 'grow' ? e.to : 1); checkBulb(h, e, secs, n, timing); });
+    assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9], `bulb events seen: ${seen}`);
+    assert.equal(h.rail.trip ?? null, null, 'no trip left on the rail');
   }
 });
 test('grow 2 live: the stops light up one at a time in road order (cyclic from where the electrician starts)', async () => {
@@ -245,11 +255,13 @@ test('Lv4 never picks hidden islanders', () => {
 });
 
 // 入口點（§13.2、計畫 3.8 Task 5）：電工從 101 工地來；入口走得到、離他巡路的起點 ≥ 1.5（每一級；兩條正解每一刻的真 footprint）
-test('bulb.electrician enters from the 101 site, walkable and ≥ 1.5 from his spot at every level', async () => {
+// Lv7 起電工住在風車島上（衛星島的家沒有入口，同 sat.keeper）
+test('bulb.electrician enters from the 101 site, walkable and ≥ 1.5 from his spot at every level (Lv7+ he lives on the windmill island: no entry)', async () => {
   const nav = createNav(), bad = [], t = anchorWorld('tower');
-  for (const n of [1, 2, 3, 4, 5]) {
-    const v = bulb.view(lv({ bulb: n }), {}), e = v['bulb.electrician'].home.entry;
-    assert.ok(e === bulb.ELECTRICIAN_ENTRY && Math.hypot(e.x - t.x, e.z - t.z) < 1.5 && String(cellAt(e.x, e.z)) === '0,0', `lv${n} entry is the 101 site`);
+  for (let n = 1; n <= 9; n++) {
+    const v = bulb.view(lv({ bulb: n, token: n >= 7 ? 9 : 3 }), {}), e = v['bulb.electrician'].home.entry;
+    if (n >= 7) assert.ok(e === undefined && rosterSpots(v['bulb.electrician']).every(p => !cellAt(p.x, p.z)), `lv${n} lives off the main island, no entry`);
+    else assert.ok(e === bulb.ELECTRICIAN_ENTRY && Math.hypot(e.x - t.x, e.z - t.z) < 1.5 && String(cellAt(e.x, e.z)) === '0,0', `lv${n} entry is the 101 site`);
     bad.push(...entryProblems(v, nav, `lv${n}`));
   }
   bad.push(...await entriesThroughSolutions(bulb, SOLUTIONS));
@@ -286,16 +298,202 @@ test('grow 2 live: each pan reaches a cell as the electrician walks into it; LEV
     });
   }
 });
-test('grow 3 and 4: the first beat focuses the night-market cell; LEVEL UP pans back to the centre cell', async () => {
-  const market = landmarkWorld('market'), mc = [...cellAt(market.x, market.z)];
+// 物品 v2 §6：Lv3 電工就近在最近的那一站路燈下點霓虹（鏡頭對那一站的格子）；Lv4 島民去夜市排隊（鏡頭對夜市格）
+test('grow 3 focuses the electrician\'s nearest stop cell, grow 4 the night-market cell; LEVEL UP pans back to the centre cell', async () => {
+  const market = landmarkWorld('market'), mc = [...cellAt(market.x, market.z)], p = bulb.lampApproach(9);
   for (const n of [3, 4]) {
-    const ctx = fakeCtx(), beats = bulb.script.grow[n](E(n), { lv: lv({ bulb: n }), flags: {} }, ctx);
-    assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], ctx), mc, `lv${n}`);
-    assert.deepEqual(focusCell(beats.at(-1).beats.find(b => b.kind === 'focus'), ctx), [0, 0]);
+    const ctx = fakeCtx({ pos: p, head: () => p }), beats = bulb.script.grow[n](E(n), { lv: lv({ bulb: n }), flags: {} }, ctx), want = n === 3 ? bulb.stopCell(5) : mc;
+    assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], ctx), want, `lv${n}`);
+    assert.deepEqual(focusCell(beats.at(-1).beats.find(b => b.kind === 'focus'), ctx), String(want) === '0,0' ? null : [0, 0]);
     for (const order of SOLUTIONS) {
       const h = await headlessShow(); let n0 = 0;
       await liveAt({ ...h, run: (evs, opts) => { if (!opts?.instant) n0 = h.rig.log.length; return h.run(evs, opts); } }, order, isBulb(n));
-      assert.deepEqual(focusTrail(h.rig.log, n0), [mc, [0, 0], 'home'], `lv${n} ${order.join('>')}`);
+      const trail = focusTrail(h.rig.log, n0);
+      assert.deepEqual(trail.slice(-2), [[0, 0], 'home'], `lv${n} ${order.join('>')} ${JSON.stringify(trail)}`);
+      if (n === 4) assert.deepEqual(trail, [mc, [0, 0], 'home']); else assert.ok(trail.length <= 3, JSON.stringify(trail));
     }
+  }
+});
+
+// ════ 物品 v2：燈泡 9 級（§4.4）、離島鏈（§5）════
+// 照正解走到燈泡 n 級時的其他物品（Lv5 棒球 ≥4、Lv7 代幣 ≥7、Lv8 晶片 5、Lv9 代幣 9）
+const atLv = n => lv({ bulb: n, token: n >= 9 ? 9 : n >= 7 ? 7 : 3, chip: n >= 8 ? 5 : 2, baseball: n >= 5 ? 4 : 1 });
+const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => keys.includes(k)));
+// 燈泡看得見的東西：自己的零件＋風車與燈塔（衛星島）、海底電纜（晶片的零件）、101 燈光秀
+const whole = L => ({ ...bulb.view(L, {}), ...pick(sat.view(L, {}), ['sat.windmill', 'sat.lighthouse', 'sat.beam']), ...pick(chip.view(L, {}), ['chip.cable']), ...pick(tower.view(L, {}, { total: 20 }), ['tower.show']) });
+const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
+const V = Array.from({ length: 10 }, (_, n) => whole(atLv(n)));
+const NEON = ['bulb.neon.station', 'bulb.neon.bridges', 'bulb.neon.market'];
+
+test('bulb is off the transition clamp (max 9)', () => { assert.ok(!('bulb' in OLD_MAX)); assert.equal(spec.ITEMS.bulb.max, 9); });
+test('bulb has something new at every level 1–9: substation (6), turbine and lighthouse (7), the cable (8), island-wide neon (9)', () => {
+  for (let n = 1; n <= 9; n++) assert.ok(diffParts(nonRoster(V[n - 1]), nonRoster(V[n])).add.length, `lv${n}: something new`);
+  assert.ok(V[5]['tower.show'] && !V[4]['tower.show'], 'Lv5 light show on 101');
+  assert.ok(V[6]['bulb.substation'] && !V[5]['bulb.substation'], 'Lv6 substation');
+  assert.equal(V[6]['sat.windmill'].speed, 0, 'turbine still before Lv7'); assert.ok(V[7]['sat.windmill'].speed > 0, 'Lv7 the turbine turns');
+  assert.ok(!V[6]['sat.lighthouse'] && !V[6]['sat.beam'] && V[7]['sat.lighthouse'] && V[7]['sat.beam'], 'Lv7 the lighthouse lights');
+  assert.ok(!V[7]['chip.cable'] && V[8]['chip.cable'] && !V[8]['chip.cable'].lit, 'Lv8 the cable is laid, dark until chip 6');
+  for (const k of NEON) assert.ok(V[9][k] && !V[8][k], `Lv9 ${k}`);
+});
+// 晶片 Task 6 的電纜矩陣（燈泡這邊再驗一次）：燈泡 ≥8 鋪好，晶片 ≥6 才亮——不另外加第二條纜線
+test('bulb 8 lays chip.cable (dark while chip < 6, lit from chip 6); bulb adds no cable of its own', () => {
+  for (let b = 0; b <= 9; b++) for (let c = 0; c <= 9; c++) {
+    const cab = chip.view(lv({ bulb: b, chip: c }), {})['chip.cable'];
+    assert.equal(!!cab, b >= 8 || c >= 6, `bulb ${b} chip ${c}`); if (cab) assert.equal(cab.lit, c >= 6, `bulb ${b} chip ${c} lit`);
+    assert.ok(!Object.values(bulb.view(lv({ bulb: b, chip: c, token: 9 }), {})).some(p => p.kind === 'cable'), 'no second cable');
+  }
+});
+test('Lv6 substation: battery cabinets and a transformer whose insulators hum (glow); declared footprint in the centre cell', () => {
+  const s = bulb.view(atLv(6), {})['bulb.substation'];
+  assert.equal(s.kind, 'compound'); assert.ok(s.parts.filter(p => p.glow === C.neonBlue).length >= 4, 'cabinet lights and insulators glow');
+  assert.ok(s.parts.filter(p => p.kind === 'cylinder' && p.glow).length >= 3, 'three insulators on the transformer');
+  assert.deepEqual(cellAt(s.at.x, s.at.z), [0, 0]); assert.ok(!bulb.view(atLv(6), { blackout: true })['bulb.substation'].parts.some(p => p.glow), 'dark in a blackout');
+});
+// Lv9 全島霓虹：橋面（主島每一座橋＋上台地的階梯）、懸浮月台、夜市與車站的招牌；每個零件都發光
+test('Lv9 neon: every main-island bridge gets glowing deck strips; the floating platform and the market get strips and a cyberpunk sign', () => {
+  const v = bulb.view(atLv(9), {}), br = v['bulb.neon.bridges'], pairs = adjacentPairs(MAIN_CELLS);
+  assert.equal(pairs.length, 12);
+  assert.ok(br.parts.length >= pairs.length * 2 && br.parts.every(p => p.glow), `${br.parts.length} bridge strips, all glowing`);
+  for (const [A, Bc] of pairs) {   // 每座橋中點附近都有燈條
+    const a = axialToWorld(...A), b = axialToWorld(...Bc), m = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+    assert.ok(worldPoints(br).some(p => Math.hypot(p.x - m.x, p.z - m.z) < 0.3), `bridge ${A}–${Bc}`);
+  }
+  for (const k of ['bulb.neon.station', 'bulb.neon.market']) {
+    const p = v[k]; assert.equal(p.kind, 'neon'); assert.ok(p.parts.length && p.parts.every(q => q.glow), `${k} strips glow`);
+    assert.ok(p.models.length === 1 && p.models[0].path.startsWith('quat/cyberpunk/') && existsSync(new URL(`../assets/${p.models[0].path}`, import.meta.url)), `${k} sign glb`);
+    assert.ok(Object.values(p.models[0].glow).length, `${k} sign glows`);
+  }
+  assert.deepEqual(cellAt(v['bulb.neon.station'].at.x, v['bulb.neon.station'].at.z), [0, 1], 'on the floating platform by the station');
+  assert.equal(bulb.view(lv({ bulb: 9, token: 8 }), {})['bulb.neon.station'], undefined, 'no floating platform, no platform neon');
+  assert.ok(Object.values(bulb.view(atLv(9), { blackout: true })).every(p => !p.parts?.some(q => q.glow)), 'dark in a blackout');
+});
+// 霓虹：一站一個發光色（沿路粉藍交錯），燈頭一站一個 draw call
+test('Lv3+ lamp heads: one neon colour per stop, alternating pink and blue along the road', () => {
+  const v = bulb.view(atLv(3), {}), cols = LAMPS(v).map(s => new Set(s.parts.map(p => p.glow)));
+  assert.ok(cols.every(c => c.size === 1), 'one colour per stop');
+  cols.forEach((c, k) => { if (k) assert.notDeepEqual([...c], [...cols[k - 1]], `stop ${k} differs from stop ${k - 1}`); });
+});
+
+// ── draw call（§10）：燈泡自己的零件（路燈、夜市、變電所、霓虹）≤ 24 ──
+// compound：有黏土零件一個 + 每種發光色一個；neon：compound 那份 + 每個 glb（有 glow 再 +1）；名冊不算
+function drawCalls(v) {
+  const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size, glb = m => 1 + (m.glow ? 1 : 0);
+  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'neon' ? compound(p.parts) + p.models.reduce((a, m) => a + glb(m), 0) : 0), 0);
+}
+test('bulb draw calls ≤ 24 at every level (blackout included)', () => {
+  for (let n = 1; n <= 9; n++) for (const flags of [{}, { blackout: true }]) {
+    const d = drawCalls(bulb.view(atLv(n), flags)); assert.ok(d <= 24, `lv${n} ${JSON.stringify(flags)}: ${d}`);
+  }
+});
+// ── 不出格（§14.1）：每個 footprint 的角都在它那一格裡 ──
+test('every bulb footprint corner stays inside its cell', () => {
+  for (let n = 1; n <= 9; n++) for (const [key, s] of Object.entries(bulb.view(atLv(n), {}))) for (const f of [].concat(s.footprint || [])) {
+    const cell = cellAt(s.at.x, s.at.z), cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
+    for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), cell, `lv${n} ${key} corner (${(cx + dx).toFixed(2)}, ${(cz + dz).toFixed(2)})`);
+  }
+});
+test('the substation keeps the road and the 101 foot walkable and leaves a lane to the 101', () => {
+  const v = bulb.view(atLv(6), {}), nav = createNav();
+  nav.setFootprints([...Object.values(v), ...Object.values(tower.view(atLv(6), {}, { total: 20 }))].flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+  const s = v['bulb.substation'], front = bulb.SUBSTATION_FRONT;
+  assert.ok(nav.walkable(front.x, front.z), 'the electrician can stand in front');
+  assert.ok(nav.route(front, { x: s.at.x, y: s.at.y, z: s.at.z - 0.8 }).length > 1, 'a way round behind it');
+});
+
+// ── 電工的家：Lv1–6 沿主路巡；Lv7 起住在風車島（風機腳下的小圈，衛星島的 wander）──
+test('the electrician patrols ROAD through Lv6 and lives on the windmill island from Lv7, ringing clear of the tower, the switch box and the house', () => {
+  for (let n = 1; n <= 6; n++) assert.equal(bulb.view(atLv(n), {})['bulb.electrician'].home.kind, 'path');
+  const s = SATELLITES.find(x => x.kind === 'windmill'), c = axialToWorld(s.q, s.r);
+  for (let n = 7; n <= 9; n++) {
+    const el = bulb.view(atLv(n), {})['bulb.electrician'], h = el.home;
+    assert.deepEqual([el.kind, el.n, el.accessory, h.kind], ['roster', 1, 'vest', 'wander']);
+    for (let i = 0; i < 24; i++) {
+      const a = i / 24 * 2 * Math.PI, p = { x: h.at.x + Math.cos(a) * h.r, z: h.at.z + Math.sin(a) * h.r }, rel = { x: p.x - c.x, z: p.z - c.z };
+      assert.ok(onWindmill(p) && Math.hypot(rel.x, rel.z) < R * 0.8, `ring point ${i} on the island`);
+      assert.ok(Math.hypot(rel.x, rel.z) > 0.25, 'clear of the turbine mast'); assert.ok(Math.hypot(rel.x - 0.3, rel.z - 0.25) > 0.15, 'clear of the switch box');
+      assert.ok(Math.abs(rel.x + 0.7) > 0.45 || Math.abs(rel.z - 0.4) > 0.4, 'clear of the house');
+      assert.ok(rel.x < 0.95 || Math.abs(rel.z) > 0.25, 'clear of the spur deck');
+    }
+  }
+});
+
+// ── 劇本：◆ Lv7、Lv9 是關鍵節點（裁決 R11）──
+const fullFlat = bs => bs.flatMap(b => (b.kind === 'together' ? fullFlat(b.beats) : b.kind === 'trainStop' ? [b, ...fullFlat(b.during)] : [b]));
+test('◆ Lv7 and Lv9 are key nodes (R11); the other levels are short scripts', () => {
+  assert.equal(bulb.script.grow[7].key, true); assert.equal(bulb.script.grow[9].key, true);
+  for (const n of [2, 3, 4, 5, 6, 8]) assert.ok(!bulb.script.grow[n].key, `lv${n}`);
+});
+// 照 order 把整局瞬間演到 pred 命中的事件，那個事件單獨 live 演；每幀呼叫 onFrame(show)
+async function liveFrames(order, pred, onFrame) {
+  const h = await headlessShow(), update = h.show.update;
+  let on = false, r0 = 0;
+  h.show.update = (dt, t) => { update(dt, t); if (on) onFrame(h, dt); };
+  const r = await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) r0 = h.rig.log.length; return h.run(evs, opts); } }, order, pred);
+  return { ...h, ...r, r0 };
+}
+// ★◆ Lv7 離岸風電啟動：電工走到站前 → 坐上列車（車頂）→ 列車開進風車島的支線 → 跳下來按開關（build）→ 風車才開始轉 → 燈塔才亮 → 回全景、LEVEL UP。
+// 全程不瞬移（每幀位移 ≤ 0.6：環上趕路最快 4.5 倍約 0.45／幀）；最後住在風車島上
+test('Lv7 live: the electrician walks to the station, rides the train out to the windmill island, flips the switch; only then the blades turn and the lighthouse lights', async () => {
+  for (const order of SOLUTIONS) {
+    let prev = null, maxStep = 0, at = 0, rode = 0, station = false, firstBuild = null, firstSpin = null, firstLight = null, rot = null;
+    const what = order.join('>');
+    const { show, secs } = await liveFrames(order, isBulb(7), (h, dt) => {
+      at += dt;
+      const [m] = h.show.roster.members('bulb.electrician'); if (!m) return;
+      if (prev) maxStep = Math.max(maxStep, Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z)); prev = { ...m.pos };
+      if (String(cellAt(m.pos.x, m.pos.z)) === '0,1') station = true;
+      const car = trainPose(h.show.ctx?.now ?? 0, 0, {});   // 只用來判斷「在海上、比軌道高」：坐在車頂
+      if (!cellAt(m.pos.x, m.pos.z) && satelliteAt(m.pos) < 0 && m.pos.y > TRACK.y + 0.1) rode++;
+      if (firstBuild === null && m.walker?.gesture?.kind === 'build') firstBuild = at;
+      const o = h.show.stage.partObject('sat.windmill'), z = o?.visible ? o.children[0].rotation.z : null;
+      if (z !== null && rot !== null && Math.abs(z - rot) > 1e-9 && firstSpin === null) firstSpin = at;
+      rot = z;
+      if (firstLight === null && h.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;
+      void car;
+    });
+    assert.ok(station, `${what}: walked into the station cell`);
+    assert.ok(rode > 20, `${what}: rode on the train over the sea (${rode} frames)`);
+    assert.ok(maxStep <= 0.6, `${what}: no teleport (max step ${maxStep.toFixed(2)})`);
+    assert.ok(firstBuild !== null && firstSpin !== null && firstSpin > firstBuild, `${what}: blades turn after the switch (${firstBuild}, ${firstSpin})`);
+    assert.ok(firstLight !== null && firstLight >= firstSpin, `${what}: lighthouse lights after the turbine (${firstSpin}, ${firstLight})`);
+    const [m] = show.roster.members('bulb.electrician'); assert.ok(onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
+    assert.ok(show.roster.members('sat.keeper').length === 1, 'the keeper comes with the light');
+    assert.ok(secs <= 10, `${what}: ${secs.toFixed(2)} s`);
+  }
+});
+// 坐車那段列車不超速、不瞬移：環上每幀轉的角度 ≤ 原速 4.5 倍；從站上出發（launch）是慢慢加速的
+test('Lv7: every frame the train moves at most 4.5× normal speed, and it eases out of the station', async () => {
+  for (const order of SOLUTIONS) {
+    const rates = [];
+    await liveFrames(order, isBulb(7), (h, dt) => { const o = h.rail.offset; rates.push([o, dt]); });
+    const r = rates.slice(1).map(([o, dt], i) => 1 + (o - rates[i][0]) / dt);
+    assert.ok(Math.max(...r.map(Math.abs)) <= TRAIN_MAX_BOOST + 1e-6, `${order.join('>')} max ${Math.max(...r).toFixed(2)}×`);
+    // 停站（≈ 0）之後的下一段不是一幀就跳到 4 倍以上
+    for (let i = 1; i < r.length; i++) if (Math.abs(r[i - 1]) < 1e-6 && r[i] > 1e-6) assert.ok(r[i] < 1.5, `${order.join('>')} launch jumps to ${r[i].toFixed(2)}×`);
+  }
+});
+// ★ Lv8 海底電纜：鏡頭在風車島、電工在開關箱前一敲（build）→ 電纜閃白鋪好（晶片 < 6：暗的）
+test('Lv8 live: the electrician works at the switch box on the windmill island and the cable appears (dark while chip < 6)', async () => {
+  for (const order of SOLUTIONS) {
+    let build = 0, cableAt = null, t = 0;
+    const { show } = await liveFrames(order, isBulb(8), (h, dt) => {
+      t += dt; const [m] = h.show.roster.members('bulb.electrician');
+      if (m?.walker?.gesture?.kind === 'build') { build++; assert.ok(onWindmill(m.pos), 'working on the windmill island'); }
+      if (cableAt === null && h.show.stage.partObject('chip.cable')?.visible) cableAt = t;
+    });
+    assert.ok(build > 10 && cableAt !== null, `${order.join('>')}: build ${build}, cable ${cableAt}`);
+    const cab = chip.view(show.stage.lv, show.stage.flags)['chip.cable']; assert.ok(cab);
+    assert.equal(cab.lit, show.stage.lv.chip >= 6);
+  }
+});
+// ◆ Lv9 全島霓虹：鏡頭先到車站格、再回全景；霓虹零件一個個閃白亮起，從第一個到最後一個 ≤ 1.5 s
+test('Lv9 live: the neon parts light up one after another within 1.5 s, with one camera pass (station cell → overview)', async () => {
+  for (const order of SOLUTIONS) {
+    const first = {}; let t = 0;
+    const h = await liveFrames(order, isBulb(9), (hh, dt) => { t += dt; for (const k of NEON) if (first[k] === undefined && hh.show.stage.partObject(k)?.visible) first[k] = t; });
+    const ts = NEON.map(k => first[k]); assert.ok(ts.every(x => x !== undefined), JSON.stringify(first));
+    assert.ok(Math.max(...ts) - Math.min(...ts) <= 1.5, `${order.join('>')} ${JSON.stringify(first)}`);
+    const trail = focusTrail(h.rig.log, h.r0);
+    assert.deepEqual(trail.slice(0, 2).map(String), ['0,1', 'home'], JSON.stringify(trail));
   }
 });

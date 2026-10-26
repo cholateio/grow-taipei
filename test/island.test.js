@@ -40,5 +40,7 @@ test('windmill blades and the chest lid are actors now, not static kit parts', a
   const mats = { ground: () => null, rock: null, solid: () => null, curb: null, path: null, shallow: null, foam: null };
   const kw = createKit(THREE); buildSatellite(THREE, kw, { kind: 'windmill', q: 2.4, r: 0 }, mats); assert.equal(kw.count('box'), 0, 'no blade boxes');
   const kc = createKit(THREE); buildSatellite(THREE, kc, { kind: 'chest', q: 0, r: 2.4 }, mats); assert.equal(kc.count('rbox'), 1, 'chest body only');
+  // 物品 v2 §5：燈塔開局是暗的——kit 的燈室不是發光件（夜裡全島發光會把它點亮），燈泡 Lv7 才由演員 sat.lighthouse 點亮
+  const kl = createKit(THREE); buildSatellite(THREE, kl, { kind: 'lighthouse', q: 2.4, r: 0 }, mats); assert.equal(kl.count('glowsphere') ?? 0, 0, 'unlit lighthouse lamp');
   globalThis.document = prev;
 });

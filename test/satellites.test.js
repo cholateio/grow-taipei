@@ -15,19 +15,23 @@ installFakeDom();
 const { createStage } = await import('../src/actors/stage.js');
 const allMax = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));
 
-test('windmill blades: idle 1, storm 6 with wobble, blackout 0, after the storm back to 1', () => {
-  assert.equal(sat.view(lv({}), {})['sat.windmill'].speed, 1);
-  const storm = sat.view(lv({ typhoon: 2 }), {})['sat.windmill']; assert.equal(storm.speed, 6); assert.ok(storm.wobble);
+// 物品 v2 §5（review focus 5）：風車與燈塔開局是暗的、不轉的；燈泡 Lv7 電工去按開關（離岸風電啟動）才轉、才亮。
+// 颱風時不管有沒有電，風車都被風吹得狂轉、整座搖（那是風不是電）；大停電時沒有颱風就停
+test('windmill blades: still at the opening and below bulb 7, turn at bulb 7; the storm spins them with or without power; blackout stops them', () => {
+  for (const bulb of [0, 1, 2, 3, 5, 6]) { const w = sat.view(lv({ bulb }), {})['sat.windmill']; assert.equal(w.speed, 0, `bulb ${bulb}`); assert.ok(!w.wobble); }
+  for (const bulb of [7, 8, 9]) assert.equal(sat.view(lv({ bulb }), {})['sat.windmill'].speed, 1, `bulb ${bulb}`);
+  for (const bulb of [0, 2, 6, 7, 9]) { const storm = sat.view(lv({ bulb, typhoon: 2 }), {})['sat.windmill']; assert.equal(storm.speed, 6, `storm, bulb ${bulb}`); assert.ok(storm.wobble); }
+  assert.equal(sat.view(lv({ bulb: 2, typhoon: 2 }), { blackout: true })['sat.windmill'].speed, 6, 'blackout in the storm: the wind still turns it');
   assert.equal(sat.view(lv({ bulb: 2 }), { blackout: true })['sat.windmill'].speed, 0);
-  assert.equal(sat.view(lv({ typhoon: 3 }), {})['sat.windmill'].speed, 1);
-  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: sat.builders }), p = f.build(sat.view(lv({}), {})['sat.windmill']);
-  p.update(0.5, 0.5); assert.notEqual(p.object.children[0].rotation.z, 0, 'blades turn');
+  assert.equal(sat.view(lv({ bulb: 7, typhoon: 3 }), {})['sat.windmill'].speed, 1, 'after the storm back to the powered turn');
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: sat.builders });
+  const on = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']); on.update(0.5, 0.5); assert.notEqual(on.object.children[0].rotation.z, 0, 'powered blades turn');
+  const off = f.build(sat.view(lv({}), {})['sat.windmill']); off.update(0.5, 0.5); assert.equal(off.object.children[0].rotation.z, 0, 'dark blades stand still');
 });
-test('lighthouse lights at bulb 2, sweeps at bulb 3, dark in a blackout', () => {
-  assert.equal(sat.view(lv({ bulb: 1 }), {})['sat.lighthouse'], undefined);
-  assert.ok(sat.view(lv({ bulb: 2 }), {})['sat.lighthouse']); assert.equal(sat.view(lv({ bulb: 2 }), {})['sat.beam'], undefined);
-  assert.equal(sat.view(lv({ bulb: 3 }), {})['sat.beam'].kind, 'beam');
-  assert.equal(sat.view(lv({ bulb: 3 }), { blackout: true })['sat.lighthouse'], undefined);
+test('lighthouse is dark until bulb 7 (no light, no beam), lit and sweeping from bulb 7', () => {
+  for (const bulb of [0, 1, 2, 3, 5, 6]) { const v = sat.view(lv({ bulb }), {}); assert.equal(v['sat.lighthouse'], undefined, `bulb ${bulb}`); assert.equal(v['sat.beam'], undefined); }
+  for (const bulb of [7, 9]) { const v = sat.view(lv({ bulb }), {}); assert.ok(v['sat.lighthouse'].parts.some(p => p.glow)); assert.equal(v['sat.beam'].kind, 'beam'); }
+  assert.equal(sat.view(lv({ bulb: 7 }), { blackout: true })['sat.lighthouse'], undefined);
 });
 test('playground kids come with the shuttle and need a school; forest tourists and the shop need the chain', () => {
   // 小孩是坐接駁車（物品 v2：代幣 Lv8）來的：代幣 Lv8 的劇本 hold 住名冊、在車旁 spawn
@@ -55,7 +59,7 @@ test('boats: 2, 4 with a queue, 6 with the chain, none in the storm', () => {
 });
 test('every satellite part sits on its island (within R of the island centre) except boats', () => {
   const centres = SATELLITES.map(s => axialToWorld(s.q, s.r));
-  for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 4, chip: 3, rat: 3, bulb: 3 }), {})]) for (const [k, s] of Object.entries(v)) {
+  for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 4, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
     const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
@@ -91,11 +95,11 @@ test('satellite rosters live off the main island: no entry declared, nothing for
   }
 });
 
-// §14.3：燈塔亮了（燈泡 ≥2）之後有一位守塔人在燈塔島上繞圈（衛星島的 wander 走 ringPath）；燈還沒亮就沒有
-test('satellites: lighthouse keeper appears at bulb ≥ 2 and rings the island; absent below', async () => {
-  assert.equal(sat.view(lv({ bulb: 1 }), {})['sat.keeper'], undefined);
+// §14.3：燈塔亮了（物品 v2：燈泡 ≥7）之後有一位守塔人在燈塔島上繞圈（衛星島的 wander 走 ringPath）；燈還沒亮就沒有
+test('satellites: lighthouse keeper appears at bulb ≥ 7 and rings the island; absent below', async () => {
+  for (const bulb of [1, 2, 6]) assert.equal(sat.view(lv({ bulb }), {})['sat.keeper'], undefined, `bulb ${bulb}`);
   const s = SATELLITES.find(x => x.kind === 'lighthouse'), c = axialToWorld(s.q, s.r);
-  for (const bulb of [2, 3, 5]) {
+  for (const bulb of [7, 8, 9]) {
     const k = sat.view(lv({ bulb }), {})['sat.keeper'];
     assert.deepEqual([k.kind, k.n, k.home.kind, k.home.entry], ['roster', 1, 'wander', undefined], `bulb ${bulb}`);
     assert.ok(Math.hypot(k.home.at.x - c.x, k.home.at.z - c.z) < 0.3, 'circles the lighthouse');
@@ -105,7 +109,7 @@ test('satellites: lighthouse keeper appears at bulb ≥ 2 and rings the island; 
   let st = engine.createState(spec);
   for (const id of stats(enumerate(spec), spec).full[0].order) {
     const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true });
-    if (st.lv.bulb >= 2) break;
+    if (st.lv.bulb >= 7) break;
     assert.equal(show.roster.members('sat.keeper').length, 0, 'no keeper before the light');
   }
   const [m] = show.roster.members('sat.keeper'), k = sat.view(show.stage.lv, show.stage.flags)['sat.keeper'].home, start = { ...m.pos };
@@ -118,8 +122,8 @@ test('satellites: lighthouse keeper appears at bulb ≥ 2 and rings the island; 
   }
   assert.ok(far > 0.3, 'walks round');
 });
-// 守塔人跟燈塔的燈同一拍出現（燈泡 Lv2 電工走最後一段時），不是回合末才冒出來（審查）
-test('the keeper appears on the same frame as the lighthouse light during bulb Lv2', async () => {
+// 守塔人跟燈塔的燈同一拍出現（物品 v2：燈泡 Lv7 電工按下開關、風車轉了之後），不是回合末才冒出來（審查）
+test('the keeper appears on the same frame as the lighthouse light during bulb Lv7', async () => {
   const { headlessShow } = await import('./helpers/show.js'), { show, run } = await headlessShow(), update = show.update;
   let frame = 0, light = null, keeper = null;
   show.update = (dt, t) => { update(dt, t); frame++; if (light === null && show.stage.partObject('sat.lighthouse')) light = frame; if (keeper === null && show.roster.members('sat.keeper').length) keeper = frame; };
@@ -127,11 +131,11 @@ test('the keeper appears on the same frame as the lighthouse light during bulb L
   for (const id of stats(enumerate(spec), spec).full[0].order) {
     const r = engine.place(st, id, spec); st = r.state;
     for (const e of [...r.events, { kind: 'settle' }]) {
-      if (!done && e.kind === 'grow' && e.item === 'bulb' && e.to === 2) { await run([e]); done = true; }
+      if (!done && e.kind === 'grow' && e.item === 'bulb' && e.to === 7) { await run([e]); done = true; }
       else await run([e], { instant: true });
     }
     if (done) break;
   }
-  assert.ok(done && light !== null, 'the light comes on during the live bulb Lv2');
+  assert.ok(done && light !== null, 'the light comes on during the live bulb Lv7');
   assert.equal(keeper, light, `keeper on frame ${keeper}, light on frame ${light}`);
 });

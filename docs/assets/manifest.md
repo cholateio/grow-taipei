@@ -39,15 +39,15 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 晶片 | 7 ★ | `tower.antenna` | `quat/cyberpunk/Antenna_1.glb`（細桿）、`Antenna_2.glb`（碟子）＋程式塔頂環（零件 kind `antenna`，tower.js） | CC0 | 換新 |
 | 晶片 | 8 ★ | `tower.shield`（state `test`） | 程式（零件 kind `shield`，parts.js：半球半透明淡藍、六角格紋 DataTexture；閃三下後縮回地面） | — | 現有 |
 | 晶片 | 9 ★◆ | `tower.shield`（state `standby`）、`tower.antenna`（pulse） | 程式（罩子淡淡常駐、格紋往上捲；天線環與塔身大環每 3 秒閃一圈）；結局用 `shieldSpec('full')` 全亮 | — | 現有 |
-| 燈泡 | 1 | `bulb.main` | `quat/streets/Streetlight_Single.glb`（燈罩 glow） | CC0 | 待做（程式版現有） |
-| 燈泡 | 2 | `bulb.posts`、`bulb.market` | `quat/streets/Streetlight_Double.glb`；夜市 2 攤 = `quat/village/MarketStand_1.glb`、`MarketStand_2.glb` | CC0 | 待做（程式版現有） |
-| 燈泡 | 3 | `bulb.posts`、`bulb.market` | 程式（霓虹色燈頭、傍晚） | — | 現有 |
-| 燈泡 | 4 | `bulb.market` | `kenney/market/display-fruit.glb`、`display-bread.glb`（加兩攤）、`quat/cyberpunk/Sign_2.glb`（霓虹招牌 glow） | CC0 | 待做（程式版現有） |
+| 燈泡 | 1 | `bulb.main` | 程式（燈桿＋燈頭；`Streetlight_Single.glb` 沒換：15 盞路燈一盞一個 glb 會超 draw call，主燈和其他燈要同一款） | — | 現有（glb 未採用） |
+| 燈泡 | 2 | `bulb.posts`、`bulb.lamps.<站>`、`bulb.market` | 程式（燈桿一個零件、燈頭一站一個零件；夜市 2 攤）；`Streetlight_Double`、`MarketStand_1/2` 沒換（夜市東攤離主路只剩 0.04，glb 攤子比程式攤大） | — | 現有（glb 未採用） |
+| 燈泡 | 3 | `bulb.lamps.<站>`、`bulb.main` | 程式（霓虹：一站一色、沿路粉藍交錯——一站一個 draw call；傍晚） | — | 現有 |
+| 燈泡 | 4 | `bulb.market` | 程式（四攤＋粉紅招牌板）；`display-fruit/bread` 沒用 | — | 現有（glb 未採用） |
 | 燈泡 | 5 | `bulb.posts`、`tower.*` | 程式（全島 LED、101 燈光秀、夜晚） | — | 現有 |
-| 燈泡 | 6 | `bulb.substation` | 程式（儲能櫃、變壓器）；可配 `kenney/industrial/chimney-small.glb` 當散熱塔 | — | 待做 |
-| 燈泡 | 7 ★◆ | `sat.windmill`、`sat.lighthouse`、`bulb.electrician` | `kaykit/spacebase/windturbine_tall.gltf`（可選；葉片是獨立節點，要轉就 `merge: false` 或拆開）；燈塔 = 程式 | CC0 | 待做 |
-| 燈泡 | 8 ★ | `bulb.cable` | 程式（風車島到主島的發光纜線） | — | 待做 |
-| 燈泡 | 9 ◆ | `bulb.neon` | 程式＋`quat/cyberpunk/Sign_1.glb`、`TV_1.glb`、`Platform_4x1_Empty.glb`（glow） | CC0 | 待做 |
+| 燈泡 | 6 | `bulb.substation` | 程式（中心格 101 西邊：水泥台、兩座儲能櫃（指示燈）、變壓器＋三根礙子亮淡藍、矮圍籬）；沒配散熱塔 glb | — | 現有 |
+| 燈泡 | 7 ★◆ | `sat.windmill`（speed 0 → 1）、`sat.lighthouse`、`sat.beam`、`sat.keeper`、`bulb.electrician`（家換到風車島） | 程式：風車塔身＋開關箱在 island.js 的 kit、葉片是 `blades` 演員；燈塔燈室改成不發光的 kit 球（開局暗），演員亮燈。`windturbine_tall.gltf` 沒用（可選；kit 塔身不花 draw call） | — | 現有 |
+| 燈泡 | 8 ★ | `chip.cable` | 晶片的零件（任務 6，零件 kind `cable`）：燈泡 ≥8 鋪好（暗），晶片 ≥6 通電；燈泡不另畫纜線 | — | 現有 |
+| 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`、`bulb.neon.market`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅、夜市屋簷霓虹藍）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）、`Sign_2.glb`（夜市招牌，發粉紅光；換掉 Lv4 的招牌板） | CC0 | 換新 |
 | 颱風 | 1 | `typhoon.main` | 程式（灰雲） | — | 現有 |
 | 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈、大雨、外送機車） | — | 現有 |
 | 颱風 | 3 | `typhoon.rainbow`、`typhoon.park` | 程式（彩虹、河濱公園）；堤防一圈待做 | — | 現有（堤防待做） |

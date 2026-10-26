@@ -1,23 +1,34 @@
-// 燈泡（§5.1）：一盞路燈 → 五個低格的路都有燈、夜市兩攤 → 霓虹（粉藍交錯）→ 夜市四攤＋霓虹招牌 → 全島 LED（燈光秀在 101）。
+// 燈泡（物品 v2 §4.4，max 9）：一盞路燈 → 五個低格的路都有燈、夜市兩攤 → 霓虹（粉藍交錯）、傍晚 → 夜市四攤＋霓虹招牌
+//   → 全島 LED（燈光秀在 101）、夜晚 → 變電所（儲能櫃、變壓器嗡嗡亮）→ ★◆ 離岸風電啟動（電工搭列車到風車島按開關：風車轉、燈塔亮）
+//   → ★ 海底電纜（晶片的 chip.cable 鋪好；晶片 Lv6 才通電發光）→ ◆ 全島賽博霓虹（橋面、懸浮月台、夜市與車站的招牌發光）。
+// 風車與燈塔是衛星島的零件（satellites.js 看燈泡 ≥7）；電纜是晶片的零件（chip.js 看燈泡 ≥8）——燈泡的劇本用 apply 的 only 叫它們出來。
 // 大停電：所有燈熄（view 拿掉發光；app 另外把全島發光歸零）。
-// 劇本（§8.3）：電工從 101 工地走來裝第一盞 → 沿主路一盞盞點燈、夜市開張 → 夜市霓虹、傍晚 → 島民來排隊 → 101 腳下全島 LED、入夜。
-import { anchorWorld, landmarkWorld } from './anchors.js';
-import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R } from '../scene/hex.js';
+// 電工：Lv1–6 沿主路巡；Lv7 搭車去風車島開了風電，之後就住在風車島上（繞風機腳下的小圈，衛星島的 wander），Lv8 在島上接電纜。
+// 劇本（§6）：一級 3–5 秒；Lv2 點燈繞全島一圈是燈泡保留的長旅程（§6「保留一兩段最好看的」）；◆ Lv7、Lv9 6–10 秒、回全景定格。
+import { anchorWorld, landmarkWorld, frontOf } from './anchors.js';
+import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R, MAIN_CELLS, adjacentPairs, edgeMidpoint, SATELLITES, TOP } from '../scene/hex.js';
+import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
+import { BLINK } from '../show/blink.js';
+import { STATION_A } from '../show/beats.js';
+import { trainPose, DECK_AT } from './token.js';
 import { C, offset } from './palette.js';
-import { clampLv } from './clamp.js';
 
 export const id = 'bulb';
 export const labelY = 0.8;
 const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
-// 夜市前（第一攤西邊、捷運站那側的空地）：電工 ♪、島民排隊站這裡。攤子之間、東攤與格子東角之間的空隙外擴 PAD 後是走不進去的死角，
+// 夜市前（第一攤西邊、捷運站那側的空地）：Lv4 島民排隊站這裡。攤子之間、東攤與格子東角之間的空隙外擴 PAD 後是走不進去的死角，
 // 不用「夜市中心附近的可走點」（會挑到死角裡、走不到）
 const MARKET_FRONT = offset(MARKET, -0.6, 0);
 const SITE = offset(TOWER, 0.9, 1.0);     // 101 工地（電工從這裡出發；名冊入口 §13.2）：101 南側走得到的空地，和晶片的工人同一處
 export const ELECTRICIAN_ENTRY = SITE;
-const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z);   // 鏡頭對的格子：路燈（中心格）、夜市
+const STATION = anchorWorld('token');
+const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市、捷運站
+const ISLAND_ZOOM = 0.8;   // 鏡頭到衛星島拉近 0.8（島和支線都要進畫面，同代幣 Lv7）
+const QUEUE_SPEED = 2.4;   // Lv4 島民快步去夜市排隊（一般走路 1.6；一級 3–5 秒）
 const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
 const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
+export const ISLAND_LV = 7;   // 離岸風電啟動那一級起，電工住在風車島上
 export const LIGHTING_SPEED = 2.8;   // 點燈這段電工快走（一般走路 1.6；2.4 → 2.8 是節奏驗收的裁定，見規格 §12）
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）
 function ringPoint(cell, deg, r) {
@@ -63,39 +74,121 @@ const post = (x, z) => ({ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5
 const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head });
 const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 
-export function view(lv, flags) {
-  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
+// ── 變電所（Lv6）：中心格西北、101 西邊的空地（電工主路在中心格南半邊，離這裡遠；101 外擴後和它之間留一條走道）。
+// 水泥台上兩座儲能櫃（白櫃、前面一條指示燈）＋一座變壓器（深藍箱、三根礙子），通電時指示燈與礙子亮淡藍（嗡嗡亮）；四角矮圍籬 ──
+const SUB = { w: 0.8, d: 0.5 };
+const CENTRE = axialToWorld(0, 0);
+export const SUBSTATION = { x: CENTRE.x - 1.15, y: cellTop([0, 0]), z: CENTRE.z - 0.85 };
+export const SUBSTATION_FRONT = offset(SUBSTATION, 0, 0.6);   // 電工蓋變電所站的位置（台子的鏡頭側，外擴後的 footprint 外）
+function substationParts(lit) {
+  const glow = lit ? { color: C.neonBlue, glow: C.neonBlue } : { color: C.window };
+  return [
+    { kind: 'box', pos: [0, 0.02, 0], scale: [SUB.w, 0.04, SUB.d], color: C.curb },
+    ...[-0.27, -0.07].flatMap(x => [
+      { kind: 'box', pos: [x, 0.2, -0.03], scale: [0.16, 0.32, 0.3], color: C.white },
+      { kind: 'box', pos: [x, 0.3, 0.125], scale: [0.1, 0.03, 0.012], ...glow },
+    ]),
+    { kind: 'box', pos: [0.22, 0.17, 0], scale: [0.26, 0.26, 0.26], color: C.navy },
+    ...[-0.08, 0, 0.08].map(dx => ({ kind: 'cylinder', pos: [0.22 + dx, 0.36, 0], scale: [0.04, 0.12, 0.04], ...glow })),
+    ...[[-0.38, -0.23], [0.38, -0.23], [-0.38, 0.23], [0.38, 0.23]].map(([x, z]) => ({ kind: 'cylinder', pos: [x, 0.12, z], scale: [0.03, 0.2, 0.03], color: C.wood })),
+  ];
+}
+
+// ── 風車島（Lv7 起電工的家）：kit 在風機腳下 (0.3, 0.25) 畫了開關箱（island.js），海底電纜從它底下接出去 ──
+const WIND = (() => { const s = SATELLITES.find(x => x.kind === 'windmill'), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP - 0.2, z: c.z }; })();
+export const SWITCH = offset(WIND, 0.3, 0.25);
+const SWITCH_FRONT = { ...offset(WIND, 0.3, 0.6), yaw: Math.PI };   // 開關箱的鏡頭側，面向箱子
+// 島上的小圈：在風機腳下的東南（風機塔身、開關箱、西邊的小屋、東邊進島的支線高架都不碰）
+export const ISLAND_HOME = offset(WIND, 0.5, 0.75), ISLAND_R = 0.35;
+
+// ── 全島賽博霓虹（Lv9）：主島每一座橋（含上台地的階梯）兩側一條霓虹藍燈條；懸浮月台四邊一圈粉紅燈條＋電視牆；
+// 夜市每一攤屋簷一條燈條＋霓虹招牌（換掉 Lv4 的招牌板）。每一份是一個零件（劇本一份份閃白亮起）——三份共 7 個 draw call ──
+const strip = (x, y, z, len, ry, glow) => ({ kind: 'box', pos: [x, y, z], scale: [0.03, 0.02, len], rot: [0, ry, 0], ...glow });
+function bridgeStrips(glow) {
+  const out = [];
+  for (const [A, B] of adjacentPairs(MAIN_CELLS)) {
+    const ta = cellTop(A), tb = cellTop(B), { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2);
+    const side = (ry, s, w) => [Math.cos(ry) * w * s, -Math.sin(ry) * w * s];
+    if (ta === tb) {
+      for (const d of bridgeDecks(a, b, { base: ta, arch: 0.08 })) for (const k of [-1, 1]) {
+        const [ox, oz] = side(d.ry, k, 0.23); out.push(strip(d.x + ox, d.y + 0.035, d.z + oz, d.len * 1.1, d.ry, glow));
+      }
+      continue;
+    }
+    // 階梯（同 island.js）：每一階的階面兩側一段
+    const steps = 5, dx = b.x - a.x, dz = b.z - a.z, ry = Math.atan2(dx, dz), len = Math.hypot(dx, dz) / steps;
+    for (let i = 0; i < steps; i++) for (const k of [-1, 1]) {
+      const t = (i + 0.5) / steps, [ox, oz] = side(ry, k, 0.28);
+      out.push(strip(a.x + dx * t + ox, ta + (tb - ta) * t + 0.012, a.z + dz * t + oz, len, ry, glow));
+    }
+  }
+  return out;
+}
+// 懸浮月台（token.js 的 DECK_AT：寬 1.4、深 0.35）底緣四邊
+const DECK = { w: 1.4, d: 0.36 };
+const deckStrips = glow => [
+  ...[-1, 1].map(k => ({ kind: 'box', pos: [0, 0, k * DECK.d / 2], scale: [DECK.w, 0.02, 0.025], ...glow })),
+  ...[-1, 1].map(k => ({ kind: 'box', pos: [k * DECK.w / 2, 0, 0], scale: [0.025, 0.02, DECK.d], ...glow })),
+];
+const CYBER = { path: p => `quat/cyberpunk/${p}.glb`, tint: { '^Grey$': C.ink, '^LightGrey$': C.navy, '^MetalLight$': C.curb } };
+const sign = (file, pos, h, glow, lit) => ({ path: CYBER.path(file), pos, h, tint: CYBER.tint, ...(lit ? { glow: { '^Texture_Signs$': glow } } : {}) });
+
+export function view(lv, flags = {}) {
   const n = lv.bulb, at = AT, v = {};
   if (!n) return v;
-  const lit = !flags.blackout, head = i => {
-    const c = n >= 3 ? (i % 2 ? C.neonBlue : C.neonPink) : C.yellow;
-    return lit ? { color: c, glow: c } : { color: C.window };
-  };
+  const lit = !flags.blackout, glowOf = c => (lit ? { color: c, glow: c } : { color: C.window });
+  // 燈頭：Lv1–2 暖黃；Lv3 起霓虹，一站一色、沿路粉藍交錯（一站只有一種發光色 → 一站一個 draw call）
+  const head = k => glowOf(n >= 3 ? (k % 2 ? C.neonBlue : C.neonPink) : C.yellow);
   v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)), footprint: { r: 0.15 } };
-  v['bulb.electrician'] = { kind: 'roster', at, n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5, entry: ELECTRICIAN_ENTRY } };
+  v['bulb.electrician'] = n >= ISLAND_LV
+    ? { kind: 'roster', at: ISLAND_HOME, n: 1, accessory: 'vest', home: { kind: 'wander', at: ISLAND_HOME, r: ISLAND_R } }
+    : { kind: 'roster', at, n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5, entry: ELECTRICIAN_ENTRY } };
   if (n >= 2) {
     // 燈桿全部一個零件（同一種材質只花一個 draw call）；燈頭每一站一個零件：Lv2 劇本一站站閃白點亮、大停電一站站熄
     v['bulb.posts'] = { kind: 'compound', at, parts: LAMP_POINTS.map(p => post(p.x - at.x, p.z - at.z)), footprint: false };
     LAMP_STOPS.forEach((g, k) => {
       const o = LAMP_POINTS[g[0]];
-      v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(i + 1))), footprint: false };
+      v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(k + 1))), footprint: false };
     });
     const stall = ([x, z, roof]) => [
       { kind: 'box', pos: [x, 0.22, z], scale: [STALL_W, 0.45, STALL_D], color: C.wall },
       { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },
-      { kind: 'sphere', pos: [x + 0.2, 0.47, z + 0.22], scale: 0.07, ...(lit ? { color: C.warm, glow: C.warm } : { color: C.window }) },
+      { kind: 'sphere', pos: [x + 0.2, 0.47, z + 0.22], scale: 0.07, ...glowOf(C.warm) },
     ];
     const stalls = marketStalls(n), market = stalls.flatMap(stall);
-    if (n >= 4) market.push({ kind: 'box', pos: [0.25, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...(lit ? { color: C.neonPink, glow: C.neonPink } : { color: C.window }) });
+    if (n >= 4 && n < 9) market.push({ kind: 'box', pos: [0.25, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...glowOf(C.neonPink) });
     v['bulb.market'] = { kind: 'compound', at: MARKET, parts: market, footprint: marketFootprint(n) };
+    if (n >= 9) v['bulb.neon.market'] = { kind: 'neon', at: MARKET, footprint: false,
+      parts: stalls.map(([x, z]) => ({ kind: 'box', pos: [x, 0.48, z + 0.27], scale: [0.6, 0.025, 0.025], ...glowOf(C.neonBlue) })),
+      models: [sign('Sign_2', [0.25, 0.82, 0.25], 0.3, C.neonPink, lit)] };
+  }
+  if (n >= 6) v['bulb.substation'] = { kind: 'compound', at: SUBSTATION, parts: substationParts(lit), footprint: { x: 0, z: 0, w: SUB.w, d: SUB.d } };
+  if (n >= 9) {
+    v['bulb.neon.bridges'] = { kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: bridgeStrips(glowOf(C.neonBlue)), footprint: false };
+    // 懸浮月台是代幣 Lv9 的（燈泡 Lv9 要代幣 ≥9，一定在；淹水的站沒有月台）
+    if (lv.token >= 9 && !flags.flooded) v['bulb.neon.station'] = { kind: 'neon', at: DECK_AT, footprint: false, parts: deckStrips(glowOf(C.neonPink)),
+      models: [sign('TV_1', [0.52, 0.07, -0.06], 0.36, C.neonBlue, lit)] };
   }
   return v;
 }
+
+export const builders = {
+  // 霓虹：一份燈條（compound）＋幾個 glb 招牌併成一個零件（位置相對零件的 at），一起閃白
+  neon(THREE, spec, ctx) {
+    const object = new THREE.Group(), subs = [];
+    if (spec.parts?.length) subs.push(ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts }));
+    for (const m of spec.models ?? []) subs.push(ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint, glow: m.glow }));
+    for (const p of subs) object.add(p.object);
+    return { object, dispose() { for (const p of subs) p.dispose?.(); } };
+  },
+};
 
 // ── 劇本（§8.3）──
 // 角色都是演到那一拍才找（回 null 那拍跳過）；once 找到第一次就記住，整段劇本同一組人。
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const el = ctx => () => ctx.roster.members('bulb.electrician')[0] ?? null;
+// Lv8：電工在風車島上才演他的拍（不在島上——例如剛 RESET 還沒到家——那幾拍跳過，不從主島走過海）
+const onIsland = ctx => () => { const m = ctx.roster.members('bulb.electrician')[0]; return m && !cellAt(m.pos.x, m.pos.z) ? m : null; };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // 從離 p 最近的那一站開始、沿路繞一圈的站序（沒有人就從第 0 站）
 function rotationFrom(p) {
@@ -140,13 +233,58 @@ function panAhead(B, who, to, cellFn, speed) {
 // LEVEL UP 在路燈（中心格）頭上：鏡頭不在中心格就跟 LEVEL UP 一起轉回去（levelUp 1 秒 ≥ focus 拍，不多佔時間）
 const levelUpAtHome = (B, last) => B.together([B.focus(c => (last && sameCell(last(c), HOME_CELL) ? null : HOME_CELL)), B.levelUp('bulb')]);
 
+// ── ★◆ Lv7 離岸風電啟動：電工走到站前島緣 → 列車進站停下、他跳上車頂 → 列車慢慢加速、沿環（鏡頭那一側）開到風車島的支線、開進島上
+//   → 他從車頂跳到開關箱前、揮手按開關 → 風車閃白開始轉 → 回全景、燈塔閃白亮起、守塔人出來 → LEVEL UP。全程沒有瞬移 ──
+const JUMP = 0.35, SWITCH_PUSH = 0.6, DASH = 3.2;   // 跳上／跳下車的秒數、按開關（build 揮一下）的秒數、趕車小跑的速度（點燈快走 2.8）
+// 站前島緣（老鼠搭車也在這裡上車）：捷運站對島心方位上、離島心 7 的點拉回走得到的地方
+const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.sin(STATION_A) * 7 });
+// 進站：最快 1.5 秒趕到（他還在走的話等他走到），最多 4.5 倍（beats 的 TRAIN_MAX_BOOST）；開往支線：最快 1 秒、從站上慢慢加速
+const BOARD_WITHIN = 1.5, RIDE_WITHIN = 1.0;
+// 車頂座位：第一節車廂、往車尾 0.15（老鼠坐車廂正中，同名冊的 RIDE_Y 0.18 坐在車頂上）
+const SEAT_OFF = -0.15, RIDE_Y = 0.18;
+const seat = c => {
+  const p = trainPose(c.now + c.rail.offset, 0, { speed: c.stage.flags?.flooded ? 0 : 0.35, trip: c.rail.trip });
+  return { x: p.x + Math.sin(p.yaw) * SEAT_OFF, y: p.y + RIDE_Y, z: p.z + Math.cos(p.yaw) * SEAT_OFF, yaw: p.yaw };
+};
+// 走到站前 ‖ 列車進站：兩邊同時開始，列車停在站上等他走到（during 先等 wait 秒）再跳上車頂。
+// 拍開始時才知道他要走多久、列車多久到（trainRun 跟 trainStop 同一幀算，數字一樣），所以 together 在 start 才建
+function board(B, who) {
+  let inner = null;
+  return {
+    kind: 'board', dur: c => (inner ? inner.dur(c) : 0),
+    start(c) {
+      const m = who(c); if (!m) return false;
+      const walk = B.walk(m, SHORE, { speed: DASH }), within = Math.max(BOARD_WITHIN, walk.estimate(c));
+      const wait = Math.max(0, walk.estimate(c) - B.trainRun(c, STATION_A, { within }).arrive);
+      inner = B.together([walk, B.trainStop({ arrive: within, stop: wait + JUMP + 0.05, during: [B.wait(wait), B.jump(m, seat, JUMP)] })]);
+      inner.start(c);
+    },
+    step(k, dt, c) { inner.step(k, dt, c); },
+    end(c) { inner?.end(c); inner = null; },
+  };
+}
+// 坐車到風車島：trainStop（支線版、launch）每幀先推列車，再把還坐在車頂上的他擺到座位上；during 第一拍（跳下車）一開始他就不坐了。
+// 列車在島那頭只停 0.1 秒：他一起跳就倒車回環上（跳下車的落點是固定的開關箱前，不跟著車）
+function ride(B, who, during) {
+  let riding = true;
+  const [off, ...rest] = during, start = off.start;
+  off.start = c => { riding = false; return start(c); };
+  const T = B.trainStop({ spur: 'windmill', launch: true, arrive: RIDE_WITHIN, stop: 0.1, during: [off, ...rest] });
+  const begin = T.start, step = T.step;
+  T.start = c => { riding = true; return begin(c); };
+  T.step = (k, dt, c) => { step(k, dt, c); const m = riding ? who(c) : null; if (m) c.roster.setPose(m, { ...seat(c), walking: false }); };
+  return T;
+}
+// 套用的估計長度照真的閃幾個零件算（trainStop 的 during 用估計長度排時間；估短了 LEVEL UP 會被截掉）
+const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK + 0.15 * (n - 1) });
+
 export const script = {
-  // 電工從 101 工地走到路邊 → 敲 → 閃白第一盞路燈 → 沿主路巡
+  // 電工從 101 工地走到路邊 → 敲 → 閃白第一盞路燈 → ♪ → 沿主路巡
   placed(e, s, ctx) {
     const { B } = ctx, m = el(ctx), k = 0.4 / dist(AT, { x: 0, z: 0 });   // 路燈往中心格格心收 0.4（中心格格心就是原點）
     return [
       B.apply(e, { only: ['bulb.electrician'], hold: ['bulb.electrician'] }), B.spawn('bulb.electrician', ELECTRICIAN_ENTRY),
-      B.walk(m, offset(AT, -AT.x * k, -AT.z * k)), B.gesture(m, 'knock'), B.apply(e), B.home(m),
+      B.walk(m, offset(AT, -AT.x * k, -AT.z * k)), B.gesture(m, 'knock'), B.apply(e), B.bubble(m, '♪', 0.8), B.home(m),
     ];
   },
   grow: {
@@ -161,23 +299,27 @@ export const script = {
       const stop = i => c => order(c)[i], cell = i => c => stopCell(stop(i)(c));
       const at = i => c => lampApproach(LAMP_STOPS[stop(i)(c)][0]), go = i => B.walk(m, at(i), { speed: LIGHTING_SPEED });
       const pan = i => panAhead(B, m, at(i), c => (sameCell(cell(i)(c), cell(i - 1)(c)) ? null : cell(i)(c)), LIGHTING_SPEED);
-      // 夜市兩攤、燈塔島的燈（和守塔人）在走最後一段時跟上一站一起亮（他快到了，夜市先開張）；到了最後一站點完燈就 LEVEL UP
-      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 2 ? ['bulb.market', 'sat.lighthouse', 'sat.keeper'] : [])] });
+      // 夜市兩攤在走最後一段時跟上一站一起亮（他快到了，夜市先開張）；到了最後一站點完燈就 LEVEL UP（燈塔物品 v2 改到 Lv7 才亮）
+      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 2 ? ['bulb.market'] : [])] });
       return [
         B.focus(cell(0)), go(0), ...Array.from({ length: n - 1 }, (_, i) => B.together([go(i + 1), light(i), pan(i + 1)])), light(n - 1),
         B.home(m), levelUpAtHome(B, cell(n - 1)),
       ];
     },
-    // 霓虹、傍晚：電工走到夜市前 → ♪ → 閃白霓虹 → 天色淡入傍晚（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 霓虹、傍晚：電工快走到離他最近的那一站路燈下 → 敲一下 → 全島燈頭一站站閃白換成霓虹（粉藍交錯）→ 天色淡入傍晚。
+    // 物品 v2 §6（一級 3–5 秒）：不再走到夜市前（從主路另一頭走過去要 3 秒多）；鏡頭對著那一站的格子，LEVEL UP 時轉回中心格
     3(e, s, ctx) {
-      const { B } = ctx, m = el(ctx);
-      return [B.focus(MARKET_CELL), B.walk(m, MARKET_FRONT), B.bubble(m, '♪'), B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B)];
+      const { B } = ctx, m = el(ctx), k0 = once(c => rotationFrom(c.roster.members('bulb.electrician')[0]?.pos)[0]), cell = c => stopCell(k0(c));
+      return [
+        B.focus(cell), B.walk(m, c => lampApproach(LAMP_STOPS[k0(c)][0]), { speed: LIGHTING_SPEED }), B.gesture(m, 'knock', 0.8),
+        B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
+      ];
     },
-    // 四攤：離夜市最近的兩個島民走去夜市前排隊 → 一起 ♥ → 閃白多兩攤（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 四攤：離夜市最近的兩個島民快步走去夜市前排隊 → 一起 ♥ → 閃白多兩攤（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
       return [
-        B.focus(MARKET_CELL), B.together([0, 1].map(i => B.walk(islander(i), slot(i)))), B.together([0, 1].map(i => B.bubble(islander(i), '♥'))),
+        B.focus(MARKET_CELL), B.together([0, 1].map(i => B.walk(islander(i), slot(i), { speed: QUEUE_SPEED }))), B.together([0, 1].map(i => B.bubble(islander(i), '♥', 0.8))),
         B.apply(e), B.home([islander(0), islander(1)]), levelUpAtHome(B),
       ];
     },
@@ -186,7 +328,57 @@ export const script = {
       const { B } = ctx, m = el(ctx);
       return [B.walk(m, FOOT), B.bubble(m, '！'), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
     },
+    // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）→ ♪（嗡嗡響）
+    6(e, s, ctx) {
+      const { B } = ctx, m = el(ctx);
+      return [
+        B.walk(m, c => frontOf(SUBSTATION, SUBSTATION_FRONT.z - SUBSTATION.z, c.nav), { speed: LIGHTING_SPEED }), B.gesture(m, 'build', 1.0, { at: SUBSTATION }),
+        B.apply(e), B.bubble(m, '♪', 0.8), B.home(m), B.levelUp('bulb'),
+      ];
+    },
+    // ★◆ 離岸風電啟動（代幣 ≥7：支線通到風車島）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
+    //   列車沿環開到支線、開進島上 → 他跳到開關箱前按下開關 → 風車閃白開始轉 → 回全景、燈塔與光束閃白、守塔人出來（列車倒回環上）→ LEVEL UP。
+    //   他就留在風車島上（家換成島上的小圈），不再回主島巡路
+    7(e, s, ctx) {
+      const { B } = ctx, m = el(ctx);
+      return [
+        B.focus(TOKEN_CELL),
+        board(B, m),
+        B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ride(B, m, [
+          B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }),
+          applyN(B, e, ['sat.windmill'], 1),
+          B.focus('home'),
+          applyN(B, e, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'bulb.electrician'], 2), B.home(m),
+          B.levelUp('bulb'),
+        ])]),
+      ];
+    },
+    // ★ 海底電纜（晶片 ≥5）：鏡頭到風車島 → 電工走到開關箱前一敲（接上電纜）→ 電纜閃白鋪好（晶片 <6 還沒通電：暗的）→ ♪ → 回全景看整條電纜 → LEVEL UP
+    8(e, s, ctx) {
+      const { B } = ctx, m = onIsland(ctx);
+      return [
+        B.focus(WIND, { zoom: ISLAND_ZOOM }), B.walk(m, SWITCH_FRONT), B.gesture(m, 'build', 1.0, { at: SWITCH }),
+        B.apply(e, { only: ['chip.cable'] }), B.bubble(m, '♪', 0.8), B.home(m),
+        B.focus('home', { hold: 1.0 }), B.levelUp('bulb'),
+      ];
+    },
+    // ◆ 全島賽博霓虹（代幣 ≥9）：鏡頭到車站格 → 站務員 ！ → 懸浮月台的燈條與電視牆閃白亮起 → 回全景，同時橋面燈條、夜市招牌一份份亮起
+    //   （霓虹從第一份到最後一份 ≤ 1.5 秒）→ 全景定格 → 大家 ♪ → LEVEL UP
+    9(e, s, ctx) {
+      const { B } = ctx, staff = c => c.roster.members('token.staff').find(m => !m.hidden) ?? null;
+      const cheer = c => [...c.roster.members('token.staff'), ...c.roster.members('landmarks.islanders')].filter(m => !m.hidden);
+      return [
+        B.focus(TOKEN_CELL), B.bubble(staff, '！', 0.8),
+        B.apply(e, { only: ['bulb.neon.station'] }),
+        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'bulb.neon.market', 'bulb.market'] })]),
+        B.together([0, 1, 2, 3].map(i => B.bubble(c => cheer(c)[i] ?? null, '♪', 1.0))),
+        B.levelUp('bulb'),
+      ];
+    },
   },
   fx: () => null,   // 燈泡自己沒有 onLevel
-  rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
+  // 等待圖框的代表：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（鏡頭不在那裡），改用離燈泡最近的島民
+  rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? null,
 };
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+script.grow[7].key = script.grow[9].key = true;

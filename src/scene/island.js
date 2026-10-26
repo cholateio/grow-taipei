@@ -111,10 +111,13 @@ export function buildSatellite(THREE, kit, sat, mats) {
   switch (sat.kind) {
     case 'lighthouse':
       for (let i = 0; i < 4; i++) P('cylinder', [0, 0.17 + i * 0.32, 0], [0.5 - i * 0.04, 0.32, 0.5 - i * 0.04], i % 2 ? 0xdb6a41 : 0xfff8f4);
-      P('glowsphere', [0, 1.45, 0], 0.32, 0xfcea8b); P('cone', [0, 1.72, 0], [0.42, 0.3, 0.42], 0x211d1d); tree(0.9, 0.5, 0.8); break;
+      // 燈室是暗的玻璃（物品 v2 §5：開局燈塔不亮）；燈泡 Lv7 離岸風電啟動後，演員（satellites.js 的 sat.lighthouse）在這裡點亮
+      P('sphere', [0, 1.45, 0], 0.32, 0x5c5650); P('cone', [0, 1.72, 0], [0.42, 0.3, 0.42], 0x211d1d); tree(0.9, 0.5, 0.8); break;
     case 'windmill':
       P('cylinder', [0, 0.8, 0], [0.1, 1.6, 0.1], 0xfff8f4); P('sphere', [0, 1.6, 0.08], 0.14, 0xfff8f4);
-      // 葉片是演員（src/actors/satellites.js）：颱風狂轉、停電停
+      // 葉片是演員（src/actors/satellites.js）：開局不轉，燈泡 Lv7 電工按開關才轉；颱風時被風吹得狂轉
+      // 風機腳下的開關箱（燈泡 Lv7 電工按的那個；海底電纜從它底下接出去）：深藍箱身、黃色把手
+      P('rbox', [0.3, 0.12, 0.25], [0.16, 0.24, 0.1], 0x3f5a8a); P('cylinder', [0.3, 0.16, 0.31], [0.04, 0.08, 0.04], 0xfcea8b);
       P('rbox', [-0.7, 0.25, 0.4], [0.6, 0.5, 0.5], 0xf1e7da); P('hip', [-0.7, 0.66, 0.4], [0.68, 0.34, 0.58], 0x5a88b2); break;
     case 'rocks':
       [[-0.4, 0.3, 0.8], [0.5, -0.2, 0.65], [0.1, 0.6, 0.5], [-0.3, -0.6, 0.45]].forEach(([x, z, s], i) => P('ico', [x, s * 0.35, z], [s, s * 0.7, s], [0xc9b9a4, 0xb8a892, 0xd6c8b4][i % 3], [0, i, 0])); break;

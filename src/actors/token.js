@@ -166,7 +166,7 @@ function station(n, lv) {
 }
 // 賽博站的懸浮月台（一個零件 kind 'deck'，裡面三個 Cyberpunk Kit glb，一起閃白、一起浮上來）：站前廣場上空 0.7 的月台（人從底下走）、
 // 月台前緣的欄杆、立在月台上的霓虹招牌。pos 相對 DECK_AT；footprint 不算
-const DECK_AT = offset(AT, 0, 1.0, 0.7);
+export const DECK_AT = offset(AT, 0, 1.0, 0.7);   // 燈泡 Lv9 的月台霓虹也貼在這裡
 const DECK_MODELS = [
   { path: 'quat/cyberpunk/Platform_4x1_Empty.glb', pos: [0, 0, 0], h: 0.224 * 1.4 / 3.863, tint: { '^LightGrey$': C.curb, '^Grey$': C.navy }, glow: { '^Texture_Signs$': C.neonBlue } },
   { path: 'quat/cyberpunk/Rail_Long.glb', pos: [0, 0.08, 0.13], h: 0.237 * 1.2 / 2.293, glow: { '^Black$': C.neonPink } },

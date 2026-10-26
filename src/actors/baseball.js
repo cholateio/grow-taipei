@@ -1,6 +1,7 @@
 // 棒球（§5.1）：沙地 → 木看台與兩個傳接球的球員 → 大巨蛋 → 比賽開打（頂縫透光、觀眾 4 人）→ 演唱會（藍色應援棒、觀眾 6 人：4 人站門口、2 人在草皮散步）→ 跨年煙火。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
 import { anchorWorld, frontOf } from './anchors.js';
+import { cellAt } from '../scene/hex.js';
 import { C, offset } from './palette.js';
 import { clampLv } from './clamp.js';
 
@@ -108,8 +109,8 @@ const RUN_SPEED = 0.7;   // 島民沿壘包慢慢走一圈（約 4 s）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const nearestIslander = (c, p) => c.roster.members('landmarks.islanders').filter(m => !m.hidden).sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0] ?? null;
-// 某名冊第一個沒藏起來的人；沒有就找離 p 最近的島民
-const helper = (key, p) => once(c => c.roster.members(key).find(m => !m.hidden) ?? nearestIslander(c, p));
+// 某名冊第一個沒藏起來、在主島上的人；沒有就找離 p 最近的島民（物品 v2：燈泡 Lv7 起電工住在風車島上，不從海上走過來）
+const helper = (key, p) => once(c => c.roster.members(key).find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? nearestIslander(c, p));
 // 冒泡泡的人跳過藏起來的（颱風登陸回合躲進門裡的人）
 const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const player = i => c => shown('baseball.players')(c)[i] ?? null;

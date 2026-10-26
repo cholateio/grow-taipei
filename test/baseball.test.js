@@ -91,7 +91,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
   throw new Error('event not found');
 }
 // 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
-const RANGE = { 1: [4, 9], 2: [2, 8], 3: [5, 12], 4: [6, 15], 5: [4, 10], 6: [4, 10] };
+// 5：物品 v2 任務 7——燈泡 Lv7 之後電工住在風車島，改由門口附近的島民走來敲門，下限 4 → 3（§6 一級 3–5 秒）
+const RANGE = { 1: [4, 9], 2: [2, 8], 3: [5, 12], 4: [6, 15], 5: [3, 10], 6: [4, 10] };
 function checkBall({ show, bubblesLog }, e, secs, n) {
   // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
   const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = scripted('baseball', lvl) ? RANGE[lvl] : DEFAULT_SECS;
@@ -348,4 +349,14 @@ test('baseball Lv5: 4 fans at the gate, 2 wander on the dome lawn; Lv4 stays 4 a
     }
   }
   assert.equal(show.roster.members('baseball.lawn').length, 2);
+});
+// 物品 v2 任務 7：燈泡 Lv7 起電工住在風車島上——演唱會那級（兩條正解都在燈泡 Lv7 之後）不叫他從海上走過來，改找離門口最近的島民
+test('Lv5 concert: the electrician is skipped once he lives on the windmill island (an islander knocks instead)', async () => {
+  const { B } = await import('../src/show/beats.js'), { island } = await import('../src/actors/satellites.js');
+  const w = island('windmill'), off = { pos: { ...w }, head: () => w }, isl = { pos: { ...offset(anchorWorld('baseball'), 0, 1.5) }, head: () => isl.pos };
+  const claimed = [], ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [off] : k === 'landmarks.islanders' ? [isl] : []), claim: m => claimed.push(m) },
+    nav: { route: (a, b) => [a, b], routeLength: () => 1 } };
+  const walk = baseball.script.grow[5]({ kind: 'grow', item: 'baseball', to: 5 }, { lv: lv({ baseball: 5, bulb: 7 }), flags: {} }, ctx).find(b => b.kind === 'walk');
+  walk.start(ctx);
+  assert.deepEqual(claimed, [isl]);
 });

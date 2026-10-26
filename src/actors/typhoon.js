@@ -30,8 +30,9 @@ export function view(lv, flags, meta = {}) {
     // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山。自己一個零件（雲散了沒有 main）：Lv3 劇本讓它從台地後升起
     v['typhoon.rainbow'] = { kind: 'compound', at, shadow: false, footprint: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
     const park = landmarkWorld('park');
-    // 河濱公園是走得到的草地：footprint 只擋那棵樹（整個包圍盒外擴 PAD 後會把 101 南側那條通道堵死，§14.1）
-    v['typhoon.park'] = { kind: 'compound', at: park, footprint: { x: -0.45, z: -0.1, w: 0.2, d: 0.2 }, parts: [
+    // 河濱公園是走得到的草地：footprint 只擋樹（樹冠半徑 0.25，外擴 PAD 後 0.33）和兩張長椅（外擴後 0.22 蓋住 0.36 長的椅面），
+    // 不用整個包圍盒——外擴 PAD 後會把 101 南側那條通道堵死（§14.1）
+    v['typhoon.park'] = { kind: 'compound', at: park, footprint: [{ x: -0.45, z: -0.1, r: 0.21 }, { x: -0.35, z: 0.25, r: 0.1 }, { x: 0.35, z: -0.2, r: 0.1 }], parts: [
       { kind: 'box', pos: [0, 0.01, 0], scale: [1.1, 0.02, 0.3], rot: [0, 0.6, 0], color: C.sand },
       ...[[-0.35, 0.25], [0.35, -0.2]].flatMap(([x, z]) => [{ kind: 'box', pos: [x, 0.1, z], scale: [0.36, 0.04, 0.12], rot: [0, 0.6, 0], color: C.wood }, { kind: 'box', pos: [x, 0.05, z], scale: [0.3, 0.1, 0.03], rot: [0, 0.6, 0], color: C.ink }]),
       ...[[0.3, 0.35, 0xf2b5c6], [0.45, 0.2, C.yellow], [-0.2, -0.35, 0xf2b5c6]].flatMap(([x, z, c]) => [{ kind: 'cylinder', pos: [x, 0.08, z], scale: [0.015, 0.16, 0.015], color: 0x6f9560 }, { kind: 'sphere', pos: [x, 0.17, z], scale: 0.07, color: c }]),

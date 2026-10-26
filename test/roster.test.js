@@ -7,7 +7,7 @@ import { createNav } from '../src/show/nav.js';
 import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
-import { axialToWorld, cellTop } from '../src/scene/hex.js';
+import { axialToWorld, cellTop, cellAt } from '../src/scene/hex.js';
 installFakeDom();
 const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
 
@@ -545,21 +545,32 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // 不歸走路格管的不查：劇本手上的人（劇本自己擺位置）、沿手畫折線走的 path 成員、站位本來就畫在 footprint 裡的 stand（沒有 rescue：泡溫泉的老鼠、
 // 攤車後的老闆）。已經在裡面才開始查的人（建築長在身上——footprint 換了的那一幀人就在裡面；劇本把人放在門裡再交回日常）
 // 要在 CAUGHT_MAX 秒內走出來；本來在外面、自己走進去的就是穿牆。
-// 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）
+// 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）。
+// 審查修正：工程師、老鼠、偵防師、老闆不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
+// 只有泡溫泉（站位畫在池子裡）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
 test('no roster member is ever inside a padded footprint, and nobody is stuck: every walk-in arrives', async () => {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const { headlessShow, ALL } = await import('./helpers/show.js'), { PAD } = await import('../src/show/nav.js');
-  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = 1 / 30, bare = createNav(), bad = new Set(), stuck = [], slow = [];
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = 1 / 30, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set();
+  const WATCH = ['chip.engineers', 'rat.pack', 'chip.detective', 'boba.owner'];
+  const inShape = (f, x, z) => (f.r != null ? Math.hypot(x - f.x, z - f.z) <= f.r : f.rx != null ? ((x - f.x) / f.rx) ** 2 + ((z - f.z) / f.rz) ** 2 <= 1 : Math.abs(x - f.x) <= f.w / 2 && Math.abs(z - f.z) <= f.d / 2);
   for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
-    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet();
-    let label = '', t = 0, version = show.nav.version, walkedIn = 0;
+    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet();
+    let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]';   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
     const authored = (h, i) => { if (h?.kind !== 'stand' || h.rescue) return false; const p = h.spots[i % h.spots.length]; return show.nav.inFootprint(p.x, p.z); };
     const check = () => {
       const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), changed = show.nav.version !== version;
       version = show.nav.version;
+      const fps = st.footprints(), json = JSON.stringify(fps), rebuilt = json !== built; built = json;
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
         const h = view[k]?.home, exempt = m.hidden || m.mode === 'script' || h?.kind === 'path' || authored(h, m.i);
+        if (WATCH.includes(k) && !m.hidden && !authored(h, m.i) && cellAt(m.pos.x, m.pos.z)) {
+          const inWall = fps.some(f => inShape(f, m.pos.x, m.pos.z)), what = `${label} ${k}#${m.i} ${m.mode} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
+          if (!inWall) { wallIn.delete(m); wallOut.add(m); }
+          else if (!wallIn.has(m) && wallOut.has(m) && !changed && !rebuilt) walls.add(`${what} ${JSON.stringify(fps.find(f => inShape(f, m.pos.x, m.pos.z)))}`);
+          else { if (!wallIn.has(m)) wallIn.set(m, t); if (t - wallIn.get(m) > CAUGHT_MAX) walls.add(`${what} still inside after ${CAUGHT_MAX} s`); }
+        }
         const inside = bare.walkable(m.pos.x, m.pos.z) && show.nav.inFootprint(m.pos.x, m.pos.z);
         if (exempt || !inside) { caught.delete(m); if (exempt) outside.delete(m); else outside.add(m); continue; }
         const what = `${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
@@ -585,6 +596,7 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} frames inside a footprint`);
   assert.deepEqual(slow.slice(0, 20), [], 'caught by a new building: walks out at once');
   assert.deepEqual(stuck, []);
+  assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building (${WATCH.join(', ')})`);
 });
 // §14.1：走到一半，路上長出建築——從現在的位置重新找路繞過去，不照舊路穿過
 test('a walker whose route is cut by a new footprint replans around it and still arrives', () => {

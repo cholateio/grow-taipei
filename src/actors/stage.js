@@ -50,19 +50,22 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     return { x: p.x, y: p.y + y, z: p.z };
   }
 
-  // footprint（§5.3）：宣告的圓 { r }、橢圓 { rx, rz, x?, z? } 或矩形 { w, d, x?, z? }（相對 at）；false 不算；
+  // footprint（§5.3）：宣告的圓 { r, x?, z? }、橢圓 { rx, rz, x?, z? } 或矩形 { w, d, x?, z? }（相對 at），或幾個這樣的形狀的陣列；false 不算；
   // 沒宣告的 compound 建好時量一次包圍盒（零件已經放在 at，包圍盒就是世界座標）；其他 kind 沒宣告就沒有
   const box = new THREE.Box3(), size = new THREE.Vector3(), centre = new THREE.Vector3();
+  // 回傳 footprint 的陣列（沒有就空陣列）
+  const shapeOf = (f, at) => {
+    const x = at.x + (f.x ?? 0), z = at.z + (f.z ?? 0);
+    return f.r !== undefined ? { x, z, r: f.r } : f.rx !== undefined ? { x, z, rx: f.rx, rz: f.rz } : { x, z, w: f.w, d: f.d };
+  };
   function footprintOf(s, object) {
     const f = s.footprint, at = s.at ?? { x: 0, z: 0 };
-    if (f === false) return null;
-    if (f?.r !== undefined) return { x: at.x, z: at.z, r: f.r };
-    if (f?.rx !== undefined) return { x: at.x + (f.x ?? 0), z: at.z + (f.z ?? 0), rx: f.rx, rz: f.rz };
-    if (f) return { x: at.x + (f.x ?? 0), z: at.z + (f.z ?? 0), w: f.w, d: f.d };
-    if (s.kind !== 'compound') return null;
-    box.setFromObject(object); if (box.isEmpty()) return null;
+    if (f === false) return [];
+    if (f) return [].concat(f).map(g => shapeOf(g, at));
+    if (s.kind !== 'compound') return [];
+    box.setFromObject(object); if (box.isEmpty()) return [];
     box.getSize(size); box.getCenter(centre);
-    return Math.max(size.x, size.z) > WIDE ? null : { x: centre.x, z: centre.z, w: size.x, d: size.z };
+    return Math.max(size.x, size.z) > WIDE ? [] : [{ x: centre.x, z: centre.z, w: size.x, d: size.z }];
   }
   function make(s) {
     const part = factory.build(s);
@@ -142,7 +145,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     commit,
     commitAll() { for (const key of [...pending.keys()]) commit(key, false); dropDying(); },
     pendingKeys: () => [...pending.keys()],
-    footprints: () => [...live.values()].map(e => e.fp).filter(Boolean),
+    footprints: () => [...live.values()].flatMap(e => e.fp),
     update(dt, t) {
       for (const e of live.values()) e.part.update?.(dt, t);
       for (const p of pending.values()) p.old?.part.update?.(dt, t);

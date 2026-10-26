@@ -9,7 +9,8 @@ import { C, roofColor, rebuilt, offset } from './palette.js';
 export const id = 'chip';
 export const labelY = 1.5;
 const AT = anchorWorld('chip'), TOWER = anchorWorld('tower');
-const DOOR = offset(AT, -0.3, 0.75);              // 廠門（工程師通勤的起點）
+// 廠門外（工程師通勤的起點）：每一級的工地（三角錐）、廠房、園區、總部（含招牌）最南到 z +1.06，外擴 PAD 後 1.18；門口站在 1.25，不站進建築裡（§14.1）
+const DOOR = offset(AT, -0.3, 1.25), DOOR_WEST = offset(AT, -1.45, 1.25);   // DOOR_WEST：沿園區南緣往西走到這裡才轉去橋頭（不切過總部的西南角）
 const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地（0.6 會落在 101 的 footprint 裡）
 const FOOT = offset(TOWER, 0.95, 0.25);           // 101 腳下（通勤的終點）
 const KID_GATE = offset(AT, -1.5, 0.6);           // 園區西側門口（總部那回合小學生從中心格過橋來，停在這裡）
@@ -21,8 +22,9 @@ const RAINBOW = offset(anchorWorld('typhoon'), 0.6, -5.2); // 彩虹（台地後
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
-// 工程師上下班：廠門 → 橋 → 101 腳下（開放路徑，走到底折返）
-export const ENGINEER_ROUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
+// 工程師上下班：廠門 → 沿園區南緣往西 → 橋 → 101 腳下（開放路徑，走到底折返）
+const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
+export const ENGINEER_ROUTE = [COMMUTE[0], { ...DOOR_WEST, y: COMMUTE[0].y }, ...COMMUTE.slice(1)];
 
 export function view(lv) {
   const n = lv.chip, at = AT, v = {};

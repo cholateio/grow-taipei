@@ -25,7 +25,9 @@ test('a route between adjacent cells goes over the bridge, never through water, 
   const path = nav.route(from, to);
   assert.deepEqual(path[0], from); assert.ok(Math.hypot(path.at(-1).x - to.x, path.at(-1).z - to.z) < 1e-9);
   for (let i = 1; i < path.length; i++) for (let k = 0; k <= 1; k += 0.05) { const x = path[i - 1].x + (path[i].x - path[i - 1].x) * k, z = path[i - 1].z + (path[i].z - path[i - 1].z) * k; assert.ok(nav.walkable(x, z), `off grid at ${x.toFixed(2)},${z.toFixed(2)}`); }
-  assert.ok(path.length <= 6, `string-pulled: ${path.length} points`);
+  // 過拱橋那一段補了貼地的點（xz 在同一直線上）：只數轉彎的點
+  const turns = path.filter((p, i) => i === 0 || i === path.length - 1 || Math.abs((p.x - path[i - 1].x) * (path[i + 1].z - p.z) - (p.z - path[i - 1].z) * (path[i + 1].x - p.x)) > 1e-9);
+  assert.ok(turns.length <= 6, `string-pulled: ${turns.length} corners`);
 });
 test('footprints block routes: the path detours around a building and a target inside it lands on its edge', () => {
   const nav = createNav(); const o = c([0, 0]);
@@ -168,4 +170,40 @@ test('wander never returns a point inside a footprint; separateStanding never pu
   // 走路格外的人（衛星島、屋頂上）照舊錯開
   const s1 = at(40, 40), s2 = at(40.05, 40); nav.separateStanding([s1, s2]);
   assert.ok(Math.abs(s1.pos.x - s2.pos.x) >= SEPARATION - 1e-6, 'off the grid: still pushed apart');
+});
+// 審查修正：游標沿路線直線內插，過拱橋那一段要補點才貼著橋面；橋的兩端沒有台階、橋旁邊的水不可走
+test('a walker following a route over every level bridge stays on the deck (cursor y within 0.01 of groundY at every step); no step at the bridge ends; water beside a bridge is not walkable', async () => {
+  const { createPathCursor } = await import('../src/scene/path.js'), level = await bridgesOf(true), nav = createNav();
+  for (const { A, B, a, b } of level) {
+    const path = nav.route(c(A), c(B)), total = createPathCursor(path, { loop: false }).total;
+    for (let k = 0; k <= 400; k++) {
+      const cur = createPathCursor(path, { loop: false }); cur.advance(total * k / 400); const p = cur.locate();
+      assert.ok(Math.abs(p.y - nav.groundY(p.x, p.z)) <= 0.01, `${A}→${B} step ${k}: cursor ${p.y.toFixed(3)} vs ground ${nav.groundY(p.x, p.z).toFixed(3)}`);
+    }
+    const len = Math.hypot(b.x - a.x, b.z - a.z), ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+    for (const [e, dir] of [[a, -1], [b, 1]]) for (let s = -0.12; s <= 0.12; s += 0.01) {
+      const y0 = nav.groundY(e.x + ux * dir * s, e.z + uz * dir * s), y1 = nav.groundY(e.x + ux * dir * (s + 0.01), e.z + uz * dir * (s + 0.01));
+      assert.ok(Math.abs(y1 - y0) < 0.01, `${A}→${B} end step ${(y1 - y0).toFixed(3)} at ${s.toFixed(2)}`);
+    }
+    const m = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+    assert.ok(nav.walkable(m.x, m.z), 'deck centre');
+    for (const side of [-1, 1]) assert.ok(!nav.walkable(m.x - uz * side * 0.32, m.z + ux * side * 0.32), `${A}→${B}: water beside the deck`);
+  }
+});
+test('routes never cut into a padded footprint, even on the legs the string-pulling forces (random footprints in every cell)', async () => {
+  const { mulberry32 } = await import('../src/scene/random.js'), { MAIN_CELLS } = await import('../src/scene/hex.js'), rnd = mulberry32(7);
+  for (let trial = 0; trial < 90; trial++) {
+    const nav = createNav(), k = trial % 3;
+    nav.setFootprints(MAIN_CELLS.map(cell => {
+      const o = axialToWorld(...cell), x = o.x + (rnd() - 0.5) * 0.6, z = o.z + (rnd() - 0.5) * 0.6;
+      return k === 0 ? { x, z, r: 0.3 + rnd() * 0.6 } : k === 1 ? { x, z, rx: 0.4 + rnd() * 0.8, rz: 0.4 + rnd() * 0.6 } : { x, z, w: 0.2 + rnd(), d: 0.2 + rnd() };
+    }));
+    for (let q = 0; q < 6; q++) {
+      const pick = () => axialToWorld(...MAIN_CELLS[Math.floor(rnd() * MAIN_CELLS.length)]), from = nav.wander(pick(), 1.5), path = nav.route(from, nav.wander(pick(), 1.5));
+      for (let i = 1; i < path.length; i++) for (let s = 0; s <= 100; s++) {
+        const x = path[i - 1].x + (path[i].x - path[i - 1].x) * s / 100, z = path[i - 1].z + (path[i].z - path[i - 1].z) * s / 100;
+        assert.ok(!nav.inFootprint(x, z), `trial ${trial}: segment ${i} at ${x.toFixed(2)},${z.toFixed(2)}`);
+      }
+    }
+  }
 });

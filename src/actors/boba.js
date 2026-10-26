@@ -49,7 +49,8 @@ export function view(lv) {
   // 噴泉的 footprint 0.8：外擴 PAD（0.12）後剛好蓋住矮台階（半徑 0.9），南緣外的人龍站得下（§14.1）
   v['boba.main'] = { kind: 'compound', at, parts, footprint: n < 3 ? { w: 0.7, d: 0.5 } : { r: 0.8 } };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）
-  v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave' } };
+  // 攤車後面和夜市之間（夜市 ≥2 攤時）外擴 PAD 後沒有空隙：rescue 讓老闆站到最近的可走點，不從攤車中間穿過去（§14.1）
+  v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave', rescue: true } };
   // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點
   if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k, n >= 3), rescue: true, entry: PIER } }; }
   return v;

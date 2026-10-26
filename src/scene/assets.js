@@ -30,22 +30,30 @@ function canvasPixels(image) {
 
 const GLOW_PER_VERTEX = s => { s.fragmentShader = s.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;'); };
 
-// 把整個 glb 併成最多兩個 mesh：不發光的一個、發光的一個，顏色寫進頂點色（一個模型 ≤ 2 個 draw call）。
-//   顏色：材質名命中 tint／glow 就用那色；有貼圖（色票圖）就取三角形中心 uv 的那格顏色，該格的 '#rrggbb' 也能當 tint／glow 的鍵。
+// 把整個 glb 併成最多兩個幾何：不發光的一個、發光的一個，顏色寫進頂點色（一個模型 ≤ 2 個 draw call）。
+//   顏色：材質名命中 tint／glow 就用那色；有貼圖（色票圖）就取三角形中心 uv 的那格顏色，該格的 '#rrggbb' 也能當 tint／glow 的鍵；
+//   來源有頂點色（COLOR_0，例如 Quaternius Survival）就再乘上去，和不合併時 vertexColors 的效果一樣。
 //   骨架、形變、半透明的模型不併（回傳 null，照舊逐 mesh 換材質）。
+//   回傳 { solid, lit, glows, side }：幾何可以給同一組 (path, tint, glow) 的每個 spawn 共用；材質由 mergedMeshes 每次新建。
+let warnedPixels = false;
 export function mergeModel(THREE, root, { tint = null, glow = null, pixels = canvasPixels, cache = new WeakMap() } = {}) {
   const meshes = []; root.traverse(o => { if (o.isMesh) meshes.push(o); });
   if (!meshes.length || meshes.some(o => o.isSkinnedMesh || o.morphTargetInfluences?.length || [].concat(o.material).some(m => m.transparent && m.opacity < 1))) return null;
   root.updateMatrixWorld(true);
   const inv = root.matrixWorld.clone().invert(), parts = { solid: [], lit: [] }, glows = new Set();
+  let side = THREE.FrontSide;
   const texels = map => {
     if (!map?.image) return null;
-    if (!cache.has(map.image)) { let px = null; try { px = pixels(map.image); } catch { /* 讀不到就只用材質色 */ } cache.set(map.image, px); }
+    if (!cache.has(map.image)) {
+      let px = null;
+      try { px = pixels(map.image); } catch (err) { if (!warnedPixels) { warnedPixels = true; console.warn('色票圖讀不到像素，合併時只用材質色', err); } }
+      cache.set(map.image, px);
+    }
     return cache.get(map.image);
   };
   const c = new THREE.Color(), texel = new THREE.Color(), uv = new THREE.Vector2();
   const cell = (f, n) => Math.min(n - 1, Math.floor((f - Math.floor(f)) * n));   // uv 超出 0–1 就照 repeat 繞回來
-  // 一個三角形的顏色與是否發光（來源的頂點色不讀：目前收的 glb 都沒有 COLOR_0）
+  // 一個三角形的顏色與是否發光
   const paint = (m, px, uvs, tri) => {
     let key = m.name;
     c.copy(m.color ?? texel.set(0xffffff));
@@ -58,8 +66,8 @@ export function mergeModel(THREE, root, { tint = null, glow = null, pixels = can
       if (!matches(tint, key) && !matches(glow, key)) key = '#' + texel.getHexString();
       c.multiply(texel);
     }
-    const g = matches(glow, key); if (g) return { hex: glow[g], lit: true };
-    const t = matches(tint, key); return t ? { hex: tint[t], lit: false } : { color: c, lit: false };
+    const g = matches(glow, key); if (g) return { color: c.setHex(glow[g]), lit: true, hex: glow[g] };
+    const t = matches(tint, key); return { color: t ? c.setHex(tint[t]) : c, lit: false };
   };
   for (const o of meshes) {
     const flat = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
@@ -68,12 +76,17 @@ export function mergeModel(THREE, root, { tint = null, glow = null, pixels = can
     const groups = Array.isArray(o.material) && flat.groups.length ? flat.groups : [{ start: 0, count: total, materialIndex: 0 }];
     for (const { start, count, materialIndex = 0 } of groups) {
       const m = mats[materialIndex]; if (!m) continue;
+      if (m.side === THREE.DoubleSide) side = THREE.DoubleSide;   // Kenney 色票套件是雙面材質
       const px = texels(m.map), uvs = m.map ? flat.attributes[m.map.channel ? `uv${m.map.channel}` : 'uv'] : null;
+      const vc = m.vertexColors ? flat.attributes.color : null;
       const out = { solid: [[], []], lit: [[], []] };
       for (let tri = start; tri + 2 < Math.min(start + count, total); tri += 3) {
-        const p = paint(m, px, uvs, tri), col = p.color ?? c.setHex(p.hex), [P, C] = out[p.lit ? 'lit' : 'solid'];
+        const p = paint(m, px, uvs, tri), [P, C] = out[p.lit ? 'lit' : 'solid'];
         if (p.lit) glows.add(p.hex);
-        for (let k = 0; k < 3; k++) { P.push(pos.getX(tri + k), pos.getY(tri + k), pos.getZ(tri + k)); C.push(col.r, col.g, col.b); }
+        for (let k = 0, i = tri; k < 3; k++, i++) {
+          P.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+          if (vc) C.push(p.color.r * vc.getX(i), p.color.g * vc.getY(i), p.color.b * vc.getZ(i)); else C.push(p.color.r, p.color.g, p.color.b);
+        }
       }
       for (const kind of ['solid', 'lit']) {
         const [P, C] = out[kind]; if (!P.length) continue;
@@ -84,25 +97,35 @@ export function mergeModel(THREE, root, { tint = null, glow = null, pixels = can
     }
     flat.dispose();
   }
-  const group = new THREE.Group(), owned = [];
-  for (const kind of ['solid', 'lit']) {
-    if (!parts[kind].length) continue;
+  const merged = kind => {
+    if (!parts[kind].length) return null;
     const geo = mergeGeometries(parts[kind]); for (const g of parts[kind]) g.dispose();
-    geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0, flatShading: true, vertexColors: true, name: `merged-${kind}` });
+    geo.computeVertexNormals(); return geo;
+  };
+  return { solid: merged('solid'), lit: merged('lit'), glows: [...glows], side };
+}
+
+// 合併好的幾何配上這次 spawn 自己的材質（材質會被 glow 名單與 release 個別管理，所以不共用）
+export function mergedMeshes(THREE, { solid, lit, glows, side }) {
+  const group = new THREE.Group(), materials = [];
+  for (const [geo, kind] of [[solid, 'solid'], [lit, 'lit']]) {
+    if (!geo) continue;
+    const mat = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0, flatShading: true, vertexColors: true, side, name: `merged-${kind}` });
     if (kind === 'lit') {
       // 一種發光色：emissive 就是它；多種：emissive 白色乘頂點色
-      if (glows.size === 1) mat.emissive.setHex([...glows][0]);
+      if (glows.length === 1) mat.emissive.setHex(glows[0]);
       else { mat.emissive.setHex(0xffffff); mat.onBeforeCompile = GLOW_PER_VERTEX; mat.customProgramCacheKey = () => 'glow-per-vertex'; }
       mat.emissiveIntensity = 0.5;
     }
-    group.add(new THREE.Mesh(geo, mat)); owned.push(geo, mat);
+    group.add(new THREE.Mesh(geo, mat)); materials.push(mat);
   }
-  return { group, owned };
+  return { group, materials };
 }
 
 export function createAssets(THREE, { base = './assets/', draco = './vendor/three/draco/', loader = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath(draco)), pixels = canvasPixels } = {}) {
-  const cache = new Map(), mixers = [], glowMaterials = [], texels = new WeakMap();
+  // bakes：合併好的幾何，鍵 = (path, tint, glow)。N 棵同款的樹只烤一次、共用幾何；
+  // 跟 glb 快取一樣整局留著不 dispose（種類有限：每個 path 只有幾組上色），release 只丟材質。
+  const cache = new Map(), bakes = new Map(), mixers = [], glowMaterials = [], texels = new WeakMap();
 
   function load(path) {
     if (!cache.has(path)) cache.set(path, new Promise((ok, fail) => loader.load(base + path, ok, undefined, fail)));
@@ -118,7 +141,12 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
   // merge（預設）：整個模型併成 ≤ 2 個 mesh；要播動畫的模型不併。merge: false = 逐 mesh 換材質（舊行為）。
   async function spawn(path, { x = 0, y = 0, z = 0, h = 1, ry = 0, anim = null, speed = 1, parent = null, tint = null, glow = null, merge = true } = {}) {
     const src = await load(path);
-    const merged = merge && !anim ? mergeModel(THREE, src.scene, { tint, glow, pixels, cache: texels }) : null;
+    let merged = null;
+    if (merge && !anim) {
+      const k = JSON.stringify([path, tint, glow]);
+      if (!bakes.has(k)) bakes.set(k, mergeModel(THREE, src.scene, { tint, glow, pixels, cache: texels }));
+      merged = bakes.get(k) && mergedMeshes(THREE, bakes.get(k));
+    }
     const obj = merged ? merged.group : SkeletonUtils.clone(src.scene);
     obj.scale.setScalar(normalizeHeight(measure(obj).getSize(new THREE.Vector3()), h));
     const box = measure(obj), c = box.getCenter(new THREE.Vector3()), mine = [];
@@ -136,7 +164,7 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
       const mixer = new THREE.AnimationMixer(obj); const act = mixer.clipAction(clip); act.timeScale = speed; act.play(); mixers.push(mixer);
       holder.userData.mixer = mixer;
     }
-    holder.userData.glow = mine; holder.userData.owned = merged?.owned ?? [];
+    holder.userData.glow = mine; holder.userData.owned = merged?.materials ?? [];
     parent?.add(holder);
     return holder;
   }
@@ -146,7 +174,7 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
     const m = holder?.userData.mixer;
     if (m) { m.stopAllAction(); const i = mixers.indexOf(m); if (i >= 0) mixers.splice(i, 1); }
     for (const g of holder?.userData.glow ?? []) { const i = glowMaterials.indexOf(g); if (i >= 0) glowMaterials.splice(i, 1); }
-    for (const x of holder?.userData.owned ?? []) x.dispose();   // 合併出來的幾何與材質是這個 holder 自己的
+    for (const x of holder?.userData.owned ?? []) x.dispose();   // 合併模型的材質是這個 holder 自己的（幾何是共用快取，不丟）
     holder?.removeFromParent();
   }
 

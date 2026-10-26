@@ -7,11 +7,12 @@
 //   下載的檔是不受信任的資料：只當位元組讀，不執行。
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, posix } from 'node:path';
+import { dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import { pathToFileURL } from 'node:url';
 
 export const MAX_FILE = 300_000;
+const MAX_INFLATE = 32 << 20;   // 解壓上限：zip 炸彈不會吃光記憶體
 const MIRROR = 'https://raw.githubusercontent.com/trebeljahr/quaternius-showcase/main/';
 const UNSUPPORTED = ['KHR_draco_mesh_compression', 'EXT_meshopt_compression'];
 
@@ -33,7 +34,7 @@ export function readZip(buf) {
     out.set(name, { method, raw });
   }
   // 用到才解壓
-  const get = k => { const x = out.get(k); return x && (x.method === 0 ? x.raw : inflateRawSync(x.raw)); };
+  const get = k => { const x = out.get(k); return x && (x.method === 0 ? x.raw : inflateRawSync(x.raw, { maxOutputLength: MAX_INFLATE })); };
   return { has: k => out.has(k), keys: () => out.keys(), get };
 }
 
@@ -52,7 +53,7 @@ const httpGet = async url => {
 };
 const isCC0 = text => /Creative Commons Zero|CC0/.test(text) && /creativecommons\.org\/publicdomain\/zero/.test(text);
 // 「\tTrain Kit (1.1)」→「Train Kit 1.1」；KayKit 寫成「KayKit : Space Base Bits (1.0)」
-const titleOf = text => text.split('\n').map(l => l.trim()).find(Boolean).replace(/^KayKit\s*:\s*/, '').replace(/\s*\(([\d.]+)\)$/, ' $1');
+const titleOf = text => (text.split('\n').map(l => l.trim()).find(Boolean) ?? '').replace(/^KayKit\s*:\s*/, '').replace(/\s*\(([\d.]+)\)$/, ' $1');
 
 // 每種來源：拿到「名稱 → 位元組」的取檔函式、授權核對結果、LICENSES.md 那一列的來源欄
 const SOURCES = {
@@ -68,7 +69,7 @@ const SOURCES = {
     return {
       cc0: isCC0(licence),
       file: f => { const k = find(f); return k && { buf: zip.get(k), dep: d => zip.get(posix.join(posix.dirname(k), d)) }; },
-      credit: `Kenney — ${titleOf(licence)}（${page}），zip 內 License.txt 載明 CC0`,
+      credit: () => `Kenney — ${titleOf(licence)}（${page}），zip 內 License.txt 載明 CC0`,
     };
   },
   async quat(e, { get }) {
@@ -83,7 +84,7 @@ const SOURCES = {
     return {
       cc0: row?.[3] === 'CC0-1.0',
       file: f => bufs.get(f) && { buf: bufs.get(f), dep: () => undefined },
-      credit: `Quaternius — ${row?.[2]}（${row?.[4]}），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0`,
+      credit: () => `Quaternius — ${row[2]}（${row[4]}），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0`,
     };
   },
   async kaykit(e, { get, tmp }) {
@@ -95,7 +96,7 @@ const SOURCES = {
     return {
       cc0: isCC0(licence),
       file: f => { const k = find(f); return k && { buf: zip.get(k), dep: d => zip.get(posix.join(posix.dirname(k), d)) }; },
-      credit: `KayKit — ${titleOf(licence)}（Kay Lousberg，${repo}），repo 內 LICENSE.txt 載明 CC0`,
+      credit: () => `KayKit — ${titleOf(licence)}（Kay Lousberg，${repo}），repo 內 LICENSE.txt 載明 CC0`,
     };
   },
 };
@@ -109,34 +110,49 @@ export function upsertRow(md, into, credit) {
   return lines.join('\n');
 }
 
+// 引用的檔解出來必須還在 assets/<into>/ 裡（擋 ../、%2e%2e%2f、絕對路徑）
+const inside = (target, name) => { if (isAbsolute(name) || name.startsWith('/')) return false; const r = relative(target, resolve(target, name)); return !!r && !r.startsWith('..') && !isAbsolute(r); };
+
+async function fetchPack(e, { root, get, tmp, log, written, rejected, md }) {
+  const src = await SOURCES[e.source]?.(e, { get, tmp });
+  if (!src) { rejected.push({ file: e.into, why: `unknown source ${e.source}` }); return md; }
+  if (!src.cc0) { rejected.push({ file: e.into, why: `licence text of ${e.pack} does not say CC0` }); log(`✖ ${e.into}: 授權不是 CC0，整包不收`); return md; }
+  const target = resolve(root, 'assets', e.into);
+  let shipped = 0;
+  for (const f of e.files) {
+    const got = src.file(f);
+    if (!got?.buf) { rejected.push({ file: f, why: `not in ${e.pack}` }); log(`✖ ${e.into}/${f}: 包裡沒有`); continue; }
+    let json, names;
+    try { json = glbJson(got.buf); names = dependencies(json); } catch { rejected.push({ file: f, why: 'not a glb/gltf (or a malformed uri)' }); continue; }
+    const ext = [...(json.extensionsUsed ?? []), ...(json.extensionsRequired ?? [])].find(x => UNSUPPORTED.includes(x));
+    if (ext) { rejected.push({ file: f, why: `${ext} is unsupported (no decoder)` }); log(`✖ ${e.into}/${f}: ${ext} 壓縮，不收`); continue; }
+    const escape = [f, ...names].find(n => !inside(target, n));
+    if (escape !== undefined) { rejected.push({ file: f, why: `${escape} resolves outside assets/${e.into}/` }); log(`✖ ${e.into}/${f}: 引用 ${escape} 跑出資料夾，不收`); continue; }
+    const deps = names.map(d => [d, got.dep(d)]);
+    const missing = deps.find(([, b]) => !b);
+    if (missing) { rejected.push({ file: f, why: `missing dependency ${missing[0]}` }); continue; }
+    const big = [[f, got.buf], ...deps].find(([, b]) => b.length >= MAX_FILE);
+    if (big) { rejected.push({ file: f, why: `${big[0]} is ${big[1].length} bytes (limit ${MAX_FILE})` }); log(`✖ ${e.into}/${f}: ${big[1].length} bytes ≥ 300 KB，不收`); continue; }
+    for (const [name, b] of [[f, got.buf], ...deps]) {
+      const out = resolve(target, name); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, b);
+      written.push({ path: `${e.into}/${name}`, bytes: b.length });
+    }
+    shipped++;
+  }
+  if (!shipped) return md;
+  const credit = src.credit();
+  log(`✔ ${e.into}: ${shipped}/${e.files.length} 檔（${credit}）`);
+  return upsertRow(md, e.into, credit);
+}
+
 export async function fetchAssets({ entries, root = '.', tmp = mkdtempSync(join(tmpdir(), 'grow-assets-')), get = httpGet, log = console.log }) {
   mkdirSync(tmp, { recursive: true });
   const written = [], rejected = [], licPath = join(root, 'assets/LICENSES.md');
   let md = readFileSync(licPath, 'utf8');
   for (const e of entries) {
-    const src = await SOURCES[e.source]?.(e, { get, tmp });
-    if (!src) { rejected.push({ file: e.into, why: `unknown source ${e.source}` }); continue; }
-    if (!src.cc0) { rejected.push({ file: e.into, why: `licence text of ${e.pack} does not say CC0` }); log(`✖ ${e.into}: 授權不是 CC0，整包不收`); continue; }
-    let shipped = 0;
-    for (const f of e.files) {
-      const got = src.file(f);
-      if (!got?.buf) { rejected.push({ file: f, why: `not in ${e.pack}` }); log(`✖ ${e.into}/${f}: 包裡沒有`); continue; }
-      let json;
-      try { json = glbJson(got.buf); } catch { rejected.push({ file: f, why: 'not a glb/gltf' }); continue; }
-      const ext = [...(json.extensionsUsed ?? []), ...(json.extensionsRequired ?? [])].find(x => UNSUPPORTED.includes(x));
-      if (ext) { rejected.push({ file: f, why: `${ext} is unsupported (no decoder)` }); log(`✖ ${e.into}/${f}: ${ext} 壓縮，不收`); continue; }
-      const deps = dependencies(json).map(d => [d, got.dep(d)]);
-      const missing = deps.find(([, b]) => !b);
-      if (missing) { rejected.push({ file: f, why: `missing dependency ${missing[0]}` }); continue; }
-      const big = [[f, got.buf], ...deps].find(([, b]) => b.length >= MAX_FILE);
-      if (big) { rejected.push({ file: f, why: `${big[0]} is ${big[1].length} bytes (limit ${MAX_FILE})` }); log(`✖ ${e.into}/${f}: ${big[1].length} bytes ≥ 300 KB，不收`); continue; }
-      for (const [name, b] of [[f, got.buf], ...deps]) {
-        const out = join(root, 'assets', e.into, name); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, b);
-        written.push({ path: `${e.into}/${name}`, bytes: b.length });
-      }
-      shipped++;
-    }
-    if (shipped) { md = upsertRow(md, e.into, src.credit); log(`✔ ${e.into}: ${shipped}/${e.files.length} 檔（${src.credit}）`); }
+    // 一包出錯（網路、壞 zip）只影響那一包，其他包照樣寫進 LICENSES.md
+    try { md = await fetchPack(e, { root, get, tmp, log, written, rejected, md }); }
+    catch (err) { rejected.push({ file: e.into, why: String(err?.message ?? err) }); log(`✖ ${e.into}: ${err?.message ?? err}`); }
   }
   writeFileSync(licPath, md);
   return { written, rejected };

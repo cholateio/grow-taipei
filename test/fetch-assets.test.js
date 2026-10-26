@@ -1,5 +1,7 @@
 // tools/fetch-assets.mjs 的離線測試：網路換成假的 get，下載內容用 test/fixtures/fetch-assets/ 的小 zip。
-//   kenney_fake-kit.zip：License.txt（CC0）、Models/GLB format/a|b|c|d.glb（a 引用 Textures/colormap.png，d 是 Draco 壓縮）、Models/FBX format/a.fbx
+//   kenney_fake-kit.zip：License.txt（CC0）、Models/GLB format/a|b|c|d.glb（a 引用 Textures/colormap.png，d 是 Draco 壓縮）、Models/FBX format/a.fbx、
+//     evil.glb（uri ../../evil.png）、evil2.glb（uri %2e%2e%2f%2e%2e%2fevil.png）、evil3.glb（buffer uri /tmp/evil.bin）、根目錄的 evil.png
+//   kenney_no-licence.zip：只有 Models/GLB format/a.glb，沒有 License.txt
 //   kaykit-fake-bits.zip：KayKit-Fake-Bits-1.0-main/addons/kaykit_fake_bits/Assets/LICENSE.txt、gltf/thing.gltf（+thing.bin、fake_texture.png）、gltf/other.gltf、obj/thing.obj
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,6 +22,8 @@ const mirrorLicenses = [
 const web = {
   'https://kenney.nl/assets/fake-kit': Buffer.from('<a href="https://kenney.nl/media/pages/assets/fake-kit/ab12-34/kenney_fake-kit.zip">Download</a>'),
   'https://kenney.nl/media/pages/assets/fake-kit/ab12-34/kenney_fake-kit.zip': readFileSync(FIX + 'kenney_fake-kit.zip'),
+  'https://kenney.nl/assets/no-licence': Buffer.from('<a href="https://kenney.nl/media/pages/assets/no-licence/cd/kenney_no-licence.zip">'),
+  'https://kenney.nl/media/pages/assets/no-licence/cd/kenney_no-licence.zip': readFileSync(FIX + 'kenney_no-licence.zip'),
   'https://github.com/KayKit-Game-Assets/KayKit-Fake-Bits-1.0/archive/refs/heads/main.zip': readFileSync(FIX + 'kaykit-fake-bits.zip'),
   [MIRROR + 'LICENSES.md']: Buffer.from(mirrorLicenses),
   [MIRROR + 'public/glb/buildings_pack_3/Shop.glb']: glb({ asset: { version: '2.0' } }),
@@ -75,4 +79,29 @@ test('fetch-assets rejects Draco/meshopt files, files over 300 KB, missing files
   assert.match(why['quat/qal'], /CC0/);
   assert.ok(!existsSync(join(root, 'assets/kenney/fake/d.glb')) && !existsSync(join(root, 'assets/quat/shops/Big.glb')) && !existsSync(join(root, 'assets/quat/qal')));
   assert.doesNotMatch(readFileSync(join(root, 'assets/LICENSES.md'), 'utf8'), /quat\/qal|quat\/shops/, 'no row for a pack that shipped nothing');
+});
+
+test('fetch-assets refuses dependency uris that resolve outside assets/<into>/ (../, percent-encoded ../, absolute)', async () => {
+  const root = sandbox();
+  const r = await fetchAssets({ root, tmp: join(root, 'tmp'), get: fakeGet([]), log: () => {}, entries: [
+    { source: 'kenney', pack: 'fake-kit', files: ['evil.glb', 'evil2.glb', 'evil3.glb', 'b.glb'], into: 'kenney/fake' },
+  ] });
+  const why = Object.fromEntries(r.rejected.map(x => [x.file, x.why]));
+  for (const f of ['evil.glb', 'evil2.glb', 'evil3.glb']) assert.match(why[f] ?? '', /outside/, f);
+  assert.ok(!existsSync(join(root, 'assets/evil.png')) && !existsSync(join(root, 'evil.png')) && !existsSync(join(root, 'assets/kenney/evil.png')));
+  assert.deepEqual(readdirSync(join(root, 'assets/kenney/fake')), ['b.glb'], 'the rest of the pack still ships');
+});
+
+test('fetch-assets: a pack without a licence file or with a network error is rejected, the other packs still get their LICENSES.md rows', async () => {
+  const root = sandbox();
+  const get = async url => { if (url.includes('KayKit')) throw new Error('ECONNRESET'); return fakeGet([])(url); };
+  const r = await fetchAssets({ root, tmp: join(root, 'tmp'), get, log: () => {}, entries: [
+    { source: 'kenney', pack: 'no-licence', files: ['a.glb'], into: 'kenney/nolic' },
+    { source: 'kaykit', pack: 'Fake-Bits', files: ['thing.gltf'], into: 'kaykit/fake' },
+    { source: 'kenney', pack: 'fake-kit', files: ['b.glb'], into: 'kenney/fake' },
+  ] });
+  const why = Object.fromEntries(r.rejected.map(x => [x.file, x.why]));
+  assert.match(why['kenney/nolic'], /CC0/); assert.match(why['kaykit/fake'], /ECONNRESET/);
+  const lic = readFileSync(join(root, 'assets/LICENSES.md'), 'utf8');
+  assert.match(lic, /`kenney\/fake\/`/); assert.doesNotMatch(lic, /nolic|kaykit/);
 });

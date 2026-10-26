@@ -72,10 +72,54 @@ test('merge keeps glow materials emissive via a second mesh at most (draw calls 
   // 兩種發光色也只多一個 mesh（發光色走頂點色）
   const two = await assets.spawn('x.glb', { glow: { Door: 0xff3fa0, Roof: 0x3fd0ff } });
   assert.equal(meshesOf(two).length, 2);
-  // release：合併出來的幾何與材質是這個 holder 自己的，要 dispose
-  let disposed = 0; for (const m of ms) { m.geometry.addEventListener('dispose', () => disposed++); m.material.addEventListener('dispose', () => disposed++); }
+  // release：材質是這個 holder 自己的，要 dispose；幾何是同一組 (path, tint, glow) 共用的快取，不 dispose
+  let disposed = 0, geoDisposed = 0; for (const m of ms) { m.geometry.addEventListener('dispose', () => geoDisposed++); m.material.addEventListener('dispose', () => disposed++); }
   assets.release(holder);
-  assert.equal(disposed, 4); assert.equal(assets.glowMaterials.length, 1, 'only the second model is still listed');
+  assert.equal(disposed, 2); assert.equal(geoDisposed, 0); assert.equal(assets.glowMaterials.length, 1, 'only the second model is still listed');
+});
+
+test('merged geometry is baked once per (path, tint, glow) and shared; materials stay per spawn', async () => {
+  const { createAssets } = await import('../src/scene/assets.js');
+  let loads = 0;
+  const assets = createAssets(THREE, { loader: { load: (u, ok) => { loads++; ok({ scene: threeMeshScene(), animations: [] }); } } });
+  const [a] = meshesOf(await assets.spawn('x.glb', { tint: { Wall: 0x112233 } }));
+  const [b] = meshesOf(await assets.spawn('x.glb', { tint: { Wall: 0x112233 }, h: 3 }));
+  const [c] = meshesOf(await assets.spawn('x.glb', { tint: { Wall: 0x445566 } }));
+  assert.equal(a.geometry, b.geometry); assert.notEqual(a.geometry, c.geometry); assert.notEqual(a.material, b.material);
+  assert.equal(loads, 1);
+});
+
+test('merge multiplies the source COLOR_0 into the baked colour', async () => {
+  const { createAssets } = await import('../src/scene/assets.js');
+  const scene = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute([0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 0, 0], 3));
+    const s = new THREE.Group(); s.add(new THREE.Mesh(g, new THREE.MeshStandardMaterial({ name: 'Paint', color: 0xffffff, vertexColors: true }))); return s;
+  };
+  const [m] = meshesOf(await createAssets(THREE, { loader: fakeLoader(scene) }).spawn('v.glb', { tint: { Paint: 0x4080ff } }));
+  const t = new THREE.Color(0x4080ff), col = m.geometry.attributes.color;
+  const got = i => [col.getX(i), col.getY(i), col.getZ(i)].map(v => +v.toFixed(4));
+  assert.deepEqual(got(0), [t.r * 0.5, t.g * 0.5, t.b * 0.5].map(v => +v.toFixed(4)));
+  assert.deepEqual(got(2), [t.r, 0, 0].map(v => +v.toFixed(4)));
+});
+
+test('a Kenney colormap glb (doubleSided) merges into one DoubleSide mesh with the palette colour baked in', async () => {
+  const { GLTFLoader } = await import('../vendor/three/addons/loaders/GLTFLoader.js');
+  const { createAssets } = await import('../src/scene/assets.js');
+  // Node 沒有解 PNG 的能力：貼圖換成假的 1×1 圖，像素由 pixels 給（色票格 #336699）
+  const fakeTexture = () => ({ name: 'fakeTexture', loadTexture: () => { const t = new THREE.Texture({ width: 1, height: 1 }); t.flipY = false; return Promise.resolve(t); } });
+  const loader = { load: (url, ok, _, fail) => { const b = readFileSync(url); new GLTFLoader().register(fakeTexture).parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '', ok, fail); } };
+  const assets = createAssets(THREE, { base: 'assets/', loader, pixels: () => ({ width: 1, height: 1, data: new Uint8ClampedArray([0x33, 0x66, 0x99, 255]) }) });
+  const src = await assets.load('kenney/food/cup-tea.glb');
+  let sides = []; src.scene.traverse(o => { if (o.isMesh) sides.push(o.material.side); });
+  assert.ok(sides.includes(THREE.DoubleSide), 'the source is doubleSided');
+  const ms = meshesOf(await assets.spawn('kenney/food/cup-tea.glb'));
+  assert.equal(ms.length, 1); assert.equal(ms[0].material.side, THREE.DoubleSide);
+  assert.deepEqual([...colourCounts(ms[0].geometry).keys()], [key(0x336699)]);
+  // 舊版 Kenney（材質色、單面）合併後維持單面
+  const [speeder] = meshesOf(await createAssets(THREE, { base: 'assets/', loader }).spawn('kenney/space/craft_speederA.glb'));
+  assert.equal(speeder.material.side, THREE.FrontSide);
 });
 
 test('merge: false keeps one mesh per source mesh with converted materials; animated or skinned models are never merged', async () => {

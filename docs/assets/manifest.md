@@ -19,7 +19,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 代幣 | 7 ★◆ | `token.spur.*` | 程式（支線架到風車島與燈塔島） | — | 現有 |
 | 代幣 | 8 | `token.shuttle`、`token.staff` | 程式（接駁小車、站務員 2） | — | 現有（站務員 2 待做） |
 | 代幣 | 9 | `token.main`、`token.train` | `kenney/space/monorail_trainFront.glb`、`monorail_trainPassenger.glb`、`monorail_trainEnd.glb`；`quat/cyberpunk/Platform_4x1_Empty.glb`、`Rail_Long.glb`、`Sign_1.glb`、`TV_1.glb`（glow） | CC0 | 待做 |
-| 代幣 | 10 ◆ | `token.cars` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb` | CC0 | 待做 |
+| 代幣 | 10 ◆ | `token.cars` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb`（設計是三台繞 101，一款一台；結局的紅色第四台用其中一款加 tint，所以 speederD 不抓） | CC0 | 待做 |
 | 鮮奶 | 1 | `milk.crate` | 程式（牛奶箱） | — | 現有 |
 | 鮮奶 | 2 | `milk.main` | `quat/buildings/1Story_Sign_Mat.glb`（早餐店）＋程式桌子 | CC0 | 待做 |
 | 鮮奶 | 3 | `milk.main`、`milk.kids` | `kenney/commercial/building-a.glb`（一層米色校舍，視覺標準件）＋程式操場；小孩 = 程式名冊 | CC0 | 待做 |
@@ -55,7 +55,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 老鼠 | 2 | `rat.pack` | `quat/enemies/Rat.glb` ×5 | CC0 | 現有 |
 | 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb`（搭捷運／泡溫泉） | CC0 | 現有 |
 | 老鼠 | 4 ◆ | `rat.pack` | `quat/enemies/Rat.glb`＋程式（機器鼠天線／三眼綠光） | CC0 | 現有 |
-| 老鼠 | 5 ◆ | `rat.pack`、`rat.ufo` | 機器鼠軍團 10 隻＋王冠 = 程式；UFO = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0 | 現有（10 隻、王冠待做） |
+| 老鼠 | 5 ◆ | `rat.pack`、`rat.ufo` | 機器鼠軍團 10 隻 = `quat/enemies/Rat.glb`；王冠、UFO = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 現有（10 隻、王冠待做） |
 | 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車） | — | 現有 |
 | 珍奶 | 2 | `boba.queue` | 程式名冊（人龍 6 人） | — | 現有 |
 | 珍奶 | 3 | `boba.main` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店）＋`kenney/food/cup-tea.glb`（招牌杯） | CC0 | 待做 |
@@ -71,6 +71,6 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 棒球 | 6 | `baseball.fireworks` | 程式（跨年煙火） | — | 現有 |
 | 棒球 | 7 | `baseball.main`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（更大的圓頂）＋程式 LED 帶、觀眾 8 | CC0 | 待做 |
 | 棒球 | 8 ◆ | `baseball.platform` | 程式（月台連到巨蛋門口）＋`quat/cyberpunk/Platform_4x1_Empty.glb` | CC0 | 待做 |
-| 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭；備用 `quat/survival/Shovel.glb` | CC0 | 現有 |
+| 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭（沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

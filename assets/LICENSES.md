@@ -21,7 +21,6 @@
 | `quat/buildings/` | Quaternius — Ultimate Buildings Pack（https://quaternius.com/packs/ultimatetexturedbuildings.html），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0 | CC0 1.0 |
 | `quat/streets/` | Quaternius — Modular Streets Pack（https://quaternius.com/packs/modularstreets.html），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0 | CC0 1.0 |
 | `quat/cyberpunk/` | Quaternius — Cyberpunk Game Kit（https://quaternius.com/packs/cyberpunkgamekit.html），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0 | CC0 1.0 |
-| `quat/survival/` | Quaternius — Survival Pack（https://quaternius.com/packs/survival.html），經 https://github.com/trebeljahr/quaternius-showcase 鏡像取得，鏡像 LICENSES.md 載明 CC0-1.0 | CC0 1.0 |
 | `kaykit/spacebase/` | KayKit — Space Base Bits 1.0（Kay Lousberg，https://github.com/KayKit-Game-Assets/KayKit-Space-Base-Bits-1.0），repo 內 LICENSE.txt 載明 CC0 | CC0 1.0 |
 
 CC0 全文：https://creativecommons.org/publicdomain/zero/1.0/

@@ -25,8 +25,6 @@
     "files": ["Streetlight_Single.glb", "Streetlight_Double.glb"] },
   { "source": "quat", "pack": "cyberpunk_pack", "into": "quat/cyberpunk",
     "files": ["Sign_1.glb", "Sign_2.glb", "TV_1.glb", "Antenna_1.glb", "Antenna_2.glb", "Platform_4x1_Empty.glb", "Rail_Long.glb"] },
-  { "source": "quat", "pack": "survival_pack", "into": "quat/survival",
-    "files": ["Shovel.glb"] },
   { "source": "kaykit", "pack": "Space-Base-Bits", "into": "kaykit/spacebase",
     "files": ["windturbine_tall.gltf"] }
 ]

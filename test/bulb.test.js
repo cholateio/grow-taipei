@@ -37,6 +37,9 @@ test('lv4 widens the night market to four stalls with a neon sign; lv3 still two
   const stalls = n => bulb.view(lv({ bulb: n }), {})['bulb.market'].parts.filter(p => p.kind === 'hip').length;
   assert.equal(stalls(3), 2); assert.equal(stalls(4), 4);
   assert.ok(bulb.view(lv({ bulb: 4 }), {})['bulb.market'].parts.some(p => p.glow === 0xff3fa0 && p.kind === 'box'));
+  // footprint：四個攤身 + 四攤圍起來的中間空地（不留走不出去的死角）
+  const fp = bulb.view(lv({ bulb: 4 }), {})['bulb.market'].footprint;
+  assert.equal(fp.length, 5); assert.deepEqual(fp.at(-1), { x: 0, z: 0.5, w: 0.5, d: 0.6 });
 });
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
@@ -56,7 +59,7 @@ test('view: posts are one part, heads are one part per lighting stop in road ord
     assert.equal(heads(s).length, bulb.LAMP_STOPS[k].length);
     worldPoints(s).forEach((q, j) => { const p = bulb.LAMP_POINTS[bulb.LAMP_STOPS[k][j]]; assert.ok(near(q, p, 1e-9)); assert.equal(p.y, cellTop(cellAt(p.x, p.z))); });
   });
-  assert.deepEqual(v['bulb.main'].footprint, { r: 0.15 }); assert.equal(v['bulb.market'].footprint, undefined, 'market footprint is automatic');
+  assert.deepEqual(v['bulb.main'].footprint, { r: 0.15 }); assert.deepEqual(v['bulb.market'].footprint, [{ x: 0, z: 0, w: 0.5, d: 0.4 }, { x: 0.5, z: 0.5, w: 0.5, d: 0.4 }], 'market footprint: each stall body');
   for (const n of [1, 2, 5]) {
     const el = bulb.view(lv({ bulb: n }), {})['bulb.electrician'];
     assert.deepEqual([el.kind, el.n, el.accessory], ['roster', 1, 'vest']); assert.deepEqual(el.home, { kind: 'path', path: bulb.ROAD, loop: true, speed: 0.5, entry: bulb.ELECTRICIAN_ENTRY });

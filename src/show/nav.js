@@ -7,7 +7,7 @@ export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕�
 // 同高兩格之間的拱橋（island.js addBridge → bridgeDecks(a, b, { arch: 0.08 })）：甲板中心 base + sin(π·t)·ARCH，板厚 DECK；
 // 9 片甲板各長 len/9 × 1.08，兩端的板子超出端點半片（PLANK·len）。DENSE：路線過橋那一段每隔多遠補一個點（游標直線內插才貼著拱）
 const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05;
-const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32;
+const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32, ESCAPE_MAX = 1.6;
 const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
@@ -64,6 +64,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   // blocked：落在外擴後 footprint 裡的格點（A* 不走）；pads：外擴 PAD 之後的 footprint（圓 { x, z, r }、橢圓 { x, z, rx, rz } 或框 { x, z, hx, hz }）；
   // version：footprint 每變一次 +1（名冊看它重新規劃走到一半的路）
   let blocked = new Set(), pads = [], version = 0, last = '[]', near = new Map(), edge = new Uint8Array(N * N);   // edge：被擋格點旁邊的格點（A* 走這裡要查線段）
+  let bodies = [], away = new Map();   // bodies：footprint 本身（不外擴，同 pads 的形狀格式）；away：escape 的結果（footprint 變了就清掉）
   const ground = k => k >= 0 && open[k] === 1, free = k => ground(k) && !blocked.has(k);
   const padded = (x, z) => pads.some(p => inPad(p, x, z));
 
@@ -86,11 +87,11 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   function setFootprints(list) {
     const key = JSON.stringify(list); if (key === last) return;
     last = key; version++;
-    blocked = new Set(); pads = []; near = new Map(); edge = new Uint8Array(N * N);
+    blocked = new Set(); pads = []; near = new Map(); edge = new Uint8Array(N * N); bodies = []; away = new Map();
     for (const f of list) {
       const p = f.r != null ? { x: f.x, z: f.z, r: f.r + PAD } : f.rx != null ? { x: f.x, z: f.z, rx: f.rx + PAD, rz: f.rz + PAD } : { x: f.x, z: f.z, hx: f.w / 2 + PAD, hz: f.d / 2 + PAD };
       const hx = p.r ?? p.rx ?? p.hx, hz = p.r ?? p.rz ?? p.hz;
-      pads.push(p);
+      pads.push(p); bodies.push(f.r != null ? { x: f.x, z: f.z, r: f.r } : f.rx != null ? { x: f.x, z: f.z, rx: f.rx, rz: f.rz } : { x: f.x, z: f.z, hx: f.w / 2, hz: f.d / 2 });
       for (let j = Math.max(0, toI(f.z - hz)); j <= Math.min(N - 1, toI(f.z + hz)); j++)
         for (let i = Math.max(0, toI(f.x - hx)); i <= Math.min(N - 1, toI(f.x + hx)); i++) if (inPad(p, toW(i), toW(j))) blocked.add(j * N + i);
     }
@@ -118,6 +119,20 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     }
     if (!out) { const best = nearestFree(x, z); out = best < 0 ? { x, y: groundY(x, z), z } : pointOf(best); }
     near.set(key, out);
+    return { ...out };
+  }
+  // 走出 footprint（建築長在身上、被放在水裡／屋頂上）：最近的可走點，而且走過去的直線不穿過別的建築本身（不含 PAD；
+  // 身上這棟本來就在裡面，不算）——最近的可走點隔著隔壁的攤子時，改走沒有隔著建築的那一邊。一圈一圈找到 ESCAPE_MAX，找不到退回 nearestWalkable
+  function escape(from) {
+    const key = `${from.x},${from.z}`, hit = away.get(key); if (hit) return { ...hit };
+    const others = bodies.filter(b => !inPad(b, from.x, from.z));
+    let out = null;
+    for (let rr = NEAR_STEP; !out && rr <= ESCAPE_MAX + 1e-9; rr += NEAR_STEP) for (let k = 0; k < NEAR_DIRS && !out; k++) {
+      const a = 2 * Math.PI * k / NEAR_DIRS, p = { x: from.x + Math.cos(a) * rr, z: from.z + Math.sin(a) * rr };
+      if (walkable(p.x, p.z) && !others.some(b => crossesPad(b, from, p))) out = { x: p.x, y: groundY(p.x, p.z), z: p.z };
+    }
+    out ??= nearestWalkable(from);
+    away.set(key, out);
     return { ...out };
   }
   // 路線從哪些格點出發／到哪些格點：點所在那一格；那一格的格點在 footprint 裡（點本身在 PAD 外、貼著牆）就用
@@ -193,7 +208,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     // 衛星島不在走路格上：同一座島上的兩點直接直線走（不被拉回主島）
     const sat = cellAt(from.x, from.z) ? -1 : satelliteAt(from);
     if (sat >= 0 && !cellAt(to.x, to.z) && satelliteAt(to) === sat) return [head[0], { x: to.x, y: to.y ?? head[0].y, z: to.z }];
-    const rescued = !walkable(from.x, from.z), start = rescued ? nearestWalkable(from) : from;
+    const rescued = !walkable(from.x, from.z), start = rescued ? escape(from) : from;
     if (rescued) head.push(start);
     const end = nearestWalkable(to);
     const a = anchors(start), b = anchors(end), cells = a.length && b.length ? astar(a, b) : null;

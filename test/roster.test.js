@@ -563,8 +563,8 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // 攤車後的老闆）。已經在裡面才開始查的人（建築長在身上——footprint 換了的那一幀人就在裡面；劇本把人放在門裡再交回日常）
 // 要在 CAUGHT_MAX 秒內走出來；本來在外面、自己走進去的就是穿牆。
 // 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）。
-// 審查修正：工程師、老鼠、偵防師、老闆不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
-// 只有泡溫泉（站位畫在池子裡）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
+// 審查修正：每個名冊（最終審查：不再只看幾個名單上的鍵）不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
+// 只有站位畫在 footprint 裡（泡溫泉）、坐在車頂（ride，不在走路格上）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
 // 最終審查修正：同一趟 live 也查橋上的人貼著橋面：|y − groundY| ≤ BRIDGE_TOL，橋頭一閃 ≤ BRIDGE_END、不超過 BRIDGE_BLIP 秒。
 // 兩條正解只演一次，幾個測試共用（livePlay）
 const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
@@ -574,7 +574,6 @@ async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const { headlessShow, ALL } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
   const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set();
-  const WATCH = ['chip.engineers', 'rat.pack', 'chip.detective', 'boba.owner'];
   let detectiveFrames = 0, bridgeFrames = 0;
   const inShape = (f, x, z) => (f.r != null ? Math.hypot(x - f.x, z - f.z) <= f.r : f.rx != null ? ((x - f.x) / f.rx) ** 2 + ((z - f.z) / f.rz) ** 2 <= 1 : Math.abs(x - f.x) <= f.w / 2 && Math.abs(z - f.z) <= f.d / 2);
   // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
@@ -593,7 +592,7 @@ async function playBoth() {
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
         const h = view[k]?.home, exempt = m.hidden || m.mode === 'script' || h?.kind === 'path' || authored(h, m.i);
-        if (WATCH.includes(k) && !m.hidden && !authored(h, m.i) && cellAt(m.pos.x, m.pos.z)) {
+        if (!m.hidden && h?.kind !== 'ride' && !authored(h, m.i) && cellAt(m.pos.x, m.pos.z)) {
           const inWall = fps.some(f => inShape(f, m.pos.x, m.pos.z)), what = `${label} ${k}#${m.i} ${m.mode} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
           if (!inWall) { wallIn.delete(m); wallOut.add(m); }
           else if (!wallIn.has(m) && wallOut.has(m) && !changed && !rebuilt) walls.add(`${what} ${JSON.stringify(fps.find(f => inShape(f, m.pos.x, m.pos.z)))}`);
@@ -644,6 +643,38 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
   assert.deepEqual(slow.slice(0, 20), [], 'caught by a new building: walks out at once');
   assert.deepEqual(stuck, []);
   assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building`);
+});
+// 最終審查修正：手畫的折線（工程師通勤 ENGINEER_ROUTE＝routeBetween 接起來的路、老鼠、電工主路 ROAD）兩條正解每一級都在外擴 PAD 的 footprint 外
+// （每 0.02 取樣，閉合的折線含最後接回起點那段）——沿折線走的人不檢查走路格，路本身要畫在建築外
+test('every hand-drawn path home stays outside every padded footprint at every level of both solutions', async () => {
+  const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
+  const { headlessShow, ALL } = await import('./helpers/show.js'), bad = new Set(), seen = new Set();
+  for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
+    const { show, run } = await headlessShow(); let s = engine.createState(spec);
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const step of steps) {
+      const r = step(s); s = r.state;
+      for (const e of [...r.events, { kind: 'settle' }]) {
+        await run([e], { instant: true });
+        const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), nav = createNav();
+        nav.setFootprints(st.footprints());
+        for (const [k, v] of Object.entries(view)) {
+          const h = v.home; if (h?.kind !== 'path') continue;
+          seen.add(k);
+          const P = h.path;
+          for (let i = 0; i < (h.loop ? P.length : P.length - 1); i++) {
+            const a = P[i], b = P[(i + 1) % P.length], n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 0.02);
+            for (let q = 0; q <= n; q++) {
+              const x = a.x + (b.x - a.x) * q / n, z = a.z + (b.z - a.z) * q / n;
+              if (nav.inFootprint(x, z)) bad.add(`${k} seg ${i} (${a.x.toFixed(2)}, ${a.z.toFixed(2)})→(${b.x.toFixed(2)}, ${b.z.toFixed(2)}) lv ${JSON.stringify(st.lv)}`);
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual([...seen].sort(), ['bulb.electrician', 'chip.engineers', 'rat.pack']);
+  assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
 // 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子
 test('live, both solutions: everyone on a bridge stays on the deck (y within 0.01 of nav.groundY; ≤ 0.05 blips at the ends for ≤ 0.1 s)', async () => {

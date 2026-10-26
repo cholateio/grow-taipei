@@ -307,3 +307,20 @@ test('seat and trainHead follow the train clock', () => {
   assert.ok(Math.abs(s.x - Math.cos(ar) * 8.3) < 1e-9 && Math.abs(s.z - Math.sin(ar) * 8.3) < 1e-9);
   assert.ok(Math.abs(h.x - Math.cos(a) * 8.3) < 1e-9 && Math.abs(h.z - Math.sin(a) * 8.3) < 1e-9 && h.y > s.y);
 });
+// 最終審查修正（§14.1）：劇本的走路走到一半，路上長出建築（夜市在電工走最後一段時開張）——從現在的位置重新找路繞過去，
+// 拍長不變（照原本的時間走到，繞路那一段走快一點），不照舊路穿過新建築
+test('a walk whose route is cut by a new footprint replans around it and still ends on time', () => {
+  const o = c([0, 0]), from = { x: o.x - 1.5, y: o.y, z: o.z + 0.4 }, to = { x: o.x + 1.5, y: o.y, z: o.z + 0.4 };
+  const { ctx, tl, member } = fake({ pos: from });
+  let done = false; tl.play([B.walk(member, to)], ctx).then(() => { done = true; }); tl.update(0);
+  const dur = tl.currentDur;
+  for (let i = 0; i < 9; i++) tl.update(1 / 30);
+  ctx.nav.setFootprints([{ x: o.x, z: o.z + 0.4, w: 0.4, d: 0.8 }]);
+  let t = 0.3;
+  for (let i = 0; i < 200 && tl.busy; i++) {
+    tl.update(1 / 30); t += 1 / 30;
+    assert.ok(!ctx.nav.inFootprint(member.pos.x, member.pos.z), `frame ${i} inside at ${member.pos.x.toFixed(2)},${member.pos.z.toFixed(2)}`);
+  }
+  assert.ok(Math.abs(t - dur) <= 1 / 30 + 1e-6, `ends on time (${t.toFixed(2)} vs ${dur.toFixed(2)})`);
+  assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6, 'arrives');
+});

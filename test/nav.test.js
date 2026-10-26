@@ -230,3 +230,15 @@ test('nav.ground(path) puts a hand-drawn polyline on the deck: cursor y within 0
   }
   assert.deepEqual(nav.ground([{ x: 40, y: 0.45, z: 40 }, { x: 41, y: 0.45, z: 40 }]), [{ x: 40, y: 0.45, z: 40 }, { x: 41, y: 0.45, z: 40 }], 'off the grid: as drawn');
 });
+// 最終審查修正：建築長在身上（起點在外擴的 footprint 裡）時走出來的那一段直線，不穿過旁邊另一棟建築本身——
+// 最近的可走點在隔壁攤子另一邊時，改走沒有隔著建築的那一邊（老闆被噴泉長在身上，不從夜市攤子的牆角切過去）
+test('a route rescued out of a footprint never cuts through another building on the way out', () => {
+  const nav = createNav(), A = { x: 0, z: 0, r: 0.7 }, B = { x: 0.75, z: 0, w: 0.2, d: 2.0 };
+  nav.setFootprints([A, B]);
+  const from = { x: 0.45, y: TOP, z: 0 }, path = nav.route(from, { x: -1.2, y: TOP, z: 0 }), out = path[1];
+  assert.ok(nav.walkable(out.x, out.z), 'walks out to a walkable point');
+  for (let k = 0; k <= 100; k++) {
+    const x = from.x + (out.x - from.x) * k / 100, z = from.z + (out.z - from.z) * k / 100;
+    assert.ok(!(Math.abs(x - B.x) <= B.w / 2 && Math.abs(z - B.z) <= B.d / 2), `escape leg crosses the other building at ${x.toFixed(2)},${z.toFixed(2)} (to ${out.x.toFixed(2)},${out.z.toFixed(2)})`);
+  }
+});

@@ -67,8 +67,9 @@ export function spawn(key, at) {
 }
 
 // delay：拍開始時就把人拿到劇本手上（原地站著），delay 秒後才出發（一群人排成一列跟著走）
+// 走到一半 footprint 變了（路上長出建築，§14.1）：從現在的位置重新找路到同一個終點，剩下的時間不變（拍長開始時就定了），繞路就走快一點
 export function walk(who, to, { speed, delay = 0 } = {}) {
-  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0;
+  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0, planned = -1, span = 0;   // span：開始時定的走路秒數（重新找路也不變）
   const plan = ctx => {
     const mm = memberOf(who, ctx); if (!mm) return null;
     const r = ctx.nav.route(mm.pos, call(to, ctx));
@@ -76,16 +77,21 @@ export function walk(who, to, { speed, delay = 0 } = {}) {
   };
   return {
     kind: 'walk',
-    dur: () => delay + total / v,
+    dur: () => delay + span,
     estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : delay + p.len / p.v; },
     start(ctx) {
-      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0; idle = delay;
+      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0; idle = delay; span = total / v;
       ctx.roster.claim(m);
       if (total < 1e-6) return false;
-      cursor = createPathCursor(route, { loop: false });
+      cursor = createPathCursor(route, { loop: false }); planned = ctx.nav.version;
     },
     step(k, dt, ctx) {
       if (idle > 0) { const used = Math.min(idle, dt); idle -= used; dt -= used; if (dt <= 0) return; }
+      if (ctx.nav.version !== planned && s < total) {
+        planned = ctx.nav.version;
+        const left = (total - s) / v, r = ctx.nav.route(m.pos, route.at(-1)), len = ctx.nav.routeLength(r);
+        if (len > 1e-6) { route = r; cursor = createPathCursor(r, { loop: false }); total = len; s = 0; v = len / left; }
+      }
       // 開放路徑的游標走過頭會折返，所以只推到終點為止
       const ds = Math.min(dt * v, total - s); s += ds; cursor.advance(ds);
       ctx.roster.setPose(m, { ...cursor.locate(), walking: true });

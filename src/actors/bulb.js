@@ -9,6 +9,9 @@ import { C, offset } from './palette.js';
 export const id = 'bulb';
 export const labelY = 0.8;
 const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
+// 夜市前（第一攤西邊、捷運站那側的空地）：電工 ♪、島民排隊站這裡。攤子之間、東攤與格子東角之間的空隙外擴 PAD 後是走不進去的死角，
+// 不用「夜市中心附近的可走點」（會挑到死角裡、走不到）
+const MARKET_FRONT = offset(MARKET, -0.6, 0);
 const SITE = offset(TOWER, 0.9, 1.0);     // 101 工地（電工從這裡出發；名冊入口 §13.2）：101 南側走得到的空地，和晶片的工人同一處
 export const ELECTRICIAN_ENTRY = SITE;
 const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z);   // 鏡頭對的格子：路燈（中心格）、夜市
@@ -24,11 +27,13 @@ function ringPoint(cell, deg, r) {
 // 主路：五個低格的環路接成一圈（pointy-top：角在 30°+60°k、邊中點＝橋頭在 60°k）。
 // 從中心格西橋頭出發，走中心格南半邊 → 晶片格 → 捷運格 → 球場格 → 校舍格繞外圈，回到中心格。
 // 角往內收 0.05（離外側的路燈桿 0.17，不踩到；再收就會切進河濱公園、夜市的範圍）；橋頭和 island.js 的橋同一組端點。
+// 例外 [角度, 半徑]：捷運格 30° 角往外放到 RING_R + 0.05（那個角沒有路燈）——330° → 30° 那一段夾在夜市東攤和噴泉（珍奶 Lv3，外擴後半徑 0.92）
+// 東邊，角照常內收的話會擦進噴泉外擴 PAD 的範圍
 const TOUR = [
-  [[0, 0], [180, 150, 90, 30, 0]], [[1, 0], [180, 210, 270, 330, 30, 90, 120]], [[0, 1], [300, 330, 30, 90, 150, 180]],
+  [[0, 0], [180, 150, 90, 30, 0]], [[1, 0], [180, 210, 270, 330, 30, 90, 120]], [[0, 1], [300, 330, [30, RING_R + 0.05], 90, 150, 180]],
   [[-1, 1], [0, 30, 90, 150, 210, 240]], [[-1, 0], [60, 90, 150, 210, 270, 330, 0]],
 ];
-export const ROAD = TOUR.flatMap(([cell, degs]) => degs.map(d => ringPoint(cell, d, d % 60 ? RING_R - 0.05 : RING_R * SQ3 / 2)));
+export const ROAD = TOUR.flatMap(([cell, degs]) => degs.map(d => (Array.isArray(d) ? ringPoint(cell, ...d) : ringPoint(cell, d, d % 60 ? RING_R - 0.05 : RING_R * SQ3 / 2))));
 
 // 路燈：每個低格的 90°／210°／330° 角各一盞。燈都在路口：隔著水道的兩三盞是同一個路口，電工站在第一盞旁一站點完。
 // 路口照沿主路經過的順序排；LAMP_POINTS 是攤平後的順序。
@@ -44,6 +49,14 @@ export const LAMP_POINTS = LAMPS.map(([cell, deg]) => ringPoint(cell, deg, LAMP_
 export const lampApproach = i => { const [cell, deg] = LAMPS[i]; return ringPoint(cell, deg, LAMP_R - APPROACH); };
 // 每一站（路口）點的燈號：[[0, 1, 2], [3, 4], [5], …]；燈頭零件 bulb.lamps.<站> 照這張表分組（大停電也一站站熄）
 export const LAMP_STOPS = JUNCTIONS.map((j, k) => j.map((_, i) => JUNCTIONS.slice(0, k).flat().length + i));
+
+// 夜市的攤子 [x, z, 屋頂色]（相對夜市地標）：Lv2 兩攤、Lv4 擴大到四攤。東西兩攤在 ±0.5：
+// 東攤的攤身外擴 PAD 後到 x +0.87，離電工主路（捷運格東邊 330°–30° 那一段，x +0.91）還有 0.04
+const STALL_W = 0.5, STALL_D = 0.4;
+const marketStalls = n => [[0, 0, C.coral], [0.5, 0.5, C.yellow], ...(n >= 4 ? [[-0.5, 0.5, C.navy], [0, 1.0, C.coral]] : [])];
+// 夜市的 footprint：每一攤的攤身（不是整個包圍盒：攤子外圍、東側主路那一條都是走得到的地）；四攤圍成一圈時中間的小空地
+// 外擴 PAD 後是走不出去的死角（站位被救到裡面就困住了），一起擋掉
+const marketFootprint = n => [...marketStalls(n).map(([x, z]) => ({ x, z, w: STALL_W, d: STALL_D })), ...(n >= 4 ? [{ x: 0, z: 0.5, w: 0.5, d: 0.6 }] : [])];
 
 const post = (x, z) => ({ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5, 0.06], color: C.ink });
 const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head });
@@ -65,15 +78,14 @@ export function view(lv, flags) {
       const o = LAMP_POINTS[g[0]];
       v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(i + 1))), footprint: false };
     });
-    const stall = (x, z, roof) => [
-      { kind: 'box', pos: [x, 0.22, z], scale: [0.5, 0.45, 0.4], color: C.wall },
+    const stall = ([x, z, roof]) => [
+      { kind: 'box', pos: [x, 0.22, z], scale: [STALL_W, 0.45, STALL_D], color: C.wall },
       { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },
       { kind: 'sphere', pos: [x + 0.2, 0.47, z + 0.22], scale: 0.07, ...(lit ? { color: C.warm, glow: C.warm } : { color: C.window }) },
     ];
-    const market = [...stall(0, 0, C.coral), ...stall(0.6, 0.5, C.yellow)];
-    if (n >= 4) market.push(...stall(-0.6, 0.5, C.navy), ...stall(0, 1.0, C.coral));   // 夜市擴大到四攤
-    if (n >= 4) market.push({ kind: 'box', pos: [0.3, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...(lit ? { color: C.neonPink, glow: C.neonPink } : { color: C.window }) });
-    v['bulb.market'] = { kind: 'compound', at: landmarkWorld('market'), parts: market };
+    const stalls = marketStalls(n), market = stalls.flatMap(stall);
+    if (n >= 4) market.push({ kind: 'box', pos: [0.25, 0.95, 0.25], scale: [0.7, 0.18, 0.04], ...(lit ? { color: C.neonPink, glow: C.neonPink } : { color: C.window }) });
+    v['bulb.market'] = { kind: 'compound', at: MARKET, parts: market, footprint: marketFootprint(n) };
   }
   return v;
 }
@@ -154,14 +166,14 @@ export const script = {
         B.home(m), levelUpAtHome(B, cell(n - 1)),
       ];
     },
-    // 霓虹、傍晚：電工走到夜市 → ♪ → 閃白霓虹 → 天色淡入傍晚（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 霓虹、傍晚：電工走到夜市前 → ♪ → 閃白霓虹 → 天色淡入傍晚（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
     3(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
-      return [B.focus(MARKET_CELL), B.walk(m, MARKET), B.bubble(m, '♪'), B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B)];
+      return [B.focus(MARKET_CELL), B.walk(m, MARKET_FRONT), B.bubble(m, '♪'), B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B)];
     },
-    // 四攤：離夜市最近的兩個島民走去排隊 → 一起 ♥ → 閃白多兩攤（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 四攤：離夜市最近的兩個島民走去夜市前排隊 → 一起 ♥ → 閃白多兩攤（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
     4(e, s, ctx) {
-      const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET, 2, 0.7)[i];
+      const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
       return [
         B.focus(MARKET_CELL), B.together([0, 1].map(i => B.walk(islander(i), slot(i)))), B.together([0, 1].map(i => B.bubble(islander(i), '♥'))),
         B.apply(e), B.home([islander(0), islander(1)]), levelUpAtHome(B),

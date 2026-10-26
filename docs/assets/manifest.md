@@ -2,7 +2,7 @@
 
 設計 §7.3：每一級一列。授權全是 CC0（逐包紀錄在 `assets/LICENSES.md`）；「程式」= `src/actors/<物品>.js` 的 view 用零件畫。
 零件鍵今天程式裡還沒有的（例如 `token.cars`、`milk.lab`）是預定名稱，做的任務可以改。
-狀態：**現有** = 今天的程式零件已經畫出這一級（舊階梯以內）；**待做** = 還沒做，來源欄是計畫要用的程式或 glb（glb 已由 `node tools/fetch-assets.mjs` 依 `tools/assets.json` 抓進 `assets/`）；**換新** = 原本是程式零件、改成 glb 之後。任務 4–9 做完一級就改這一列。
+狀態：**現有** = 今天的程式零件已經畫出這一級（舊階梯以內）；**待做** = 還沒做，來源欄是計畫要用的程式或 glb（glb 已由 `node tools/fetch-assets.mjs` 依 `tools/assets.json` 抓進 `assets/`）；**換新** = 原本是程式零件、改成 glb 之後。任務 4–9 做完一級就改這一列；任務 12 定稿（2026-10-27：沒有待做的列）。
 
 glb 一律經 `assets.spawn(path, { tint, glow })` 載入：整個模型併成 ≤ 2 個 draw call（不發光一個、發光一個），顏色進頂點色；
 Kenney 新版套件（train、commercial、industrial、factory、food、market、car）與 KayKit 的顏色在色票圖裡，`tint` 的鍵可以寫色票格的 `'#rrggbb'`；
@@ -17,7 +17,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 代幣 | 5 | `token.train` | `kenney/train/train-electric-subway-a/b/c.glb` 5 節（a b c b a） | CC0 | 換新 |
 | 代幣 | 6 | `token.train` | `kenney/train/train-electric-bullet-a/b/c.glb` 5 節（白底橘線靠 tint：藍車頂與鼻換珊瑚橘、深色車窗） | CC0 | 換新 |
 | 代幣 | 7 ★◆ | `token.spur.windmill`、`token.spur.playground` | 程式（支線架到**風車島**與遊樂場島，裁決 R10：燈塔島沒有支線；零件 kind `spur`，劇本沿徑向 scaleIn 長出去） | — | 現有 |
-| 代幣 | 8 | `token.shuttle`、`token.staff` | 程式（接駁小車、站務員 2） | — | 現有 |
+| 代幣 | 8 | `token.shuttle` | 程式（接駁小車）；第二位站務員拿掉（人數預算，裁決 R16，站務員一直 1 人） | — | 現有 |
 | 代幣 | 9 | `token.main`、`token.deck` | 程式霓虹站體（深藍、霓虹藍邊條、平屋頂、天線）；懸浮月台 `token.deck`（零件 kind `deck`，一起閃白、浮上來）＝`quat/cyberpunk/Platform_4x1_Empty.glb`（Texture_Signs 發藍光）＋`Rail_Long.glb`（欄杆，發粉紅光）＋`Sign_1.glb`（招牌，發粉紅光）；列車仍是高鐵（`monorail_*`、`TV_1` 沒用：整格 draw call ≤ 20） | CC0 | 換新 |
 | 代幣 | 10 ◆ | `token.cars.0`–`token.cars.2` | `kenney/space/craft_speederA.glb`、`craft_speederB.glb`、`craft_speederC.glb`（一款一台，飾條珊瑚／藍／黃；零件 kind `orbit`：繞 101 一圈、停在賽博站屋頂） | CC0 | 換新 |
 | 鮮奶 | 1 | `milk.crate` | 程式（牛奶箱） | — | 現有 |
@@ -29,7 +29,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 鮮奶 | 7 ◆ | `milk.main`、`milk.tower`、`milk.gate` | `kenney/commercial/building-e.glb` ×2（大學兩翼，右翼轉 180°）＋程式鐘塔（兩翼中間）、拱門校門；學士帽 = 名冊配件 | CC0 | 換新 |
 | 鮮奶 | 8 | `milk.main`、`milk.gate` | `kenney/commercial/low-detail-building-wide-b.glb`（玻璃研究大樓，帶狀玻璃 tint `C.blue`／`C.glass`，換掉大學左翼）＋程式 YouBike 站；白袍 = 名冊配件 | CC0 | 換新 |
 | 鮮奶 | 9 | `milk.hats`、`milk.yard` | 程式（操場上的學士帽、紅布條；101 頭上「恭喜畢業」是劇本字卡） | — | 現有 |
-| 鮮奶 | 10 ◆ | `milk.truck`、`milk.boat`、`milk.extraKids` | `kenney/car/truck.glb`（牛奶車，tint 白）、`quat/ships/Boat.glb`（西岸觀光船，tint 珊瑚／奶油）＋程式船上牛奶箱（併在 `milk.yard`）；全島六格各一個小孩 = 程式名冊 | CC0 | 換新 |
+| 鮮奶 | 10 ◆ | `milk.truck`、`milk.boat`、`milk.extraKids` | `kenney/car/truck.glb`（牛奶車，tint 白）、`quat/ships/Boat.glb`（西岸觀光船，tint 珊瑚／奶油）＋程式船上牛奶箱（併在 `milk.yard`）；鮮奶節多的 3 個小孩（鮮奶格、晶片格、溫泉格各一，裁決 R16）= 程式名冊 | CC0 | 換新 |
 | 晶片 | 1 | `chip.main`、`chip.crane`、`chip.worker` | 程式（圍籬、三角錐、吊車＝tower.js 的 crane builder，吊臂會擺，和 101 工地同一個）；`kenney/factory/crane.glb` 沒用（留程式版是為了吊臂動畫） | — | 現有 |
 | 晶片 | 2 | `chip.main`、`chip.smoke`、`chip.engineers` | `kenney/industrial/building-a.glb`（廠房：色票圖 tint 奶油牆、屋頂色飾條、珊瑚牆腳）＋`chimney-medium.glb`（立在廠房屋頂，珊瑚白條紋）；零件 kind `campus`（同鮮奶校舍）；煙 = 程式；工程師 = 程式名冊 | CC0 | 換新 |
 | 晶片 | 3 | `chip.campus`、`chip.engineers` | 程式三棟玻璃盒（窗帶）＋招牌；工程師 4 人騎 YouBike（玻璃盒用程式畫才是一整塊玻璃色；`building-b/c/d.glb` 沒用） | — | 現有 |
@@ -50,12 +50,12 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`、`bulb.neon.market`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅、夜市屋簷霓虹藍）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）、`Sign_2.glb`（夜市招牌，發粉紅光；換掉 Lv4 的招牌板） | CC0 | 換新 |
 | 颱風 | 1 | `typhoon.main` | 程式（灰雲） | — | 現有 |
 | 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈、大雨、外送機車） | — | 現有 |
-| 颱風 | 3 | `typhoon.rainbow`、`typhoon.park` | 程式（彩虹、河濱公園）；堤防一圈待做 | — | 現有（堤防待做） |
+| 颱風 | 3 | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
 | 老鼠 | 1 | `rat.pack` | `quat/enemies/Rat.glb`（動畫，不併） | CC0 | 現有 |
 | 老鼠 | 2 | `rat.pack` | `quat/enemies/Rat.glb` ×5 | CC0 | 現有 |
 | 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb`（搭捷運／泡溫泉） | CC0 | 現有 |
 | 老鼠 | 4 ◆ | `rat.pack` | `quat/enemies/Rat.glb`＋程式（機器鼠天線／三眼綠光） | CC0 | 現有 |
-| 老鼠 | 5 ◆ | `rat.pack`、`rat.ufo` | 機器鼠軍團 10 隻 = `quat/enemies/Rat.glb`；王冠、UFO = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 現有（10 隻、王冠待做） |
+| 老鼠 | 5 ◆ | `rat.pack`、`rat.king`、`rat.ufo`、`sat.rocksRing` | 機器鼠軍團 10 隻＋站頂戴王冠的機器鼠 = `quat/enemies/Rat.glb`（天線、王冠程式）；變異鼠加冕、小 UFO、石堆島綠光圈 = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 換新 |
 | 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車，錨點南邊 0.4：夜市第四攤擋不到） | — | 現有 |
 | 珍奶 | 2 | `boba.queue`、`boba.yard` | 程式名冊（人龍 4 人一排，人數預算）＋程式立牌（鮮奶 ≥4 白底藍字） | — | 現有 |
 | 珍奶 | 3 | `boba.main`、`boba.sign`、`boba.yard` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店，tint 牆奶油、磚與飾邊木色、招牌珊瑚）＋`kenney/food/cup-tea.glb`（屋頂招牌杯）＋程式遮雨棚、店前磚地 | CC0 | 換新 |
@@ -63,14 +63,14 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 珍奶 | 5 | `sat.forestShop`、`sat.forest`、`sat.boats` | 程式（小森林島分店、觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；門檻由 Lv4 改 Lv5（satellites.js `BRANCH`）。`3Story_Small_Mat.glb` 沒用 | CC0（船） | 現有 |
 | 珍奶 | 6 ★ | `boba.flagship`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | `quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店，同店面 tint）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`，繞店飛一小圈、停在屋頂）；觀光客 = 程式名冊 | CC0 | 換新 |
 | 珍奶 | 7 ◆ | `boba.yard`（旗子）、`boba.fleet` | 程式（主島 17 條靠海格邊的珍奶旗，併在院子零件裡；五艘小船一個零件繞島轉；101「世界珍奶節」是劇本字卡） | — | 換新 |
-| 棒球 | 1 | `baseball.main`、`baseball.lines.*` | 程式（沙地球場） | — | 現有 |
+| 棒球 | 1 | `baseball.main`、`baseball.lines.*`、`baseball.players` | 程式（沙地球場；第一個球員放置時從看台後方進場跑壘，裁決 R16：球場格不住島民） | — | 現有 |
 | 棒球 | 2 | `baseball.stands`、`baseball.players` | `kenney/racing/grandStand.glb` ×2（木看台，tint 座椅珊瑚、骨架木色；零件 kind `stands`）；球員 = 程式名冊 | CC0 | 換新 |
 | 棒球 | 3 ◆ | `baseball.main`、`baseball.deco` | `kenney/space/hangar_roundA.glb`（大巨蛋，高 1.0，tint 圓頂白、殼奶油、飾條珊瑚）＋程式底座與門口；Quaternius `GeodesicDome` 是 Draco 壓縮，沒收 | CC0 | 換新 |
 | 棒球 | 4 | `baseball.deco`、`baseball.crowd` | 程式（頂縫透光、觀眾 3） | — | 現有 |
 | 棒球 | 5 | `baseball.deco`、`baseball.lawn` | 程式（藍色應援棒，頂縫改霓虹藍；觀眾 4＋草皮 1） | — | 現有 |
 | 棒球 | 6 | `baseball.fireworks` | 程式（跨年煙火） | — | 現有 |
-| 棒球 | 7 | `baseball.main`、`baseball.deco`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（擴建：同一個底、高 1.2）＋程式 LED 帶（`rail` 一圈霓虹藍）、觀眾 6 | CC0 | 換新 |
-| 棒球 | 8 ◆ | `baseball.platform`、`baseball.riders` | 程式（環狀線邊的高架月台、雨棚、站名牌、接到巨蛋門口的磚道；`Platform_4x1_Empty.glb` 沒用：月台要沿徑向斜放、一端接軌道一端上岸，程式畫比較好對齊）；坐新線來的觀眾 3 = 程式名冊 | — | 換新 |
+| 棒球 | 7 | `baseball.main`、`baseball.deco`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（擴建：同一個底、高 1.2）＋程式 LED 帶（`rail` 一圈霓虹藍）、觀眾 5（裁決 R13） | CC0 | 換新 |
+| 棒球 | 8 ◆ | `baseball.platform`、`baseball.riders` | 程式（環狀線邊的高架月台、雨棚、站名牌、接到巨蛋門口的磚道；`Platform_4x1_Empty.glb` 沒用：月台要沿徑向斜放、一端接軌道一端上岸，程式畫比較好對齊）；坐新線來的觀眾 2（門口留 3，合計 5，裁決 R13）= 程式名冊 | — | 換新 |
 | 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭（沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

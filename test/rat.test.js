@@ -122,6 +122,20 @@ test('cyber Lv5: ten robot rats round 101 and a crowned robot rat sitting on the
   }
   for (const [l, f] of [[{ rat: 4, chip: 8 }, { ratBranch: 'cyber' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 3 }, {}]]) assert.equal(rat.view(lv(l), f)['rat.king'], undefined);
 });
+// 審稿：王冠鼠不能坐在停好的飛天車上——代幣 Lv10 三台停在屋頂左中右（車身長 0.3，沿停好的方向）；
+// 王冠鼠離每一台車身（停車點 ± 0.15 沿車頭方向的線段）≥ 0.2，還在屋頂上、離天線 ≥ 0.2
+test('the crown rat sits clear of the three parked speeders on the cyber roof (≥ 0.2 from every car body) and on the roof', async () => {
+  const token = await import('../src/actors/token.js'), { orbitPose } = await import('../src/actors/parts.js'), st = anchorWorld('token');
+  const v = token.view(lv({ token: 10 }), {}), k = rat.kingSpot(10);
+  const segDist = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  for (let i = 0; i < 3; i++) {
+    const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, 1e6), ux = Math.sin(yaw) * 0.15, uz = Math.cos(yaw) * 0.15;
+    const d = segDist(k, { x: car.park.x - ux, z: car.park.z - uz }, { x: car.park.x + ux, z: car.park.z + uz });
+    assert.ok(d >= 0.2, `${d.toFixed(2)} from speeder ${i} parked at x ${(car.park.x - st.x).toFixed(2)}`);
+  }
+  assert.ok(Math.abs(k.x - st.x) <= 0.5 && Math.abs(k.z - st.z) <= 0.36, 'on the roof (1.1 × 0.82)');
+  assert.ok(Math.hypot(k.x - (st.x + 0.42), k.z - (st.z - 0.3)) >= 0.2, 'clear of the roof antenna');
+});
 test('alien Lv5: the mutant wears a crown, a small UFO hovers over it, a green glow ring circles the rocks islet', () => {
   const v = rat.view(lv({ rat: 5 }), { ratBranch: 'alien' });
   assert.ok(v['rat.pack'].model.crown && v['rat.pack'].model.eye, 'crowned mutant');
@@ -283,6 +297,15 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 5); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
+});
+// 審稿：蒙太奇走路兩倍速，泡溫泉的快跑不再加倍（每幀位移 ≤ 4.5 × dt）
+test('Lv3 spring in a montage: the dash is capped (never faster than 4.5 per second)', async () => {
+  const h = await headlessShow(), { show, run } = h;
+  await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
+  const setPose = show.roster.setPose, last = new Map(); let fastest = 0;
+  show.roster.setPose = (m, p) => { if (m.key === 'rat.pack' && p.walking) { const q = last.get(m); if (q) fastest = Math.max(fastest, Math.hypot(p.x - q.x, p.z - q.z) * 30); last.set(m, { x: p.x, z: p.z }); } return setPose(m, p); };
+  try { await run([{ kind: 'grow', item: 'rat', from: 2, to: 3 }], { montage: true }); } finally { show.roster.setPose = setPose; }
+  assert.ok(fastest > 2 && fastest <= 4.5 + 0.05, `fastest ${fastest.toFixed(2)} / s`);
 });
 // 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。
 // 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），珍奶 Lv1 → 2 攤車不重建、照樣歪著

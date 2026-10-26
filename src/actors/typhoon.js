@@ -8,6 +8,7 @@ import { anchorWorld, landmarkWorld } from './anchors.js';
 import { R, TOP, MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, cellAt } from '../scene/hex.js';
 import { mulberry32 } from '../scene/random.js';
 import { C } from './palette.js';
+import { RAT_LANDING } from './rat.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
@@ -18,17 +19,25 @@ const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 const lingers = (lv, meta) => lv.typhoon === 2 && lv.baseball >= 3 && !meta.landing;
 
 // 堤防（Lv3）：主島外圍每一條靠海的格邊、離格心 LEVEE_R 的一道矮牆（走路格離格邊 0.35 以外、格面還在的那一圈邊上，
-// 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶旗）。全部一個零件、一種顏色（深灰水泥，1 個 draw call）
-export const LEVEE_R = 2.08, LEVEE_H = 0.08;
+// 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶旗），第一隻老鼠爬上岸的那道牆在爬上來的地方留 LEVEE_OPEN 寬的缺口
+// （rat.js RAT_LANDING 投影到牆上那一點）。全部一個零件、一種顏色（深灰水泥，1 個 draw call）
+export const LEVEE_R = 2.08, LEVEE_H = 0.08, LEVEE_OPEN = 0.9;
 const LEVEE_GAP = '-1,1>-2,2';
 const SQ3 = Math.sqrt(3);
+// 一道牆：中心 (x, z)、沿牆方向 (tx, tz)、長 len；開口點投影在牆上（離牆線 1 以內）就切成兩段
+function wallPieces(x, z, tx, tz, len, open) {
+  const s = (open.x - x) * tx + (open.z - z) * tz, off = Math.abs((open.x - x) * tz - (open.z - z) * tx);
+  if (off > 1 || Math.abs(s) > len / 2) return [{ x, z, len }];
+  const a = -len / 2, b = s - LEVEE_OPEN / 2, c = s + LEVEE_OPEN / 2, d = len / 2;
+  return [[a, b], [c, d]].filter(([u, v]) => v - u > 0.1).map(([u, v]) => ({ x: x + tx * (u + v) / 2, z: z + tz * (u + v) / 2, len: v - u }));
+}
 export const LEVEE_EDGES = MAIN_CELLS.flatMap(cell => NEIGHBORS
   .filter(([dq, dr]) => !MAIN_CELLS.some(c => c[0] === cell[0] + dq && c[1] === cell[1] + dr) && `${cell}>${cell[0] + dq},${cell[1] + dr}` !== LEVEE_GAP)
-  .map(([dq, dr]) => {
+  .flatMap(([dq, dr]) => {
     const c = axialToWorld(...cell), n = axialToWorld(cell[0] + dq, cell[1] + dr), d = Math.hypot(n.x - c.x, n.z - c.z), ux = (n.x - c.x) / d, uz = (n.z - c.z) / d;
     // 離格心 LEVEE_R 那條平行線在六角裡的弦長（格心是 2R、格邊是 R），兩端各縮一點不戳出相鄰的格邊
-    const len = 2 * R - 2 * LEVEE_R / SQ3 - 0.1;
-    return { x: c.x + ux * LEVEE_R, y: cellTop(cell), z: c.z + uz * LEVEE_R, yaw: Math.atan2(ux, uz), len };
+    const len = 2 * R - 2 * LEVEE_R / SQ3 - 0.1, yaw = Math.atan2(ux, uz);
+    return wallPieces(c.x + ux * LEVEE_R, c.z + uz * LEVEE_R, uz, -ux, len, RAT_LANDING).map(p => ({ ...p, y: cellTop(cell), yaw }));
   }));
 function levee() {
   return { kind: 'compound', at: { x: 0, y: 0, z: 0 }, shadow: false, footprint: false,

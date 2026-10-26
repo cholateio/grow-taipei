@@ -156,6 +156,7 @@ function turn(state, id, spec, rules) {
   // 照 ORDER 反覆掃到不動為止（A 升了讓 B 升的連鎖還在），掃到誰就當場決定，不為了等跳級延後 +1。
   // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。
   const stalled = new Set(), grown = new Set(id ? [id] : []), start = turnStart.get(s);
+  const delayed = (k, n) => { const d = rules.items[k].delay[n]; return !!d && d(s) && s.held[k] < 2; };   // 第 n 級還要多等一回合
   let lastGrown = null;
   for (let scan = 0; ; scan++) {
     if (scan >= SCAN_LIMIT) throw new Error(`scan limit ${SCAN_LIMIT} exceeded while growing ${lastGrown}`);
@@ -168,7 +169,7 @@ function turn(state, id, spec, rules) {
         if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
         continue;
       }
-      const room = start[k] + 2, ready = n => n <= room && !(it.delay[n] && it.delay[n](s) && s.held[k] < 2);
+      const room = start[k] + 2, ready = n => n <= room && !delayed(k, n);
       const jump = lv + 2 <= it.max && it.jump[lv + 2] && ready(lv + 2) && it.jump[lv + 2](s);
       if (!jump && !(ready(lv + 1) && it.up[lv + 1](s))) continue;
       const to = jump ? lv + 2 : lv + 1;
@@ -187,8 +188,8 @@ function turn(state, id, spec, rules) {
   // 只差多等一回合的物品（+1 條件成立、delay[n] 擋著，颱風賴在巨蛋）：記一個 stall 事件（演出層演「……」）；不算在等誰
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k], n = lv + 1;
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || !it.delay[n]) continue;
-    if (it.delay[n](s) && s.held[k] < 2 && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k)) continue;
+    if (delayed(k, n) && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
   }
 
   // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；

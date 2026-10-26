@@ -21,9 +21,10 @@ const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWo
 const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時老鼠在這裡晃）
 const MUTANT = offset(SPRING, -0.75, 0.55, 0.05);  // 變異鼠站的溫泉邊
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 老鼠在這裡變身）
-// 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（飛天車停在中線 z 0.02 的左中右，牠坐後排靠左）；之前是大車站圓頂外的簷角
+// 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（飛天車停在中線 z 0.02 的左中右、車身沿 ±z 長 0.3，牠坐空著的左後角、
+// 面向站前廣場；天線在右後角）；之前是大車站圓頂外的簷角
 const STATION = anchorWorld('token'), CORNICE_Y = 0.605;
-export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.1, -0.28, ROOF_Y), yaw: 0.4 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
+export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.48, -0.32, ROOF_Y), yaw: 0.8 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
 
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
 export function ratMode(lv, flags) {
@@ -117,7 +118,8 @@ const shoreAt = a => c => c.nav.nearestWalkable({ x: Math.cos(a) * 7.0, z: Math.
 const bearing = p => Math.atan2(p.z, p.x);
 const NEST_A = bearing(AT), PARK_A = bearing(PARK), SPRING_A = bearing(SPRING);
 const NEST_SHORE = shoreAt(NEST_A), PARK_SHORE = shoreAt(PARK_A), SPRING_SHORE = shoreAt(SPRING_A);
-const LANDING = offset(DOME, 2.0, 2.05);   // 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來
+// 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來（颱風 Lv3 的堤防在這裡留缺口，typhoon.js）
+export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const JUMP = 0.5, FOLLOW = 0.3, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.2 s 落地），跳的時候車不動
@@ -169,7 +171,7 @@ export const script = {
   placed(e, s, ctx) {
     const { B } = ctx, r0 = rat(0);
     return [
-      B.apply(e, { hold: [KEY] }), B.spawn(KEY, LANDING), B.walk(r0, c => c.nav.nearestWalkable(LANDING)),   // 從水裡爬上岸
+      B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING)),   // 從水裡爬上岸
       B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0),
     ];
   },
@@ -202,7 +204,8 @@ export const script = {
       if (mode === 'spring') {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
-          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.8))]),
+          // 蒙太奇走路兩倍速：快跑不再加倍
+          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: ctx.montage ? DASH / 2 : DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.8))]),
           B.home(RATS), B.levelUp('rat'),
         ];
       }

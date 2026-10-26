@@ -34,7 +34,7 @@ test('Lv3 levee: a low wall on every sea-facing edge of the main island, on the 
   assert.equal(v.kind, 'compound'); assert.equal(v.footprint, false);
   assert.ok(v.parts.every(p => !p.glow) && new Set(v.parts.map(p => p.color)).size === 1, 'one colour, no glow: 1 draw call');
   const seaEdges = MAIN_CELLS.flatMap(c => NEIGHBORS.filter(([dq, dr]) => !MAIN_CELLS.some(m => m[0] === c[0] + dq && m[1] === c[1] + dr))).length;
-  assert.equal(v.parts.length, seaEdges - 1, 'every sea-facing edge but the dome-station one');
+  assert.equal(v.parts.length, seaEdges, 'every sea-facing edge but the dome-station one; the rat-landing edge in two pieces');
   for (const p of v.parts) {
     assert.ok(p.scale[1] <= 0.1, 'low');
     for (const k of [-0.5, -0.25, 0, 0.25, 0.5]) {
@@ -43,6 +43,18 @@ test('Lv3 levee: a low wall on every sea-facing edge of the main island, on the 
       assert.ok(!nav.walkable(x, z), `off the walking grid at (${x.toFixed(2)}, ${z.toFixed(2)})`);
       assert.ok(Math.abs(p.pos[1] - p.scale[1] / 2 - cellTop(cell)) < 1e-9, 'sits on the cell top');
     }
+  }
+});
+// 審稿：第一隻老鼠從巨蛋格東南岸的海裡爬上岸，那一段堤防留個缺口，爬上來的直線不穿過堤防
+test('the levee leaves a gap where the first rat climbs out of the sea', async () => {
+  const { createNav } = await import('../src/show/nav.js');
+  const { RAT_LANDING } = await import('../src/actors/rat.js');
+  const v = typhoon.view(lv({ typhoon: 3 }), {})['typhoon.levee'], nav = createNav(), to = nav.nearestWalkable(RAT_LANDING);
+  // 每一道牆當成一條線段（中心 ± 半長），爬上來的線段離每一道牆 ≥ 0.15
+  const segDist = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  for (const p of v.parts) {
+    const h = p.scale[0] / 2, a = { x: p.pos[0] - Math.cos(p.rot[1]) * h, z: p.pos[2] + Math.sin(p.rot[1]) * h }, b = { x: p.pos[0] + Math.cos(p.rot[1]) * h, z: p.pos[2] - Math.sin(p.rot[1]) * h };
+    for (let k = 0; k <= 20; k++) { const q = { x: RAT_LANDING.x + (to.x - RAT_LANDING.x) * k / 20, z: RAT_LANDING.z + (to.z - RAT_LANDING.z) * k / 20 }; assert.ok(segDist(q, a, b) >= 0.15, `climb crosses the levee at (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`); }
   }
 });
 test('rain part: 240 instances, none cast shadows, drops fall', () => {

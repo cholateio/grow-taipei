@@ -139,7 +139,7 @@ test('Lv2: two players come down from the stands onto the field', async () => {
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('baseball.players')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
   await liveAt(h, SOLUTIONS[0], isBall(2));
   assert.equal(firsts.size, 2);
-  for (const p of firsts.values()) assert.ok(p.z < AT.z - 0.8, 'spawned at the stands');
+  for (const p of firsts.values()) assert.ok(p.z < AT.z - 0.8, 'spawned behind the stands');
   const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots;
   show.roster.members("baseball.players").forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.15), `player ${i} on the field ${JSON.stringify([m.pos, spots[i], show.nav.walkable(spots[i].x, spots[i].z)])}`));
 });
@@ -190,8 +190,8 @@ test('Lv6: the boba queue walks to the dome gate, fireworks, everyone ♪, and t
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♪').length >= 2 + 6 + q.length);
   for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
   const boba = await import('../src/actors/boba.js'), spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;
-  // 站位間距 0.22 < 0.25：站著的人沿 x 滑開（§13.3），十人一排的兩端離站位約 0.15
-  q.forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.2), `tourist ${i} back in line`));
+  // 站位間距 ≥ 0.25（計畫 3.8 Task 7）：站著的人不必再滑開，每個人走回自己的站位
+  q.forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.1), `tourist ${i} back in line`));
 });
 // 兩個事件以上的回合整段 live：島民、球員、工人都是演到才找
 test('the Lv2 turn plays whole and live: everyone ends at home', async () => {
@@ -202,4 +202,85 @@ test('the Lv2 turn plays whole and live: everyone ends at home', async () => {
   assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP'));
   assert.equal(show.roster.members('baseball.players').length, 2);
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
+});
+
+// ── 計畫 3.8 Task 7：入口點、Lv4 下車不瞬移、鏡頭焦點 ──
+import { entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { entriesThroughSolutions } from './helpers/show.js';
+import { createNav } from '../src/show/nav.js';
+import { cellAt, axialToWorld } from '../src/scene/hex.js';
+import { cellOf } from '../src/actors/anchors.js';
+import { B } from '../src/show/beats.js';
+const CELL = cellOf('baseball');
+// 球員從看台後方的格邊走出來；觀眾（含 Lv5 補的兩個）從捷運站前走來。入口走得到、離站位 ≥ 1.5（每一級、鼠災與否；兩條正解每一刻的真 footprint）
+test('baseball rosters: players enter from behind the stands at the cell edge, the crowd from the station platform; walkable and ≥ 1.5 from every spot', async () => {
+  const c = axialToWorld(...CELL);
+  for (const p of baseball.PLAYER_ENTRY) {
+    assert.deepEqual(cellAt(p.x, p.z), CELL);
+    assert.ok(p.z < AT.z - 1.33, 'behind the stands (north of their middle row)');
+    assert.ok(Math.abs(p.z - c.z) + Math.abs(p.x - c.x) / Math.sqrt(3) > 1.8, 'at the cell edge');
+  }
+  for (const p of baseball.CROWD_ENTRY) assert.ok(near(p, PLATFORM, 0.7), 'at the platform');
+  const nav = createNav(), bad = [];
+  for (const n of [1, 2, 3, 4, 5, 6]) for (const domeRats of [false, true]) {
+    const v = baseball.view(lv({ baseball: n, rat: 2 }), { domeRats });
+    if (v['baseball.players']) assert.deepEqual(v['baseball.players'].home.entry, baseball.PLAYER_ENTRY, `lv${n} players entry`);
+    if (v['baseball.crowd']) assert.deepEqual(v['baseball.crowd'].home.entry, baseball.CROWD_ENTRY, `lv${n} crowd entry`);
+    bad.push(...entryProblems(v, nav, `lv${n}${domeRats ? ' domeRats' : ''}`));
+  }
+  bad.push(...await entriesThroughSolutions(baseball, SOLUTIONS));
+  assert.deepEqual(bad, []);
+});
+test('Lv2: the players spawn at their entry behind the stands', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
+  show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('baseball.players')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
+  await liveAt(h, SOLUTIONS[0], isBall(2));
+  assert.equal(firsts.size, 2);
+  for (const p of firsts.values()) assert.ok(baseball.PLAYER_ENTRY.some(e => near(p, e, 0.2)), `spawned at the entry (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+});
+test('Lv5: the two extra fans walk in from the platform entry', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
+  let before = null;
+  show.update = (dt, t) => {
+    before ??= new Set(show.roster.members('baseball.crowd'));
+    update(dt, t);
+    for (const m of show.roster.members('baseball.crowd')) if (!before.has(m) && !firsts.has(m)) firsts.set(m, { ...m.pos });
+  };
+  await liveAt(h, SOLUTIONS[0], isBall(5));
+  assert.equal(before.size, 4); assert.equal(firsts.size, 2);
+  for (const p of firsts.values()) assert.ok(baseball.CROWD_ENTRY.some(e => near(p, e, 0.3)), `came from the platform (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+  for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
+  const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.crowd'].home.spots;
+  show.roster.members('baseball.crowd').forEach((m, i) => assert.ok(near(m.pos, show.nav.walkable(spots[i].x, spots[i].z) ? spots[i] : show.nav.nearestWalkable(spots[i]), 0.15), `fan ${i} at the gate`));
+});
+// Task 5 審查：trainStop 的 during 裡那段 together 的走路，目標是稍後才 spawn 的人，估計 0 秒——列車開走時不能把還在走的人瞬移到終點
+test('Lv4: nobody jumps — no roster member moves faster than walking speed in any frame', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, last = new Map(), bad = [];
+  let live = false;
+  const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
+  show.update = (dt, t) => {
+    update(dt, t);
+    if (!live) { last.clear(); return; }
+    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+      if (k === 'rat.pack') continue;   // 老鼠會坐車頂（ride）、跳車，不在這裡查
+      const p = last.get(m), v = (m.speed ?? 1.6) * dt;
+      if (p && !m.hidden && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > v + 1e-6) bad.push(`${k} ${m.i} moved ${Math.hypot(m.pos.x - p.x, m.pos.z - p.z).toFixed(2)} in one frame`);
+      last.set(m, { ...m.pos });
+    }
+  };
+  await liveAt(h, SOLUTIONS[0], isBall(4));
+  assert.deepEqual(bad, []);
+});
+// 鏡頭（§13.1）：Lv4 先對著捷運站（代幣格）等觀眾下車，他們走向巨蛋時轉到巨蛋格；Lv6 先對著珍奶人龍，觀光客走向巨蛋時轉到巨蛋格
+test('focus: Lv4 the token cell then the dome; Lv6 the boba queue then the dome', async () => {
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  for (const [to, first] of [[4, 'token'], [6, 'boba']]) {
+    const beats = baseball.script.grow[to]({ kind: 'grow', item: 'baseball', from: to - 1, to }, { lv: lv({ baseball: to }), flags: {} }, ctx);
+    assert.equal(beats[0].kind, 'focus', `lv${to} starts with its own focus`);
+    assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), [cellOf(first), CELL], `lv${to} focus cells`);
+  }
+  const h = await headlessShow(); let r0 = 0;
+  const run = h.run; h.run = (evs, o) => { if (!o?.instant) r0 = h.rig.log.length; return run(evs, o); };
+  await liveAt(h, SOLUTIONS[0], isBall(4));
+  assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('token')), String(CELL), 'home']);
 });

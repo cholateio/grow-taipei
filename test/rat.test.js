@@ -70,7 +70,7 @@ test('view: cyber rats are grey with antennas on the engineer route, then ten wa
   assert.deepEqual(c.home, { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 });
   assert.equal(c.model.tint.Grey, 0xc0c8d0); assert.ok(c.model.antenna);
   const c5 = rat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['rat.pack'];
-  assert.deepEqual(c5.home, { kind: 'wander', at: TOWER, r: 1.3 }); assert.ok(c5.model.antenna);
+  assert.deepEqual(c5.home, { kind: 'wander', at: TOWER, r: 1.3, entry: offset(anchorWorld('chip'), -0.5, 1.2) }); assert.ok(c5.model.antenna);
   const a = rat.view(lv({ rat: 4 }), { ratBranch: 'alien' }), m = a['rat.pack'];
   assert.equal(m.model.glow.Grey, 0x5fcf7a); assert.equal(m.model.tint.Grey, 0x5fcf7a); assert.ok(m.model.eye && m.model.wave);
   assert.equal(m.home.kind, 'stand'); assert.ok(near(m.home.spots[0], SPRING, 1.2));
@@ -284,4 +284,57 @@ test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apa
   const t = [...starts.values()].sort((a, b) => a - b);
   assert.equal(t.length, 5);
   for (let i = 1; i < 5; i++) assert.ok(t[i] - t[i - 1] >= 0.25, `starts ${t.map(x => x.toFixed(2))}`);
+});
+
+// ── 計畫 3.8 Task 7：入口點、鏡頭焦點 ──
+import { entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { entriesThroughSolutions } from './helpers/show.js';
+import { createNav } from '../src/show/nav.js';
+import { cellOf } from '../src/actors/anchors.js';
+import { B } from '../src/show/beats.js';
+const PARK = offset(anchorWorld('chip'), -0.5, 1.2);
+// 老鼠的入口：每一種模式、每一級走得到、離站位 ≥ 1.5（兩條正解每一刻的真 footprint）；第一隻從巨蛋格東南岸外的海裡（LANDING）爬上來
+// （劇本的 spawn，不是名冊入口：上岸點離窩只有 0.4，但牠是從海裡爬上來、再沿岸繞一圈才回窩，不是在窩邊冒出來）；
+// 賽博 Lv5 補的五隻機器鼠從園區門口（原本五隻變身的地方）走去 101
+test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the landing is ≥ 1.5 from the nest; the cyber legion comes out of the park gate', async () => {
+  const nav = createNav(), bad = [];
+  const modes = [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 2 }, {}], [{ rat: 4, chip: 3 }, { ratBranch: 'cyber' }], [{ rat: 5, chip: 3 }, { ratBranch: 'cyber' }],
+    [{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 4, baseball: 3 }, { domeRats: true }]];
+  for (const [l, f] of modes) bad.push(...entryProblems(rat.view(lv(l), f), nav, `${JSON.stringify(l)} ${JSON.stringify(f)}`));
+  bad.push(...await entriesThroughSolutions(rat, SOLUTIONS));
+  assert.deepEqual(bad, []);
+  const landing = offset(anchorWorld('baseball'), 2.0, 2.05);
+  assert.equal(cellAt(landing.x, landing.z), null, 'the first rat climbs out of the sea');
+  const beats = rat.script.placed({ kind: 'placed', item: 'rat', to: 1 }, { lv: lv({ rat: 1 }), flags: {} }, fakeCtx()), at = [];
+  beats.find(b => b.kind === 'spawn').start({ roster: { spawnHeld: (k, p) => { at.push(p); return null; } } });
+  assert.ok(near(at[0], landing, 1e-9), 'placed spawns it at the landing');
+  const legion = rat.view(lv({ rat: 5, chip: 3 }), { ratBranch: 'cyber' })['rat.pack'];
+  assert.ok(near(legion.home.entry, PARK, 1e-9), 'legion entry at the park gate');
+});
+const fakeCtx = () => ({ B, roster: { members: () => [] } });
+const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+const focusCells = beats => flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, fakeCtx()));
+const grow = (to, l, flags = {}, prev = { lv: lv({ ...l, rat: to - 1 }), flags: {} }) => rat.script.grow[to]({ kind: 'grow', item: 'rat', from: to - 1, to }, { lv: lv({ ...l, rat: to }), flags, prev }, fakeCtx());
+// 鏡頭（§13.1）：搭捷運先對著站（代幣格）看第一隻上車，其餘四隻跑回窩那側島緣時轉回老鼠窩格；賽博 Lv4 對著晶片格（園區）、
+// Lv5 對著 101；泡溫泉、外星（溫泉邊）對著溫泉格。每段劇本第一拍就是自己的 focus（回合不再先補一拍老鼠格）
+test('focus: train Lv3 token then nest; cyber Lv4 chip, Lv5 101; spring / alien at the hot spring', () => {
+  const SPRING_CELL = [1, -1];
+  const cases = [
+    ['train 3', grow(3, { token: 2 }), [cellOf('token'), cellOf('rat')]],
+    ['spring 3', grow(3, {}), [SPRING_CELL]],
+    ['cyber 4', grow(4, { chip: 3, token: 2 }, {}, { lv: lv({ rat: 3, chip: 3, token: 2 }), flags: {} }), [cellOf('chip')]],
+    ['cyber 5', grow(5, { chip: 3 }, { ratBranch: 'cyber' }), [cellOf('tower')]],
+    ['alien 4', grow(4, { token: 2 }, {}, { lv: lv({ rat: 3, token: 2 }), flags: {} }), [SPRING_CELL]],
+    ['alien 5', grow(5, {}, { ratBranch: 'alien' }), [SPRING_CELL]],
+  ];
+  for (const [what, beats, want] of cases) {
+    assert.equal(beats[0].kind, 'focus', `${what} starts with its own focus`);
+    assert.deepEqual(focusCells(beats), want, `${what} focus cells`);
+  }
+});
+test('Lv3 train live: the camera goes to the station, then back to the nest, then home', async () => {
+  const h = await headlessShow(); let r0 = 0;
+  const run = h.run; h.run = (evs, o) => { if (!o?.instant) r0 = h.rig.log.length; return run(evs, o); };
+  await liveAt(h, SOLUTIONS[0], isRat(3));
+  assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('token')), String(cellOf('rat')), 'home']);
 });

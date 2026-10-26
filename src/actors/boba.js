@@ -10,17 +10,21 @@ export const id = 'boba';
 export const labelY = 1.0;
 const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
-// 排隊：攤車時從攤車左側往南（+z，遠離捷運站）排 6 個，再往 −x 轉彎；噴泉廣場（plaza）時噴泉佔滿格子東半，
-// 改沿噴泉南緣外（+z 1.0）往 −x 排一列。都面向攤車／噴泉
-function queue(at, n, plaza = false) {
+// 排隊（§13.3，計畫 3.8 Task 7）：橫排一列沿 x 往 −x（捷運站那側）排，所有人同一個 z——沿 z 排的話在畫面上會疊成一條黑色長條。
+// 攤車時排在攤車前方（+z 0.9）；噴泉廣場（plaza）時噴泉佔滿格子東半，改沿噴泉南緣外（+z 1.0）。
+// 間距 0.25 = 站著的人的分離距離（nav.SEPARATION），站定不會再被擠開。都面向攤車／噴泉
+const QUEUE_GAP = 0.25;
+export function queue(at, n, plaza = false) {
   return Array.from({ length: n }, (_, i) => {
-    const p = plaza ? offset(at, 0.3 - 0.22 * i, 1.0)
-      : i < 6 ? offset(at, -0.5, 0.15 + 0.22 * i) : offset(at, -0.5 - 0.22 * (i - 5), 0.15 + 0.22 * 5);
+    const p = offset(at, 0.3 - QUEUE_GAP * i, plaza ? 1.0 : 0.9);
     return { ...p, yaw: Math.atan2(at.x - p.x, at.z - p.z) };
   });
 }
 
 const AT = anchorWorld('boba'), BEHIND = offset(AT, 0, -0.45), BESIDE = offset(AT, -1.0, -0.6);   // 老闆：攤車後面（面向 +z）／噴泉旁
+// 碼頭（觀光客的入口，§13.2）：珍奶格靠海的東邊。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，而夜市（燈泡 ≥2）蓋住那一段，
+// 所以取那一段最近的可走點——格子東角、夜市北邊；三個點沿 −x 錯開 0.25（一批三個人一人一個）
+export const PIER = [0, 1, 2].map(k => offset(AT, 0.35 - 0.25 * k, -1.6));
 
 export function view(lv) {
   const n = lv.boba, at = AT, v = {};
@@ -46,7 +50,7 @@ export function view(lv) {
   // 老闆日常：站著搖杯（每 3 秒揮一下手）
   v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave' } };
   // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點
-  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k, n >= 3), rescue: true } }; }
+  if (n >= 2) { const k = n >= 3 && fresh ? 10 : 6; v['boba.queue'] = { kind: 'roster', at, n: k, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, k, n >= 3), rescue: true, entry: PIER } }; }
   return v;
 }
 
@@ -56,7 +60,7 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const owner = c => c.roster.members('boba.owner')[0] ?? null;
 const engineer = i => once(c => c.roster.members('chip.engineers').filter(m => !m.hidden)[i] ?? null);
 const islander = i => c => c.roster.members('landmarks.islanders').filter(m => !m.hidden)[i] ?? null;
-const PIER = offset(AT, 1.6, 1.4), FOREST = island('forest'), ISLANDERS = 10;   // 糖分超標時最多這麼多島民一起 ♥
+const FOREST = island('forest'), ISLANDERS = 10;   // 糖分超標時最多這麼多島民一起 ♥
 // 推攤車：老闆從攤位北邊約 4.5 的地方出發（捷運站那側的路口），尋路最後一段從 −z 直直推進攤位，攤車停在 at 剛好接上。
 // 攤車在他面前 HANDLE 的地方；攤車朝向追著老闆的朝向轉（每秒 TURN 的比例），轉彎時不會瞬間甩到旁邊
 const FROM = offset(AT, -1.0, -4.5), HANDLE = 0.45, TURN = 12;
@@ -93,8 +97,8 @@ function push(w) {
 // 糖分超標：grow 3 的劇本建拍時旗標還沒折進來（是緊接著的 onLevel 事件），照規則資料自己判斷
 const [SUGAR_ID, SUGAR_MAX] = ITEMS.boba.onLevel[3].find(a => a.flag?.name === 'bobaSugar').when.maxLevel;
 const sugary = s => !!s.flags.bobaSugar || s.lv[SUGAR_ID] <= SUGAR_MAX;
-// 觀光客從碼頭（珍奶格靠海那側，在水裡）最近的可走點出來，一批三個左右錯開
-const pier = k => c => c.nav.nearestWalkable(offset(PIER, -0.25 * k, 0));
+// 觀光客從碼頭出來，一批三個一人一個入口點（被擋就站到最近的可走點）
+const pier = k => c => c.nav.nearestWalkable(PIER[k]);
 
 export const script = {
   // 老闆從捷運站北邊推著攤車走過來（常速約 3 s，攤車每幀都在他面前）→ 停好 → ♪

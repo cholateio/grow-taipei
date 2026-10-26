@@ -18,6 +18,14 @@ function line([x0, z0], [x1, z1]) {
 // 兩個球員在本壘前面面對面傳接球
 const players = at => [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...offset(at, 0.45, 1.05), yaw: -Math.PI / 2 }];
 
+// 入口點（§13.2）：球員從看台後方的格邊走出來，繞過看台到本壘前——看台正後方的格子北角被看台和兩邊的格邊圍住、走不出去，
+// 所以用看台後方東側的格邊（往中心格的橋頭）。觀眾從捷運站前（月台）走來，四個點沿 x 錯開、往站那側（−x）偏
+// （再往 +x 就是 Lv3 珍奶噴泉的 footprint）
+const AT = anchorWorld('baseball');
+export const PLAYER_ENTRY = [offset(AT, 0.95, -1.45), offset(AT, 1.15, -1.6)];
+const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前：觀眾下車的地方
+export const CROWD_ENTRY = [0, 1, 2, 3].map(k => offset(PLATFORM, (k - 2.5) * 0.25, 0));
+
 // 觀眾站在巨蛋門前的弧線上，正中間留一條走道給球員；人數少一點，不然和小孩、老鼠擠成一團
 function fans(at, n) {
   return Array.from({ length: n }, (_, i) => {
@@ -47,9 +55,9 @@ export function view(lv, flags) {
   }
   if (n <= 2) for (let i = 0; i < 4; i++) v[`baseball.lines.${i}`] = { kind: 'compound', at, footprint: false, parts: [line(BASES[i], BASES[(i + 1) % 4])] };
   if (n >= 2) {
-    v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true } };
+    v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
     v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
-    if (n >= 4) { const k = n >= 5 ? 6 : 4; v['baseball.crowd'] = { kind: 'roster', at, n: k, shirt: SHIRTS, home: { kind: 'stand', spots: fans(at, k), fidget: 'jump', rescue: true } }; }
+    if (n >= 4) { const k = n >= 5 ? 6 : 4; v['baseball.crowd'] = { kind: 'roster', at, n: k, shirt: SHIRTS, home: { kind: 'stand', spots: fans(at, k), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } }; }
   }
   // 跨年煙火：巨蛋上空循環放
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };
@@ -80,8 +88,7 @@ export const builders = {
 
 // ── 劇本（§8.8）──
 // 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
-const AT = anchorWorld('baseball'), GATE = offset(AT, 0, 1.1), DOME_EDGE = offset(AT, 0, 1.6);
-const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前：觀眾下車的地方
+const GATE = offset(AT, 0, 1.1), DOME_EDGE = offset(AT, 0, 1.6);
 const BASE_AT = BASES.map(([x, z]) => offset(AT, x, z));
 const RUN_SPEED = 0.7;   // 島民沿壘包慢慢走一圈（約 4 s）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
@@ -106,10 +113,10 @@ export const script = {
     ];
   },
   grow: {
-    // 看台、球員：閃白木看台 → 2 個球員從看台前排出來、走到本壘前 → 閃白球（傳接球）
+    // 看台、球員：閃白木看台 → 2 個球員從看台後方（入口）出來、繞過看台走到本壘前 → 閃白球（傳接球）
     2(e, s, ctx) {
       const { B } = ctx, spots = players(AT);
-      const sp = [-0.3, 0.3].map(x => B.spawn('baseball.players', offset(AT, x, -0.95)));
+      const sp = PLAYER_ENTRY.map(p => B.spawn('baseball.players', p));
       return [
         B.apply(e, { only: ['baseball.main', 'baseball.players'], hold: ['baseball.players'] }), ...sp,
         B.together(sp.map((b, i) => B.walk(() => b.member, spots[i]))), B.apply(e),
@@ -124,18 +131,21 @@ export const script = {
         B.walk(w, DOME_EDGE), B.gesture(w, 'knock'), B.gesture(w, 'knock'), B.apply(e), B.home(w), B.levelUp('baseball'),
       ];
     },
-    // 開打：列車進站停 → 4 個觀眾在站前一個個下車 → 一起走到巨蛋門口 → 一起 ♪ → 閃白頂縫透光
+    // 開打：列車進站停 → 4 個觀眾在站前下車 → 列車開走，他們一起走到巨蛋門口 → 一起 ♪ → 閃白頂縫透光
+    // 走路不放在 trainStop 的 during 裡：during 的長度在拍開始時估（那時觀眾還沒下車，估成 0），列車一開走就會把還在走的人瞬移到終點
+    // 鏡頭（§13.1）：先對著捷運站（代幣格）等他們下車，出發走向巨蛋時轉到巨蛋格
     4(e, s, ctx) {
       const { B } = ctx, spots = fans(AT, 4);
-      const sp = [0, 1, 2, 3].map(k => B.spawn('baseball.crowd', c => c.nav.nearestWalkable(offset(PLATFORM, (k - 1.5) * 0.25, 0))));
+      const sp = CROWD_ENTRY.map(p => B.spawn('baseball.crowd', c => c.nav.nearestWalkable(p)));
       return [
-        B.apply(e, { only: ['baseball.crowd'], hold: ['baseball.crowd'] }),
-        B.trainStop({ during: [...sp, B.together(sp.map((b, i) => B.walk(() => b.member, spots[i])))] }),
+        B.focus('token'), B.apply(e, { only: ['baseball.crowd'], hold: ['baseball.crowd'] }),
+        B.trainStop({ during: sp }),
+        B.together([B.focus('baseball'), ...sp.map((b, i) => B.walk(() => b.member, spots[i]))]),
         B.together([0, 1, 2, 3].map(i => B.bubble(fan(i), '♪'))), B.apply(e),
         B.home(c => c.roster.members('baseball.crowd')), B.levelUp('baseball'),
       ];
     },
-    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 閃白應援棒、觀眾補到 6 → 觀眾一起 ♪
+    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 閃白應援棒、觀眾補到 6（多的兩個從月台入口走來）→ 觀眾一起 ♪
     5(e, s, ctx) {
       const { B } = ctx, el = helper('bulb.electrician', GATE);
       return [
@@ -144,13 +154,14 @@ export const script = {
       ];
     },
     // 煙火：珍奶的觀光客人龍一起走到巨蛋門口 → 煙火 → 在場的球員、觀眾、觀光客全部 ♪ → 觀光客走回人龍
+    // 鏡頭（§13.1）：先對著珍奶人龍（珍奶格），他們出發就轉到巨蛋格
     6(e, s, ctx) {
       const { B } = ctx, tourists = once(c => c.roster.members('boba.queue').filter(m => !m.hidden));
       const n = 10;   // 人龍最多 10 人（珍奶 Lv3 + 鮮奶 ≥2）；沒那麼多人的拍跳過
       const tourist = i => c => tourists(c)[i] ?? null, slot = i => c => c.nav.slots(GATE, tourists(c).length, 1.2)[i];
       const everyone = c => [...shown('baseball.players')(c), ...shown('baseball.crowd')(c), ...tourists(c)];
       return [
-        B.together(Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i)))), B.apply(e),
+        B.focus('boba'), B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i)))]), B.apply(e),
         B.together(Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪'))),
         B.home(tourists), B.levelUp('baseball'),
       ];

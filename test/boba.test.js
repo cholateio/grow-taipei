@@ -152,11 +152,11 @@ test('Lv3: every queue spot is outside the fountain and walkable once the footpr
     assert.ok(show.nav.walkable(p.x, p.z), `spot ${i} walkable`);
   }
   for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);
-  // 站位間距 0.22 < 0.25：站著的人沿 x 滑開（§13.3），十人一排的兩端離站位約 0.15（偏哪邊看誰先到）
-  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, q.home.spots[i], 0.2), `tourist ${i} in line`));
+  // 站位間距 ≥ 0.25（計畫 3.8 Task 7）：站著的人不必再滑開，每個人就站在自己的站位上
+  show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, q.home.spots[i], 0.1), `tourist ${i} in line`));
 });
 test('Lv2: six tourists come from the pier side and stand in the queue', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, pier = offset(AT, 1.6, 1.4), firsts = new Map();
+  const h = await headlessShow(), { show } = h, update = show.update, pier = boba.PIER[1], firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('boba.queue')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
   await liveAt(h, SOLUTIONS[0], isBoba(2));
   assert.equal(firsts.size, 6);
@@ -216,4 +216,37 @@ test('a rat knocks the cart: it tilts and the owner ！ over his head', async ()
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9);
   const bang = bubblesLog.slice(n).filter(b => b.kind === '！');
   assert.ok(bang.some(b => Math.abs(b.at.y - (o.pos.y + o.headY)) < 0.05 && near(b.at, o.pos, 1.0)), 'owner ！');
+});
+
+// ── 計畫 3.8 Task 7：碼頭入口、橫排人龍 ──
+import { MAIN_CELLS, R as HEX_R, cellAt } from '../src/scene/hex.js';
+import { createNav } from '../src/show/nav.js';
+import { entryProblems } from './helpers/actors.js';
+import { entriesThroughSolutions } from './helpers/show.js';
+// 錄影裡的「黑色長條」（人龍沿 z 往鏡頭排、在螢幕上疊成一條）不再出現：每種排法所有點 z 相同、沿 x 兩兩相距 ≥ 0.25（站著的人分離距離）
+test('the queue is a horizontal row: one z per layout (cart front +0.9, fountain south +1.0), adjacent x ≥ 0.25 apart', () => {
+  for (const [n, plaza, dz] of [[6, false, 0.9], [8, false, 0.9], [6, true, 1.0], [10, true, 1.0]]) {
+    const q = boba.queue(AT, n, plaza), what = `${n}${plaza ? ' plaza' : ''}`;
+    assert.equal(q.length, n);
+    for (const p of q) assert.ok(Math.abs(p.z - (AT.z + dz)) < 1e-9, `${what}: z ${(p.z - AT.z).toFixed(2)}`);
+    for (let i = 1; i < n; i++) assert.ok(q[i - 1].x - q[i].x >= 0.25 - 1e-9, `${what}: spots ${i - 1}/${i} ${(q[i - 1].x - q[i].x).toFixed(2)} apart`);
+  }
+  // 劇本 Lv3 的兩個工程師排在攤車人龍的第 7、8 位，同一排
+  assert.deepEqual(boba.queue(AT, 8).slice(0, 6), boba.view(lv({ boba: 2 }), {})['boba.queue'].home.spots);
+});
+// 碼頭：珍奶格靠海的東邊（東鄰格是海）。東邊那條邊只有北段離兩種人龍都 ≥ 1.5，夜市（燈泡 ≥2）蓋住那一段 → 取它最近的可走點（格子東角）
+test('the pier entry is by the sea-side east edge of the boba cell, walkable and ≥ 1.5 from every queue spot at every level', async () => {
+  const c = axialToWorld(...cellOf('boba'));
+  assert.ok(!MAIN_CELLS.some(([q, r]) => q === cellOf('boba')[0] + 1 && r === cellOf('boba')[1]), 'east of the boba cell is sea');
+  const [p0] = boba.PIER;
+  assert.ok(c.x + HEX_R * Math.sqrt(3) / 2 - p0.x < 0.85, `(${p0.x.toFixed(2)}, ${p0.z.toFixed(2)}) by the east edge`);
+  for (const p of boba.PIER) { assert.deepEqual(cellAt(p.x, p.z), cellOf('boba')); assert.ok(near(p, p0, 0.6), 'the three pier points side by side'); }
+  const nav = createNav(), bad = [];
+  for (const n of [1, 2, 3, 4]) for (const milk of [0, 2]) {
+    const v = boba.view(lv({ boba: n, milk }), {});
+    if (v['boba.queue']) assert.deepEqual(v['boba.queue'].home.entry, boba.PIER, `lv${n} queue entry`);
+    bad.push(...entryProblems(v, nav, `lv${n} milk${milk}`));
+  }
+  bad.push(...await entriesThroughSolutions(boba, SOLUTIONS));
+  assert.deepEqual(bad, []);
 });

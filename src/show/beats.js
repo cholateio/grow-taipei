@@ -1,11 +1,11 @@
 // 拍的建構函數：劇本（turn.js 與各物品的腳本）用這些小積木排出一回合，交給 timeline.js 一拍一拍演。
-// 每個建構函數回一個拍 { kind, dur, start?, step?, end? }（kind 同函數名），只動 ctx 裡的東西（stage、roster、nav、bubbles、flash、rig、rail…）。
+// 每個建構函數回一個拍 { kind, dur, start?, step?, end? }（kind 同函數名），只動 ctx 裡的東西（stage、roster、nav、bubbles、blink、rig、rail…）。
 // 跳過、reduced-motion 時拍只會 start → end、不 step，所以每一拍的 end 都要自己把東西放到最終狀態。
 import { together } from './timeline.js';
-import { FLASH } from './flash.js';
+import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';
 import { trainPose } from '../actors/token.js';
-import { anchorWorld, ANCHORS } from '../actors/anchors.js';
+import { anchorWorld } from '../actors/anchors.js';
 import { createPathCursor } from '../scene/path.js';
 
 export { together };
@@ -59,9 +59,9 @@ export function seat(i, ctx) {
   };
 }
 
-// 從 hold 住的名冊拿一個人出來（名冊自己會在他身上閃白光、最亮時露出）；拍演完後 beat.member 就是他
+// 從 hold 住的名冊拿一個人出來，直接站在 at（§13.2 不閃、不佔時間，之後由 walk 帶進場）；拍演完後 beat.member 就是他
 export function spawn(key, at) {
-  const beat = { kind: 'spawn', dur: FLASH, member: null, start(ctx) { beat.member = ctx.roster.spawnHeld(key, call(at, ctx)); } };
+  const beat = { kind: 'spawn', dur: 0, member: null, start(ctx) { beat.member = ctx.roster.spawnHeld(key, call(at, ctx)); } };
   return beat;
 }
 
@@ -138,39 +138,26 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   };
 }
 
-// 白光的位置：零件的 at；at 在島心的（軌道、支線、列車）改到物品頭上，列車則是車頭那節
-const atOrigin = at => !at || Math.abs(at.x) + Math.abs(at.z) < 1e-6;
-function flashPoint({ key, at }, ctx) {
-  if (!atOrigin(at)) return at;
-  if (key === 'token.train') return trainPose(ctx.now + ctx.rail.offset, 0, { speed: trainSpeed(ctx) });
-  return ctx.stage.headOf(key.split('.')[0]);
-}
-// 在島心、又不是物品的零件（衛星島的 sat.boats）沒有地方掛白光：不閃、不算時間，end 照樣 commit
-const flashable = ({ key, at }) => !atOrigin(at) || key.split('.')[0] in ANCHORS;
-
-// 套用事件：flash 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）閃白光、最亮那一刻 commit；
-// 名冊的鍵不閃（名冊自己在每個人身上閃），也不算進長度。跳過時在 end 一次 commit。
-// 白光由這拍自己照時間放（不用 flash 的 delay），等著的才不會先算進畫面上的白光
-export function apply(e, { flash = true, only, hold } = {}) {
-  let changed = [], fired = 0, t = 0;
+// 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
+// commit 由舞台自己閃白 BLINK 秒（移除的閃完才拿掉），拍長 BLINK + 0.15·(n−1)。
+// 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
+export function apply(e, { blink = true, only, hold } = {}) {
+  let keys = [], fired = 0, t = 0;
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
-  const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: flash }; };
+  const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: blink }; };
   return {
     kind: 'apply', only,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）
-    dur: () => (changed.length ? FLASH + STAGGER * (changed.length - 1) : 0),
-    estimate: () => (flash ? FLASH : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一道白光
+    dur: () => (keys.length ? BLINK + STAGGER * (keys.length - 1) : 0),
+    estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
       const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;
-      const pending = new Set(flash ? ctx.stage.pendingKeys() : []);
-      changed = all.filter(c => pending.has(c.key) && flashable(c));
-      if (!changed.length) return false;
+      const pending = new Set(blink ? ctx.stage.pendingKeys() : []);
+      keys = all.map(c => c.key).filter(k => pending.has(k));
+      if (!keys.length) return false;
     },
     step(k, dt, ctx) {
       t += dt;
-      while (fired < changed.length && t >= STAGGER * fired - 1e-9) {
-        const c = changed[fired++];
-        ctx.flash.at(flashPoint(c, ctx), { onPeak: () => ctx.stage.commit(c.key) });
-      }
+      while (fired < keys.length && t >= STAGGER * fired - 1e-9) ctx.stage.commit(keys[fired++]);
     },
     end(ctx) { ctx.stage.commitAll(); ctx.nav.setFootprints(ctx.stage.footprints()); },
   };
@@ -238,7 +225,7 @@ export function scaleIn(key, { axis = 'y', dur = 0.8 } = {}) {
   };
 }
 
-// 零件歪掉（攤車被撞歪）；記在 stage.tilted，下一回合開頭 turn.js 白光扶正
+// 零件歪掉（攤車被撞歪）；記在 stage.tilted，下一回合開頭 turn.js 閃白扶正
 export function tilt(key, { rz = 0.25, dur = 0.3 } = {}) {
   let obj = null;
   return {

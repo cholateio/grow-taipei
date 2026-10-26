@@ -4,17 +4,16 @@ import * as THREE from '../vendor/three/three.module.js';
 import { installFakeDom } from './helpers/fakedom.js';
 import { createPeople } from '../src/scene/people.js';
 import { createNav } from '../src/show/nav.js';
-import { createFlash } from '../src/show/flash.js';
+import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
-import { FLASH_PEAK } from '../src/show/flash.js';
 installFakeDom();
 const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
 
 const AT = anchorWorld('milk');
 const kids = n => ({ kind: 'roster', at: AT, n, shirt: 0xfcea8b, home: { kind: 'wander', at: AT, r: 1.0 } });
 
-// 真 people、真 nav、真 flash；假 assets（holder 帶一個假 mixer，記錄 spawn／release）
+// 真 people、真 nav、真 blink（blink.log 記下每次 walker／part 的對象）；假 assets（holder 帶一個假 mixer，記錄 spawn／release）
 function setup() {
   const people = createPeople(THREE, { max: 48 }), spawned = [], released = [];
   const assets = {
@@ -22,14 +21,19 @@ function setup() {
     spawn: async (path, opts) => { const g = new THREE.Group(); g.userData.mixer = { timeScale: 1 }; g.userData.opts = opts; opts.parent?.add(g); spawned.push(g); return g; },
     release: g => { released.push(g); g.removeFromParent(); },
   };
-  const nav = createNav({ rnd: mulberry32(7) }), flash = createFlash(THREE, { group: new THREE.Group() }), rail = { offset: 0 };
-  const roster = createRoster(THREE, { people, assets, build: null, nav, flash, rail, rnd: mulberry32(11) });
-  return { roster, people, assets, flash, nav, rail };
+  const nav = createNav({ rnd: mulberry32(7) }), blink = createBlink(THREE, { people }), rail = { offset: 0 };
+  const { walker, part } = blink; blink.log = [];
+  blink.walker = (w, dur) => { blink.log.push(['walker', w]); walker(w, dur); };
+  blink.part = (o, dur, end) => { blink.log.push(['part', o]); part(o, dur, end); };
+  const roster = createRoster(THREE, { people, assets, build: null, nav, blink, rail, rnd: mulberry32(11) });
+  return { roster, people, assets, blink, nav, rail };
 }
 
-test('declare spawns n members at home with a flash each; members wander on the grid', () => {
-  const { roster, people, flash, nav } = setup(); roster.declare('milk.kids', kids(3));
-  assert.equal(roster.members('milk.kids').length, 3); assert.equal(people.walkers.length, 3); assert.equal(flash.count, 3);
+// §13.2：新生的成員不閃
+test('declare spawns n members at home without a blink; members wander on the grid', () => {
+  const { roster, people, blink, nav } = setup(); roster.declare('milk.kids', kids(3));
+  assert.equal(roster.members('milk.kids').length, 3); assert.equal(people.walkers.length, 3); assert.equal(blink.count, 0); assert.deepEqual(blink.log, []);
+  assert.ok(roster.members('milk.kids').every(m => m.walker.pose.y > 0), 'standing on the island at once');
   for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
   for (const m of roster.members('milk.kids')) { assert.ok(nav.walkable(m.pos.x, m.pos.z)); assert.ok(Math.hypot(m.pos.x - AT.x, m.pos.z - AT.z) <= 1.0 + 0.3); }
 });
@@ -87,18 +91,25 @@ test('changing a model look on an existing key swaps the holder for the same mem
   assert.deepEqual([m.holder.userData.opts.h, m.holder.userData.opts.tint], [0.5, { Grey: 0x5fcf7a }]);
   assert.ok(Math.abs(m.headY - 0.75) < 1e-9, 'HEAD_Y.model scaled by h / 0.2');
 });
-// 審查修正 2：出現／換配件在白光最亮那一刻才看得到；同一次宣告的多個人依序閃，間隔 0.15 s
-test('spawns appear at the flash peak, staggered 0.15 s apart; accessory swaps reveal at the peak too', () => {
-  const { roster, flash } = setup(); roster.declare('k', kids(3)); const ms = roster.members('k');
-  const shown = () => ms.map(m => m.walker.pose.y > 0);
-  assert.equal(flash.count, 3); assert.deepEqual(shown(), [false, false, false]);
-  flash.update(FLASH_PEAK + 0.01); assert.deepEqual(shown(), [true, false, false]);
-  flash.update(0.15); assert.deepEqual(shown(), [true, true, false]);
-  flash.update(0.15); assert.deepEqual(shown(), [true, true, true]);
-  flash.update(1);
+// §13.2：新生的直接看得到、不閃；換配件在小人身上閃白 0.15 s（每人一次）
+test('spawns show at once without a blink; an accessory swap blinks each walker once', () => {
+  const { roster, blink, people } = setup(); roster.declare('k', kids(3)); const ms = roster.members('k');
+  assert.ok(ms.every(m => m.walker.pose.y > 0)); assert.equal(blink.count, 0);
   roster.declare('k', { ...kids(3), accessory: 'cap' }); assert.ok(ms.every(m => m.walker.accessory === 'cap'));
-  assert.deepEqual(shown(), [false, false, false], 'hidden behind the flash until its peak');
-  flash.update(FLASH_PEAK + 0.31); assert.deepEqual(shown(), [true, true, true]);
+  assert.deepEqual(blink.log, ms.map(m => ['walker', m.walker])); assert.ok(ms.every(m => m.walker.white && m.walker.pose.y > 0), 'white, in place');
+  blink.update(0.16); assert.ok(ms.every(m => !m.walker.white)); assert.equal(people.walkers.length, 3);
+  roster.accessory(ms[0], 'glass'); assert.deepEqual(blink.log.at(-1), ['walker', ms[0].walker]);
+});
+// 模型換外觀：新 holder 到了才閃；只換天線／眼睛的當場閃
+test('a model swap blinks the new holder when it arrives; a dress change blinks the holder at once', async () => {
+  const { roster, blink } = setup(), rat = extra => ({ kind: 'roster', at: AT, n: 1, model: { path: 'x.glb', h: 0.2, ...extra }, home: { kind: 'wander', at: AT, r: 1 } });
+  roster.declare('rat.pack', rat()); await new Promise(r => setTimeout(r, 0)); const [m] = roster.members('rat.pack');
+  assert.deepEqual(blink.log, [], 'a new model member does not blink');
+  roster.declare('rat.pack', rat({ antenna: true })); assert.deepEqual(blink.log, [['part', m.holder]]);
+  roster.declare('rat.pack', rat({ antenna: true, tint: { Grey: 1 } })); assert.equal(blink.log.length, 1, 'waits for the new holder');
+  await new Promise(r => setTimeout(r, 0)); assert.deepEqual(blink.log.at(-1), ['part', m.holder]); assert.equal(blink.log.length, 2);
+  roster.declare('rat.pack', rat({ antenna: true, tint: { Grey: 2 } })); roster.snap();
+  await new Promise(r => setTimeout(r, 0)); assert.equal(blink.log.length, 2, 'after a skip the late holder does not blink');
 });
 // 審查修正 3：跳過＝所有人（不只劇本手上的）瞬間到家、停下、看得到
 test('snap puts every member home at once, including home-mode members still walking and unrevealed spawns', () => {
@@ -116,13 +127,13 @@ test('snap puts every member home at once, including home-mode members still wal
 test('re-declaring a held spec without hold applies it', () => {
   const { roster } = setup(); roster.declare('k', kids(2), { hold: true }); roster.declare('k', kids(2)); assert.equal(roster.members('k').length, 2);
 });
-// 鮮奶 Lv3 長高：同一群小孩原地變 1.3 倍（白光後露出），頭頂跟著抬高
+// 鮮奶 Lv3 長高：同一群小孩原地變 1.3 倍（原地閃白），頭頂跟著抬高
 test('re-declaring with a new scale updates the walker scale and headY in place', () => {
-  const { roster, flash } = setup(); roster.declare('k', kids(3)); const ms = roster.members('k'); flash.update(1);
+  const { roster, blink } = setup(); roster.declare('k', kids(3)); const ms = roster.members('k');
   roster.declare('k', { ...kids(3), scale: 1.3 });
   const now = roster.members('k'); assert.ok(now.every((m, i) => m === ms[i]), 'same members');
-  for (const m of now) { assert.equal(m.walker.scale, 1.3); assert.ok(Math.abs(m.headY - HEAD_Y.people * 1.3) < 1e-9); assert.ok(m.walker.pose.y < 0, 'veiled until the peak'); }
-  flash.update(1); assert.ok(now.every(m => m.walker.pose.y > 0));
+  for (const m of now) { assert.equal(m.walker.scale, 1.3); assert.ok(Math.abs(m.headY - HEAD_Y.people * 1.3) < 1e-9); assert.ok(m.walker.white && m.walker.pose.y > 0, 'blinks in place'); }
+  blink.update(1); assert.ok(now.every(m => !m.walker.white));
 });
 
 // 晶片工程師通勤：path 日常沿折線來回（開放路徑走到底折返），起點依 i / n 錯開
@@ -174,15 +185,15 @@ test('from tops the source roster back up to its declared n', () => {
 // 審查修正（Task 12）：來源名冊同一次被退掉時，from 不能在來源補人（不留幽靈、不多閃）；兩種順序都一樣
 test('from with a source retired in the same sync leaves no ghosts and spawns nobody extra (both orders)', () => {
   for (const targetFirst of [true, false]) {
-    const { roster, people, flash } = setup(); roster.declare('token.staff', kids(1)); flash.update(1); roster.flush();
+    const { roster, people, blink } = setup(); roster.declare('token.staff', kids(1)); roster.flush();
     const [staff] = roster.members('token.staff'), swim = { ...kids(1), accessory: 'glass', from: 'token.staff' };
-    const before = flash.count;
+    const before = blink.log.length;
     if (targetFirst) { roster.declare('token.swimmers', swim); roster.retire('token.staff'); } else { roster.retire('token.staff'); roster.declare('token.swimmers', swim); }
     roster.flush();
     assert.deepEqual(roster.members('token.swimmers'), [staff], `order ${targetFirst}: same person`);
     assert.equal(people.walkers.length, 1, `order ${targetFirst}: no extra walker`);
     assert.ok(!roster.keys().includes('token.staff'), `order ${targetFirst}: source group gone`);
-    assert.equal(flash.count - before, 1, `order ${targetFirst}: only the swap flash`);
+    assert.equal(blink.log.length - before, 1, `order ${targetFirst}: only the swap blink`);
   }
 });
 // 審查併入（§5.2 同一個小人原地換）：換身分優先搬「這次宣告之前就在」的人，不搬剛補出來的
@@ -216,8 +227,8 @@ test('a wander home off the main island loops around a ring instead of being pul
 
 // 颱風登陸：每個人在門口各自藏起來，到下一回合開始（或跳過）才一起露出來
 test('showAll un-hides every member and puts them back on the ground', () => {
-  const { roster, flash } = setup();
-  roster.declare('k', kids(3)); roster.flush(); flash.update(1);   // 白光過了：都露出來了
+  const { roster } = setup();
+  roster.declare('k', kids(3)); roster.flush();
   const ms = roster.members('k'); ms.forEach(m => roster.hide(m));
   assert.ok(ms.every(m => m.walker.pose.y < -1), 'hidden under the sea');
   assert.ok(ms.every(m => m.hidden));
@@ -225,17 +236,15 @@ test('showAll un-hides every member and puts them back on the ground', () => {
   assert.ok(ms.every(m => !m.hidden));
   for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
 });
-// 藏起來的人（颱風登陸躲進門裡）被退掉：已經在門口消失了，退場不再閃白光
-test('a hidden leaver retires without a flash; a visible one still flashes', () => {
-  const { roster, flash } = setup();
-  roster.declare('k', kids(2)); roster.flush(); flash.update(1); flash.clear();
+// §13.2：退場的人直接拿掉、不閃（走出場是之後的事）；藏起來的人（躲進門裡）也一樣
+test('leavers are removed without a blink, hidden or not', () => {
+  const { roster, blink, people } = setup();
+  roster.declare('k', kids(2)); roster.flush();
   const [a, b] = roster.members('k'); roster.hide(a);
   roster.declare('k', kids(1)); roster.flush();
-  assert.ok(!roster.members('k').includes(b), 'the last member leaves first');
-  assert.equal(flash.count, 1, 'visible leaver flashes');
-  flash.clear();
-  roster.hide(roster.members('k')[0]); roster.retire('k'); roster.flush();
-  assert.equal(roster.members('k').length, 0); assert.equal(flash.count, 0, 'hidden leaver is silent');
+  assert.ok(!roster.members('k').includes(b), 'the last member leaves first'); assert.ok(!people.walkers.includes(b.walker));
+  roster.retire('k'); roster.flush();
+  assert.equal(roster.members('k').length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(blink.log, []);
 });
 test('stand members with fidget play a short gesture every 3 s and are still between', () => {
   const { roster } = setup(), spot = { ...AT, yaw: 0 };

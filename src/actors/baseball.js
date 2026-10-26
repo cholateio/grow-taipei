@@ -96,7 +96,7 @@ const fan = i => c => shown('baseball.crowd')(c)[i] ?? null;
 const ALL_FANS = 6;
 
 export const script = {
-  // 白光沙地 → 最近的島民走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就白光出現
+  // 閃白沙地 → 最近的島民走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就閃白出現
   placed(e, s, ctx) {
     const { B } = ctx, m = once(c => nearestIslander(c, BASE_AT[0]));
     return [
@@ -106,7 +106,7 @@ export const script = {
     ];
   },
   grow: {
-    // 看台、球員：白光木看台 → 2 個球員從看台前排出來、走到本壘前 → 白光球（傳接球）
+    // 看台、球員：閃白木看台 → 2 個球員從看台前排出來、走到本壘前 → 閃白球（傳接球）
     2(e, s, ctx) {
       const { B } = ctx, spots = players(AT);
       const sp = [-0.3, 0.3].map(x => B.spawn('baseball.players', offset(AT, x, -0.95)));
@@ -116,7 +116,7 @@ export const script = {
         B.home(c => c.roster.members('baseball.players')), B.levelUp('baseball'),
       ];
     },
-    // 大巨蛋：球員 …… → 圖框「巨蛋」→ 101 工地的工人（沒有就島民）走到巨蛋前 → 敲 ×2 → 白光巨蛋 → 走回
+    // 大巨蛋：球員 …… → 圖框「巨蛋」→ 101 工地的工人（沒有就島民）走到巨蛋前 → 敲 ×2 → 閃白巨蛋 → 走回
     3(e, s, ctx) {
       const { B } = ctx, w = helper('chip.worker', DOME_EDGE);
       return [
@@ -124,7 +124,7 @@ export const script = {
         B.walk(w, DOME_EDGE), B.gesture(w, 'knock'), B.gesture(w, 'knock'), B.apply(e), B.home(w), B.levelUp('baseball'),
       ];
     },
-    // 開打：列車進站停 → 4 個觀眾在站前一個個下車 → 一起走到巨蛋門口 → 一起 ♪ → 白光頂縫透光
+    // 開打：列車進站停 → 4 個觀眾在站前一個個下車 → 一起走到巨蛋門口 → 一起 ♪ → 閃白頂縫透光
     4(e, s, ctx) {
       const { B } = ctx, spots = fans(AT, 4);
       const sp = [0, 1, 2, 3].map(k => B.spawn('baseball.crowd', c => c.nav.nearestWalkable(offset(PLATFORM, (k - 1.5) * 0.25, 0))));
@@ -135,7 +135,7 @@ export const script = {
         B.home(c => c.roster.members('baseball.crowd')), B.levelUp('baseball'),
       ];
     },
-    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 白光應援棒、觀眾補到 6 → 觀眾一起 ♪
+    // 演唱會：電工（沒有就島民）走到巨蛋門口 → 敲 → 閃白應援棒、觀眾補到 6 → 觀眾一起 ♪
     5(e, s, ctx) {
       const { B } = ctx, el = helper('bulb.electrician', GATE);
       return [

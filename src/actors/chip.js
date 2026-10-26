@@ -58,7 +58,7 @@ export function view(lv) {
   if (n >= 2) {
     const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 4 : 2) - (detective ? 1 : 0);
     v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: n >= 3 ? 'bike' : 'coat', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: n >= 3 ? 0.8 : 0.45 } };
-    // 偵防師是從工程師裡轉過來的（原地白光換放大鏡），日常改成跟著老鼠
+    // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
     if (detective) v['chip.detective'] = { kind: 'roster', at, n: 1, accessory: 'glass', from: 'chip.engineers', home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } };
   }
   return { 'chip.main': v['chip.main'], ...v };
@@ -77,13 +77,13 @@ const ENGINEERS = c => c.roster.members('chip.engineers');
 const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(() => ctx.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
 
 export const script = {
-  // 工地開工：白光圍籬 → 工人從 101 工地走過來 → 繞工地
+  // 工地開工：閃白圍籬 → 工人從 101 工地走過來 → 繞工地
   placed(e, s, ctx) {
     const { B } = ctx, w = worker(ctx);
     return [B.apply(e, { hold: ['chip.worker'] }), B.spawn('chip.worker', SITE), B.walk(w, DOOR), B.home(w)];
   },
   grow: {
-    // 廠房：工人 …… → 敲 → 白光廠房（工人收工）→ 2 個工程師從廠門走出來、走去 101
+    // 廠房：工人 …… → 敲 → 閃白廠房（工人收工）→ 2 個工程師從廠門走出來、走去 101
     2(e, s, ctx) {
       const { B } = ctx, w = worker(ctx), foot = i => c => c.nav.slots(FOOT, 2, 0.2)[i];
       return [
@@ -94,7 +94,7 @@ export const script = {
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 園區：工程師下班回廠門 → ♪ → 白光三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）
+    // 園區：工程師下班回廠門 → ♪ → 閃白三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）
     3(e, s, ctx) {
       const { B } = ctx, door = i => c => c.nav.slots(DOOR, 2, 0.25)[i];
       return [
@@ -103,7 +103,7 @@ export const script = {
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 總部（鮮奶 ≥3）：長高的小學生（離園區最近的那個）過橋走到園區西側門口，最後一段邊走邊冒圖框「晶片」→ 工程師 ♥ → 白光總部
+    // 總部（鮮奶 ≥3）：長高的小學生（離園區最近的那個）過橋走到園區西側門口，最後一段邊走邊冒圖框「晶片」→ 工程師 ♥ → 閃白總部
     4(e, s, ctx) {
       const { B } = ctx, kid = once(c => (c.roster.members('milk.kids').length ? c.roster.nearest('milk.kids', KID_GATE) : c.roster.nearest('landmarks.islanders', KID_GATE)));
       return [
@@ -111,7 +111,7 @@ export const script = {
         B.bubble(eng(ctx, 0), '♥', 0.9), B.apply(e), B.home(kid), B.levelUp('chip'),
       ];
     },
-    // 天線（代幣 ≥3）：工程師走到站前等 → 列車進站停下，一停就敲（接箱子）→ 不等車開就送去 101 腳下 → 白光天線
+    // 天線（代幣 ≥3）：工程師走到站前等 → 列車進站停下，一停就敲（接箱子）→ 不等車開就送去 101 腳下 → 閃白天線
     5(e, s, ctx) {
       const { B } = ctx, e0 = eng(ctx, 0);
       return [

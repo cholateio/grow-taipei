@@ -89,7 +89,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
   }
   throw new Error('event not found');
 }
-const RANGE = { 1: [4, 9], 2: [3, 8], 3: [5, 12], 4: [6, 15], 5: [4, 10], 6: [4, 10] };
+// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
+const RANGE = { 1: [4, 9], 2: [2, 8], 3: [5, 12], 4: [6, 15], 5: [4, 10], 6: [4, 10] };
 function checkBall({ show, bubblesLog }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = RANGE[lvl];
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);

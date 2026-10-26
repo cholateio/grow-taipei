@@ -108,7 +108,7 @@ const riding = s => ratMode(s.prev.lv, s.prev.flags) === 'train';   // 這次升
 
 // 0 秒的小拍：把老鼠們拿到劇本手上、原地停下（名冊換家的時候它們才不會先瞬移上車）
 const claim = who => ({ kind: 'claim', dur: 0, start(c) { for (const m of who(c)) { c.roster.claim(m); c.roster.setPose(m, { ...m.pos, walking: false }); } return false; } });
-// 0 秒：走到目的地就藏起來（小學生躲進校舍；回合末的 apply 收掉藏著的人不閃白光）
+// 0 秒：走到目的地就藏起來（小學生躲進校舍；回合末的 apply 收掉藏著的人不閃閃白）
 const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m) c.roster.hide(m); return false; } });
 // 偵防師 ！：晶片 ≥3 時老鼠一生窩，名冊就把一個工程師換成偵防師（晶片 grow 3 那邊也補這一拍，哪邊先成立哪邊演）
 const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.bubble(detective, '！', 0.8)] : []);
@@ -119,13 +119,13 @@ function hopOff(B, s, ids, at, centre, r) {
   return [B.trainStop({ at, stop: hold(ids.length), during: ids.flatMap((i, k) => [B.jump(rat(i), c => spots(c)[k], JUMP), ...(k < ids.length - 1 ? [B.wait(HOP)] : [])]) })];
 }
 
-// 咬鮮奶：一隻走到牛奶箱 → 聞一聞 → ！ → 箱子翻倒（真的掉級才白光換成側躺；引擎裡被咬時鮮奶都還是 Lv1，不掉級，只撞歪）
+// 咬鮮奶：一隻走到牛奶箱 → 聞一聞 → ！ → 箱子翻倒（真的掉級才閃白換成側躺；引擎裡被咬時鮮奶都還是 Lv1，不掉級，只撞歪）
 //   → 小學生 ！ 跑回校門口躲進去 → LEVEL DOWN
 function bite(e, ctx) {
   const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), KIDS = [0, 1, 2], down = e.delta.to < e.delta.from;
   return [
     B.walk(r, offset(CRATE, 0.45, 0.2), { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
-    // 沒掉級（引擎裡一定是這樣）：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：白光換成翻倒的箱子
+    // 沒掉級（引擎裡一定是這樣）：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：閃白換成翻倒的箱子
     down ? B.apply(e, { only: ['milk.crate'] }) : B.tilt('milk.crate', { rz: 0.35, dur: 0.3 }),
     B.together(KIDS.map(i => B.bubble(kid(i), '！', 0.8))),
     B.together(KIDS.map(i => B.walk(kid(i), SCHOOL_GATE))), ...KIDS.map(i => hide(kid(i))),
@@ -153,7 +153,7 @@ export const script = {
     ];
   },
   grow: {
-    // 一窩：♥ → 白光鼠窩 → 四隻從窩邊跑出來 → 窩旁晃
+    // 一窩：♥ → 閃白鼠窩 → 四隻從窩邊跑出來 → 窩旁晃
     2(e, s, ctx) {
       const { B } = ctx, out = [1, 2, 3, 4], door = once(c => c.nav.slots(AT, 4, 0.3)), spot = once(c => c.nav.slots(AT, 4, 0.75));
       return [
@@ -180,7 +180,7 @@ export const script = {
           B.apply(e), B.home(RATS), B.levelUp('rat'),
         ];
       }
-      // 泡溫泉（代幣 <2）：五隻走上台地到池邊 → 一起 ♥ → 池水白光變綠 → 走進池子
+      // 泡溫泉（代幣 <2）：五隻走上台地到池邊 → 一起 ♥ → 池水閃白變綠 → 走進池子
       if (mode === 'spring') {
         const ids = [0, 1, 2, 3, 4];
         return [
@@ -195,7 +195,7 @@ export const script = {
       const { B } = ctx, branch = branchOf(s), ids = [0, 1, 2, 3, 4], r0 = rat(0);
       if (s.flags.domeRats) return null;
       const transform = [B.apply(e), B.apply(branchEvent(branch))];
-      // 賽博：偵防師走到園區那側島緣、列車進站，老鼠們依序跳下來 → ！ → 圖框「晶片」→ 跟著他走到園區門口 → 依序白光變機器鼠（天線）
+      // 賽博：偵防師走到園區那側島緣、列車進站，老鼠們依序跳下來 → ！ → 圖框「晶片」→ 跟著他走到園區門口 → 依序閃白變機器鼠（天線）
       if (branch === 'cyber') {
         const gate = once(c => c.nav.slots(PARK, 5, 0.6));
         return [
@@ -206,7 +206,7 @@ export const script = {
           ...transform, B.wait(0.8), B.home(c => [...RATS(c), detective(c)].filter(Boolean)), B.levelUp('rat'),
         ];
       }
-      // 外星：一隻在溫泉那側跳下車、走到溫泉邊 …… → 白光變異（放大、綠光、三眼；其餘的白光散掉）→ 對天揮手 → ？
+      // 外星：一隻在溫泉那側跳下車、走到溫泉邊 …… → 閃白變異（放大、綠光、三眼；其餘的閃白後拿掉）→ 對天揮手 → ？
       return [
         ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1),
         B.walk(r0, MUTANT), B.bubble(r0, '……'),
@@ -216,10 +216,10 @@ export const script = {
     5(e, s, ctx) {
       const { B } = ctx, r0 = rat(0);
       if (ratMode(s.lv, s.flags) === 'cyber') {
-        // 軍團：白光補到 10 隻 → 列隊走到 101 腳下 → 繞 101
+        // 軍團：閃白補到 10 隻 → 列隊走到 101 腳下 → 繞 101
         const ids = Array.from({ length: 10 }, (_, i) => i), slots = once(c => c.nav.slots(TOWER, 10, 1.3));
         return [
-          // 新的五隻依序白光出現（名冊自己閃），一出來就跟著列隊；石堆小島的兩隻同時收掉（骨架動畫 ≤ 12，LEVEL UP 之後不再閃）
+          // 新的五隻依序閃白出現（名冊的新生成員不閃，之後由入口走進來），一出來就跟著列隊；石堆小島的兩隻同時收掉（骨架動畫 ≤ 12，LEVEL UP 之後不再閃）
           B.apply(e, { only: [KEY, 'sat.rocks'] }),
           B.together(ids.map(i => B.walk(rat(i), c => slots(c)[i]))),
           B.home(RATS), B.levelUp('rat'),
@@ -228,7 +228,7 @@ export const script = {
       if (ratMode(s.lv, s.flags) === 'alien') {
         // 小 UFO 從天上降下停在變異鼠頭上 → ♥
         return [
-          B.apply(e, { only: ['rat.ufo'], flash: false }), B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 }),
+          B.apply(e, { only: ['rat.ufo'], blink: false }), B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 }),
           B.bubble(r0, '♥', 0.9), B.levelUp('rat'),
         ];
       }

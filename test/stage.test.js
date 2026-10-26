@@ -7,6 +7,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
 const { createStage, diffParts } = await import('../src/actors/stage.js');
+const { createBlink } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
 // 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
@@ -21,13 +22,15 @@ const fakeMilk = {
     return v;
   },
 };
-const setup = (modules = [fakeMilk], roster = null) => {
+const setup = (modules = [fakeMilk], roster = null, { blink: withBlink = true } = {}) => {
   const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
-  const assets = { spawn: async () => new THREE.Group() };
-  const stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow }, roster });
+  const assets = { spawn: async () => new THREE.Group() }, blink = withBlink ? createBlink(THREE, { people }) : null;
+  const stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow }, roster, blink });
   const parts = () => scene.getObjectByName('stage:parts').children;
-  return { scene, glow, people, stage, parts };
+  return { scene, glow, people, stage, parts, blink };
 };
+// 零件現在是不是白的（閃白中：每個 mesh 都換成同一個白色 MeshBasicMaterial）
+const white = o => { let all = true, any = false; o.traverse(m => { if (m.isMesh) { any = true; all &&= m.material.isMeshBasicMaterial && m.material.color.getHex() === 0xffffff; } }); return any && all; };
 const placed = { kind: 'placed', item: 'milk', to: 1, story: '一箱鮮奶送到了' };
 const grow = to => ({ kind: 'grow', item: 'milk', from: to - 1, to });
 
@@ -54,6 +57,39 @@ test('deferred keeps the old part and hides the new until commit; commitAll reve
   assert.ok(parts().includes(old)); const fresh = parts().filter(o => o !== old); assert.ok(fresh.every(o => o.visible === false)); assert.deepEqual(stage.pendingKeys().sort(), ['milk.lamp', 'milk.main']);
   stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
   stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
+});
+// §13.2：換零件＝舊的立刻拿掉、新的閃白；新增＝新的閃白；移除＝舊的閃白，閃完才拿掉
+test('commit reveals the fresh part and blinks it; the old part is dropped', () => {
+  const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
+  stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
+  stage.commit('milk.main');
+  assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.equal(fresh.visible, true); assert.ok(white(fresh)); assert.equal(blink.count, 1);
+  stage.commit('milk.lamp'); assert.ok(white(stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
+  blink.update(0.16); assert.equal(blink.count, 0); assert.ok(!white(fresh), 'back to its own colours');
+});
+const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
+test('a removed part blinks first and is dropped when the blink ends', () => {
+  const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  stage.apply(drop, { deferred: true }); assert.ok(parts().includes(lamp), 'old kept while pending');
+  stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, blinking'); assert.ok(white(lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
+  blink.update(0.1); assert.ok(parts().includes(lamp));
+  blink.update(0.06); assert.ok(!parts().includes(lamp), 'dropped after the blink'); assert.equal(blink.count, 0);
+});
+test('commitAll commits without blinking and drops a blinking removal at once, restored first', () => {
+  const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); assert.equal(blink.count, 1);
+  stage.commitAll(); assert.ok(!parts().includes(lamp), 'removal dropped at once'); assert.ok(parts().every(o => o.visible));
+  assert.equal(blink.count, 0, 'commitAll blinks nothing and restores the removal before dropping it'); assert.ok(!white(lamp));
+});
+test('reset drops a part that is blinking out', () => {
+  const { stage, parts } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); stage.reset();
+  assert.ok(!parts().includes(lamp)); assert.ok(!white(lamp), 'restored before it was dropped'); assert.deepEqual(stage.partKeys(), []);
+});
+test('a stage without blink commits as before', () => {
+  const { stage, parts } = setup([fakeMilk], null, { blink: false }); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); stage.commit('milk.main');
+  assert.ok(!parts().includes(lamp)); assert.ok(stage.partObject('milk.main').visible);
 });
 test('roster parts go to the roster, not the factory; hold is passed through; removal retires', () => {
   const calls = []; const roster = { declare: (k, s, o) => calls.push(['declare', k, s.n, !!o?.hold]), retire: k => calls.push(['retire', k]), syncAll() {}, reset() {} };

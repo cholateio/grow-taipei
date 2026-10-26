@@ -6,13 +6,14 @@ import { TOP, cellAt } from '../scene/hex.js';
 import { LAMP_STOPS } from './bulb.js';
 import { mulberry32 } from '../scene/random.js';
 import { C, offset } from './palette.js';
+import { BLINK } from '../show/blink.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
 const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 
 // 颱風賴在巨蛋（§8.5）：棒球 ≥3 時 Lv3 長不出來（要棒球 ≤2），引擎也沒有 stall 事件——登陸回合過後，
-// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台白光換到那裡），玩家看得到它卡在什麼上面
+// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台閃白換到那裡），玩家看得到它卡在什麼上面
 const lingers = (lv, meta) => lv.typhoon === 2 && lv.baseball >= 3 && !meta.landing;
 
 export function view(lv, flags, meta = {}) {
@@ -88,10 +89,9 @@ export const builders = {
 
 // ── 劇本（§8.5）──
 // 名單、位置都是演到那一拍才查（劇本在回合開始時一次建好，那時還不知道誰在哪）；once 查到第一次就記住，整段同一批人。
-const AT = anchorWorld('typhoon'), DOME = anchorWorld('baseball'), GATE = offset(DOME, 0, 1.1), BOBA = anchorWorld('boba');
+const AT = anchorWorld('typhoon'), DOME = anchorWorld('baseball'), GATE = offset(DOME, 0, 1.1);
 const CLOUD_Y = 3.9, HURRY = 2.0, FLUSHED = 4.0;   // 雲頭上的泡泡高度；趕著躲雨的走路速度；老鼠被大水沖（兩倍速）
 const DOOR_MIN = 0.35;   // 算「建築」的 footprint 最小半寬（路燈 0.15、牛奶箱 0.3 不算門）
-const FLASH = 0.5;       // 白光長度（同 show/flash.js）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
@@ -124,19 +124,19 @@ function toDoor(B, m) {
 }
 // 名冊成員露出來（0 秒）：躲進門裡的人出來演自己的戲（淹水的站務員、換身分後的泳客）
 const reveal = who => ({ kind: 'unhide', dur: 0, start(c) { for (const m of who(c) ?? []) c.roster.show(m); return false; } });
-// 外送機車：登陸時先建好藏著（零件鍵 0 秒），外送那一拍才在攤車白光、最亮時露出來
-function flashIn(key, at) {
+// 外送機車：登陸時先建好藏著（零件鍵 0 秒），外送那一拍才露出來、閃白 BLINK 秒
+function blinkIn(key) {
   let obj = null;
   return {
-    kind: 'flashIn', dur: FLASH,
-    start(c) { obj = c.stage.partObject(key); if (!obj || obj.visible) return false; c.flash.at(at, { onPeak: () => { if (obj) obj.visible = true; } }); },
+    kind: 'blinkIn', dur: BLINK,
+    start(c) { obj = c.stage.partObject(key); if (!obj || obj.visible) return false; obj.visible = true; c.blink.part(obj); },
     end() { if (obj) obj.visible = true; obj = null; },
   };
 }
 const cloudHead = ctx => ctx.B.partHead('typhoon.main', CLOUD_Y, ctx);
 
 // 大停電：路燈從主路最後一站往回一站站熄 → 燈泡本身、夜市、燈塔、風車 → 101 頂 ！ → 全島發光歸零 →
-// 牛奶箱變灰（和剩下的零件同一次套用：鮮奶掉級的校舍等等，LEVEL DOWN 之後就沒有白光了）→ LEVEL DOWN
+// 牛奶箱變灰（和剩下的零件同一次套用：鮮奶掉級的校舍等等，LEVEL DOWN 之後就沒有閃白了）→ LEVEL DOWN
 function blackout(e, ctx) {
   const { B } = ctx, n = LAMP_STOPS.length;
   return [
@@ -146,7 +146,7 @@ function blackout(e, ctx) {
     B.apply(e), B.levelUp('milk', { down: true }),
   ];
 }
-// 捷運淹水：站務員從門裡出來 ！ → 站體白光變泳池、站務員原地換成泳客（staff 和 swimmers 同一次套用，不然 flush 會補出幽靈站務員）、列車停駛
+// 捷運淹水：站務員從門裡出來 ！ → 站體閃白變泳池、站務員原地換成泳客（staff 和 swimmers 同一次套用，不然 flush 會補出幽靈站務員）、列車停駛
 function flooded(e, ctx) {
   const { B } = ctx, st = once(c => c.roster.members('token.staff')[0] ?? null);   // 他登陸時躲起來了：不濾 hidden
   return [
@@ -171,10 +171,10 @@ export const script = {
   // 烏雲從台地後面飄進來停在島上空 → ……
   placed(e, s, ctx) {
     const { B } = ctx;
-    return [B.apply(e, { flash: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 4 }), B.bubble(cloudHead(ctx), '……', 1.5)];
+    return [B.apply(e, { blink: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 4 }), B.bubble(cloudHead(ctx), '……', 1.5)];
   },
   grow: {
-    // 登陸：雲鼓脹 → 白光變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
+    // 登陸：雲鼓脹 → 閃白變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
     // 船消失、風車狂轉（外送機車先建好藏著，等外送那一拍）→ LEVEL UP。全島檢查是之後的 fx 事件
     2(e, s, ctx) {
       const { B } = ctx, cast = once(c => everyone(c));
@@ -183,17 +183,17 @@ export const script = {
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
         crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))),
         crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m))),   // 衛星島上的人不走（走路格只有主島）
-        B.apply(e, { only: ['typhoon.scooter'], flash: false }), B.hideParts('typhoon.scooter'),
+        B.apply(e, { only: ['typhoon.scooter'], blink: false }), B.hideParts('typhoon.scooter'),
         B.apply(e), B.levelUp('typhoon'),
       ];
     },
-    // 雨過天晴：雲、雨、機車白光散掉 → 天晴 → 彩虹從台地後升起 → 河濱公園 → 小人一起 ♪ 回日常 → 屋頂依序換色 → LEVEL UP
+    // 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園 → 小人一起 ♪ 回日常 → 屋頂依序換色 → LEVEL UP
     // （人在回合開始時已經 showAll 出來了）
     3(e, s, ctx) {
       const { B } = ctx;
       return [
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
-        B.apply(e, { only: ['typhoon.rainbow'], flash: false }), B.scaleIn('typhoon.rainbow', { dur: 1.5 }),
+        B.apply(e, { only: ['typhoon.rainbow'], blink: false }), B.scaleIn('typhoon.rainbow', { dur: 1.5 }),
         B.apply(e, { only: ['typhoon.park'] }),
         crowd(B, c => everyone(c).map(m => B.bubble(m, '♪', 1.0))), B.home(everyone),
         B.apply(e), B.levelUp('typhoon'),
@@ -206,7 +206,7 @@ export const script = {
     if (e.flag?.name === 'blackout') return blackout(e, ctx);
     if (e.flag?.name === 'flooded') return flooded(e, ctx);
     if (e.flag?.name === 'domeRats') return domeRats(e, ctx);
-    if (e.delta?.target === 'boba') return [flashIn('typhoon.scooter', BOBA), B.apply(e), B.levelUp('boba')];   // 外送爆單：機車從攤車白光出現、繞圈 → 珍奶升級
+    if (e.delta?.target === 'boba') return [blinkIn('typhoon.scooter'), B.apply(e), B.levelUp('boba')];   // 外送爆單：機車在攤車旁閃白出現、繞圈 → 珍奶升級
     if (e.story?.includes('颱風假')) return [B.apply(e), B.bubble(B.partHead('milk.main', 1.2, ctx), '♪', 1.0)];
     return null;
   },

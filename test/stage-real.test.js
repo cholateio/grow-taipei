@@ -7,7 +7,7 @@ import { installFakeDom } from './helpers/fakedom.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople } from '../src/scene/people.js';
 import { createNav } from '../src/show/nav.js';
-import { createFlash } from '../src/show/flash.js';
+import { createBlink } from '../src/show/blink.js';
 installFakeDom();
 const { createStage } = await import('../src/actors/stage.js');
 const { createRoster } = await import('../src/show/roster.js');
@@ -20,8 +20,9 @@ test('full games with the real modules leave no glow, walkers or models behind a
   const released = [], spawned = [];
   const assets = { spawn: async (path, opts) => { const g = new THREE.Group(); opts?.parent?.add(g); spawned.push(g); return g; }, release: g => { released.push(g); g.removeFromParent(); } };
   const glow = createGlowRegistry(), people = createPeople(THREE, { max: 48 });
-  const roster = createRoster(THREE, { people, assets, build: null, nav: createNav(), flash: createFlash(THREE, { group: new THREE.Group() }), rail: { offset: 0 } });
-  const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow }, roster });
+  const blink = createBlink(THREE, { people });
+  const roster = createRoster(THREE, { people, assets, build: null, nav: createNav(), blink, rail: { offset: 0 } });
+  const stage = createStage(THREE, { scene: new THREE.Scene(), spec, modules, ctx: { people, assets, glow }, roster, blink });
   const base = { glow: glow.size, walkers: people.walkers.length, roster: roster.count };   // 開局就有島民名冊（6 人）
   for (const order of SOLUTIONS) {
     let s = engine.createState(spec);

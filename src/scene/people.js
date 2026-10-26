@@ -51,8 +51,10 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
   let nextId = 1;
   const color = new THREE.Color(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
+  // w.white：閃白中（show/blink.js）——整個實例塗白（影子照舊）；重排實例、換配件時也照這個塗
   function paint(i, w) {
-    const set = (name, hex) => meshes[name].setColorAt(i, color.setHex(hex));
+    const set = w.white ? (name, hex) => meshes[name].setColorAt(i, color.setHex(name === 'shadow' ? hex : 0xffffff))
+      : (name, hex) => meshes[name].setColorAt(i, color.setHex(hex));
     const shirt = w.accessory === 'coat' ? 0xffffff : w.shirt;
     set('legL', w.pants); set('legR', w.pants); set('armL', shirt); set('armR', shirt); set('body', shirt);
     set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
@@ -145,5 +147,8 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     for (const m of Object.values(meshes)) m.instanceMatrix.needsUpdate = true;
   }
 
-  return { group, spawn, update, get walkers() { return walkers; } };
+  // 閃白：on 整個實例塗白，off 重塗原色；已經移除的小人不動
+  function flashInstance(w, on) { w.white = on; const i = walkers.indexOf(w); if (i >= 0) paint(i, w); }
+
+  return { group, spawn, update, flashInstance, get walkers() { return walkers; } };
 }

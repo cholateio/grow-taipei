@@ -74,7 +74,8 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
   }
   throw new Error('event not found');
 }
-const RANGE = { 1: [4, 9], 2: [4, 10], 3: [5, 15], 4: [5, 12] };
+// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
+const RANGE = { 1: [4, 9], 2: [2.5, 10], 3: [5, 15], 4: [5, 12] };
 function checkBoba({ show, bubblesLog, rig }, e, secs, n, r) {
   const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = RANGE[lvl];
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
@@ -110,10 +111,10 @@ test('scripts: every boba level in both solutions plays in range, ends with LEVE
     }
   }
 });
-// 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走 3–4 s；每一幀攤車都在他面前 0.3–0.6；攤車在出發點白光出現
+// 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走 3–4 s；每一幀攤車都在他面前 0.3–0.6；攤車在出發點閃白出現
 test('placed: the owner pushes the cart in at walking speed — every frame the cart is just in front of him — and it parks at its anchor; ♪', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, frames = [], flashes = [];
-  const at = show.flash.at; show.flash.at = (q, o) => { flashes.push({ x: q.x, z: q.z }); return at(q, o); };
+  const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, frames = [], blinks = [];
+  const part = show.blink.part; show.blink.part = (o, ...rest) => { if (o === show.stage.partObject('boba.main')) blinks.push({ x: o.position.x, z: o.position.z }); return part(o, ...rest); };
   let cart0 = null;
   show.update = (dt, t) => {
     update(dt, t);
@@ -130,7 +131,7 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
     assert.ok(d >= 0.3 && d <= 0.6, `frame ${i}: cart ${d.toFixed(2)} from the owner`); assert.ok(dot > 0, `frame ${i}: cart in front`);
   }
   assert.ok(Math.hypot(frames[0].o.x - AT.x, frames[0].o.z - AT.z) > 3, 'starts far away');
-  assert.ok(cart0 && flashes.some(q => near(q, cart0, 0.1)), 'the cart appears with a flash where it starts');
+  assert.ok(cart0 && blinks.some(q => near(q, cart0, 0.1)), 'the cart appears with a blink where it starts');
   const cart = show.stage.partObject('boba.main');
   assert.ok(Math.abs(cart.position.x - AT.x) < 1e-9 && Math.abs(cart.position.z - AT.z) < 1e-9 && cart.rotation.z === 0, 'cart parked at its anchor');
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '♪'));

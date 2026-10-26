@@ -94,13 +94,14 @@ test('blackout: the lamp stops go out one per apply in reverse road order, then 
   const kinds = beats.map(b => b.kind), w = beats.findIndex(b => b.kind === 'world');
   assert.deepEqual(beats[w].effects, { glowScale: 0 });
   assert.ok(kinds.indexOf('bubble') < w && w < kinds.lastIndexOf('apply'), 'lamps → ！ → glow 0 → crate');
-  assert.ok(beats.at(-2).kind === 'apply' && beats.at(-2).only === undefined, 'crate and everything left in one apply: nothing flashes after LEVEL DOWN');
+  assert.ok(beats.at(-2).kind === 'apply' && beats.at(-2).only === undefined, 'crate and everything left in one apply: nothing blinks after LEVEL DOWN');
   assert.equal(beats.at(-1).kind, 'levelUp'); assert.equal(beats.at(-1).down, true);
   assert.equal(typhoon.script.fx({ kind: 'fx', cause: 'typhoon', story: '別的事' }, { lv: lv({}), flags: {} }, fakeCtx()), null);
 });
 
 const people = show => show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.kind === 'people');
-const BOUNDS = { 1: [3, 6], 2: [3, 15], 3: [5, 15] };
+// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
+const BOUNDS = { 1: [3, 6], 2: [3, 15], 3: [4, 15] };
 function checkTyphoon({ show, bubblesLog }, e, secs, n) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`, [lo, hi] = BOUNDS[to];
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);

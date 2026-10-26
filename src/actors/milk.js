@@ -22,8 +22,8 @@ const kidsCenter = lv => (league(lv) ? offset(anchorWorld('baseball'), -1.15, 0.
 export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
-  // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本白光換上、LEVEL DOWN）
-  // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合白光扶正）
+  // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本閃白換上、LEVEL DOWN）
+  // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合閃白扶正）
   const spoiled = !!flags.blackout, tipped = !!meta.bitten;
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [
     { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: spoiled ? SPOILED : C.cream },
@@ -86,7 +86,7 @@ export const script = {
     return [B.walk(islander, offset(CRATE, 0.5, 0.1)), B.gesture(islander, 'look', { at: CRATE }), B.apply(e), B.bubble(islander, '♥'), B.home(islander)];
   },
   grow: {
-    // 一層小學：校舍白光，3 個小學生一個接一個從校門口跑出來到操場
+    // 一層小學：校舍閃白，3 個小學生一個接一個從校門口跑出來到操場
     2(e, s, ctx) {
       const { B } = ctx, spot = i => c => c.nav.slots(PLAY, 3, 0.45)[i];
       const run = i => B.walk(kid(ctx, i), spot(i));
@@ -96,7 +96,7 @@ export const script = {
         B.gesture(kid(ctx, 0), 'jump'), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
       ];
     },
-    // 長高：一起去牛奶箱喝奶、各 ♥ → 白光變高 1.3、校舍加一層 → 跑回操場（同時 LEVEL UP）
+    // 長高：一起去牛奶箱喝奶、各 ♥ → 閃白變高 1.3、校舍加一層 → 跑回操場（同時 LEVEL UP）
     3(e, s, ctx) {
       const { B } = ctx;
       return [
@@ -108,17 +108,17 @@ export const script = {
         B.home(c => c.roster.members('milk.kids')),
       ];
     },
-    // 升旗：一個小學生走到旗桿 → ！ → 旗子沿旗桿升上去 → 校舍白光加層
+    // 升旗：一個小學生走到旗桿 → ！ → 旗子沿旗桿升上去 → 校舍閃白加層
     4(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
       return [
         B.walk(k0, offset(POLE, -0.2, 0.15)), B.bubble(k0, '！'),
-        B.apply(e, { only: ['milk.flag'], flash: false }),
+        B.apply(e, { only: ['milk.flag'], blink: false }),
         B.together([B.scaleIn('milk.flag', { axis: 'y', dur: 1.5 }), B.gesture(k0, 'look', { at: POLE })]),
         B.gesture(k0, 'wave'), B.apply(e), B.home(k0), B.levelUp('milk'),
       ];
     },
-    // 鐘塔、少棒：白光換棒球帽 → 一起過橋走到巨蛋旁 → 跳起來、球員 ♪ → 鐘塔白光 → 回家（自己走到空地練球）
+    // 鐘塔、少棒：閃白換棒球帽 → 一起過橋走到巨蛋旁 → 跳起來、球員 ♪ → 鐘塔閃白 → 回家（自己走到空地練球）
     // 有球場時先停在巨蛋東側門前（球員看得到；繞到西南空地的最後一段交給日常，不算進回合）
     5(e, s, ctx) {
       const { B } = ctx, centre = league(s.lv) ? DOME_SIDE : kidsCenter(s.lv), player = () => ctx.roster.members('baseball.players')?.[0] ?? null;
@@ -129,7 +129,7 @@ export const script = {
         B.apply(e), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
       ];
     },
-    // 大學：一個工程師（通勤路上離校門最近的那個）走到校門口 → …… → 圖框「學士帽」→ 白光：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
+    // 大學：一個工程師（通勤路上離校門最近的那個）走到校門口 → …… → 圖框「學士帽」→ 閃白：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
     6(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
       const engineer = once(c => (c.roster.members('chip.engineers').length ? c.roster.nearest('chip.engineers', GATE) : c.roster.nearest('landmarks.islanders', GATE)));

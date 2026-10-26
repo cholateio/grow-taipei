@@ -121,8 +121,8 @@ test('montage keeps only walk/apply/levelUp/spawn/home, prefixes 3-2-1 bubbles, 
 
 test('estimateTurn adds numeric durs, uses estimate for function durs, and takes the longest child of together', () => {
   const ctx = fakeCtx({ nav: navOf(3) });
-  assert.equal(estimateTurn([B.wait(1), B.together([B.wait(2), B.wait(0.5)]), B.walk(walker, { x: 3, z: 0 }), B.apply({ kind: 'settle' })], ctx), 1 + 2 + 3 + 0.5, 'a flashing apply counts one flash');
-  assert.equal(estimateTurn([B.apply({ kind: 'settle' }, { flash: false }), { kind: 'x', dur: () => 9 }], ctx), 0, 'function durs without estimate count 0');
+  assert.equal(estimateTurn([B.wait(1), B.together([B.wait(2), B.wait(0.5)]), B.walk(walker, { x: 3, z: 0 }), B.apply({ kind: 'settle' })], ctx), 1 + 2 + 3 + 0.15, 'a blinking apply counts one blink');
+  assert.equal(estimateTurn([B.apply({ kind: 'settle' }, { blink: false }), { kind: 'x', dur: () => 9 }], ctx), 0, 'function durs without estimate count 0');
 });
 
 test('fx scripts are looked up on the cause module and may return null to fall back', () => {
@@ -133,7 +133,7 @@ test('fx scripts are looked up on the cause module and may return null to fall b
   const mods = [tower, rat, milk];
   // 有劇本 → 用劇本
   assert.deepEqual(kindsOf(buildTurn([{ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: 'nest', value: true } }], base(mods), ctx)), ['wait', 'apply', 'home', 'world']);
-  // 回 null → 預設：正向 delta 升級、負向 LEVEL DOWN、沒有 delta 不閃白光
+  // 回 null → 預設：正向 delta 升級、負向 LEVEL DOWN、沒有 delta 不閃白
   const up = buildTurn([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 2 } }], base(mods), ctx);
   assert.deepEqual(kindsOf(up), ['apply', 'levelUp', 'apply', 'home', 'world']); assert.equal(noMarks(up)[1].down, false);
   const down = buildTurn([{ kind: 'fx', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 1, to: 1 } }, { kind: 'after', item: 'chip', cause: 'rat', delta: { target: 'chip', from: 2, to: 1 } }], base(mods), ctx);
@@ -143,14 +143,14 @@ test('fx scripts are looked up on the cause module and may return null to fall b
   assert.deepEqual(kindsOf(buildTurn([{ kind: 'after', item: 'turn', cause: 'turn', flag: { name: 'blackout', value: true } }], base(mods), ctx)), ['apply', 'apply', 'home', 'world']);
 });
 
-test('a part knocked askew last turn is righted with a flash at the start of this turn', () => {
-  const obj = { position: { x: 1, y: 0, z: 2 }, rotation: { z: 0.25 } }, flashes = [];
+test('a part knocked askew last turn is righted with a blink at the start of this turn', () => {
+  const obj = { position: { x: 1, y: 0, z: 2 }, rotation: { z: 0.25 } }, blinks = [];
   const ctx = fakeCtx(); ctx.stage.tilted = new Set(['boba.main']); ctx.stage.partObject = k => (k === 'boba.main' ? obj : null);
   const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), ctx);
   const [fix] = beats;
   assert.equal(fix.kind, 'apply'); assert.ok(fix.dur > 0); assert.equal(beats[1].kind, 'mark');
-  fix.start({ ...ctx, flash: { at: (p, o) => { flashes.push(p); assert.equal(obj.rotation.z, 0.25, 'still askew until the peak'); o.onPeak(); } } });
-  assert.equal(flashes.length, 1); assert.equal(flashes[0], obj.position); assert.equal(obj.rotation.z, 0); assert.equal(ctx.stage.tilted.size, 0);
+  fix.start({ ...ctx, blink: { part: o => blinks.push(o) } });
+  assert.deepEqual(blinks, [obj], 'the part itself blinks'); assert.equal(obj.rotation.z, 0, 'righted under the blink'); assert.equal(ctx.stage.tilted.size, 0);
   obj.rotation.z = 0.3; fix.end(ctx); assert.equal(obj.rotation.z, 0, 'end rights it too (skip)');
   assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), ctx)[0].kind, 'mark', 'nothing askew → no beat');
   assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), fakeCtx())[0].kind, 'mark', 'stages without tilted are fine');

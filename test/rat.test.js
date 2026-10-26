@@ -119,7 +119,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
   throw new Error('event not found');
 }
 // 秒數範圍（§8.6 的目標秒數上下放寬）：放置是第 1 回合，一隻老鼠演滿 8–13 s（§4.4）；Lv3 搭捷運 10–18；Lv4／Lv5 依分岔
-const RANGE = { 1: [8, 13], 2: [3, 10], 3: [10, 18], cyber4: [6, 16], alien4: [5, 14], cyber5: [3, 10], alien5: [3, 8] };
+// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
+const RANGE = { 1: [8, 13], 2: [2, 10], 3: [10, 18], cyber4: [6, 16], alien4: [5, 14], cyber5: [2.5, 10], alien5: [3, 8] };
 function checkRat({ show, bubblesLog }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
   const [lo, hi] = RANGE[lvl >= 4 ? `${branch}${lvl}` : lvl];
@@ -259,17 +260,18 @@ test('rep is the first rat', async () => {
   await h.run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'settle' }], { instant: true });
   assert.equal(rat.script.rep({}, h.show), h.show.roster.members('rat.pack')[0]);
 });
-// 審查 Important 1：軍團回合石堆小島的兩隻老鼠跟著同一次套用收掉（骨架動畫 ≤ 12），LEVEL UP 之後不再有白光
-test('cyber Lv5: the rocks-islet rats go with the army apply, before LEVEL UP; no flash after LEVEL UP', async () => {
-  const h = await headlessShow(), { show, bubblesLog } = h, at = show.flash.at, levelUp = show.bubbles.levelUp, flashes = [];
+// 審查 Important 1：軍團回合石堆小島的兩隻老鼠跟著同一次套用收掉（骨架動畫 ≤ 12），LEVEL UP 之後不再閃白
+test('cyber Lv5: the rocks-islet rats go with the army apply, before LEVEL UP; no blink after LEVEL UP', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, { part, walker } = show.blink, levelUp = show.bubbles.levelUp, blinks = [];
   let rocksAtLevelUp = null;
-  show.flash.at = (p, o) => { flashes.push(bubblesLog.length); return at(p, o); };
+  show.blink.part = (...a) => { blinks.push(bubblesLog.length); return part(...a); };
+  show.blink.walker = (...a) => { blinks.push(bubblesLog.length); return walker(...a); };
   show.bubbles.levelUp = (head, o) => { rocksAtLevelUp = show.stage.partKeys().includes('sat.rocks') || show.stage.pendingKeys().includes('sat.rocks'); return levelUp(head, o); };
   const { e, secs, n } = await liveAt(h, SOLUTIONS.find(o => o.indexOf('chip') < o.indexOf('milk')), isRat(5));
   assert.equal(show.stage.flags.ratBranch, 'cyber'); checkRat(h, e, secs, n);
   assert.equal(rocksAtLevelUp, false, 'sat.rocks gone before LEVEL UP');
   const lu = bubblesLog.findIndex((b, i) => i >= n && b.text === 'LEVEL UP');
-  assert.ok(flashes.every(k => k <= lu), `no flash after LEVEL UP (${flashes} vs ${lu})`);
+  assert.ok(blinks.length > 0 && blinks.every(k => k <= lu), `no blink after LEVEL UP (${blinks} vs ${lu})`);
 });
 // 審查 Important 2：老鼠排成一列跟著偵防師走：每隻晚 0.3 s 出發
 test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apart', async () => {

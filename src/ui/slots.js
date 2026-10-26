@@ -1,5 +1,5 @@
 // 下方物品列：每格一個按鈕，顯示圖示、名稱、Lv。已放的變淡停用；演出中全部停用。
-// Lv 只在回合結束靜靜寫上（§9）：島上的白光與 LEVEL UP 已經說了是誰在變，物品列不飛、不跳。
+// Lv 只在回合結束靜靜寫上（§9）：島上的閃白與 LEVEL UP 已經說了是誰在變，物品列不飛、不跳。
 import { levelLabel } from './format.js';
 
 export function createSlots(root, { items, onPick }) {

@@ -15,7 +15,7 @@ import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
-const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5, STAGGER = 0.15;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下；同一次宣告依序閃的間隔
+const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 
@@ -46,13 +46,12 @@ function extraSpecs(md, h) {
   return out;
 }
 
-export function createRoster(THREE, { people, assets, build = null, nav, flash, rail = { offset: 0 }, rnd = Math.random }) {
+// blink：show/blink.js 的閃白（換配件、換模型、換身分時閃一下；新生的、退場的不閃，§13.2）
+export function createRoster(THREE, { people, assets, build = null, nav, blink = null, rail = { offset: 0 }, rnd = Math.random }) {
   const group = new THREE.Group(); group.name = 'roster:models';
   const groups = new Map();
   const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
   let now = 0;   // 最近一次 update 的 t（home() 讓 ride 成員瞬間上車要用）
-  let order = 0;   // 這次宣告裡第幾個閃的（每個晚 STAGGER 秒）
-  const next = () => STAGGER * order++;
 
   const pause = () => 0.5 + rnd();
   // 成員照哪份宣告過日常：hold 中先照待套用的（劇本 spawnHeld 出來的人回家要回新家）
@@ -96,7 +95,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
 
   // ── 把成員的 pos／yaw／walking／hidden 寫到小人或模型上 ──
   function place(m) {
-    const gone = m.hidden || m.veiled;
+    const gone = m.hidden;
     if (m.walker) m.walker.setPose({ x: m.pos.x, y: gone ? BELOW : m.pos.y, z: m.pos.z, yaw: m.yaw, walking: m.walking });
     if (m.holder) {
       m.holder.position.set(m.pos.x, m.pos.y, m.pos.z); m.holder.rotation.y = m.yaw; m.holder.visible = !gone;
@@ -115,12 +114,13 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     if (build) for (const s of extraSpecs(md, md.h * m.scale)) { const p = build(s); m.extras.push(p); m.holder.add(p.object); }
   }
 
-  // 白光揭露（§6.4）：成員先藏著，白光最亮那一刻才看得到；換配件也是「先藏、換好、最亮時露出」
-  function veil(m, delay = 0) {
-    const token = {}; m.veil = token; m.veiled = true; place(m);
-    flash.at(m.pos, { delay, onPeak: () => { if (m.veil === token) unveil(m); } });
+  // 換裝閃白（§13.2）：小人整個實例閃白；模型閃 holder——換了模型、新 holder 還沒到就記著，到了再閃
+  function glint(m) {
+    if (!blink) return;
+    if (m.walker) blink.walker(m.walker);
+    else if (m.holder) blink.part(m.holder);
+    else m.glint = true;
   }
-  function unveil(m) { m.veil = null; if (m.gone) return; m.veiled = false; place(m); }
 
   // 載入模型 holder；換過模型（gen 變了）或成員已退，晚到的 holder 直接放掉
   function load(m, md) {
@@ -128,14 +128,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     assets.spawn(md.path, { h: md.h * m.scale, anim: md.anim, tint: md.tint, glow: md.glow, parent: group }).then(holder => {
       if (m.gone || m.gen !== gen) { assets.release(holder); return; }
       m.holder = holder; dress(m, m.dress); place(m);
+      if (m.glint) { m.glint = false; blink?.part(holder); }
     }).catch(err => console.warn('名冊模型載入失敗', md.path, err));
   }
   function remodel(m, spec) {
-    if (m.holder) { dress(m, {}); assets.release(m.holder); m.holder = null; }
+    if (m.holder) { blink?.stop(m.holder); dress(m, {}); assets.release(m.holder); m.holder = null; }
     m.scale = spec.scale ?? 1; m.dress = spec.model; m.headY = headYOf(spec); load(m, spec.model);
   }
 
-  function spawn(g, spec, i, p, mode = 'home', delay = 0) {
+  function spawn(g, spec, i, p, mode = 'home') {
     const kind = spec.model ? 'model' : 'people', scale = spec.scale ?? 1;
     const m = {
       key: g.key, i, kind, pos: { x: p.x, y: p.y ?? nav.groundY(p.x, p.z), z: p.z }, yaw: p.yaw ?? 0,
@@ -144,15 +145,16 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     m.head = () => ({ x: m.pos.x, y: m.pos.y + m.headY, z: m.pos.z });
     if (kind === 'people') m.walker = people.spawn({ controlled: true, shirt: spec.shirt, accessory: accOf(spec, i), scale });
     else { m.extras = []; m.dress = spec.model; load(m, spec.model); }
-    veil(m, delay); fresh.add(m);
+    place(m); fresh.add(m);
     return m;
   }
   function destroy(m) {
-    m.gone = true; m.veil = null; m.walker?.remove();
-    if (m.holder) { dress(m, {}); assets.release(m.holder); }
+    m.gone = true;
+    if (m.walker) { blink?.stop(m.walker); m.walker.remove(); }
+    if (m.holder) { blink?.stop(m.holder); dress(m, {}); assets.release(m.holder); }
   }
 
-  // 依宣告調整一個成員的外觀（people：配件、身高；模型：本體與天線／眼睛）；有換就藏起來等白光，回傳有沒有換
+  // 依宣告調整一個成員的外觀（people：配件、身高；模型：本體與天線／眼睛）；有換就閃白，回傳有沒有換
   function restyle(m, spec, i) {
     m.speed = spec.speed ?? WALK_SPEED[m.kind];
     if (m.walker) {
@@ -161,18 +163,18 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
       if (m.walker.accessory === acc && m.walker.scale === scale) return false;
       if (m.walker.accessory !== acc) m.walker.setAccessory(acc);
       m.walker.scale = m.scale = scale; m.headY = headYOf(spec);
-      veil(m, next()); return true;
+      glint(m); return true;
     }
     const md = spec.model; if (!md) return false;
     if (body(m.dress) !== body(md) || (spec.scale ?? 1) !== m.scale) remodel(m, spec);
     else if (look(m.dress) !== look(md)) dress(m, md);
     else { m.dress = md; return false; }
-    veil(m, next()); return true;
+    glint(m); return true;
   }
 
   // 套用一份宣告：少的（最後面的先）標成待退；留下的換配件、換家；from 搬人；還不夠就生
   function apply(g, spec) {
-    const prev = g.spec; g.spec = spec; g.held = false; g.pending = null; g.retired = false; order = 0;
+    const prev = g.spec; g.spec = spec; g.held = false; g.pending = null; g.retired = false;
     while (g.members.length > spec.n) g.leaving.push(g.members.pop());
     const moved = prev && !same(prev.home, spec.home);
     g.members.forEach((m, i) => { m.i = i; restyle(m, spec, i); if (moved && m.mode === 'home') home(m); });   // 劇本手上的人不搶
@@ -180,9 +182,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
       const m = src.leaving.length ? src.leaving.pop() : take(src);
       m.key = g.key; m.i = g.members.length; m.trip = null; m.cursor = null; m.rest = 0; g.members.push(m);
-      if (!restyle(m, spec, m.i)) veil(m, next());   // 換身分一定閃一下
+      if (!restyle(m, spec, m.i)) glint(m);   // 換身分一定閃一下
     }
-    while (g.members.length < spec.n) { const i = g.members.length; g.members.push(spawn(g, spec, i, homePose(spec, i), 'home', next())); }
+    while (g.members.length < spec.n) { const i = g.members.length; g.members.push(spawn(g, spec, i, homePose(spec, i))); }
   }
 
   // 從來源名冊搬一個人：先挑這次之前就在的（最後一個），都是剛生的才搬剛生的；剩下的人重新編號
@@ -204,12 +206,11 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
   // 退人；換身分搬走人後不夠宣告人數的名冊（工程師 2 → 3 的同一刻有一個變偵防師）在這裡補——
   // 等所有 declare／retire 都做完才補，被退掉的來源名冊就不會補出幽靈
   function flush() {
-    order = 0;
     for (const [key, g] of groups) {
-      for (const m of g.leaving) { if (!m.hidden) flash.at(m.pos); destroy(m); }   // 藏著的人（躲進門裡）已經不見了，不再閃
+      for (const m of g.leaving) destroy(m);   // 退場的人直接拿掉、不閃（§13.2）
       g.leaving = [];
       if (g.retired && !g.held && !g.members.length) { groups.delete(key); continue; }
-      if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) { const i = g.members.length; g.members.push(spawn(g, g.spec, i, homePose(g.spec, i), 'home', next())); }
+      if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) { const i = g.members.length; g.members.push(spawn(g, g.spec, i, homePose(g.spec, i))); }
     }
     fresh.clear();
   }
@@ -244,7 +245,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
   }
-  function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); veil(m); }
+  function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
   function hide(m) { m.hidden = true; place(m); }
   function show(m) { m.hidden = false; place(m); }
   // 全部露出來：hidden 只在一回合裡有效（颱風登陸躲進門裡），下一回合開始、跳過、RESET 都收掉
@@ -256,7 +257,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, flash, 
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.veil = null; m.veiled = false;
+        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false;   // 跳過：晚到的模型不再補閃
         m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }

@@ -4,7 +4,7 @@ import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
 import { island } from './satellites.js';
 import { ITEMS } from '../rules/spec.js';
-import { FLASH } from '../show/flash.js';
+import { BLINK } from '../show/blink.js';
 
 export const id = 'boba';
 export const labelY = 1.0;
@@ -62,15 +62,15 @@ const PIER = offset(AT, 1.6, 1.4), FOREST = island('forest'), ISLANDERS = 10;   
 const FROM = offset(AT, -1.0, -4.5), HANDLE = 0.45, TURN = 12;
 const start = c => { const p = c.nav.nearestWalkable(FROM); return { ...p, yaw: Math.atan2(BEHIND.x - p.x, BEHIND.z - p.z) }; };
 const ahead = (p, yaw) => ({ x: p.x + Math.sin(yaw) * HANDLE, y: p.y, z: p.z + Math.cos(yaw) * HANDLE });
-// 攤車在出發點（老闆面前）白光出現：和老闆的白光同時
+// 攤車在出發點（老闆面前）出現、閃白 BLINK 秒
 function cartIn() {
   let obj = null;
   return {
-    kind: 'cartIn', dur: FLASH,
+    kind: 'cartIn', dur: BLINK,
     start(c) {
       obj = c.stage.partObject('boba.main'); if (!obj) return false;
-      const p = start(c), q = ahead(p, p.yaw); obj.position.set(q.x, p.y, q.z); obj.visible = false;
-      c.flash.at({ ...q }, { onPeak: () => { obj.visible = true; } });
+      const p = start(c), q = ahead(p, p.yaw); obj.position.set(q.x, p.y, q.z); obj.visible = true;
+      c.blink.part(obj);
     },
     end() { if (obj) obj.visible = true; },
   };
@@ -101,7 +101,7 @@ export const script = {
   placed(e, s, ctx) {
     const { B } = ctx, w = B.walk(owner, BEHIND);
     return [
-      B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.apply(e, { only: ['boba.main'], flash: false }),
+      B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.apply(e, { only: ['boba.main'], blink: false }),
       B.together([B.spawn('boba.owner', start), cartIn()]),
       B.together([w, push(w)]),
       B.apply(e), B.bubble(owner, '♪', 0.9), B.home(owner),
@@ -114,7 +114,7 @@ export const script = {
       const batch = js => { const sp = js.map((j, k) => B.spawn('boba.queue', pier(k))); return [...sp, B.together(js.map((j, k) => B.walk(() => sp[k].member, spots[j])))]; };
       return [B.apply(e, { hold: ['boba.queue'] }), ...batch([0, 1, 2]), ...batch([3, 4, 5]), B.home(c => c.roster.members('boba.queue')), B.levelUp('boba')];
     },
-    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 白光噴泉廣場（人龍補到 10、老闆走到噴泉旁）；糖分超標：島民一起 ♥
+    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 閃白噴泉廣場（人龍補到 10、老闆走到噴泉旁）；糖分超標：島民一起 ♥
     3(e, s, ctx) {
       const { B } = ctx, tail = queue(AT, 8).slice(6), engs = [0, 1].map(engineer);
       return [
@@ -124,7 +124,7 @@ export const script = {
         B.home(engs), B.levelUp('boba'),
       ];
     },
-    // 分店：老闆 …… → 圖框「小島」→ 鏡頭到小森林島 → 白光分店、觀光客 2 人 → 觀光船多 2 艘 → 鏡頭回家
+    // 分店：老闆 …… → 圖框「小島」→ 鏡頭到小森林島 → 閃白分店、觀光客 2 人 → 觀光船多 2 艘 → 鏡頭回家
     4(e, s, ctx) {
       const { B } = ctx;
       return [
@@ -134,6 +134,6 @@ export const script = {
     },
   },
   // 糖分超標在 grow 3 裡演了；這裡只把旗標折進來
-  fx: (e, s, ctx) => (e.flag?.name === 'bobaSugar' ? [ctx.B.apply(e, { flash: false })] : null),
+  fx: (e, s, ctx) => (e.flag?.name === 'bobaSugar' ? [ctx.B.apply(e, { blink: false })] : null),
   rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

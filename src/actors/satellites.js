@@ -23,7 +23,7 @@ export function view(lv, flags) {
   if (lv.token >= 5 && lv.milk >= 2) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: lv.milk >= 5 ? 'cap' : 'none', home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
   }
-  // 小森林島的觀光客跟著珍奶分店（Lv4）一起來：珍奶 Lv4 的劇本鏡頭移過去時白光出現（§8.7）
+  // 小森林島的觀光客跟著珍奶分店（Lv4）一起來：珍奶 Lv4 的劇本鏡頭移過去時閃白出現（§8.7）
   if (lv.boba >= 4) {
     const f = island('forest'), yaw = Math.atan2(-f.x, -f.z);   // 面向主島拍照
     v['sat.forest'] = { kind: 'roster', at: f, n: 2, accessory: 'suitcase', home: { kind: 'stand', spots: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] } };

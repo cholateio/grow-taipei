@@ -57,7 +57,7 @@ export function view(lv, flags) {
   v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)), footprint: { r: 0.15 } };
   v['bulb.electrician'] = { kind: 'roster', at, n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5 } };
   if (n >= 2) {
-    // 燈桿全部一個零件（同一種材質只花一個 draw call）；燈頭每一站一個零件：Lv2 劇本一站站白光點亮、大停電一站站熄
+    // 燈桿全部一個零件（同一種材質只花一個 draw call）；燈頭每一站一個零件：Lv2 劇本一站站閃白點亮、大停電一站站熄
     v['bulb.posts'] = { kind: 'compound', at, parts: LAMP_POINTS.map(p => post(p.x - at.x, p.z - at.z)), footprint: false };
     LAMP_STOPS.forEach((g, k) => {
       const o = LAMP_POINTS[g[0]];
@@ -91,7 +91,7 @@ function rotationFrom(p) {
 const nearestPair = () => once(c => c.roster.members('landmarks.islanders').filter(m => !m.hidden).sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
 
 export const script = {
-  // 電工從 101 工地走到路邊 → 敲 → 白光第一盞路燈 → 沿主路巡
+  // 電工從 101 工地走到路邊 → 敲 → 閃白第一盞路燈 → 沿主路巡
   placed(e, s, ctx) {
     const { B } = ctx, m = el(ctx), k = 0.4 / dist(AT, { x: 0, z: 0 });   // 路燈往中心格格心收 0.4（中心格格心就是原點）
     return [
@@ -100,7 +100,7 @@ export const script = {
     ];
   },
   grow: {
-    // 整條路：電工快走沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮；燈桿跟第一站一起出現）→ 夜市兩攤白光。
+    // 整條路：電工快走沿主路繞一圈，每到一個路口，上一站的燈一盞盞亮（邊走邊亮；燈桿跟第一站一起出現）→ 夜市兩攤閃白。
     // 從離他最近的那一站開始繞（他在主路上巡，人在哪就從哪開始）
     2(e, s, ctx) {
       const { B } = ctx, m = el(ctx), n = LAMP_STOPS.length;
@@ -115,12 +115,12 @@ export const script = {
         B.home(m), B.levelUp('bulb'),
       ];
     },
-    // 霓虹、傍晚：電工走到夜市 → ♪ → 白光霓虹 → 天色淡入傍晚
+    // 霓虹、傍晚：電工走到夜市 → ♪ → 閃白霓虹 → 天色淡入傍晚
     3(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
       return [B.walk(m, MARKET), B.bubble(m, '♪'), B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), B.levelUp('bulb')];
     },
-    // 四攤：離夜市最近的兩個島民走去排隊 → 一起 ♥ → 白光多兩攤
+    // 四攤：離夜市最近的兩個島民走去排隊 → 一起 ♥ → 閃白多兩攤
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET, 2, 0.7)[i];
       return [
@@ -128,7 +128,7 @@ export const script = {
         B.apply(e), B.home([islander(0), islander(1)]), B.levelUp('bulb'),
       ];
     },
-    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ → 白光全島 LED、101 燈光秀 → 入夜
+    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ → 閃白全島 LED、101 燈光秀 → 入夜
     5(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
       return [B.walk(m, FOOT), B.bubble(m, '！'), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];

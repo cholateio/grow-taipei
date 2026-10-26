@@ -61,7 +61,7 @@ test('view uses meta.total when given; stage names for the float', () => {
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
 
-// ── settle 劇本（§8.9）：跨門檻才演——工人（沒有就島民）走到 101 腳下敲門、白光跳階、頭上寫階段名 ──
+// ── settle 劇本（§8.9）：跨門檻才演——工人（沒有就島民）走到 101 腳下敲門、閃白跳階、頭上寫階段名 ──
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 // 假名冊：members 照 key 給；home 記下被叫回家的人
 const fakeRoster = groups => { const homed = []; return { homed, members: k => groups[k] ?? [], claim() {}, home: m => homed.push(m) }; };

@@ -6,16 +6,16 @@ import { installFakeDom } from './helpers/fakedom.js';
 import { createNav } from '../src/show/nav.js';
 import { createTimeline } from '../src/show/timeline.js';
 import { axialToWorld, cellTop } from '../src/scene/hex.js';
-import { trainPose } from '../src/actors/token.js';
+import { createPeople } from '../src/scene/people.js';
+import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
-const { createFlash } = await import('../src/show/flash.js');
 const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, partHead } = await import('../src/show/beats.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 const ev = { kind: 'grow', item: 'milk' };
 
-// 假 ctx：真 nav、真 timeline、真 flash；假 roster／stage／bubbles／rig 記錄呼叫。
-// tl.update 先推白光再推時間軸（和 show 的每幀順序一樣：這一幀才放的白光下一幀才開始走）
+// 假 ctx：真 nav、真 timeline、真 blink；假 roster／stage／bubbles／rig 記錄呼叫（假舞台的 commit 不閃白：閃白是真舞台的事）。
+// tl.update 先推閃白再推時間軸（和 show 的每幀順序一樣：這一幀才開始的閃白下一幀才開始走）
 function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
   const nav = createNav(), setFootprints = nav.setFootprints;
   nav.setFootprints = list => { nav.footprintsSet = list; setFootprints(list); };
@@ -49,13 +49,13 @@ function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
     show: (head, kind, dur) => { bubbles.shown.push({ head, kind, dur }); return { done: Promise.resolve(), cancel: () => bubbles.cancelled++ }; },
     levelUp: (head, opts) => { bubbles.levels.push({ head, opts }); return { done: Promise.resolve(), cancel: () => bubbles.cancelled++ }; },
   };
-  const flashGroup = new THREE.Group(), flash = createFlash(THREE, { group: flashGroup });
+  const blink = createBlink(THREE, { people: createPeople(THREE, { max: 4 }) });
   const rig = { calls: [], panTo: (p, ms) => rig.calls.push(['panTo', p, ms]), home: ms => rig.calls.push(['home', ms]) };
   const rail = { offset: 0 }, worlds = [];
-  const ctx = { stage, roster, nav, bubbles, flash, rig, rail, world: (e, instant) => worlds.push([e, instant]), montage: false, instant: false, now: 0, B, worlds };
+  const ctx = { stage, roster, nav, bubbles, blink, rig, rail, world: (e, instant) => worlds.push([e, instant]), montage: false, instant: false, now: 0, B, worlds };
   const inner = createTimeline(), tl = Object.create(inner);
-  tl.update = dt => { flash.update(dt); inner.update(dt); };
-  return { ctx, tl, member, stage, flash, flashGroup, rail, roster, bubbles, rig, objects };
+  tl.update = dt => { blink.update(dt); inner.update(dt); };
+  return { ctx, tl, member, stage, blink, rail, roster, bubbles, rig, objects };
 }
 
 test('walk computes its duration from the route and the walk speed, moves the member along, ends at the target', () => {
@@ -86,59 +86,51 @@ test('walk { delay } stands still (claimed) for the delay, then walks; dur and e
   tl.update(0.3); assert.ok(member.walking && Math.abs(Math.hypot(member.pos.x - p0.x, member.pos.z - p0.z) - 0.2 * 1.6) < 0.05, 'walked only the time past the delay');
   tl.skip(); assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6 && !member.walking);
 });
-test('apply with flash defers the stage change and commits each key at the flash peak, 0.15 s apart', () => {
-  const { ctx, tl, stage, flash } = fake({ changed: ['a', 'b'] });
-  tl.play([B.apply(ev)], ctx); tl.update(0); assert.deepEqual(stage.calls[0], ['apply', ev, { deferred: true }]); assert.equal(flash.count, 1);
-  tl.update(0.15); assert.equal(flash.count, 2); tl.update(0.1); assert.deepEqual(stage.committed, ['a']); tl.update(0.15); assert.deepEqual(stage.committed, ['a', 'b']);
-  tl.update(1); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet);
+// §13.2：apply 不再放白光，舞台 pending 的鍵依序（間隔 0.15 s）commit，commit 由舞台自己閃白 BLINK 秒；拍長 BLINK + 0.15·(n−1)
+test('apply defers the stage change and commits each key 0.15 s apart; it lasts BLINK + 0.15·(n−1)', () => {
+  const { ctx, tl, stage, blink } = fake({ changed: ['a', 'b', 'c'] });
+  tl.play([B.apply(ev)], ctx); tl.update(0); assert.deepEqual(stage.calls[0], ['apply', ev, { deferred: true }]);
+  assert.ok(Math.abs(tl.currentDur - (0.15 + 0.15 * 2)) < 1e-9); assert.deepEqual(stage.committed, ['a']);
+  tl.update(0.15); assert.deepEqual(stage.committed, ['a', 'b']); tl.update(0.15); assert.deepEqual(stage.committed, ['a', 'b', 'c']);
+  assert.ok(!stage.committedAll); assert.equal(blink.count, 0, 'the beat itself blinks nothing');
+  tl.update(0.16); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);
+  const one = fake({ changed: ['a'] }); one.tl.play([B.apply(ev)], one.ctx); one.tl.update(0); assert.equal(one.tl.currentDur, BLINK);
 });
-test('apply with flash, skipped, commits everything at once', () => {
+test('apply, skipped, commits everything at once', () => {
   const { ctx, tl, stage } = fake({ changed: ['a', 'b'] });
   tl.play([B.apply(ev)], ctx); tl.skip(); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);
 });
-test('apply flashes only the keys the stage holds pending; roster keys flash themselves', () => {
-  const { ctx, tl, stage, flash } = fake({ changed: ['a', { key: 'milk.kids', roster: true }] });
-  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, 0.5, 'roster key adds no stagger');
-  tl.update(0.15); assert.equal(flash.count, 1, 'no flash for the roster key');
-  tl.update(0.35); assert.deepEqual(stage.committed, ['a']); assert.equal(tl.currentKind, 'wait');
+test('apply steps only the keys the stage holds pending; roster keys take no time', () => {
+  const { ctx, tl, stage } = fake({ changed: ['a', { key: 'milk.kids', roster: true }] });
+  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, BLINK, 'roster key adds no stagger');
+  assert.deepEqual(stage.committed, ['a']); tl.update(0.16); assert.equal(tl.currentKind, 'wait');
   const only = fake({ changed: [{ key: 'milk.kids', roster: true }] });
   only.tl.play([B.apply(ev, { hold: ['milk.kids'] }), B.wait(0.1)], only.ctx); only.tl.update(0);
-  assert.equal(only.tl.currentKind, 'wait'); assert.equal(only.flash.count, 0); assert.ok(only.stage.committedAll); assert.ok(only.ctx.nav.footprintsSet);
+  assert.equal(only.tl.currentKind, 'wait'); assert.ok(only.stage.committedAll); assert.ok(only.ctx.nav.footprintsSet);
 });
-test('a part at the origin flashes over its item, the train over its head car', () => {
+// 閃白在零件本身：島心的零件（軌道、列車、衛星島的 sat.boats）跟別的零件一樣依序 commit
+test('parts at the island centre are committed in turn like any other', () => {
   const O = { x: 0, y: 0, z: 0 };
-  const { ctx, tl, flashGroup } = fake({ changed: [{ key: 'token.track', at: O }, { key: 'token.train', at: O }] }); ctx.now = 2; ctx.rail.offset = 1;
-  tl.play([B.apply(ev)], ctx); tl.update(0); tl.update(0.15);
-  const [track, train] = flashGroup.children.map(o => o.position), head = trainPose(3, 0, { speed: 0.35 });
-  assert.deepEqual([track.x, track.z], [1, 3], 'stage.headOf(token)');
-  assert.ok(Math.abs(train.x - head.x) < 1e-9 && Math.abs(train.z - head.z) < 1e-9, 'train head car');
+  const { ctx, tl, stage } = fake({ changed: [{ key: 'token.track', at: O }, { key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }] });
+  tl.play([B.apply(ev)], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - 0.3) < 1e-9);
+  tl.update(0.15); assert.deepEqual(stage.committed, ['token.track', 'sat.boats']);
 });
-// 不是物品的零件在島心（衛星島的 sat.boats）：沒有頭可以掛白光，就不閃、不算時間，end 照樣 commit（審查 Minor 4）
-test('a non-item part at the origin gets no flash and adds no time, but still commits at the end', () => {
-  const { ctx, tl, stage, flash } = fake({ changed: [{ key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }, 'a'] });
-  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, 0.5, 'only a flashes');
-  tl.update(0.15); assert.equal(flash.count, 1);
-  tl.update(0.4); assert.deepEqual(stage.committed, ['a']); assert.ok(stage.committedAll); assert.equal(tl.currentKind, 'wait');
-  const alone = fake({ changed: [{ key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }] });
-  alone.tl.play([B.apply(ev), B.wait(0.1)], alone.ctx); alone.tl.update(0);
-  assert.equal(alone.tl.currentKind, 'wait'); assert.equal(alone.flash.count, 0); assert.ok(alone.stage.committedAll);
-});
-// 蒙太奇估長度：閃白光的 apply 至少一道白光（審查 Minor 2）
-test('apply estimates one flash when flashing and nothing without', () => {
+// 蒙太奇估長度：閃白的 apply 至少一個零件
+test('apply estimates one blink when blinking and nothing without', () => {
   const { ctx } = fake();
-  assert.equal(B.apply(ev).estimate(ctx), 0.5); assert.equal(B.apply(ev, { flash: false }).estimate(ctx), 0);
+  assert.equal(B.apply(ev).estimate(ctx), BLINK); assert.equal(B.apply(ev, { blink: false }).estimate(ctx), 0);
 });
-test('apply without flash is instant; only and hold are passed through', () => {
-  const { ctx, tl, stage, flash } = fake({ changed: ['x'] });
-  tl.play([B.apply(ev, { flash: false, only: ['x'], hold: ['y'] }), B.wait(0.1)], ctx); tl.update(0);
+test('apply without blink is instant; only and hold are passed through', () => {
+  const { ctx, tl, stage } = fake({ changed: ['x'] });
+  tl.play([B.apply(ev, { blink: false, only: ['x'], hold: ['y'] }), B.wait(0.1)], ctx); tl.update(0);
   assert.deepEqual(stage.calls[0][2], { only: ['x'], hold: ['y'], deferred: false });
-  assert.equal(tl.currentKind, 'wait'); assert.equal(flash.count, 0); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet);
+  assert.equal(tl.currentKind, 'wait'); assert.deepEqual(stage.committed, []); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet);
 });
 // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候站哪）
 test('apply resolves a lazy only at start, not when the beat is built', () => {
   const { ctx, tl, stage } = fake({ changed: ['x'] });
   let pick = ['a'];
-  const beat = B.apply(ev, { flash: false, only: c => (assert.equal(c, ctx), pick) });
+  const beat = B.apply(ev, { blink: false, only: c => (assert.equal(c, ctx), pick) });
   pick = ['x'];
   tl.play([beat, B.wait(0.1)], ctx); tl.update(0);
   assert.deepEqual(stage.calls[0][2], { only: ['x'], deferred: false });
@@ -252,11 +244,13 @@ test('camera home/pan and world pass through to rig and ctx.world; instant camer
   ctx.instant = true; tl.play([B.camera(p), B.world({ storm: true })], ctx); tl.skip();
   assert.deepEqual(rig.calls[2], ['panTo', p, 0]); assert.deepEqual(ctx.worlds, [[{ storm: true }, true]]);
 });
-test('spawn takes a held member out with a flash; home hands members back to the roster', () => {
-  const { ctx, tl, member, roster } = fake(); const at = { x: 1, y: 0.6, z: 1 };
-  const sp = B.spawn('milk.kids', at); tl.play([sp, B.home([() => sp.member, member])], ctx); tl.update(0);
-  assert.equal(tl.currentDur, 0.5); assert.deepEqual(sp.member.pos, at);
-  tl.update(0.5); assert.deepEqual(roster.homed, [sp.member, member]); assert.ok(!tl.busy);
+// §13.2：spawn 不閃、不佔時間（之後由 walk 帶進場）
+test('spawn takes a held member out at once without a blink; home hands members back to the roster', () => {
+  const { ctx, tl, member, roster, blink } = fake(); const at = { x: 1, y: 0.6, z: 1 };
+  const sp = B.spawn('milk.kids', at); assert.equal(sp.dur, 0);
+  tl.play([sp, B.home([() => sp.member, member])], ctx); tl.update(0);
+  assert.deepEqual(sp.member.pos, at); assert.equal(blink.count, 0);
+  assert.deepEqual(roster.homed, [sp.member, member]); assert.ok(!tl.busy);
 });
 test('seat and trainHead follow the train clock', () => {
   const { ctx } = fake({ parts: ['token.train'] }); ctx.now = 3; ctx.rail.offset = 1; ctx.stage.lv.token = 3;

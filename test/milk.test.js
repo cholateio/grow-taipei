@@ -79,14 +79,14 @@ test('view: kids are a roster declaration; crate and flag are separate parts; sc
   assert.ok(v['milk.main'].footprint.d <= 0.9); assert.equal(v['milk.gate'], undefined);
   assert.equal(milk.view(lv({ milk: 6 }), {})['milk.gate'].footprint, false);
 });
-test('scripts: every milk event in both solutions plays 3–15 s, ends with LEVEL UP on milk, and leaves the kids at home', async () => {
+test('scripts: every milk event in both solutions plays 2.5–15 s, ends with LEVEL UP on milk, and leaves the kids at home', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   for (const order of SOLUTIONS) {
     show.reset();
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
       seen.push(e.kind === 'grow' ? e.to : 1);
-      assert.ok(secs >= 3 && secs <= 15, `${e.kind} ${e.to ?? ''} took ${secs}s`);
+      assert.ok(secs >= 2.5 && secs <= 15, `${e.kind} ${e.to ?? ''} took ${secs}s`);   // 下限因 §13.2 閃白變短而降低（原 3）
       if (e.kind === 'grow') assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
       for (const m of show.roster.members('milk.kids')) assert.equal(m.mode, 'home');
     });

@@ -29,7 +29,7 @@ export function spurPath(kind) {
 }
 
 // 環上離衛星島最近的點，用 8 段階梯狀的高架一路降到島上。每 4 段合成一個零件（at 在那 4 段的中間）：
-// Lv4 分兩次白光長出來；一段一個零件會多 16 個 mesh，全開的畫面 draw call 超過 150
+// Lv4 分兩次閃白長出來；一段一個零件會多 16 個 mesh，全開的畫面 draw call 超過 150
 export const SPUR_PARTS = 2;
 function spur(kind) {
   const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r), d = Math.hypot(c.x, c.z), ux = c.x / d, uz = c.z / d;
@@ -70,7 +70,7 @@ export function view(lv, flags) {
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
     v['token.track'] = { kind: 'compound', at: origin, parts, footprint: false };
     if (n >= 4) for (const kind of ['lighthouse', 'playground']) spur(kind).forEach((p, i) => { v[`token.spur.${kind}.${i}`] = p; });
-    // 接駁車走遊樂場島的支線（at 在支線起點：白光在那裡閃）
+    // 接駁車走遊樂場島的支線（at 在支線起點：從那裡閃白出現）
     if (n >= 5) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 0.6, footprint: false }; }
     v['token.train'] = { kind: 'train', at: origin, cars: n >= 3 ? 5 : 3, speed: flags.flooded ? 0 : 0.35, neon: n >= 6, footprint: false };
   }
@@ -119,28 +119,28 @@ const SLIDE = [offset(PLAYGROUND, 0.1, 1.1), offset(PLAYGROUND, 0.5, 1.1)];
 const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m) c.roster.hide(m); return false; } });
 
 export const script = {
-  // 白光車站 → 站務員從門口走出來到崗位 → ♪
+  // 閃白車站 → 站務員從門口走出來到崗位 → ♪
   placed(e, s, ctx) {
     const { B } = ctx, st = staffOf();
     return [B.apply(e, { hold: ['token.staff'] }), B.spawn('token.staff', DOOR), B.walk(st, POST), B.bubble(st, '♪'), B.home(st)];
   },
   grow: {
-    // 環狀線：站務員走到站前島緣 → …… → 圖框「列車」→ 軌道從海面升起 → 列車從站後面駛出（白光在車頭）
+    // 環狀線：站務員走到站前島緣 → …… → 圖框「列車」→ 軌道從海面升起 → 列車從站後面駛出（車頭在站後面閃白出現）
     2(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
         B.walk(st, shore), B.bubble(st, '……'), B.bubble(st, { icon: 'train' }),
-        B.apply(e, { only: ['token.track'], flash: false }), B.scaleIn('token.track', { dur: 0.8 }),
-        B.together([B.apply(e), B.trainDepart()]),   // 先建好列車（藏著）再改時鐘，白光才閃在站後面的車頭
+        B.apply(e, { only: ['token.track'], blink: false }), B.scaleIn('token.track', { dur: 0.8 }),
+        B.together([B.apply(e), B.trainDepart()]),   // 先建好列車（藏著）再改時鐘，列車才在站後面閃白
         B.home(st), B.levelUp('token'),
       ];
     },
-    // 五節：列車進站停 → 站務員揮手 → 白光多兩節 → 開走
+    // 五節：列車進站停 → 站務員揮手 → 閃白多兩節 → 開走
     3(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [B.trainStop({ during: [B.gesture(st, 'wave')] }), B.apply(e), B.levelUp('token')];
     },
-    // 支線（棒球 ≥3）：站務員 …… → 圖框「小島」→ 鏡頭到燈塔島 → 兩條支線從環上往島上分段白光長出（兩條同一段一起）→ 鏡頭回家
+    // 支線（棒球 ≥3）：站務員 …… → 圖框「小島」→ 鏡頭到燈塔島 → 兩條支線從環上往島上分段閃白長出（兩條同一段一起）→ 鏡頭回家
     4(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
@@ -149,7 +149,7 @@ export const script = {
         B.camera('home'), B.levelUp('token'),
       ];
     },
-    // 接駁車：鏡頭到遊樂場島 → 白光接駁車在支線起點 → 開到島上 → 鮮奶 ≥2 時兩個小孩下車走到溜滑梯 → 鏡頭回家
+    // 接駁車：鏡頭到遊樂場島 → 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥2 時兩個小孩下車走到溜滑梯 → 鏡頭回家
     5(e, s, ctx) {
       const { B } = ctx, kids = s.lv.milk >= 2;
       return [
@@ -163,7 +163,7 @@ export const script = {
         B.apply(e), B.camera('home'), B.levelUp('token'),
       ];
     },
-    // 無人霓虹（老鼠 ≥3）：列車進站停 → 車頂老鼠 ♪ → 站務員 ！ → 跑進站體（消失）→ 列車白光變霓虹 → 開走
+    // 無人霓虹（老鼠 ≥3）：列車進站停 → 車頂老鼠 ♪ → 站務員 ！ → 跑進站體（消失）→ 列車閃白變霓虹 → 開走
     6(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [

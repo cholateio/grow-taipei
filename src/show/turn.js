@@ -2,14 +2,14 @@
 // 純粹建構拍、不碰 three.js；拍真正演的時候才讀 ctx 裡的舞台、名冊、鏡頭（§6）。
 // 劇本查找：placed → 物品的 script.placed；grow → script.grow[to]；fx／after → 「造成它的」模組（e.cause）的 script.fx；
 //   stall → script.stall；settle → 101 的 script.settle；劇本回 null／undefined（或沒寫）就走預設劇本（§6.6）。
-// 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡白光補上（沒剩就 0 秒）。
-// 上一回合被撞歪的零件（stage.tilted）在回合一開頭白光扶正（§8.6「下回合白光扶正」）。
+// 每個事件的劇本前面插一個 0 秒的 mark 拍（呼叫 ctx.onMark），後面補一個 apply(e)：劇本沒套到的零件在這裡閃白補上（沒剩就 0 秒）。
+// 上一回合被撞歪的零件（stage.tilted）在回合一開頭閃白扶正（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家，太長連走路也拿掉。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
-import { FLASH } from './flash.js';
+import { BLINK } from './blink.js';
 
 export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together'];
 const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.2;
@@ -43,18 +43,18 @@ function defaults(e) {
   if (e.kind === 'grow') return [B.apply(e), B.levelUp(e.item)];
   if (e.delta && e.delta.to > e.delta.from) return [B.apply(e), B.levelUp(e.delta.target)];
   if (e.delta && e.delta.to < e.delta.from) return [B.apply(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })];
-  return [B.apply(e, { flash: false })];
+  return [B.apply(e, { blink: false })];
 }
 
-// 扶正：白光閃在零件上、最亮那一刻轉回來；跳過時 end 直接轉回來
+// 扶正：零件當場轉回來、閃白 BLINK 秒；跳過時 end 照樣轉回來（閃白由 snap 收掉）
 function upright(key) {
   const fix = c => { const o = c.stage.partObject(key); if (o) o.rotation.z = 0; };
   return {
-    kind: 'apply', dur: FLASH,
+    kind: 'apply', dur: BLINK,
     start(c) {
       c.stage.tilted.delete(key);
       const o = c.stage.partObject(key); if (!o || !o.rotation.z) return false;
-      c.flash.at(o.position, { onPeak: () => fix(c) });
+      o.rotation.z = 0; c.blink.part(o);
     },
     end: fix,
   };
@@ -84,7 +84,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     let beats;
     if (e.kind === 'wait') {
       // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近、看得到的島民
-      beats = [B.apply(e, { flash: false })];
+      beats = [B.apply(e, { blink: false })];
       if (i === lastWait && e.waits?.length) {
         // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上
         const w = e.waits[0], rep = c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item;

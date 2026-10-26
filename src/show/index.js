@@ -1,8 +1,8 @@
-// 演出層入口：把走路格、白光、泡泡、名冊、舞台、時間軸接起來，給遊戲一個 show.turn(events) 演一整回合。
+// 演出層入口：把走路格、閃白、泡泡、名冊、舞台、時間軸接起來，給遊戲一個 show.turn(events) 演一整回合。
 // 每幀 update(dt, t) 推進；跳過、reduced-motion、RESET 一律立刻到最終狀態（§4.3）：
-//   舞台全部 commit、名冊每個人瞬間到家、白光與泡泡收掉、鏡頭回全景、全島效果貼齊。
+//   舞台全部 commit、名冊每個人瞬間到家、閃白與泡泡收掉、鏡頭回全景、全島效果貼齊。
 import { createNav } from './nav.js';
-import { createFlash } from './flash.js';
+import { createBlink } from './blink.js';
 import { createBubbles } from './bubbles.js';
 import { createRoster } from './roster.js';
 import { createTimeline } from './timeline.js';
@@ -16,12 +16,12 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const { people, assets, glow, weather, rail } = parts;
   const nav = createNav({ rnd });
   const labels = new THREE.Group(); labels.name = 'show:labels'; scene.add(labels);
-  const flash = createFlash(THREE, { group: labels }), bubbles = createBubbles(THREE, { group: labels });
+  const blink = createBlink(THREE, { people }), bubbles = createBubbles(THREE, { group: labels });
   // 名冊先建：模型成員的天線／眼睛要用舞台的零件工廠，等舞台建好才用得到（載入模型是非同步的，那時舞台早就在了）
   let stage = null;
-  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, flash, rail, rnd });
+  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, blink, rail, rnd });
   scene.add(roster.group);
-  stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster });
+  stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail }, roster, blink });
 
   // 鏡頭：拍會平移；記住這回合有沒有離開全景，reduced-motion 回合結束才知道要不要拉回來
   let panned = false;
@@ -29,17 +29,17 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     panTo(t, ms) { panned = true; rig.panTo(t, ms); },
     home(ms) { panned = false; rig.home(ms); },
   };
-  const ctx = { stage, roster, nav, bubbles, flash, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
+  const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
   const timeline = createTimeline({ reducedMotion });
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
 
   function refresh() { nav.setFootprints(stage.footprints()); }
   // 開局：舞台建好時島民已經先生出來了（那時走路格還不知道建築在哪，可能站進 101 工地裡）——
-  // 先讓走路格認得建築，再讓每個人瞬間回家重挑位置；開局不用白光揭露，直接站在島上
-  refresh(); roster.snap(); flash.clear();
+  // 先讓走路格認得建築，再讓每個人瞬間回家重挑位置；開局不閃，直接站在島上
+  refresh(); roster.snap(); blink.clear();
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
-    stage.commitAll(); roster.showAll(); roster.snap(); flash.clear(); bubbles.clear();
+    stage.commitAll(); roster.showAll(); roster.snap(); blink.clear(); bubbles.clear();
     if (home) camRig.home(0);
     refresh();
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
@@ -81,12 +81,12 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     reset() {
       try { abort(); } finally {
         stage.reset();   // 舞台 reset 也清掉名冊
-        flash.clear(); bubbles.clear(); camRig.home(0); refresh();
+        blink.clear(); bubbles.clear(); camRig.home(0); refresh();
       }
     },
     update(dt, t) {
       ctx.now = t;
-      flash.update(dt);   // 先推白光：這一幀才叫出來的白光不會當幀就前進
+      blink.update(dt);   // 先推閃白：這一幀才開始的閃白不會當幀就前進
       timeline.update(dt);
       roster.update(dt, t);
       bubbles.update(dt);
@@ -99,6 +99,6 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     },
     get busy() { return timeline.busy; },
     get elapsed() { return timeline.elapsed; },
-    stage, roster, nav, bubbles, flash,
+    stage, roster, nav, bubbles, blink,
   };
 }

@@ -59,7 +59,7 @@ test('skip mid-turn lands on the same final state as an instant run (review focu
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
   assert.equal(live.show.stage.pendingKeys().length, 0); allHome(live.show);
   assert.deepEqual(live.rig.log.at(-1), ['home', 0]);
-  assert.equal(live.show.bubbles.count, 0); assert.equal(live.show.flash.count, 0);
+  assert.equal(live.show.bubbles.count, 0); assert.equal(live.show.blink.count, 0);
   // 全島效果貼齊（instant）
   assert.equal(live.worldLog.at(-1)[1], true); assert.deepEqual(live.worldLog.at(-1)[0], ref.worldLog.at(-1)[0]);
   // 下一回合照常演（instant 旗標收回）
@@ -78,7 +78,7 @@ test('reset mid-turn: the promise resolves, nothing from the old turn applies af
   assert.equal(show.busy, false);
   await p;   // 一定有結果，不留懸掛
   const fresh = engine.createState(spec);
-  assert.deepEqual(show.stage.lv, fresh.lv); assert.equal(show.bubbles.count, 0); assert.equal(show.flash.count, 0);
+  assert.deepEqual(show.stage.lv, fresh.lv); assert.equal(show.bubbles.count, 0); assert.equal(show.blink.count, 0);
   for (let t = 0; t < 2; t += 1 / 30) show.update(1 / 30, t);
   assert.deepEqual(show.stage.lv, fresh.lv, 'the aborted turn does not apply later');
   const r2 = place(fresh, 'chip');
@@ -119,10 +119,10 @@ test('skip and reset still snap when a beat throws in end', async () => {
   const a = await headlessShow({ modules });
   const p = a.show.turn(events); const rejected = assert.rejects(p, /boom/);
   for (let t = 0; t < 0.1; t += 1 / 30) a.show.update(1 / 30, t);
-  assert.ok(a.show.stage.pendingKeys().length > 0 && a.show.bubbles.count > 0, 'mid-flash with a LEVEL UP up');
+  assert.ok((a.show.stage.pendingKeys().length > 0 || a.show.blink.count > 0) && a.show.bubbles.count > 0, 'mid-blink with a LEVEL UP up');
   assert.throws(() => a.show.skip(), /boom/);
   await rejected;
-  assert.equal(a.show.busy, false); assert.equal(a.show.stage.pendingKeys().length, 0); assert.equal(a.show.bubbles.count, 0); assert.equal(a.show.flash.count, 0);
+  assert.equal(a.show.busy, false); assert.equal(a.show.stage.pendingKeys().length, 0); assert.equal(a.show.bubbles.count, 0); assert.equal(a.show.blink.count, 0);
   assert.deepEqual(a.rig.log.at(-1), ['home', 0]);
   const b = await headlessShow({ modules });
   const q = b.show.turn(events); const rejectedB = assert.rejects(q, /boom/);
@@ -152,8 +152,8 @@ test('people hidden at their doors on the landing turn are all back out when the
   assert.ok(landed);
 });
 
-// 老鼠撞歪攤車（§8.6「下回合白光扶正」）
-test('a knocked cart is righted with a flash at the start of the next turn', async () => {
+// 老鼠撞歪攤車（§8.6「下回合白光扶正」，§13.2 改成攤車自己閃白）
+test('a knocked cart is righted with a blink at the start of the next turn', async () => {
   const { show, run } = await headlessShow();
   let s = engine.createState(spec), knocked = false;
   for (const id of ['boba', 'rat', 'milk', 'chip', 'token']) {
@@ -162,10 +162,10 @@ test('a knocked cart is righted with a flash at the start of the next turn', asy
     if (knocked) {
       const p = show.turn(evs), cart = show.stage.partObject('boba.main');
       assert.ok(Math.abs(cart.rotation.z - 0.25) < 1e-9, 'still askew as the turn starts');
-      const at = show.flash.at, flashed = [];
-      show.flash.at = (q, o) => { flashed.push(q); return at(q, o); };
+      const part = show.blink.part, blinked = [];
+      show.blink.part = (o, ...rest) => { blinked.push(o); return part(o, ...rest); };
       for (let i = 0; i < 30 && Math.abs(cart.rotation.z) > 0; i++) show.update(1 / 30, i / 30);
-      assert.equal(cart.rotation.z, 0, 'righted within the first second'); assert.ok(flashed.some(q => Math.hypot(q.x - cart.position.x, q.z - cart.position.z) < 1e-9), 'with a flash on the cart');
+      assert.equal(cart.rotation.z, 0, 'righted within the first second'); assert.ok(blinked.includes(cart), 'the cart itself blinks');
       assert.equal(show.stage.partObject('milk.crate').rotation.z, 0, 'the tipped milk crate is righted too');
       show.skip(); await p; break;
     }
@@ -176,12 +176,12 @@ test('a knocked cart is righted with a flash at the start of the next turn', asy
   assert.ok(knocked);
 });
 
-// 開局：島民一出來就要繞開建築（101 工地的沙地也算），也不留沒演的白光（終審 Important 1）
-test('on the opening screen no islander stands inside a building and no flash is pending, for seeds 1–40', async () => {
+// 開局：島民一出來就要繞開建築（101 工地的沙地也算），也不留沒收掉的閃白（終審 Important 1）
+test('on the opening screen no islander stands inside a building and no blink is pending, for seeds 1–40', async () => {
   for (let seed = 1; seed <= 40; seed++) {
     const { show } = await headlessShow({ seed });
     for (const m of show.roster.members('landmarks.islanders')) assert.ok(show.nav.walkable(m.pos.x, m.pos.z), `seed ${seed} islander ${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
-    assert.equal(show.flash.count, 0, `seed ${seed}`);
+    assert.equal(show.blink.count, 0, `seed ${seed}`);
   }
 });
 

@@ -120,7 +120,7 @@ async function liveAt({ run, bubblesLog, rig }, order, pred) {
 const isToken = to => e => e.kind === 'grow' && e.item === 'token' && e.to === to;
 function checkToken({ show, bubblesLog, rig }, e, secs, n, r) {
   const what = `${e.kind} ${e.to ?? ''}`;
-  assert.ok(secs >= 2.5 && secs <= 15, `${what} took ${secs.toFixed(1)}s`);
+  assert.ok(secs >= 1.5 && secs <= 15, `${what} took ${secs.toFixed(1)}s`);   // 下限因 §13.2 閃白變短而降低（原 2.5）
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('token');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over token`);
@@ -132,7 +132,7 @@ function checkToken({ show, bubblesLog, rig }, e, secs, n, r) {
   const lvl = e.kind === 'grow' ? e.to : 1;
   assert.equal(show.roster.members('token.staff').length, lvl < 6 && !show.stage.flags.flooded ? 1 : 0, `${what} staff count`);
 }
-test('scripts: every token level in both solutions plays 2.5–15 s, ends with LEVEL UP on token, and leaves everyone at home', async () => {
+test('scripts: every token level in both solutions plays 1.5–15 s, ends with LEVEL UP on token, and leaves everyone at home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -168,8 +168,9 @@ test('Lv5: the playground kids get off the shuttle at the island end, then go ho
   show.update = (dt, t) => { update(dt, t); const ks = show.roster.members('sat.playground'); if (!first && ks.length) first = ks.map(k => ({ ...k.pos })); };
   const { e, secs, n, r: r0 } = await liveAt(h, SOLUTIONS[0], isToken(5));
   checkToken(h, e, secs, n, r0); assert.ok(show.stage.lv.milk >= 2);
-  assert.equal(first?.length, 1, 'kids spawn one at a time from the shuttle');
-  assert.ok(Math.hypot(first[0].x - end.x, first[0].z - end.z) < 0.5, 'first kid spawns by the shuttle end');
+  // §13.2：spawn 不佔時間，兩個小孩同一幀在接駁車那頭下車
+  assert.ok(first?.length >= 1, 'kids get off the shuttle');
+  assert.ok(first.every(p => Math.hypot(p.x - end.x, p.z - end.z) < 0.6), 'kids spawn by the shuttle end');
   const ks = show.roster.members('sat.playground'), c = satC('playground');
   assert.equal(ks.length, 2);
   for (let i = 0; i < 120; i++) show.update(1 / 30, 100 + i / 30);

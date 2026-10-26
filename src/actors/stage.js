@@ -1,6 +1,8 @@
 // 舞台：演員的外觀只由「等級向量 + 旗標 + meta」決定（§7.1）。每個模組 view(lv, flags, meta) → { key: partSpec }，
-// 舞台比對前後兩份 view：沒變的零件不動，變了的立刻換掉，並回報換了哪些鍵（動畫全交給演出層：白光揭露、泡泡出 LEVEL UP）。
-// deferred：新零件先藏著、舊零件先留著，等演出層在白光最亮那一刻 commit(key) 才換。
+// 舞台比對前後兩份 view：沒變的零件不動，變了的立刻換掉，並回報換了哪些鍵（動畫全交給演出層：閃白揭露、泡泡出 LEVEL UP）。
+// deferred：新零件先藏著、舊零件先留著，等演出層 commit(key) 才換（§13.2）：換零件＝舊的立刻拿掉、新的閃白；
+//   新增＝新的閃白；移除＝舊的閃白，閃完才拿掉。commitAll（跳過、回合收尾）不閃，閃到一半要拿掉的也立刻拿掉。
+// blink：show/blink.js 的閃白；沒給（單元測試）就不閃，移除的立刻拿掉。
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
 import { anchorWorld } from './anchors.js';
@@ -20,7 +22,7 @@ const WIDE = 2.4, SHRINK = 0.9;   // 自動 footprint：水平邊長超過 WIDE 
 // 老鼠咬鮮奶（§8.6 的反應）：鮮奶因老鼠掉級的那個事件
 export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause === 'rat' && e.delta.to < e.delta.from;
 
-export function createStage(THREE, { scene, spec, modules, ctx, roster = null }) {
+export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   const factory = createPartFactory(THREE, { ...ctx, builders, THREE });
   const root = new THREE.Group(), partsGroup = new THREE.Group();
@@ -35,9 +37,10 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
   let stale = null;   // 登陸／被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
   const live = new Map();          // key → { spec, part, fp }（pending 的新零件也在這裡）
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
+  const dying = new Set();         // 已經 commit 的移除：閃白中，閃完才拿掉
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
   let seen = new WeakSet();        // 已經折進 lv / flags / meta 的事件（同一事件再 apply 只套剩下的零件）
-  const tilted = new Set();        // 被劇本撞歪的零件鍵（beats.js 的 tilt 記下、turn.js 下一回合開頭白光扶正）
+  const tilted = new Set();        // 被劇本撞歪的零件鍵（beats.js 的 tilt 記下、turn.js 下一回合開頭閃白扶正）
 
   // 物品「頭上」的位置：主零件的 at + labelY；還沒有零件就用錨點
   function headOf(id) {
@@ -65,20 +68,29 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
     partsGroup.add(part.object);
     return { spec: s, part, fp: footprintOf(s, part.object) };
   }
-  function drop(entry) { entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
+  // 閃白中的零件先換回原材質再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
+  function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
 
-  function commit(key) {
+  // glint：要不要閃白（commitAll、換裝前收掉舊的 pending 都不閃）
+  function commit(key, glint = true) {
     const p = pending.get(key); if (!p) return;
     pending.delete(key);
-    if (p.old) drop(p.old);
-    if (p.fresh) p.fresh.part.object.visible = true;
+    if (p.fresh) {
+      if (p.old) drop(p.old);
+      p.fresh.part.object.visible = true;
+      if (glint) blink?.part(p.fresh.part.object);
+    } else if (glint && blink) {
+      dying.add(p.old);
+      blink.part(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });
+    } else drop(p.old);
   }
+  function dropDying() { for (const d of [...dying]) { dying.delete(d); drop(d); } }
 
   // 一個鍵的換裝：名冊零件交給名冊，其餘進工廠；deferred 時新的先藏、舊的先留
   function swap(key, prev, next, { hold, deferred }) {
     if (prev?.kind === 'roster' && next?.kind !== 'roster') roster?.retire(key);
     if (next?.kind === 'roster') roster?.declare(key, next, { hold: hold.includes(key) });
-    commit(key);
+    commit(key, false);
     const old = live.get(key) ?? null; live.delete(key);
     const fresh = next && next.kind !== 'roster' ? make(next) : null;
     if (fresh) live.set(key, fresh);
@@ -127,16 +139,18 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null })
       return sync(opts);
     },
     commit,
-    commitAll() { for (const key of [...pending.keys()]) commit(key); },
+    commitAll() { for (const key of [...pending.keys()]) commit(key, false); dropDying(); },
     pendingKeys: () => [...pending.keys()],
     footprints: () => [...live.values()].map(e => e.fp).filter(Boolean),
     update(dt, t) {
       for (const e of live.values()) e.part.update?.(dt, t);
       for (const p of pending.values()) p.old?.part.update?.(dt, t);
+      for (const d of dying) d.part.update?.(dt, t);
     },
     reset() {
       for (const e of live.values()) drop(e);
       for (const p of pending.values()) if (p.old) drop(p.old);
+      dropDying();
       live.clear(); pending.clear(); tilted.clear(); roster?.reset?.();
       lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; seen = new WeakSet();
       views = Object.fromEntries(modules.map(m => [m.id, {}]));

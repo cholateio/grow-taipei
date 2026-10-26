@@ -262,14 +262,18 @@ test('boba Lv3 fresh: queue 6 in one row (x spacing 0.25), 4 strollers wander ne
     for (let i = 1; i < 6; i++) assert.ok(Math.abs(q.home.spots[i - 1].x - q.home.spots[i].x - 0.25) < 1e-9, `${what}: spacing`);
     const st = v['boba.strollers'];
     if (n < 3 || milk < 2) { assert.equal(st, undefined, what); continue; }
-    assert.deepEqual([st.kind, st.n, st.accessory, st.home.kind, st.home.r, st.home.entry], ['roster', 4, 'suitcase', 'wander', 0.8, boba.PIER], what);
+    assert.deepEqual([st.kind, st.n, st.accessory, st.home.kind, st.home.r, st.home.entry], ['roster', 4, 'suitcase', 'wander', 0.6, boba.PIER], what);
     assert.deepEqual(cellAt(st.home.at.x, st.home.at.z), cellOf('boba'), `${what}: strolling in the boba cell`);
-    assert.ok(Math.hypot(st.home.at.x - AT.x, st.home.at.z - AT.z) < 2.5, `${what}: near the shop`);
+    assert.ok(Math.hypot(st.home.at.x - AT.x, st.home.at.z - AT.z) < 3, `${what}: near the shop`);
   }
   // 散步圈不蓋到別人的位置（審查）：Lv1–3 的人龍（攤車前／噴泉南緣）、站務員崗位、站門、觀眾下車的月台入口都在圈外 ≥ 0.25
-  const { POST, DOOR } = await import('../src/actors/token.js'), { CROWD_ENTRY } = await import('../src/actors/baseball.js');
-  const others = [...boba.queue(AT, 6), ...boba.queue(AT, 6, true), POST, DOOR, ...CROWD_ENTRY];
+  // 站務員的入口與入口 → 崗位那段直線也在圈外 ≥ 0.25（審查第二輪）
+  const { POST, DOOR, STAFF_ENTRY } = await import('../src/actors/token.js'), { CROWD_ENTRY } = await import('../src/actors/baseball.js');
+  const others = [...boba.queue(AT, 6), ...boba.queue(AT, 6, true), POST, DOOR, STAFF_ENTRY, ...CROWD_ENTRY];
   for (const p of others) { const d = Math.hypot(p.x - boba.STROLL.x, p.z - boba.STROLL.z) - boba.STROLL_R; assert.ok(d >= 0.25, `(${p.x.toFixed(2)}, ${p.z.toFixed(2)}) ${d.toFixed(2)} outside the stroll circle`); }
+  const c = boba.STROLL, dx = POST.x - STAFF_ENTRY.x, dz = POST.z - STAFF_ENTRY.z, u = Math.max(0, Math.min(1, ((c.x - STAFF_ENTRY.x) * dx + (c.z - STAFF_ENTRY.z) * dz) / (dx * dx + dz * dz)));
+  const seg = Math.hypot(c.x - STAFF_ENTRY.x - dx * u, c.z - STAFF_ENTRY.z - dz * u) - boba.STROLL_R;
+  assert.ok(seg >= 0.25, `staff entry → post walk ${seg.toFixed(2)} outside the stroll circle`);
   // 真舞台：鮮奶珍奶廣場時 4 個人走一陣子都在散步圈（r 1.0）裡、站在可走點上；入口檢查（兩條正解每一刻）
   const h = await headlessShow(), { show } = h;
   await liveAt(h, SOLUTIONS[0], isBoba(3));

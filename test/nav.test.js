@@ -207,3 +207,26 @@ test('routes never cut into a padded footprint, even on the legs the string-pull
     }
   }
 });
+// 最終審查修正：手畫的折線（工程師通勤、電工主路）也要貼著橋面——nav.ground 在過拱橋那一段補點、每一點 y 換成 groundY；
+// xz 不變（總長一樣、每一點都在原折線上），閉合的折線（loop）最後一段也補；走路格外的點（衛星島）不動
+test('nav.ground(path) puts a hand-drawn polyline on the deck: cursor y within 0.01 of groundY at every step (ENGINEER_ROUTE, ROAD loop); xz unchanged; off-grid points untouched', async () => {
+  const { createPathCursor, measurePath } = await import('../src/scene/path.js'), { ENGINEER_ROUTE } = await import('../src/actors/chip.js'), { ROAD } = await import('../src/actors/bulb.js');
+  const { WATER_Y, MAIN_CELLS, adjacentPairs } = await import('../src/scene/hex.js'), nav = createNav();
+  // 橋頭：兩端超出的半片板子側邊是一個 0.025 的小坎（groundY 本身的不連續），折線沿著橋頭橫走時那一小段容許 0.03
+  const heads = adjacentPairs(MAIN_CELLS).flatMap(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2); return [a, b]; });
+  const tol = p => (heads.some(h => Math.hypot(p.x - h.x, p.z - h.z) <= 0.3) ? 0.03 : 0.01);
+  for (const [name, path, loop] of [['ENGINEER_ROUTE', ENGINEER_ROUTE, false], ['ROAD', ROAD, true]]) {
+    const g = nav.ground(path, { loop }), total = measurePath(path, loop).at(-1);
+    assert.ok(Math.abs(measurePath(g, loop).at(-1) - total) < 1e-9, `${name}: same length`);
+    assert.ok(g.length > path.length, `${name}: points added over the bridges`);
+    let bridged = 0;
+    for (let k = 0; k <= 1000; k++) {
+      const cur = createPathCursor(g, { loop }); cur.advance(total * k / 1000 * (loop ? 0.9999 : 1)); const p = cur.locate(), gy = nav.groundY(p.x, p.z);
+      if (gy <= WATER_Y) continue;
+      if (gy - cellTop([0, 0]) > 0.03) bridged++;
+      assert.ok(Math.abs(p.y - gy) <= tol(p), `${name} step ${k} at ${p.x.toFixed(2)},${p.z.toFixed(2)}: ${p.y.toFixed(3)} vs ground ${gy.toFixed(3)}`);
+    }
+    assert.ok(bridged > 10, `${name}: crosses an arch (${bridged} samples above the deck ends)`);
+  }
+  assert.deepEqual(nav.ground([{ x: 40, y: 0.45, z: 40 }, { x: 41, y: 0.45, z: 40 }]), [{ x: 40, y: 0.45, z: 40 }, { x: 41, y: 0.45, z: 40 }], 'off the grid: as drawn');
+});

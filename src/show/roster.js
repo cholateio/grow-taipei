@@ -3,7 +3,7 @@
 //   leaving：待退的人，等 flush() 才真的退（stage 依模組順序 declare，from 的目標名冊可能晚一步才來搬人）
 //   held／pending：hold 住的宣告，等 sync() 才套用；pending 為 null 表示「hold 中被 retire，等 sync 再退」
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
-//   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
+//   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開；折線先 nav.ground 貼地，過拱橋不陷進橋面）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
@@ -42,8 +42,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
 const look = md => `${!!md?.antenna},${!!md?.eye}`;   // 模型的「配件」：天線、獨眼
 const body = md => JSON.stringify([md?.path, md?.h, md?.anim, md?.tint, md?.glow]);   // 模型本體：變了就換一個 holder
-// path 日常：開放路徑的長度、第 s 公尺的位置、離 p 最近的那一點在第幾公尺
-const pathOf = h => { const loop = !!h.loop, lens = measurePath(h.path, loop); return { path: h.path, loop, lens, total: lens.at(-1) }; };
+// path 日常：第 s 公尺的位置、離 p 最近的那一點在第幾公尺（P 是 pathOf 貼地後的折線）
 const pointAt = (P, s) => locateOnPath(P.path, P.lens, s, P.loop);
 // 折線經過哪些格子（頂點與每段中點的軸座標；同一條折線只算一次）
 const cellsOfPath = new WeakMap();
@@ -89,6 +88,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   let focus = null;   // 焦點格 [[q, r], …]；null = 全部的人都做日常
 
   const pause = () => 0.5 + rnd();
+  // path 日常的折線：手畫的點 y 是格面，過拱橋那一段直線內插會陷進橋面——先 nav.ground 貼地（補點、y 換成 groundY），
+  // 每條折線算一次（同一條 ROAD／ENGINEER_ROUTE 每幀都要問）；回 { path（貼地後）, loop, lens, total }
+  const grounded = new WeakMap();
+  function pathOf(h) {
+    const loop = !!h.loop, hit = grounded.get(h.path); if (hit?.loop === loop) return hit;
+    const path = nav.ground(h.path, { loop }), lens = measurePath(path, loop), P = { path, loop, lens, total: lens.at(-1) };
+    grounded.set(h.path, P);
+    return P;
+  }
   // 成員照哪份宣告過日常：hold 中先照待套用的（劇本 spawnHeld 出來的人回家要回新家）
   const current = g => (g.held && g.pending) || g.spec;
 
@@ -453,10 +461,11 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (m.trip) { walk(m, dt); if (m.trip) return; }
     const P = pathOf(h), s = m.arriving ? P.total * m.i / Math.max(1, spec.n) : nearestS(P, m.pos), p = pointAt(P, s);
     if (Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE) {
-      const path = nav.route(m.pos, p); path.push(p);   // 折線可能在走路格外（橋頭）：最後一段直接走上去
+      // 折線可能在走路格外（橋頭）：最後一段直接走上去（這一段也貼地，落在橋上不陷）
+      const path = nav.route(m.pos, p); path.push(...nav.ground([path.at(-1), p]).slice(1));
       go(m, path); if (m.trip) return;
     }
-    m.arriving = false; m.cursor = createPathCursor(h.path, { loop: !!h.loop, s });
+    m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s });
   }
   // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
   function follow(m, spec, dt) {
@@ -503,7 +512,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const [m, p, max, loose] of was) {
       if (m.gone || m.hidden || m.mode === 'script') continue;
       const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
-      if (d > max) { const k = max / d; m.pos = { x: p.x + dx * k, y: p.y + (m.pos.y - p.y) * k, z: p.z + dz * k }; }
+      // 只走到一半時 y 不用兩點的直線內插（拱橋上那條弦會陷進橋面）：落在走路格上就貼那裡的地面
+      if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.walkable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
       if (!loose && !nav.walkable(m.pos.x, m.pos.z)) m.pos = p;
       place(m);
     }

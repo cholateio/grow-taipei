@@ -61,3 +61,9 @@ test('frontOf(at, r) is r from at along the camera direction; with nav it is wal
   assert.ok(Math.abs(dist - 1.6) <= 0.5 && q.y > WATER_Y + 0.1, `fallback ${dist.toFixed(2)} from the dome, on land`);
   assert.ok((q.x - dome.x) * OVERVIEW_DIR.x / d + (q.z - dome.z) * OVERVIEW_DIR.z / d > 0, 'fallback still on the camera side');
 });
+// 最終審查修正：橋頭的高度是橋面（同高兩格的拱橋板厚一半：格面 + 0.025），不是格面——手畫的路線在橋頭不陷進板子
+test('routeBetween bridge heads sit at ground height (level bridge: cell top + 0.025)', () => {
+  const nav = createNav(), r = routeBetween([1, 0], { x: 4, z: 0.5 }, [0, 0], { x: 0.6, z: -0.3 });
+  for (const p of [r[1], r[2]]) assert.ok(Math.abs(p.y - nav.groundY(p.x, p.z)) < 1e-9, `head ${p.y} vs ground ${nav.groundY(p.x, p.z)}`);
+  assert.ok(Math.abs(r[1].y - (TOP + 0.025)) < 1e-9);
+});

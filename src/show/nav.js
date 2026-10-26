@@ -37,6 +37,20 @@ const onAnyBridge = (x, z) => BRIDGES.some(br => {
   const { s, off } = onBridge(br, x, z);
   return off <= BRIDGE_HALF && s >= -BRIDGE_TUCK && s <= br.len + BRIDGE_TUCK;
 });
+const onGrid = (x, z) => !!cellAt(x, z) || onAnyBridge(x, z);   // 主島格內或橋面上（groundY 有意義的地方）
+
+// 地面高度（純函式：nav 的 groundY、手畫路線的橋頭都用它）。橋面：同高兩格是拱橋（拱高 + 半個板厚，走在甲板上不陷進去；
+// 兩端超出端點的半片板子上從地面斜上半個板厚，不是一階 0.025 的台階），高低格之間的階梯直線內插
+export function groundAt(x, z) {
+  for (const br of BRIDGES) {
+    const { s, off } = onBridge(br, x, z), end = br.level ? PLANK * br.len : 0;
+    if (off > BRIDGE_HALF || s < -end || s > br.len + end) continue;
+    const t = s / br.len, onto = end ? Math.min(1, (Math.min(s, br.len - s) + end) / end) : 1;
+    return br.level ? br.ta + Math.max(0, Math.sin(Math.PI * t)) * ARCH + onto * DECK / 2 : br.ta + (br.tb - br.ta) * t;
+  }
+  const cell = cellAt(x, z);
+  return cell ? cellTop(cell) : WATER_Y;
+}
 
 export function createNav({ step = STEP, rnd = Math.random } = {}) {
   const N = Math.round(2 * HALF / step) + 1;
@@ -66,18 +80,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return false;
   }
 
-  // 橋面：同高兩格是拱橋（拱高 + 半個板厚，走在甲板上不陷進去；兩端超出端點的半片板子上從地面斜上半個板厚，
-  // 不是一階 0.025 的台階），高低格之間的階梯直線內插
-  function groundY(x, z) {
-    for (const br of BRIDGES) {
-      const { s, off } = onBridge(br, x, z), end = br.level ? PLANK * br.len : 0;
-      if (off > BRIDGE_HALF || s < -end || s > br.len + end) continue;
-      const t = s / br.len, onto = end ? Math.min(1, (Math.min(s, br.len - s) + end) / end) : 1;
-      return br.level ? br.ta + Math.max(0, Math.sin(Math.PI * t)) * ARCH + onto * DECK / 2 : br.ta + (br.tb - br.ta) * t;
-    }
-    const cell = cellAt(x, z);
-    return cell ? cellTop(cell) : WATER_Y;
-  }
+  function groundY(x, z) { return groundAt(x, z); }
 
   // 每個 footprint（圓 { r }、橢圓 { rx, rz } 或矩形 { w, d }）外擴 PAD 再擋格子
   function setFootprints(list) {
@@ -206,12 +209,29 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     const out = [path[0]];
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1], b = path[i];
-      if (!walkable(a.x, a.z)) { out.push(b); continue; }
-      const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / DENSE), at = t => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
-      let bent = false;
-      for (let k = 1; k < 2 * n && !bent; k++) { const t = k / (2 * n), p = at(t); bent = Math.abs(groundY(p.x, p.z) - (a.y + (b.y - a.y) * t)) > 0.002; }
-      if (bent) for (let k = 1; k < n; k++) { const p = at(k / n); out.push({ x: p.x, y: groundY(p.x, p.z), z: p.z }); }
+      if (walkable(a.x, a.z)) out.push(...bend(a, b));
       out.push(b);
+    }
+    return out;
+  }
+  // a→b 這一段的地面不是直線（拱橋、階梯）就回每隔 DENSE 一個貼地的點（不含兩端）；是直線回 []。落在走路格外的取樣點（水上）照直線內插
+  function bend(a, b) {
+    const n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / DENSE), at = t => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
+    const yAt = (p, t) => (onGrid(p.x, p.z) ? groundY(p.x, p.z) : a.y + (b.y - a.y) * t);
+    let bent = false;
+    for (let k = 1; k < 2 * n && !bent; k++) { const t = k / (2 * n), p = at(t); bent = Math.abs(yAt(p, t) - (a.y + (b.y - a.y) * t)) > 0.002; }
+    if (!bent) return [];
+    return Array.from({ length: n - 1 }, (_, k) => { const t = (k + 1) / n, p = at(t); return { x: p.x, y: yAt(p, t), z: p.z }; });
+  }
+  // 手畫的折線（工程師通勤、電工主路、routeBetween 接起來的路）貼地：走路格上（格內、橋面）的點 y 換成 groundY，
+  // 兩端都在走路格上的那一段過拱橋、上下階梯就補點（同 densify）。xz 不變（補的點都在原線段上，總長一樣）；
+  // loop：最後一點接回第一點那一段也補（補在最後面）。走路格外的點（衛星島）照原樣
+  function groundPath(path, { loop = false } = {}) {
+    const pts = path.map(p => (onGrid(p.x, p.z) ? { ...p, y: groundY(p.x, p.z) } : { ...p })), out = [pts[0]];
+    for (let i = 1; i <= (loop ? pts.length : pts.length - 1); i++) {
+      const a = pts[i - 1], b = pts[i % pts.length];
+      if (onGrid(a.x, a.z) && onGrid(b.x, b.z)) out.push(...bend(a, b));
+      if (i < pts.length) out.push(b);
     }
     return out;
   }
@@ -247,10 +267,10 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   }
 
   // 走動中的兩人太近就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）；
-  // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）
+  // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）
   function separate(members, _dt) {
     const walkers = members.filter(m => m.walking === true);
-    const nudge = (p, x, z) => { if (walkable(x, z) || !walkable(p.x, p.z)) { p.x = x; p.z = z; } };
+    const nudge = (p, x, z) => { const on = walkable(x, z); if (on || !walkable(p.x, p.z)) { p.x = x; p.z = z; if (on) p.y = groundY(x, z); } };
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
       if (d >= SEPARATION) continue;
@@ -286,6 +306,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
       const d = xs[i] - m.pos.x; if (d === 0) return;
       const x = m.pos.x + Math.max(-maxStep, Math.min(maxStep, d));
       if (!walkable(x, m.pos.z) && walkable(m.pos.x, m.pos.z)) return;   // 滑到一半會經過 footprint：這一幀不動
+      if (walkable(x, m.pos.z)) m.pos.y = groundY(x, m.pos.z);   // 走路格上錯開：貼著那裡的地面（橋上、橋頭）
       m.pos.x = x; moved.push(m);
     });
     return moved;
@@ -309,7 +330,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return best < 0 ? null : pointOf(best);
   }
 
-  return { get version() { return version; }, inFootprint: padded, walkable, groundY, setFootprints, nearestWalkable, route, routeLength, slots, wander, separate, separateStanding, edgePoint };
+  return { get version() { return version; }, inFootprint: padded, walkable, groundY, setFootprints, nearestWalkable, route, ground: groundPath, routeLength, slots, wander, separate, separateStanding, edgePoint };
 }
 
 // 點在外擴後的 footprint 裡（圓 { r }、橢圓 { rx, rz } 或框 { hx, hz }）

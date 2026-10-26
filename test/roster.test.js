@@ -565,20 +565,31 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）。
 // 審查修正：工程師、老鼠、偵防師、老闆不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
 // 只有泡溫泉（站位畫在池子裡）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
-test('no roster member is ever inside a padded footprint, and nobody is stuck: every walk-in arrives', async () => {
+// 最終審查修正：同一趟 live 也查橋上的人貼著橋面：|y − groundY| ≤ BRIDGE_TOL，橋頭一閃 ≤ BRIDGE_END、不超過 BRIDGE_BLIP 秒。
+// 兩條正解只演一次，幾個測試共用（livePlay）
+const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
+let livePlayed = null;
+const livePlay = () => (livePlayed ??= playBoth());
+async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
-  const { headlessShow, ALL } = await import('./helpers/show.js'), { PAD } = await import('../src/show/nav.js');
-  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = 1 / 30, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set();
+  const { headlessShow, ALL } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set();
   const WATCH = ['chip.engineers', 'rat.pack', 'chip.detective', 'boba.owner'];
+  let detectiveFrames = 0, bridgeFrames = 0;
   const inShape = (f, x, z) => (f.r != null ? Math.hypot(x - f.x, z - f.z) <= f.r : f.rx != null ? ((x - f.x) / f.rx) ** 2 + ((z - f.z) / f.rz) ** 2 <= 1 : Math.abs(x - f.x) <= f.w / 2 && Math.abs(z - f.z) <= f.d / 2);
+  // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
+  const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
+  const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
+  const results = { bad, slow, stuck, walls, sunk, crowd, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; } };
   for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
-    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet();
-    let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]';   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
+    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map();
+    let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
     const authored = (h, i) => { if (h?.kind !== 'stand' || h.rescue) return false; const p = h.spots[i % h.spots.length]; return show.nav.inFootprint(p.x, p.z); };
     const check = () => {
       const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), changed = show.nav.version !== version;
       version = show.nav.version;
       const fps = st.footprints(), json = JSON.stringify(fps), rebuilt = json !== built; built = json;
+      const all = show.roster.keys().flatMap(k => show.roster.members(k)), seen = all.filter(m => !m.hidden && !m.gone);
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
         const h = view[k]?.home, exempt = m.hidden || m.mode === 'script' || h?.kind === 'path' || authored(h, m.i);
@@ -587,6 +598,18 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
           if (!inWall) { wallIn.delete(m); wallOut.add(m); }
           else if (!wallIn.has(m) && wallOut.has(m) && !changed && !rebuilt) walls.add(`${what} ${JSON.stringify(fps.find(f => inShape(f, m.pos.x, m.pos.z)))}`);
           else { if (!wallIn.has(m)) wallIn.set(m, t); if (t - wallIn.get(m) > CAUGHT_MAX) walls.add(`${what} still inside after ${CAUGHT_MAX} s`); }
+        }
+        // 橋上：貼著橋面（ride 坐在車頂、藏起來的人不算）
+        if (!m.hidden && h?.kind !== 'ride' && onBridge(m.pos)) {
+          bridgeFrames++;
+          const dy = m.pos.y - show.nav.groundY(m.pos.x, m.pos.z), what = `${label} ${k}#${m.i} ${m.mode}${m.cursor ? ' path' : ''} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}) dy ${dy.toFixed(3)}`;
+          if (Math.abs(dy) > BRIDGE_END) sunk.add(what);
+          if (Math.abs(dy) > BRIDGE_TOL) { if (!off.has(m)) off.set(m, t); else if (t - off.get(m) > BRIDGE_BLIP + 1e-9) sunk.add(`${what} for > ${BRIDGE_BLIP} s`); } else off.delete(m);
+        } else off.delete(m);
+        // 外星結局：偵防師不貼著任何人
+        if (closing && k === 'chip.detective' && !m.hidden && !m.gone) {
+          detectiveFrames++;
+          for (const o of seen) { const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z); if (o !== m && d < SEPARATION) crowd.add(`${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} ${d.toFixed(2)} from ${o.key}#${o.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`); }
         }
         const inside = bare.walkable(m.pos.x, m.pos.z) && show.nav.inFootprint(m.pos.x, m.pos.z);
         if (exempt || !inside) { caught.delete(m); if (exempt) outside.delete(m); else outside.add(m); continue; }
@@ -600,20 +623,33 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
     const steps = [...order.map(id => ['place', id]), ...Array.from({ length: spec.CLOSING_TURNS }, () => ['advance'])];
     for (const [i, [kind, id]] of steps.entries()) {
       const r = kind === 'place' ? engine.place(s, id, spec) : engine.advance(s, spec); s = r.state;
-      label = `${order.join('>')} turn ${i + 1}`;
+      label = `${order.join('>')} turn ${i + 1}`; closing = kind === 'advance' && s.flags?.ratBranch === 'alien';
       await run([...r.events, { kind: 'settle' }], { montage: kind === 'advance' });
       const walking = () => [...since.keys()].filter(m => m.arriving && !m.gone);
       for (let f = 0; f < ARRIVE_MAX / DT && walking().length; f++) show.update(DT, 1000 + t);
       for (const m of walking()) stuck.push(`${label} ${m.key}#${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
       for (const m of walking()) since.delete(m);
     }
-    assert.ok(walkedIn >= 10, `${order.join('>')}: ${walkedIn} walk-ins arrived`);
+    for (let f = 0; f < TAIL; f++) show.update(DT, 1000 + t);
+    results.walkedIn[order.join('>')] = walkedIn;
   }
+  return results;
+}
+test('no roster member is ever inside a padded footprint, and nobody is stuck: every walk-in arrives', async () => {
+  const { PAD } = await import('../src/show/nav.js'), { bad, slow, stuck, walls, walkedIn } = await livePlay();
+  for (const [order, n] of Object.entries(walkedIn)) assert.ok(n >= 10, `${order}: ${n} walk-ins arrived`);
+  assert.equal(Object.keys(walkedIn).length, 2, 'both solutions');
   assert.equal(PAD, 0.12);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} frames inside a footprint`);
   assert.deepEqual(slow.slice(0, 20), [], 'caught by a new building: walks out at once');
   assert.deepEqual(stuck, []);
-  assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building (${WATCH.join(', ')})`);
+  assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building`);
+});
+// 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子
+test('live, both solutions: everyone on a bridge stays on the deck (y within 0.01 of nav.groundY; ≤ 0.05 blips at the ends for ≤ 0.1 s)', async () => {
+  const { sunk, bridgeFrames } = await livePlay();
+  assert.ok(bridgeFrames > 1000, `${bridgeFrames} member-frames on bridges`);
+  assert.deepEqual([...sunk].slice(0, 20), [], `${sunk.size} off the deck`);
 });
 // §14.1：走到一半，路上長出建築——從現在的位置重新找路繞過去，不照舊路穿過
 test('a walker whose route is cut by a new footprint replans around it and still arrives', () => {

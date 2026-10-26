@@ -1,6 +1,7 @@
 // 八個物品、101 與地標在主島上的位置（格 + 格內偏移）。純資料，演員都用這張表。
 import { axialToWorld, cellTop, edgeMidpoint, NEIGHBORS, RING_R } from '../scene/hex.js';
 import { OVERVIEW_DIR } from '../scene/camera.js';
+import { groundAt } from '../show/nav.js';
 
 export const ANCHORS = {
   milk: { cell: [-1, 0], dx: 0, dz: 0.1 },       chip: { cell: [1, 0], dx: 0.1, dz: -0.2 },
@@ -29,9 +30,10 @@ export function frontOf(at, r, nav = null) {
   return nav ? nav.nearestWalkable(p) : p;
 }
 
-// 相鄰兩格之間的步行路線：起點 → A 的橋頭 → B 的橋頭 → 終點（橋的位置和 island.js 一樣）
+// 相鄰兩格之間的步行路線：起點 → A 的橋頭 → B 的橋頭 → 終點（橋的位置和 island.js 一樣）。
+// 橋頭的高度是橋面（同高兩格的拱橋：格面 + 半個板厚），不是格面；橋中間的拱由名冊 nav.ground 補點貼上
 export function routeBetween(cellA, pA, cellB, pB) {
   if (!NEIGHBORS.some(([dq, dr]) => cellA[0] + dq === cellB[0] && cellA[1] + dr === cellB[1])) throw new Error('cells not adjacent');
   const ya = cellTop(cellA), yb = cellTop(cellB), { a, b } = edgeMidpoint(cellA, cellB, RING_R * Math.sqrt(3) / 2);
-  return [{ x: pA.x, y: ya, z: pA.z }, { x: a.x, y: ya, z: a.z }, { x: b.x, y: yb, z: b.z }, { x: pB.x, y: yb, z: pB.z }];
+  return [{ x: pA.x, y: ya, z: pA.z }, { x: a.x, y: groundAt(a.x, a.z), z: a.z }, { x: b.x, y: groundAt(b.x, b.z), z: b.z }, { x: pB.x, y: yb, z: pB.z }];
 }

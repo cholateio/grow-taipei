@@ -1,6 +1,7 @@
 // 拍的建構函數：劇本（turn.js 與各物品的腳本）用這些小積木排出一回合，交給 timeline.js 一拍一拍演。
 // 每個建構函數回一個拍 { kind, dur, start?, step?, end? }（kind 同函數名），只動 ctx 裡的東西（stage、roster、nav、bubbles、blink、rig、rail…）。
 // 跳過、reduced-motion 時拍只會 start → end、不 step，所以每一拍的 end 都要自己把東西放到最終狀態。
+// 躲進門裡（hidden，颱風登陸）的成員：walk、gesture、bubble、jump 都跳過（0 秒、不 claim）——登陸後照演的關鍵劇本不把人拉出來（裁決 R14）。
 import { together } from './timeline.js';
 import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';
@@ -78,7 +79,7 @@ export function spawn(key, at) {
 export function walk(who, to, { speed, delay = 0 } = {}) {
   let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0, planned = -1, span = 0;   // span：開始時定的走路秒數（重新找路也不變）
   const plan = ctx => {
-    const mm = memberOf(who, ctx); if (!mm) return null;
+    const mm = memberOf(who, ctx); if (!mm || mm.hidden) return null;   // 躲進門裡的人不拉出來（裁決 R14）
     const r = ctx.nav.route(mm.pos, call(to, ctx));
     return { mm, r, len: ctx.nav.routeLength(r), v: (speed ?? mm.speed) * (ctx.montage ? 2 : 1) };
   };
@@ -116,7 +117,7 @@ export function bubble(who, kind, dur = 1.2) {
   let handle = null;
   return {
     kind: 'bubble', dur,
-    start(ctx) { const r = resolveTarget(who, ctx); if (!r) return false; handle = ctx.bubbles.show(r.head, kind, dur); },
+    start(ctx) { const r = resolveTarget(who, ctx); if (!r || r.member?.hidden) return false; handle = ctx.bubbles.show(r.head, kind, dur); },
     end() { handle?.cancel(); handle = null; },
   };
 }
@@ -130,7 +131,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
     kind: 'gesture', dur,
     start(ctx) {
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; base = obj.scale.clone(); return; }
-      m = memberOf(who, ctx); if (!m) return false;
+      m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; }
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
       yaw = (kind === 'look' || kind === 'build') && at ? Math.atan2(at.x - m.pos.x, at.z - m.pos.z) : undefined;
     },
@@ -405,7 +406,7 @@ export function jump(who, target, dur = 0.5) {
   let m = null, p0 = null;
   return {
     kind: 'jump', dur,
-    start(ctx) { m = memberOf(who, ctx); if (!m) return false; ctx.roster.claim(m); p0 = { ...m.pos }; },
+    start(ctx) { m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; } ctx.roster.claim(m); p0 = { ...m.pos }; },
     step(k, dt, ctx) {
       const q = target(ctx);
       ctx.roster.setPose(m, { x: lerp(p0.x, q.x, k), y: lerp(p0.y, q.y, k) + JUMP_H * Math.sin(Math.PI * k), z: lerp(p0.z, q.z, k), yaw: q.yaw });

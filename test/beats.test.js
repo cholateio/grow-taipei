@@ -69,6 +69,17 @@ test('walk computes its duration from the route and the walk speed, moves the me
   tl.update(0.5); assert.ok(member.walking && ctx.nav.walkable(member.pos.x, member.pos.z));
   tl.skip(); assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6 && !member.walking);
 });
+// 裁決 R14：躲進門裡（hidden）的人不被劇本拉出來——walk、gesture、bubble、jump 對藏起來的成員直接跳過（0 秒、不 claim、不動）
+test('walk, gesture, bubble and jump skip a hidden member: no time, not claimed, not moved', () => {
+  const { ctx, tl, member, roster, bubbles } = fake({ pos: c([-1, 1]) }); const at = { ...member.pos };
+  member.hidden = true;
+  for (const b of [B.walk(member, c([-1, 0])), B.gesture(member, 'wave'), B.bubble(member, '！'), B.jump(member, () => c([-1, 0]))]) {
+    assert.equal(b.start(ctx), false, `${b.kind} skipped`); assert.equal(b.estimate?.(ctx) ?? 0, 0, `${b.kind} estimate`);
+  }
+  tl.play([B.walk(member, c([-1, 0])), B.bubble(member, '！')], ctx); tl.update(0); tl.update(0.1);
+  assert.equal(tl.busy, false, 'nothing to play');
+  assert.equal(roster.claimed.length, 0); assert.deepEqual(member.pos, at); assert.equal(bubbles.shown.length, 0);
+});
 test('walk at double speed in montage; an empty route takes no time', () => {
   const { ctx, tl, member, roster } = fake({ pos: c([-1, 1]) }); const to = c([-1, 0]);
   const len = ctx.nav.routeLength(ctx.nav.route(c([-1, 1]), to));

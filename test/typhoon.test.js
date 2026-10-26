@@ -145,6 +145,8 @@ async function turnWith(run, order, pred) {
   throw new Error('turn not found');
 }
 const landing = e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2;
+const ACTORS = await Promise.all(spec.ORDER.map(id => import(`../src/actors/${id}.js`)));
+const isKey = e => e.kind === 'grow' && !!ACTORS.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
 // 登陸回合整段 live 演（多個事件一回合：名單、門口都要演到才查）。回傳 { reacts, secs, seg, after }：
 //   seg = 登陸那一個事件的秒數；after = 登陸之後每個事件的秒數（使用者規則：只演 apply + LEVEL UP）
 async function playLanding(h, evs, opts = {}) {
@@ -157,13 +159,14 @@ async function playLanding(h, evs, opts = {}) {
   let secs;
   try { secs = await run(evs, { ...opts, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) }); } finally { show.roster.hide = hide; }
   const i0 = marks.findIndex(([e]) => landing(e)), at = k => marks[k]?.[1] ?? show.elapsed;
-  const seg = at(i0 + 1) - at(i0), after = marks.slice(i0 + 1).map(([e], k) => [e, at(i0 + 2 + k) - at(i0 + 1 + k)]);
+  // 登陸之後的事件：◆ 關鍵級照演劇本（裁決 R14），不算進「只演 apply + LEVEL UP」
+  const seg = at(i0 + 1) - at(i0), after = marks.slice(i0 + 1).map(([e], k) => [e, at(i0 + 2 + k) - at(i0 + 1 + k), k]).filter(([e]) => !isKey(e));
   const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
   assert.ok(live.some(w => w.storm === 1 && w.rain === 1), `storm world ${JSON.stringify(live)}`);
   assert.ok(live.every(w => w.peopleVisible !== false), 'the whole people group is never switched off');
   assert.ok(hides.length > 0 && hides.every(h => !h.walking), 'people hidden only once they stop at a door');
-  // 登陸之後只冒 LEVEL UP／DOWN，沒有別的泡泡（等待圖框除外）
-  const later = bubblesLog.slice(marks[i0 + 1]?.[2] ?? bubblesLog.length);
+  // 登陸之後（關鍵級之外）只冒 LEVEL UP／DOWN，沒有別的泡泡（等待圖框除外）
+  const later = after.flatMap(([, , k]) => bubblesLog.slice(marks[i0 + 1 + k][2], marks[i0 + 2 + k]?.[2] ?? bubblesLog.length));
   assert.ok(later.every(b => b.text || b.kind?.icon), `after the landing only LEVEL UP / DOWN (${JSON.stringify(later.map(b => b.kind ?? b.text))})`);
   const bubbles = bubblesLog.slice(n);
   if (reacts.includes('blackout')) assert.ok(live.some(w => w.glowScale === 0));

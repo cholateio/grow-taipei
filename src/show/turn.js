@@ -13,7 +13,8 @@
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
 //   關鍵劇本的每一拍（together 裡也是）標 keep，蒙太奇不過濾、超過 MONTAGE_CAP 拿掉走路時也不拿，倒數回合裡照樣看得到。
 // 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
-//   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。等待圖框照舊（謎題提示）；
+//   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。◆ 關鍵級例外（裁決 R14）：照演完整劇本
+//   （老鼠不躲雨、霓虹不用人；劇本要拉的人若躲在門裡，walk／gesture／bubble／jump 拍自己跳過，beats.js）。等待圖框照舊（謎題提示）；
 //   回合末的 settle 照 101 的劇本，但只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）。
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
@@ -115,9 +116,9 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     if (e.kind === 'settle') settled = total;
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
-    if (landed && e.kind !== 'wait' && e.kind !== 'settle') { out.push(mark(e), ...indoors(e), B.apply(e)); return; }
-    // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
     const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
+    if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') { out.push(mark(e), ...indoors(e), B.apply(e)); return; }
+    // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
     const jumped = e.kind === 'grow' && e.jump && events[i - 1]?.kind === 'grow' && events[i - 1].item === e.item && events[i - 1].to === e.from;
     let beats;
     if (jumped && !key) {
@@ -143,7 +144,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     // 鏡頭：等待事件不平移；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
-    if (e.kind !== 'wait' && !landed && shows(beats)) {
+    if (e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
       if (cell) {
         if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));

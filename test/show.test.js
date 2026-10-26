@@ -424,8 +424,10 @@ test('both new solutions play to the end without a script error at every level',
 });
 
 // 使用者規則（計畫 4 任務 9）：颱風登陸（landsTyphoon）之後，同一回合的事件只演 [apply, LEVEL UP]——大家躲在屋裡，沒有人走路；
-// 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；等待圖框照舊（謎題提示，代表角色躲起來就掛在建築上）
-test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP: no walk, gesture, bubble or lead focus; blinks still happen', async () => {
+// 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；等待圖框照舊（謎題提示，代表角色躲起來就掛在建築上）。
+// 裁決 R14：◆ 關鍵級（script.grow[n].key）照演劇本（老鼠不躲雨、霓虹不用人；藏起來的人由拍自己跳過）
+const isKey = e => e.kind === 'grow' && !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
+test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP (◆ key levels excepted): no walk, gesture, bubble or lead focus; blinks still happen', async () => {
   const { buildTurn } = await import('../src/show/turn.js');
   const { B: beats } = await import('../src/show/beats.js');
   const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
@@ -438,7 +440,8 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP:
     }
     assert.ok(events, `${order.join('>')} has a landing turn`);
     const i0 = events.findIndex(engine.landsTyphoon);
-    assert.ok(events.slice(i0 + 1).some(e => e.kind === 'grow'), 'something grows after the landing');
+    assert.ok(events.slice(i0 + 1).some(e => e.kind === 'grow' && !isKey(e)), 'a plain level grows after the landing');
+    assert.ok(events.slice(i0 + 1).some(isKey), 'a key level grows after the landing (bulb 9; alien: rat 4)');
     for (const montage of [false, true]) {
       const ctx = { B: beats, stage: { tilted: new Set() }, roster: { members: () => [], keys: () => [], nearest: () => null } };
       const out = buildTurn(events, { modules: ALL, spec, lv: before.lv, flags: before.flags, meta: { total: 0 }, montage }, ctx);
@@ -449,6 +452,7 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP:
       for (const e of events.slice(i0 + 1)) {
         const kinds = flat(seg.get(e)).map(b => b.kind), what = `${montage ? 'montage ' : ''}${e.kind} ${e.item ?? ''} ${e.to ?? e.flag?.name ?? e.story ?? ''}`;
         if (e.kind === 'wait') continue;
+        if (isKey(e)) { assert.ok(kinds.some(k => k !== 'apply' && k !== 'levelUp'), `${what}: the key script plays (${kinds})`); assert.ok(kinds.includes('levelUp'), what); continue; }
         for (const k of ['walk', 'gesture', 'bubble', 'jump', 'spawn', 'crowd', 'trainStop', 'wait']) assert.ok(!kinds.includes(k), `${what}: no ${k} (${kinds})`);
         if (e.kind === 'settle') continue;
         assert.ok(!kinds.includes('focus'), `${what}: no lead focus (${kinds})`);
@@ -476,6 +480,34 @@ test('the landing turn plays live with a LEVEL UP for every grow after the landi
     assert.ok(hidden.every(m => !m.hidden), 'everyone out as the next turn starts');
     assert.ok(walked, 'they walk home');
     show.skip(); await p;
+    return;
+  }
+  assert.fail('no landing turn');
+});
+// 裁決 R14：外星那條的登陸回合（倒數 1，蒙太奇）——◆ 老鼠 Lv4 分岔與 ◆ 燈泡 Lv9 在登陸之後照演劇本；live 演完變異鼠變好、
+// 躲進門裡的人沒被劇本拉出來（劇本手上沒有藏著的人）
+test('alien landing turn live: the ◆ rat Lv4 branch and ◆ bulb Lv9 still play their scripts after the landing; hidden people stay hidden', async () => {
+  const alien = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;
+  const { show, run, bubblesLog } = await headlessShow();
+  let s = engine.createState(spec);
+  const steps = [...alien.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const [i, step] of steps.entries()) {
+    const r = step(s); s = r.state;
+    if (!r.events.some(engine.landsTyphoon)) { await run([...r.events, { kind: 'settle' }], { instant: true, montage: i >= alien.length }); continue; }
+    const i0 = r.events.findIndex(engine.landsTyphoon), after = r.events.slice(i0 + 1);
+    const rat4 = after.find(e => e.kind === 'grow' && e.item === 'rat' && e.to === 4), bulb9 = after.find(e => e.kind === 'grow' && e.item === 'bulb' && e.to === 9);
+    assert.ok(rat4 && bulb9, 'rat 4 and bulb 9 come after the landing');
+    const marks = [];
+    await run([...r.events, { kind: 'settle' }], { montage: true, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
+    const seg = e => { const k = marks.findIndex(([x]) => x === e); return { secs: (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1], bubbles: bubblesLog.slice(marks[k][2], marks[k + 1]?.[2]) }; };
+    const r4 = seg(rat4), b9 = seg(bulb9);
+    assert.ok(r4.secs > 3, `rat Lv4 script played (${r4.secs.toFixed(1)} s)`); assert.ok(r4.bubbles.some(b => b.kind === '……' || b.kind === '？'), 'the mutant ……／？');
+    assert.ok(b9.secs > 2.5, `bulb Lv9 script played (${b9.secs.toFixed(1)} s)`);
+    assert.equal(show.stage.flags.ratBranch, 'alien'); assert.ok(show.roster.members('rat.pack')[0].dress.eye, 'mutant');
+    const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
+    assert.ok(hidden.length > 0 && hidden.every(m => m.mode !== 'script'), 'people indoors stay indoors');
+    // 非關鍵級（例：鮮奶、珍奶）只有 apply + LEVEL UP：1.2 s 以內
+    for (const e of after.filter(x => x.kind === 'grow' && !isKey(x))) assert.ok(seg(e).secs <= 1.2 + 1e-6, `${e.item} ${e.to} ${seg(e).secs.toFixed(2)} s`);
     return;
   }
   assert.fail('no landing turn');

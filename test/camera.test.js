@@ -73,3 +73,47 @@ test('fit after home stays at home; fit after panTo keeps the pan', () => {
   rig.panTo({ x: 5, y: 0.6, z: 5 }, 0); rig.fit(16 / 9);
   assert.ok(controls.target.distanceTo(new THREE.Vector3(5, 0.6, 5)) < 1e-6); assert.ok(Math.abs(camera.position.distanceTo(controls.target) - 19) < 1e-6);
 });
+// 全景跟 101 高度（§14.4）：頭頂那一點在 16:9 與 21:9 都落在畫面上緣 10% 以內（NDC y ≤ 0.8），島中心不掉出下半（≥ −0.6）
+const TOWER = { x: 0.6, z: -0.3 };   // anchorWorld('tower') 的水平位置
+const ndcY = (camera, p) => { camera.updateMatrixWorld(); return new THREE.Vector3(p.x, p.y, p.z).project(camera).y; };
+test('setSkyline raises the home target and distance so a point at (tower.x, topY, tower.z) projects to NDC y ≤ 0.8 at aspects 1.78 and 2.37, while the island centre stays at NDC y ≥ -0.6; topY ≤ 3 leaves the overview unchanged', () => {
+  for (const aspect of [16 / 9, 2.37]) {
+    const ref = rigWith(); ref.camera.aspect = aspect; ref.camera.updateProjectionMatrix(); ref.rig.fit(aspect);
+    for (const topY of [0, 1.4, 3]) {
+      const { rig, camera, controls } = rigWith(); camera.aspect = aspect; camera.updateProjectionMatrix(); rig.fit(aspect); rig.setSkyline(topY);
+      assert.ok(camera.position.distanceTo(ref.camera.position) < 1e-9 && controls.target.distanceTo(ref.controls.target) < 1e-9, `topY ${topY}: overview unchanged`);
+    }
+    // 4.45 = 101 蓋一半的頭頂、7.75 = 完工／點燈的頭頂（stage.headOf('tower').y）
+    for (const topY of [3.5, 4.45, 6, 7.75]) {
+      const { rig, camera, controls } = rigWith(); camera.aspect = aspect; camera.updateProjectionMatrix(); rig.fit(aspect); rig.setSkyline(topY);
+      assert.equal(rig.flying, false, 'at home and not flying: re-applied at once');
+      const top = ndcY(camera, { x: TOWER.x, y: topY, z: TOWER.z }), centre = ndcY(camera, { x: 0.4, y: 0.6, z: 0 });
+      assert.ok(top <= 0.8, `aspect ${aspect.toFixed(2)} topY ${topY}: top at NDC ${top.toFixed(3)}`);
+      assert.ok(centre >= -0.6, `aspect ${aspect.toFixed(2)} topY ${topY}: island centre at NDC ${centre.toFixed(3)}`);
+      assert.ok(controls.target.y > 0.6, 'target raised');
+      const d = camera.position.clone().sub(controls.target);
+      assert.ok(d.length() > overviewDistance(aspect), 'pulled back'); assert.ok(d.normalize().dot(new THREE.Vector3(OVERVIEW_DIR.x, OVERVIEW_DIR.y, OVERVIEW_DIR.z)) > 1 - 1e-9, 'same viewing angle');
+    }
+    // 7.75 的頭頂在現在的全景是出框的（這個測試真的在量東西）
+    assert.ok(ndcY(ref.camera, { x: TOWER.x, y: 7.75, z: TOWER.z }) > 1);
+  }
+});
+test('setSkyline while flying home retargets the flight; while in a focus framing it does not move the camera', () => {
+  const raised = rigWith(); raised.rig.fit(16 / 9); raised.rig.setSkyline(7.75);
+  const pos = raised.camera.position.clone(), target = raised.controls.target.clone();
+  // 飛回全景途中：照樣飛，終點換成抬高的全景
+  const a = rigWith(); a.rig.fit(16 / 9); a.rig.focus({ x: 4, y: 0.65, z: 2 }); a.rig.update(1.1); a.rig.home(1000); a.rig.update(0.3);
+  a.rig.setSkyline(7.75); assert.equal(a.rig.flying, true, 'still flying');
+  a.rig.update(0.8); assert.equal(a.rig.flying, false);
+  assert.ok(a.camera.position.distanceTo(pos) < 1e-6 && a.controls.target.distanceTo(target) < 1e-6, 'landed at the raised overview');
+  // focus 框景：只記下來，鏡頭不動；之後回全景才用新的高度
+  const b = rigWith(); b.rig.fit(16 / 9); const p = new THREE.Vector3(4, 0.65, 2);
+  b.rig.focus(p); b.rig.update(1.1); const fpos = b.camera.position.clone();
+  b.rig.setSkyline(7.75); assert.equal(b.rig.flying, false);
+  b.rig.update(1); assert.ok(b.camera.position.distanceTo(fpos) < 1e-9 && b.controls.target.distanceTo(p) < 1e-9, 'focus untouched');
+  b.rig.fit(16 / 9); assert.ok(Math.abs(b.camera.position.distanceTo(p) - 19 * 0.6) < 1e-6, 'focus distance ignores the skyline');
+  b.rig.home(0); assert.ok(b.camera.position.distanceTo(pos) < 1e-6 && b.controls.target.distanceTo(target) < 1e-6, 'home uses the stored skyline');
+  // 抬高之後換長寬比照樣跟著；再降回 ≤ 3 就回到原本的全景（RESET）
+  b.rig.fit(1); assert.ok(b.camera.position.distanceTo(b.controls.target) > 26 + 1e-6);
+  b.rig.setSkyline(1.4); assert.ok(b.controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-9 && Math.abs(b.camera.position.distanceTo(b.controls.target) - 26) < 1e-9);
+});

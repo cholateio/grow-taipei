@@ -1,13 +1,13 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級 0–8 工地（吊車會動）、9–18 半成品、19–29 完工、30+ 點燈。
 // 晶片 Lv5 長出矽盾天線、Lv6 每 3 秒閃一圈淡藍光；燈泡 Lv5 做燈光秀。
-// 劇本（§8.9）：回合最後的 settle 跨門檻時，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 閃白跳階 → 頭上寫階段名。
+// 劇本（§8.9、§14.4）：回合最後的 settle 跨門檻時，鏡頭對著 101，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 回全景 → 閃白跳階 → 頭上寫階段名。
 import { anchorWorld, frontOf } from './anchors.js';
 import { offset } from './palette.js';
 
 export const id = 'tower';
 
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
-const TIER_H = 0.45;
+const TIER_H = 0.45, LABEL_UP = 0.6;   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
 const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
 // 蓋東西站的鏡頭側距離（§14）：底座 1.6 見方外擴 PAD 後半寬 0.92，鏡頭方向（z 分量 0.96）1.1 才站得到底座外
 export const FRONT_R = 1.1;
@@ -43,7 +43,7 @@ function body(stage) {
 // meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6）
 export function view(lv, flags, meta = {}) {
   const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
-  const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + 0.6, parts } };
+  const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + LABEL_UP, parts } };
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
   if (lv.chip >= 5) {
     // 矽盾天線：塔頂的環
@@ -101,6 +101,11 @@ export const script = {
     const stage = stageOf(s.total);
     if (stage === stageOf(s.prevTotal)) return [];
     const { B } = ctx, hero = once(c => heroAt(c, FOOT)), front = c => frontOf(AT, FRONT_R, c.nav);
-    return [B.walk(hero, front), B.gesture(hero, 'build', { at: AT }), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero)];
+    // 換零件前回全景（§14.4）：停 0.8 s 等鏡頭飛到；天際線先用新階段的頭頂，換上去的塔頂與 LEVEL UP 才不出框
+    const skyline = AT.y + body(stage).top + LABEL_UP;
+    return [
+      B.focus('tower'), B.walk(hero, front), B.gesture(hero, 'build', { at: AT }),
+      B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero),
+    ];
   },
 };

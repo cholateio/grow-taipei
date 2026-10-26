@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as tower from '../src/actors/tower.js';
-import { anchorWorld, frontOf } from '../src/actors/anchors.js';
+import { anchorWorld, frontOf, cellCentre } from '../src/actors/anchors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { B } from '../src/show/beats.js';
@@ -10,6 +10,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow } from './helpers/show.js';
+import { createCameraRig } from '../src/scene/camera.js';
 const zero = { milk: 0, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: 0, boba: 0, baseball: 0 };
 const lvOf = (total, extra = {}) => { const caps = { milk: 6, baseball: 6, token: 6, rat: 5, boba: 4, chip: 6, bulb: 5 }, out = { ...zero }; let left = total; for (const id in caps) { out[id] = Math.min(caps[id], left); left -= out[id]; } return { ...out, ...extra }; };
 const tiers = v => v['tower.main'].parts.filter(p => p.kind === 'frustum4').length;
@@ -71,10 +72,12 @@ const labelOf = beats => {
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 8→9 yields walk + knock + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→18 yield nothing', () => {
+test('settle crossing 8→9 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→18 yield nothing', () => {
   const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
   const beats = tower.script.settle(e, { total: 9, prevTotal: 8 }, ctx);
-  assert.deepEqual(beats.map(b => b.kind), ['walk', 'gesture', 'apply', 'levelUp', 'home']);
+  assert.deepEqual(beats.map(b => b.kind), ['focus', 'walk', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
+  // 先對著 101 那一格；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
+  assert.equal(beats[0].target, 'tower'); assert.equal(beats[3].target, 'home'); assert.equal(beats[3].final, false); assert.equal(beats[3].dur, 0.8);
   assert.equal(labelOf(beats), '101 蓋一半');
   assert.deepEqual(tower.script.settle(e, { total: 8, prevTotal: 8 }, ctx), []);
   assert.deepEqual(tower.script.settle(e, { total: 18, prevTotal: 9 }, ctx), []);
@@ -143,4 +146,49 @@ test('the 101 stage upgrade hero stands at frontOf(tower) and plays build (1.6 s
     assert.notEqual(f.total, 11, 'builds before the tower changes');
   }
   assert.equal(show.stage.meta.total, 11);
+});
+
+// §14.4 大升級回全景：101 那一格 → 鏡頭側揮鋤頭 → 回全景（換零件之前）→ 閃白跳階、LEVEL UP 在全景裡演，頭頂不出框
+test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) runs before apply and LEVEL UP; the rig is at the overview when the LEVEL UP appears', async () => {
+  // 真的 rig；controls.update 像 OrbitControls 一樣讓鏡頭看著注視點（飛行中也是）
+  const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
+  const rig = createCameraRig({ THREE, camera, controls }); rig.fit(16 / 9);
+  const h = await headlessShow({ rig }), { show } = h, log = [];
+  let now = 0, settling = false;
+  const update = show.update; show.update = (dt, t) => {
+    now = t; update(dt, t);
+    if (settling && [...show.roster.members('chip.worker'), ...show.roster.members('landmarks.islanders')].some(m => m.walker?.gesture?.kind === 'build')) log.push(['build', now]);
+  };
+  const { focus, home } = rig;
+  rig.focus = (p, o) => { if (settling) log.push(['focus', now, p]); return focus(p, o); };
+  rig.home = ms => { if (settling) log.push(['home', now, show.stage.meta.total]); return home(ms); };
+  const levelUp = show.bubbles.levelUp;
+  show.bubbles.levelUp = (head, opts) => {
+    if (!settling) return levelUp(head, opts);
+    camera.updateMatrixWorld();
+    const p = head(); log.push(['levelUp', now, { flying: rig.flying, target: controls.target.clone(), top: new THREE.Vector3(p.x, p.y, p.z).project(camera).y }]);
+    return levelUp(head, opts);
+  };
+  // 第 7 回合跨進「101 完工」（頭頂 7.75，舊的全景會出框）
+  const order = SOLUTIONS[0].slice(0, 7), events = [];
+  let s = engine.createState(spec);
+  for (const [i, id] of order.entries()) {
+    const r = engine.place(s, id, spec); s = r.state;
+    if (i + 1 < order.length) { await h.run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+    events.push(...r.events, { kind: 'settle' });
+  }
+  const before = show.stage.meta.total;
+  await h.run(events, { onMark: e => { if (e.kind === 'settle') settling = true; } });
+  assert.equal(tower.stageOf(show.stage.meta.total), 'full'); assert.notEqual(tower.stageOf(before), 'full');
+  const at = kind => log.findIndex(l => l[0] === kind), last = kind => log.findLastIndex(l => l[0] === kind);
+  const f = log[at('focus')], hm = log[at('home')], lu = log[at('levelUp')];
+  assert.ok(f && Math.hypot(f[2].x - cellCentre([0, 0]).x, f[2].z - cellCentre([0, 0]).z) < 1e-6, 'settle first focuses the tower cell');
+  assert.ok(at('focus') < at('build') && last('build') < at('home') && at('home') < at('levelUp'), log.map(l => l[0]).join(' '));
+  assert.equal(hm[2], before, 'back to the overview before the parts change');
+  // LEVEL UP 出現時鏡頭已經停在（抬高的）全景，頭頂在畫面上緣 10% 以內
+  const probe = { target: new THREE.Vector3(), update() {} }, pc = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320);
+  const pr = createCameraRig({ THREE, camera: pc, controls: probe }); pr.fit(16 / 9); pr.setSkyline(show.stage.headOf('tower').y);
+  assert.equal(lu[2].flying, false, 'the rig has landed');
+  assert.ok(lu[2].target.distanceTo(probe.target) < 1e-6, `at the raised overview (target y ${lu[2].target.y.toFixed(2)} vs ${probe.target.y.toFixed(2)})`);
+  assert.ok(lu[2].top <= 0.8, `tower top at NDC ${lu[2].top.toFixed(3)}`);
 });

@@ -189,7 +189,7 @@ test('a script whose first beat is a focus is not given a default one', () => {
 });
 
 test('focus beats set the roster focus cells; the final home focus clears them', () => {
-  const set = [], ctx = fakeCtx({ instant: false, rig: { grabbed: false, focus() {}, home() {} } });
+  const set = [], ctx = fakeCtx({ instant: false, rig: { grabbed: false, focus() {}, home() {}, setSkyline() {} } });
   ctx.roster.setFocus = cells => set.push(cells);
   const beats = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'placed', item: 'chip', to: 1 }], base([quietTower]), ctx);
   for (const b of noMarks(beats)) if (b.kind === 'focus') b.start(ctx);

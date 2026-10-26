@@ -4,11 +4,14 @@ export const OVERVIEW_DIR = { x: 0.24 / n, y: 0.33 / n, z: 0.87 / n };
 
 // 再拉近：主島佔滿畫面，外圈衛星島可以被切到（使用者 2026-10-25）
 export function overviewDistance(aspect) { return aspect >= 1.4 ? 19 : aspect >= 0.8 ? 26 : 40; }
+// 全景跟 101 高度（§14.4）：天際線（101 頭頂 y）超過 SKYLINE_FLOOR 的每一單位，注視點抬高 SKYLINE_LIFT、距離多拉 SKYLINE_PULL 倍，
+// 頭頂在 16:9 與 21:9 都落在畫面上緣 10% 以內（NDC y ≤ 0.8；完工頭頂 7.75 約 0.72），島中心最多掉到 NDC −0.32；≤ 3（工地）全景不變
+export const SKYLINE_FLOOR = 3, SKYLINE_LIFT = 0.5, SKYLINE_PULL = 0.05;
 export function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
 export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y: 0.6, z: 0 }, reducedMotion = false }) {
   const home = new THREE.Vector3(center.x, center.y, center.z);
-  let aspect = 16 / 9, flight = null, grabbed = false;
+  let aspect = 16 / 9, flight = null, grabbed = false, rise = 0;   // rise：天際線超過 SKYLINE_FLOOR 多少
   // 現在的框景（全景、平移、focus）：fit 換長寬比時照這個重算，不把演到一半的 focus 拉回全景
   let framing = { kind: 'home' };
   const v = (p) => new THREE.Vector3(p.x, p.y, p.z);
@@ -20,11 +23,12 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
     flight = { fromPos: camera.position.clone(), fromTarget: controls.target.clone(), pos, target, ms, t: 0 };
   }
   const overviewPos = () => home.clone().addScaledVector(v(OVERVIEW_DIR), overviewDistance(aspect));
-  // 框景 → { pos, target }（距離用目前的長寬比）
+  // 框景 → { pos, target }（距離用目前的長寬比）；只有全景跟天際線，平移、focus 照舊
   function frame(f) {
     if (f.kind === 'pan') return { pos: overviewPos().add(f.target.clone().sub(home)), target: f.target.clone() };
     if (f.kind === 'focus') return { pos: f.target.clone().addScaledVector(f.dir, overviewDistance(aspect) * f.zoom), target: f.target.clone() };
-    return { pos: overviewPos(), target: home.clone() };
+    const target = home.clone(); target.y += SKYLINE_LIFT * rise;
+    return { pos: target.clone().addScaledVector(v(OVERVIEW_DIR), overviewDistance(aspect) * (1 + SKYLINE_PULL * rise)), target };
   }
   function show(f, ms) { framing = f; const { pos, target } = frame(f); go(pos, target, ms); }
 
@@ -38,6 +42,16 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
       aspect = a;
       const { pos, target } = frame(framing);
       if (flight) { flight.pos = pos; flight.target = target; } else go(pos, target, 0);
+    },
+    // 全景跟 101 頭頂高度 topY 走（§14.4）：在全景就重算——飛回全景途中只換終點、停在全景就直接到位（玩家拖過就不搶）；
+    // 在平移／focus 只記下來，下次回全景才用。高度沒變什麼都不做
+    setSkyline(topY) {
+      const r = Math.max(0, topY - SKYLINE_FLOOR);
+      if (r === rise) return;
+      rise = r;
+      if (framing.kind !== 'home') return;
+      const { pos, target } = frame(framing);
+      if (flight) { flight.pos = pos; flight.target = target; } else if (!grabbed) go(pos, target, 0);
     },
     // 回到全景框景
     home(ms = 1000) { grabbed = false; show({ kind: 'home' }, ms); },

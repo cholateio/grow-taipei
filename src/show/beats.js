@@ -183,13 +183,20 @@ export function levelUp(target, { text = 'LEVEL UP', down = false } = {}) {
 // 'home'：回全景、名冊全部恢復。不佔時間：鏡頭在後面的拍（或回合結束後）自己飛完
 export const FOCUS_BEAT = 0.8;
 // 回合中途的 'home'（全島的事）也尊重拖過的記號：名冊照樣全部恢復，鏡頭不動、不清記號（計畫 3.8 R13）；
-// final（只有 turn.js 回合最後那拍用）拖過也照回、清掉記號
-export function focus(target, { zoom = 0.6, final = false } = {}) {
+// final（只有 turn.js 回合最後那拍用）拖過也照回、清掉記號。
+// hold：'home' 停幾秒等鏡頭飛到（101 大升級回全景再換零件，§14.4）；拖過就不動、不停。
+// skyline：回全景之前先更新天際線（101 頭頂 y，§14.4；數字或 ctx => 數字，演到這拍才算）
+export function focus(target, { zoom = 0.6, final = false, hold = 0, skyline } = {}) {
   return {
-    kind: 'focus', dur: target === 'home' ? 0 : FOCUS_BEAT, target, final,
+    kind: 'focus', dur: target === 'home' ? hold : FOCUS_BEAT, target, final,
     start(ctx) {
       const ms = ctx.instant ? 0 : 1000;
-      if (target === 'home') { ctx.roster.setFocus(null); if (final || !ctx.rig.grabbed) ctx.rig.home(ms); return; }
+      if (target === 'home') {
+        ctx.roster.setFocus(null);
+        if (skyline != null) ctx.rig.setSkyline(call(skyline, ctx));
+        if (!final && ctx.rig.grabbed) return false;
+        ctx.rig.home(ms); return;
+      }
       const t = typeof target === 'function' ? target(ctx) : target; if (!t) return false;
       // 點：格子用軸座標反算（衛星島也有自己的格子）
       const cell = Array.isArray(t) ? t : typeof t === 'string' ? cellOf(t) : worldToAxial(t.x, t.z);

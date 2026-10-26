@@ -29,6 +29,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const camRig = {
     focus(t, opts) { panned = true; return rig.focus(t, opts); },
     home(ms) { panned = false; rig.home(ms); },
+    setSkyline(y) { rig.setSkyline?.(y); },   // 全景跟 101 頭頂高度（§14.4）
     get grabbed() { return !!rig.grabbed; },
     release() { rig.release?.(); },
   };
@@ -37,13 +38,15 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
 
   function refresh() { nav.setFootprints(stage.footprints()); }
+  // 全景跟舞台上 101 現在的頭頂走（§14.4）：開局、跳過／中止／RESET 回全景之前（回合最後那拍自己更新）
+  const skyline = () => camRig.setSkyline(stage.headOf('tower').y);
   // 開局：舞台建好時島民已經先生出來了（那時走路格還不知道建築在哪，可能站進 101 工地裡）——
   // 先讓走路格認得建築，再讓每個人瞬間回家重挑位置；開局不閃，直接站在島上
-  refresh(); roster.snap(); blink.clear();
+  refresh(); roster.snap(); blink.clear(); skyline();
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
     stage.commitAll(); roster.showAll(); roster.snap(); roster.setFocus(null); blink.clear(); bubbles.clear();
-    if (home) camRig.home(0);
+    skyline(); if (home) camRig.home(0);   // 跳過也更新天際線（review focus 5）
     refresh();
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
   }
@@ -86,7 +89,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
       try { abort(); } finally {
         stage.reset();   // 舞台 reset 也清掉名冊（連焦點一起）
         // 重新宣告的開局島民是從入口點生出來的（§13.2 走進來）；RESET 要立刻到最終狀態：認得建築後瞬間回家（同開局）
-        roster.setFocus(null); blink.clear(); bubbles.clear(); camRig.home(0); refresh(); roster.snap();
+        roster.setFocus(null); blink.clear(); bubbles.clear(); skyline(); camRig.home(0); refresh(); roster.snap();
       }
     },
     update(dt, t) {

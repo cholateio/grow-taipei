@@ -311,3 +311,62 @@ test('live both solutions: at the end no main cell has more than 40% of all visi
     assert.ok(per.size >= 5, `${order.join('>')}: people on ≥ 5 main cells ${counts}`);
   }
 });
+
+// §14.4 全景跟 101 高度：真的 rig（controls.update 像 OrbitControls 一樣看著注視點），量 101 頭頂在畫面上的 NDC y
+function skylineRig() {
+  const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
+  const rig = createCameraRig({ THREE, camera, controls }); rig.fit(16 / 9);
+  const topNdc = show => { camera.lookAt(controls.target); camera.updateMatrixWorld(); const h = show.stage.headOf('tower'); return new THREE.Vector3(h.x, h.y, h.z).project(camera).y; };
+  return { rig, camera, controls, topNdc };
+}
+// 第一條正解放到第 6 回合（instant），回傳第 7 回合（跨進 101 完工、頭頂 7.75）的事件
+async function beforeFull(h) {
+  const order = SOLUTIONS[0]; let s = engine.createState(spec);
+  for (const id of order.slice(0, 6)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  return [...place(s, order[6]).events, { kind: 'settle' }];
+}
+test('after a turn in which the tower top rose above 3, the final home framing includes the top (NDC y ≤ 0.8); skip during that turn also updates the skyline (review focus 5)', async () => {
+  // 照常演完：回合最後回全景之前更新天際線，飛完頭頂在上緣 10% 以內
+  const a = skylineRig(), ha = await headlessShow({ rig: a.rig }), events = await beforeFull(ha);
+  assert.ok(ha.show.stage.headOf('tower').y < 5, 'the tower is half built before the turn');
+  await ha.run(events);
+  for (let i = 0; i < 60; i++) a.rig.update(1 / 30);
+  assert.equal(a.rig.flying, false); assert.ok(ha.show.stage.headOf('tower').y > 7, 'the tower rose');
+  assert.ok(a.topNdc(ha.show) <= 0.8, `live: top at NDC ${a.topNdc(ha.show).toFixed(3)}`);
+  // RESET：101 回到工地，全景回到原本的框景
+  ha.show.reset(); assert.ok(a.controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-9 && Math.abs(a.camera.position.distanceTo(a.controls.target) - overviewDistance(16 / 9)) < 1e-9, 'reset restores the overview');
+  // 演到一半跳過：snap 先更新天際線再回全景
+  const b = skylineRig(), hb = await headlessShow({ rig: b.rig }), ev = await beforeFull(hb);
+  const p = hb.show.turn(ev);
+  for (let t = 0; t < 1; t += 1 / 30) { hb.show.update(1 / 30, t); b.rig.update(1 / 30); }
+  assert.ok(hb.show.busy, 'still playing'); hb.show.skip(); await p;
+  assert.equal(b.rig.flying, false); assert.ok(b.topNdc(hb.show) <= 0.8, `skip: top at NDC ${b.topNdc(hb.show).toFixed(3)}`);
+  // reduced-motion（instant）回合一樣
+  const c = skylineRig(), hc = await headlessShow({ rig: c.rig }), ec = await beforeFull(hc);
+  await hc.run(ec, { instant: true });
+  assert.ok(c.topNdc(hc.show) <= 0.8, `instant: top at NDC ${c.topNdc(hc.show).toFixed(3)}`);
+});
+
+// 蒙太奇（倒數回合）跨進 101 點燈：劇本中途的 focus('home') 留著（MONTAGE_KEEP 有 focus），在 LEVEL UP 之前
+test('montage turn with a stage crossing keeps the mid-script focus(home)', async () => {
+  const h = await headlessShow(), { show, rig } = h, log = [];
+  let s = engine.createState(spec);
+  for (const id of SOLUTIONS[0]) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  let now = 0;
+  const update = show.update; show.update = (dt, t) => { now = t; update(dt, t); };
+  const { focus, home } = rig;
+  rig.focus = (t, o) => { log.push(['focus', now, t]); return focus(t, o); };
+  rig.home = ms => { log.push(['home', now, ms]); return home(ms); };
+  const levelUp = show.bubbles.levelUp;
+  show.bubbles.levelUp = (head, o = {}) => { log.push(['levelUp', now, o.text]); return levelUp(head, o); };
+  const r = engine.advance(s, spec);
+  await h.run([...r.events, { kind: 'settle' }], { montage: true });
+  const lit = log.findIndex(l => l[0] === 'levelUp' && l[2] === '101 點燈');
+  assert.ok(lit >= 0, 'the montage turn crosses into 點燈');
+  const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
+  assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
+  const tower = cellCentre([0, 0]);
+  assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
+  assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
+  assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');
+});

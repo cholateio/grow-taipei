@@ -61,3 +61,30 @@ test('a route between two points on the same satellite island is a straight line
   assert.equal(r.length, 2); assert.deepEqual(r[0], a); assert.deepEqual(r[1], b);
   assert.ok(nav.route({ x: 0, y: 0, z: 3.2 }, c([0, 0])).length >= 2, 'water → main island still rescued');
 });
+// §13.2：名冊成員出場的預設入口——格子邊上離站位最遠、走得到的點
+test('edgePoint is the walkable point of the cell farthest from awayFrom, reachable from it, and skips blocked ground', async () => {
+  const { cellAt } = await import('../src/scene/hex.js');
+  const nav = createNav(), o = c([0, 1]), spot = { x: o.x + 0.8, y: o.y, z: o.z - 0.3 };
+  const e = nav.edgePoint([0, 1], spot);
+  assert.ok(nav.walkable(e.x, e.z)); assert.deepEqual(cellAt(e.x, e.z), [0, 1]); assert.equal(e.y, nav.groundY(e.x, e.z));
+  assert.ok(Math.hypot(e.x - spot.x, e.z - spot.z) >= 1.5, 'at least 1.5 from the spot');
+  for (let x = o.x - R; x <= o.x + R; x += STEP) for (let z = o.z - R; z <= o.z + R; z += STEP) {
+    if (!nav.walkable(x, z) || String(cellAt(x, z)) !== '0,1') continue;
+    assert.ok(Math.hypot(x - spot.x, z - spot.z) <= Math.hypot(e.x - spot.x, e.z - spot.z) + 1e-9, `farther point at ${x.toFixed(2)},${z.toFixed(2)}`);
+  }
+  // 最遠那一側被建築擋住：挑剩下走得到的點
+  nav.setFootprints([{ x: e.x, z: e.z, r: 0.9 }]);
+  const e2 = nav.edgePoint([0, 1], spot); assert.ok(nav.walkable(e2.x, e2.z)); assert.ok(Math.hypot(e2.x - e.x, e2.z - e.z) > 0.9);
+  assert.equal(nav.edgePoint([5, 5], spot), null, 'not a main-island cell');
+});
+// §13.3：站著的人之間也套 0.25 分離，只沿 x 錯開（不往鏡頭縱深推）
+test('separateStanding pushes standing members apart along x only, writes m.pos and returns who moved', () => {
+  const nav = createNav(), at = (x, z) => ({ pos: { x, y: 0.65, z } });
+  const ms = [at(1, 2), at(1.05, 2.1), at(1, 2.02), at(3, 2)], z0 = ms.map(m => m.pos.z);
+  const moved = nav.separateStanding(ms);
+  assert.deepEqual(ms.map(m => m.pos.z), z0, 'z never changes');
+  for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) assert.ok(Math.hypot(ms[i].pos.x - ms[j].pos.x, ms[i].pos.z - ms[j].pos.z) >= SEPARATION - 1e-9, `${i}-${j}`);
+  assert.ok(ms.slice(0, 3).every(m => Math.abs(m.pos.x - 1) < 0.4), 'stays near the spot');
+  assert.deepEqual(ms[3].pos, { x: 3, y: 0.65, z: 2 }); assert.ok(!moved.includes(ms[3])); assert.equal(moved.length, 3);
+  assert.deepEqual(nav.separateStanding(ms), [], 'already apart: nobody moves');
+});

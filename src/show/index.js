@@ -86,7 +86,8 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     reset() {
       try { abort(); } finally {
         stage.reset();   // 舞台 reset 也清掉名冊（連焦點一起）
-        roster.setFocus(null); blink.clear(); bubbles.clear(); camRig.home(0); refresh();
+        // 重新宣告的開局島民是從入口點生出來的（§13.2 走進來）；RESET 要立刻到最終狀態：認得建築後瞬間回家（同開局）
+        roster.setFocus(null); blink.clear(); bubbles.clear(); camRig.home(0); refresh(); roster.snap();
       }
     },
     update(dt, t) {

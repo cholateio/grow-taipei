@@ -13,6 +13,14 @@ const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
 
 const AT = anchorWorld('milk');
 const kids = n => ({ kind: 'roster', at: AT, n, shirt: 0xfcea8b, home: { kind: 'wander', at: AT, r: 1.0 } });
+// 出場／退場／分離用：[0, 1] 格的排隊站位與兩個入口（離每個站位 ≥ 1.5）
+const centre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
+const gap = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+const Q = centre([0, 1]);
+const QSPOTS = [{ x: Q.x - 0.2, y: Q.y, z: Q.z, yaw: 0 }, { x: Q.x + 0.2, y: Q.y, z: Q.z, yaw: 0 }, { x: Q.x + 0.6, y: Q.y, z: Q.z, yaw: 0 }];
+const QENTRY = [{ x: Q.x - 1.6, y: Q.y, z: Q.z + 0.8 }, { x: Q.x + 0.6, y: Q.y, z: Q.z - 1.6 }];
+const queue = (n, entry = QENTRY) => ({ kind: 'roster', at: Q, n, home: { kind: 'stand', spots: QSPOTS, entry } });
+const run = (roster, frames, t0 = 0) => { for (let i = 0; i < frames; i++) roster.update(1 / 30, t0 + i / 30); };
 
 // 真 people、真 nav、真 blink（blink.log 記下每次 walker／part 的對象）；假 assets（holder 帶一個假 mixer，記錄 spawn／release）
 function setup() {
@@ -49,7 +57,9 @@ test('from transfers a member between keys without respawning; removals wait for
   assert.equal(people.walkers.length, 4, 'nobody left, nobody new');
   assert.equal(roster.members('chip.engineers').length, 3); const det = roster.members('chip.detective'); assert.equal(det.length, 1);
   assert.ok(four.includes(det[0])); assert.equal(det[0].walker.accessory, 'glass'); assert.equal(det[0].key, 'chip.detective');
-  roster.declare('chip.engineers', kids(2)); roster.flush(); assert.equal(people.walkers.length, 3, 'a plain shrink removes one at flush');
+  roster.snap(); roster.declare('chip.engineers', kids(2)); roster.flush();
+  assert.equal(roster.members('chip.engineers').length, 2); assert.equal(people.walkers.length, 4, 'a plain shrink walks one out (R9)');
+  roster.snap(); assert.equal(people.walkers.length, 3, 'gone after a skip');
 });
 test('hold: nothing spawns until spawnHeld/sync; spawnHeld places members where the script wants', () => {
   const { roster, people } = setup(); roster.declare('k', kids(3), { hold: true }); assert.equal(people.walkers.length, 0);
@@ -144,7 +154,7 @@ const toRoute = p => Math.min(...ROUTE.slice(1).map((b, k) => {
   return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t);
 }));
 test('path home walks back and forth along the polyline', () => {
-  const { roster } = setup(); roster.declare('k', { ...kids(2), home: { kind: 'path', path: ROUTE, loop: false, speed: 0.8 } });
+  const { roster } = setup(); roster.declare('k', { ...kids(2), home: { kind: 'path', path: ROUTE, loop: false, speed: 0.8 } }); roster.snap();   // 走進來另有測試
   const [a, b] = roster.members('k'), end = ROUTE.at(-1);
   assert.ok(Math.hypot(a.pos.x - ROUTE[0].x, a.pos.z - ROUTE[0].z) < 1e-6, 'member 0 starts at phase 0');
   assert.ok(Math.hypot(b.pos.x - AT.x, b.pos.z - AT.z) < 1e-6, 'member 1 starts half way (s = 1.0)');
@@ -165,10 +175,10 @@ test('path home walks back and forth along the polyline', () => {
 test('follow home trails the nearest member of another key and stops at dist', () => {
   const { roster } = setup(), P = { x: AT.x - 0.9, y: AT.y, z: AT.z + 0.3 }, R = { x: AT.x + 0.9, y: AT.y, z: AT.z + 0.3 };
   roster.declare('chip.detective', { ...kids(1), at: P, home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } });
-  const d = roster.members('chip.detective')[0]; assert.deepEqual([d.pos.x, d.pos.z], [P.x, P.z]);
-  for (let i = 0; i < 30; i++) roster.update(1 / 30, i / 30);
-  assert.deepEqual([d.pos.x, d.pos.z, d.walking], [P.x, P.z, false], 'no rats: stands');
-  roster.declare('rat.pack', { ...kids(1), home: { kind: 'stand', spots: [{ ...R, yaw: 0 }] } });
+  const d = roster.members('chip.detective')[0]; assert.ok(Math.hypot(d.pos.x - P.x, d.pos.z - P.z) >= 1.5, 'walks in from the cell edge');
+  for (let i = 0; i < 30 * 8; i++) roster.update(1 / 30, i / 30);
+  assert.ok(Math.hypot(d.pos.x - P.x, d.pos.z - P.z) < 0.05 && !d.walking, 'no rats: walks in to spec.at and stands');
+  roster.declare('rat.pack', { ...kids(1), home: { kind: 'stand', spots: [{ ...R, yaw: 0 }] } }); roster.snap();   // 老鼠先站好（走進來另有測試）
   const far = () => Math.hypot(d.pos.x - R.x, d.pos.z - R.z);
   for (let i = 0; i < 30 * 4; i++) roster.update(1 / 30, i / 30);
   assert.ok(Math.abs(far() - 0.6) < 0.1, `stops 0.6 from the rat (${far().toFixed(2)})`); assert.equal(d.walking, false);
@@ -237,19 +247,20 @@ test('showAll un-hides every member and puts them back on the ground', () => {
   assert.ok(ms.every(m => !m.hidden));
   for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
 });
-// §13.2：退場的人直接拿掉、不閃（走出場是之後的事）；藏起來的人（躲進門裡）也一樣
-test('leavers are removed without a blink, hidden or not', () => {
+// §13.2／R9：退場不閃；藏起來的人（躲進門裡）直接拿掉，其他人走回入口才拿掉
+test('leavers are removed without a blink; a hidden leaver goes at once, the others walk out first', () => {
   const { roster, blink, people } = setup();
-  roster.declare('k', kids(2)); roster.flush();
+  roster.declare('k', kids(2)); roster.snap();
   const [a, b] = roster.members('k'); roster.hide(a);
   roster.declare('k', kids(1)); roster.flush();
-  assert.ok(!roster.members('k').includes(b), 'the last member leaves first'); assert.ok(!people.walkers.includes(b.walker));
+  assert.ok(!roster.members('k').includes(b), 'the last member leaves first'); assert.ok(people.walkers.includes(b.walker) && !b.gone, 'walking out');
   roster.retire('k'); roster.flush();
-  assert.equal(roster.members('k').length, 0); assert.equal(people.walkers.length, 0); assert.deepEqual(blink.log, []);
+  assert.ok(a.gone, 'hidden: removed at once'); assert.equal(roster.members('k').length, 0); assert.equal(people.walkers.length, 1);
+  run(roster, 30 * 10); assert.ok(b.gone); assert.equal(people.walkers.length, 0); assert.deepEqual(blink.log, []);
 });
 test('stand members with fidget play a short gesture every 3 s and are still between', () => {
   const { roster } = setup(), spot = { ...AT, yaw: 0 };
-  roster.declare('k', { kind: 'roster', at: AT, n: 2, home: { kind: 'stand', spots: [spot, { ...spot, x: spot.x + 0.4 }], fidget: 'wave' } });
+  roster.declare('k', { kind: 'roster', at: AT, n: 2, home: { kind: 'stand', spots: [spot, { ...spot, x: spot.x + 0.4 }], fidget: 'wave' } }); roster.snap();
   const [a, b] = roster.members('k'), log = [];
   for (let i = 0; i < 180; i++) { const t = i / 30; roster.update(1 / 30, t); log.push([a.walker.gesture?.kind ?? null, b.walker.gesture?.kind ?? null, a.walker.gesture?.k]); }
   const on = j => log.filter(f => f[j] === 'wave').length / 30;
@@ -277,7 +288,7 @@ test('setFocus limits idle wandering and fidgets to members whose home cell is i
   roster.declare('w', { kind: 'roster', at: centre([0, 0]), n: 2, home: { kind: 'wander', at: [centre([0, 0]), centre([-1, 0])], r: 1.0 } });
   const spot = { ...centre([0, 1]), yaw: 0 };
   roster.declare('s', { kind: 'roster', at: spot, n: 1, home: { kind: 'stand', spots: [spot], fidget: 'wave' } });
-  roster.declare('x', { kind: 'roster', at: centre([1, 0]), n: 1, home: { kind: 'wander', at: centre([1, 0]), r: 1.0 } });
+  roster.declare('x', { kind: 'roster', at: centre([1, 0]), n: 1, home: { kind: 'wander', at: centre([1, 0]), r: 1.0 } }); roster.snap();   // 走進來不受焦點限制（另有測試）
   const [a, b] = roster.members('w'), [st] = roster.members('s'), [x] = roster.members('x');
   roster.claim(x);   // 劇本手上：不在焦點格也要動
   roster.setFocus([[0, 0]]);
@@ -301,7 +312,7 @@ test('a path member whose route touches the focus cell keeps walking and never e
   const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
   for (const cell of [[1, 0], [0, 0]]) {
     const { roster } = setup();
-    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
     for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
     roster.setFocus([cell]);
     const ms = roster.members('eng'), start = ms.map(m => ({ ...m.pos }));
@@ -315,10 +326,89 @@ test('a path member whose route touches the focus cell keeps walking and never e
   }
   // 整條路都不在焦點格：原地停下
   const { roster } = setup();
-  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
   for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
   roster.setFocus([[-1, 1]]); roster.update(1 / 30, 2);
   const [m] = roster.members('eng'), p = { ...m.pos };
   for (let i = 0; i < 90; i++) roster.update(1 / 30, 2 + i / 30);
   assert.deepEqual([m.pos.x, m.pos.z, m.walking], [p.x, p.z, false]);
+});
+
+// ── §13.2／§13.3：出場從入口點走進來、換站位走過去、退場走回入口、站著也分離 ──
+test('new members appear at the entry point and walk to their spot; nobody appears within 1.5 of a spot', () => {
+  const { roster, blink, nav } = setup();
+  roster.declare('q', queue(1)); const [a] = roster.members('q');
+  assert.ok(gap(a.pos, QENTRY[0]) < 1e-9 && gap(a.walker.pose, QENTRY[0]) < 1e-9, 'first member at entry 0');
+  roster.declare('q', queue(2)); const b = roster.members('q')[1];
+  assert.ok(gap(b.pos, QENTRY[1]) < 1e-9, 'apply() n up: the new member comes from entry 1');
+  for (const m of [a, b]) for (const s of QSPOTS) assert.ok(gap(m.pos, s) >= 1.5, 'never appears within 1.5 of a spot');
+  assert.deepEqual(blink.log, [], 'walks in, no blink');
+  roster.setFocus([[-1, 0]]);   // 焦點在別格：走回站位照樣走
+  run(roster, 10); assert.ok(a.walking && b.walking, 'walking in');
+  run(roster, 170, 1); assert.ok(gap(a.pos, QSPOTS[0]) < 0.05 && gap(b.pos, QSPOTS[1]) < 0.05 && !a.walking && !b.walking, 'arrived');
+  // wander：第一趟也從入口走進來，焦點在別格也照走
+  roster.declare('w', { kind: 'roster', at: Q, n: 1, home: { kind: 'wander', at: Q, r: 0.5, entry: QENTRY[1] } });
+  const [w] = roster.members('w'); assert.ok(gap(w.pos, QENTRY[1]) < 1e-9);
+  run(roster, 180, 7); assert.ok(gap(w.pos, Q) <= 0.5 + 0.05, `wandered in (${gap(w.pos, Q).toFixed(2)})`);
+  // 入口被建築擋住：站到最近的可走點
+  nav.setFootprints([{ x: QENTRY[0].x, z: QENTRY[0].z, r: 0.4 }]);
+  roster.declare('r', queue(1, QENTRY[0])); const [r] = roster.members('r');
+  assert.ok(nav.walkable(r.pos.x, r.pos.z) && gap(r.pos, QENTRY[0]) < 0.4 + 0.3, 'blocked entry → nearest walkable point');
+});
+test('a changed stand layout makes existing members walk, never respawn (same member objects, no blink)', () => {
+  const { roster, people, blink } = setup(), A = QSPOTS.slice(0, 2), B = A.map(s => ({ ...s, z: s.z + 0.8 }));
+  const stand = spots => ({ kind: 'roster', at: Q, n: 2, home: { kind: 'stand', spots } });
+  roster.declare('k', stand(A)); roster.snap(); const ms = roster.members('k'), count = people.walkers.length;
+  roster.setFocus([[-1, 0]]);
+  roster.declare('k', stand(B)); roster.flush();
+  assert.deepEqual(roster.members('k'), ms, 'same member objects'); assert.equal(people.walkers.length, count, 'nobody new'); assert.deepEqual(blink.log, []);
+  run(roster, 2); ms.forEach((m, i) => { assert.ok(gap(m.pos, A[i]) < 0.05, 'not teleported'); assert.ok(m.walking); });
+  run(roster, 90, 1); ms.forEach((m, i) => assert.ok(gap(m.pos, B[i]) < 0.05, 'walked to the new spot'));
+  // wander 的家搬了：焦點在別格也走過去（同一個人、不閃）
+  const W = { x: Q.x + 1.2, y: Q.y, z: Q.z - 0.6 };
+  roster.declare('w', { kind: 'roster', at: Q, n: 1, home: { kind: 'wander', at: Q, r: 0.3 } }); roster.snap(); roster.setFocus([[-1, 0]]);
+  const [w] = roster.members('w');
+  roster.declare('w', { kind: 'roster', at: W, n: 1, home: { kind: 'wander', at: W, r: 0.3 } });
+  run(roster, 180, 5); assert.equal(roster.members('w')[0], w); assert.ok(gap(w.pos, W) <= 0.3 + 0.05, `walked to the new home (${gap(w.pos, W).toFixed(2)})`);
+  assert.deepEqual(blink.log, []);
+});
+test('standing members closer than 0.25 are pushed apart along x and stay near their spots', () => {
+  const { roster } = setup();
+  const spots = [{ x: Q.x, y: Q.y, z: Q.z, yaw: 0 }, { x: Q.x + 0.05, y: Q.y, z: Q.z + 0.02, yaw: 0 }, { x: Q.x + 1, y: Q.y, z: Q.z, yaw: 0 }], copy = JSON.stringify(spots);
+  roster.declare('k', { kind: 'roster', at: Q, n: 3, home: { kind: 'stand', spots } }); roster.snap();
+  run(roster, 30); const ms = roster.members('k');
+  assert.ok(gap(ms[0].pos, ms[1].pos) >= 0.25 - 1e-9, `apart (${gap(ms[0].pos, ms[1].pos).toFixed(3)})`);
+  ms.forEach((m, i) => { assert.equal(m.pos.z, spots[i].z, 'only along x'); assert.ok(Math.abs(m.pos.x - spots[i].x) <= 0.25); assert.equal(m.walking, false); assert.equal(m.walker.pose.x, m.pos.x); });
+  assert.deepEqual([ms[2].pos.x, ms[2].pos.z], [spots[2].x, spots[2].z], 'nobody near: stays on the spot');
+  const p = ms.map(m => ({ ...m.pos }));
+  for (let i = 0; i < 90; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(ms.every(m => !m.walking), 'does not walk back and forth'); }
+  ms.forEach((m, i) => assert.deepEqual(m.pos, p[i])); assert.equal(JSON.stringify(spots), copy, 'spots unchanged');
+});
+test('without an entry the member starts at the cell edge farthest from its spot (nav.edgePoint)', async () => {
+  const { SATELLITES } = await import('../src/scene/hex.js');
+  const { roster, nav } = setup(), spot = { x: Q.x + 0.5, y: Q.y, z: Q.z - 0.2, yaw: 0 };
+  roster.declare('k', { kind: 'roster', at: Q, n: 1, home: { kind: 'stand', spots: [spot] } });
+  const [m] = roster.members('k'), e = nav.edgePoint([0, 1], spot);
+  assert.deepEqual([m.pos.x, m.pos.z], [e.x, e.z]); assert.ok(gap(m.pos, spot) >= 1.5);
+  roster.declare('w', kids(1)); const [w] = roster.members('w'), e2 = nav.edgePoint([-1, 0], AT);
+  assert.deepEqual([w.pos.x, w.pos.z], [e2.x, e2.z], 'wander: away from the wander centre');
+  // 衛星島（沒有走路格）：照舊在家出現
+  const s = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(s.q, s.r), far = { x: c.x + 0.3, y: 0.45, z: c.z + 0.2, yaw: 0 };
+  roster.declare('sat', { kind: 'roster', at: far, n: 1, home: { kind: 'stand', spots: [far] } });
+  assert.deepEqual([roster.members('sat')[0].pos.x, roster.members('sat')[0].pos.z], [far.x, far.z]);
+});
+// 計畫 3.8 R9：退場的人走回入口、到了才拿掉；跳過立刻拿掉；藏起來的人、被 from 搬走的人不走
+test('leavers walk to their entry point and are removed on arrival; snap removes them at once; hidden leavers go at once', () => {
+  const { roster, people, blink } = setup();
+  roster.declare('k', queue(3, QENTRY[0])); roster.snap(); const [a, b, c] = roster.members('k');
+  roster.setFocus([[-1, 0]]);
+  roster.declare('k', queue(2, QENTRY[0])); roster.flush();
+  assert.deepEqual(roster.members('k'), [a, b]); assert.equal(roster.count, 2); assert.equal(people.walkers.length, 3, 'the leaver is still walking out');
+  run(roster, 1); assert.ok(c.walking && gap(c.pos, QSPOTS[2]) < 0.05);
+  run(roster, 240, 1); assert.ok(c.gone && gap(c.pos, QENTRY[0]) < 0.05, 'removed at the entry'); assert.equal(people.walkers.length, 2);
+  roster.retire('k'); roster.flush(); assert.ok(!roster.keys().includes('k')); assert.equal(people.walkers.length, 2, 'retired: walking out');
+  run(roster, 5, 9); assert.ok(a.walking && !a.gone);
+  roster.snap(); assert.ok(a.gone && b.gone); assert.equal(people.walkers.length, 0, 'snap removes walkers-out at once');
+  roster.declare('h', queue(1)); roster.snap(); const [h] = roster.members('h'); roster.hide(h); roster.retire('h'); roster.flush();
+  assert.ok(h.gone); assert.equal(people.walkers.length, 0); assert.deepEqual(blink.log, []);
 });

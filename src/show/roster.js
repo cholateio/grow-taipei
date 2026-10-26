@@ -9,6 +9,12 @@
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
 //   path 成員只要折線經過焦點格就照走（整條路都不在鏡頭裡才停）；其他人走完手上這一趟就站著；劇本手上的人、走回站位的人照樣動；ride、follow 不受限。null = 全部恢復。
+// 進場（§13.2）：新成員出現在入口點（home.entry，陣列依 i 輪流；沒給就用家所在格子邊上離家最遠、走得到的點；入口被擋就用最近的可走點），
+//   在背景走回家（arriving：wander 走到第一個散步點、path 走到自己錯開的那一點、stand 走回 spot），焦點不在這格也照走、不閃；
+//   家不在主島走路格上（衛星島、橋上）、ride 照舊直接在家出現。宣告的家搬了，留下來的人一樣走過去，不重生。
+// 退場（計畫 3.8 R9）：人數變少或零件拿掉而退的人（沒被 from 搬走、沒藏起來）flush 後走回入口，到了才拿掉；
+//   走出去的人不算成員（members／nearest／count 都看不到）。snap、reset 立刻拿掉。
+// 站著的 stand 成員彼此 < 0.25 → nav.separateStanding 沿 x 錯開（改 m.pos、不改 spot；站定後就留在錯開的位置）
 import { trainPose } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
@@ -20,6 +26,7 @@ export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
+const SETTLE = 0.6;   // 站定後被錯開（separateStanding）的人離 spot 這麼近還算站在原位，不走回去
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
@@ -66,6 +73,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const group = new THREE.Group(); group.name = 'roster:models';
   const groups = new Map();
   const fresh = new Set();   // 上次 flush 之後才生出來的人：換身分不先搬他們（§5.2 同一個小人原地換）
+  let exits = [];   // 走回入口、到了就拿掉的人（R9）
   let now = 0;   // 最近一次 update 的 t（home() 讓 ride 成員瞬間上車要用）
   let focus = null;   // 焦點格 [[q, r], …]；null = 全部的人都做日常
 
@@ -107,6 +115,25 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (h.kind === 'path') { const P = pathOf(h); return pointAt(P, P.total * i / Math.max(1, spec.n)); }
     if (h.kind === 'follow' && m) return { ...m.pos, yaw: m.yaw };
     return spotOf(spec, i);
+  }
+  // 走進來的目的地：wander 看散步中心、path 看自己錯開的那一點、follow 看 spec.at、其餘看 spot
+  function arrivalOf(spec, i) {
+    const h = spec.home ?? {};
+    if (h.kind === 'wander') return wanderHome(spec, i).at;
+    if (h.kind === 'path') { const P = pathOf(h); return pointAt(P, P.total * i / Math.max(1, spec.n)); }
+    if (h.kind === 'follow') return spec.at;
+    return spotOf(spec, i);
+  }
+  // 入口點（§13.2）：家不在主島走路格上（衛星島、橋上）、ride 回 null＝照舊直接在家出現
+  function entryOf(spec, i) {
+    const h = spec.home ?? {};
+    if (h.kind === 'ride') return null;
+    const goal = arrivalOf(spec, i), cell = cellAt(goal.x, goal.z); if (!cell) return null;
+    if (h.entry) {
+      const e = Array.isArray(h.entry) ? h.entry[i % h.entry.length] : h.entry;
+      return nav.walkable(e.x, e.z) ? { x: e.x, y: nav.groundY(e.x, e.z), z: e.z } : nav.nearestWalkable(e);
+    }
+    return nav.edgePoint(cell, goal);
   }
 
   // ── 把成員的 pos／yaw／walking／hidden 寫到小人或模型上 ──
@@ -157,11 +184,18 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const m = {
       key: g.key, i, kind, pos: { x: p.x, y: p.y ?? nav.groundY(p.x, p.z), z: p.z }, yaw: p.yaw ?? 0,
       speed: spec.speed ?? WALK_SPEED[kind], headY: headYOf(spec), mode, walking: false, hidden: false, trip: null, rest: pause(), scale,
+      arriving: false, settled: null,   // arriving：正在走回家（焦點不限制）；settled：站定在哪個 spot
     };
     m.head = () => ({ x: m.pos.x, y: m.pos.y + m.headY, z: m.pos.z });
     if (kind === 'people') m.walker = people.spawn({ controlled: true, shirt: spec.shirt, accessory: accOf(spec, i), scale });
     else { m.extras = []; m.dress = spec.model; load(m, spec.model); }
     place(m); fresh.add(m);
+    return m;
+  }
+  // 名冊自己補的人：從入口點出現、走回家（§13.2）；沒有入口的照舊在家出現
+  function enter(g, spec, i) {
+    const e = entryOf(spec, i), m = spawn(g, spec, i, e ?? homePose(spec, i));
+    if (e) { m.arriving = true; m.rest = 0; }
     return m;
   }
   function destroy(m) {
@@ -193,14 +227,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const prev = g.spec; g.spec = spec; g.held = false; g.pending = null; g.retired = false;
     while (g.members.length > spec.n) g.leaving.push(g.members.pop());
     const moved = prev && !same(prev.home, spec.home);
-    g.members.forEach((m, i) => { m.i = i; restyle(m, spec, i); if (moved && m.mode === 'home') home(m); });   // 劇本手上的人不搶
+    // 家搬了：留下來的人走過去（wander／path 當成走回家，焦點不限制）；劇本手上的人不搶
+    g.members.forEach((m, i) => { m.i = i; restyle(m, spec, i); if (moved && m.mode === 'home') { home(m); m.arriving = ['wander', 'path'].includes(spec.home?.kind); } });
     const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
       const m = src.leaving.length ? src.leaving.pop() : take(src);
       m.key = g.key; m.i = g.members.length; m.trip = null; m.cursor = null; m.rest = 0; g.members.push(m);
       if (!restyle(m, spec, m.i)) glint(m);   // 換身分一定閃一下
     }
-    while (g.members.length < spec.n) { const i = g.members.length; g.members.push(spawn(g, spec, i, homePose(spec, i))); }
+    while (g.members.length < spec.n) g.members.push(enter(g, spec, g.members.length));
   }
 
   // 從來源名冊搬一個人：先挑這次之前就在的（最後一個），都是剛生的才搬剛生的；剩下的人重新編號
@@ -223,12 +258,19 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 等所有 declare／retire 都做完才補，被退掉的來源名冊就不會補出幽靈
   function flush() {
     for (const [key, g] of groups) {
-      for (const m of g.leaving) destroy(m);   // 退場的人直接拿掉、不閃（§13.2）
+      for (const m of g.leaving) depart(m, g.spec);   // 退場的人走回入口、不閃（R9）
       g.leaving = [];
       if (g.retired && !g.held && !g.members.length) { groups.delete(key); continue; }
-      if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) { const i = g.members.length; g.members.push(spawn(g, g.spec, i, homePose(g.spec, i))); }
+      if (!g.retired && !g.held && g.spec) while (g.members.length < g.spec.n) g.members.push(enter(g, g.spec, g.members.length));
     }
     fresh.clear();
+  }
+
+  // 退場：藏起來的人（躲進門裡）、沒有入口（衛星島、ride）、走不到入口的直接拿掉；其他人走回入口（update 走到了才拿掉）
+  function depart(m, spec) {
+    const e = !m.hidden && spec ? entryOf(spec, m.i) : null;
+    if (e) { still(m); m.mode = 'exit'; m.cursor = null; m.arriving = false; m.settled = null; go(m, nav.route(m.pos, e)); }
+    if (m.trip) exits.push(m); else destroy(m);
   }
 
   function retire(key) {
@@ -255,9 +297,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     return m;
   }
 
-  function claim(m) { still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; }
+  function claim(m) { still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; }
   function home(m) {
-    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
+    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
   }
@@ -270,10 +312,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 跳過（§4.3 立刻到最終狀態）：先套用 hold 住的宣告，再讓每個人（劇本手上的、還在走的都算）瞬間到家、停下、露出來
   function snap() {
     syncAll();
+    for (const m of exits) destroy(m);   // 走出去的人立刻拿掉
+    exits = [];
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false;   // 跳過：晚到的模型不再補閃
+        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
         m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
@@ -288,7 +332,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const trip = m.trip, ds = Math.min(WANDER_SPEED * dt, trip.left);
     trip.cursor.advance(ds); trip.left -= ds;
     // 走到底：開放路徑的游標會折返（yaw 翻面），所以直接停在終點、保留原本朝向
-    if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }
+    if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); m.arriving = false; setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }
     setPose(m, { ...trip.cursor.locate(), walking: true });
   }
   // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）
@@ -306,21 +350,27 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function idle(m, spec, dt, t) {
     const h = spec.home ?? {};
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
-    if (h.kind === 'follow') { follow(m, h, dt); return; }
+    if (h.kind === 'follow') { follow(m, spec, dt); return; }
     const ring = h.kind === 'wander' ? ringHome(spec, m.i) : null;
-    if (h.kind === 'path' || ring) { if (m.trip || inFocus(m, spec)) onPath(m, ring ?? h, dt); else halt(m); return; }
+    if (h.kind === 'path' || ring) { if (m.trip || m.arriving || inFocus(m, spec)) onPath(m, ring ?? h, dt, spec); else halt(m); return; }
     if (m.trip) { walk(m, dt); return; }
     if (h.kind === 'wander') {
-      if (!inFocus(m, spec)) return;
-      if ((m.rest -= dt) > 0) return;
+      if (!m.arriving && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;   // 走進來的第一趟不等、不看焦點
       const { at, r } = wanderHome(spec, m.i);
       go(m, nav.route(m.pos, nav.wander(at, r)));
-      if (!m.trip) m.rest = pause();
+      if (!m.trip) { m.rest = pause(); m.arriving = false; }
       return;
     }
-    const spot = spotOf(spec, m.i);
-    if (Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z) <= ARRIVE) { setPose(m, { ...spot, yaw: spot.yaw ?? m.yaw, walking: false }); if (inFocus(m, spec)) fidget(m, h, t); else still(m); return; }
-    still(m);
+    // 站定：到 spot 就站上去；之後被錯開到 spot 附近（同一個 spot、SETTLE 以內）也算站好，不走回去
+    const spot = spotOf(spec, m.i), d = Math.hypot(spot.x - m.pos.x, spot.z - m.pos.z);
+    const kept = m.settled && m.settled.x === spot.x && m.settled.z === spot.z && d <= SETTLE;
+    if (d <= ARRIVE || kept) {
+      m.arriving = false; if (!kept) m.settled = { x: spot.x, z: spot.z };
+      setPose(m, { ...(kept ? m.pos : spot), yaw: spot.yaw ?? m.yaw, walking: false });
+      if (inFocus(m, spec)) fidget(m, h, t); else still(m);
+      return;
+    }
+    m.settled = null; still(m);
     const path = nav.route(m.pos, spot), end = path.at(-1);
     if (end.x !== spot.x || end.z !== spot.z) path.push({ x: spot.x, y: spot.y ?? nav.groundY(spot.x, spot.z), z: spot.z });   // spot 可能在走路格外（屋頂、footprint 裡）
     go(m, path);
@@ -336,19 +386,22 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function still(m) { if (m.fidgeting) { m.walker.gesture = null; m.fidgeting = false; } }
 
   // path：不在折線上（剛被劇本放回來）就先走到折線上最近的一點，再從那裡沿線來回
-  function onPath(m, h, dt) {
+  // 剛走進來（arriving）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方
+  function onPath(m, h, dt, spec) {
     if (m.cursor) { m.cursor.advance(h.speed * dt); setPose(m, { ...m.cursor.locate(), walking: true }); return; }
     if (m.trip) { walk(m, dt); if (m.trip) return; }
-    const P = pathOf(h), s = nearestS(P, m.pos), p = pointAt(P, s);
+    const P = pathOf(h), s = m.arriving ? P.total * m.i / Math.max(1, spec.n) : nearestS(P, m.pos), p = pointAt(P, s);
     if (Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE) {
       const path = nav.route(m.pos, p); path.push(p);   // 折線可能在走路格外（橋頭）：最後一段直接走上去
       go(m, path); if (m.trip) return;
     }
-    m.cursor = createPathCursor(h.path, { loop: !!h.loop, s });
+    m.arriving = false; m.cursor = createPathCursor(h.path, { loop: !!h.loop, s });
   }
-  // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著
-  function follow(m, h, dt) {
-    const dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
+  // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
+  function follow(m, spec, dt) {
+    const h = spec.home, dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
+    if (!target && m.arriving) { if (!m.trip) go(m, nav.route(m.pos, spec.at)); if (m.trip) walk(m, dt); else m.arriving = false; return; }
+    if (m.arriving) { m.arriving = false; m.trip = null; }   // 目標出現了：改跟目標（走進來那一趟沒有 goal）
     if (!target) { if (m.trip || m.walking) { m.trip = null; setPose(m, { ...m.pos, walking: false }); } return; }
     const d = Math.hypot(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
     if (m.trip && d <= dist) { m.trip = null; setPose(m, { ...m.pos, walking: false }); return; }
@@ -362,24 +415,27 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   function update(dt, t) {
     now = t;
-    const moving = [];
+    const moving = [], standing = [];
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home') { idle(m, spec, dt, t); if (m.walking) moving.push(m); }
+        if (m.mode === 'home') { idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled && !m.hidden) standing.push(m); }   // 藏起來的人不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           m.holder.rotation.z = spec.model?.wave ? Math.sin(t * 3) * 0.15 : 0;
         }
       }
     }
+    // 走出去的人：走到入口就拿掉
+    exits = exits.filter(m => { walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
     nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
-    for (const m of moving) place(m);
+    for (const m of [...moving, ...nav.separateStanding(standing)]) place(m);
   }
 
   function reset() {
     for (const g of groups.values()) for (const m of [...g.members, ...g.leaving]) destroy(m);
-    groups.clear(); fresh.clear(); focus = null;
+    for (const m of exits) destroy(m);
+    groups.clear(); fresh.clear(); exits = []; focus = null;
   }
   function setFocus(cells) { focus = cells ? cells.map(c => [c[0], c[1]]) : null; }
 

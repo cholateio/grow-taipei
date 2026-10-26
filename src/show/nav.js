@@ -3,7 +3,7 @@
 import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, edgeMidpoint, WATER_Y, SATELLITES } from '../scene/hex.js';
 
 export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25;
-const SQ3 = Math.sqrt(3), HALF = 9.5, BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, WANDER_TRIES = 12;
+const SQ3 = Math.sqrt(3), HALF = 9.5, BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, WANDER_TRIES = 12, STAND_PASSES = 24;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
 const BRIDGES = adjacentPairs(MAIN_CELLS).map(([A, B]) => {
@@ -170,7 +170,42 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     }
   }
 
-  return { walkable, groundY, setFootprints, nearestWalkable, route, routeLength, slots, wander, separate };
+  // 站著的人太近（< SEPARATION）：只沿 x 錯開（不往鏡頭縱深推，§13.3），各退一半；寫回 m.pos，回傳被推過的人。
+  // 一串人擠在一起時推一次可能又撞到下一個，最多來回推 STAND_PASSES 輪（每次多推 1e-6，浮點誤差不會讓下一幀又推）
+  function separateStanding(members) {
+    const moved = new Set();
+    for (let pass = 0; pass < STAND_PASSES; pass++) {
+      let pushed = false;
+      for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) {
+        const p = members[i].pos, q = members[j].pos, dx = q.x - p.x, dz = q.z - p.z;
+        if (Math.abs(dz) >= SEPARATION || Math.hypot(dx, dz) >= SEPARATION - 1e-9) continue;
+        const need = Math.sqrt(SEPARATION * SEPARATION - dz * dz) + 1e-6, dir = dx < 0 ? -1 : 1, push = (need - Math.abs(dx)) / 2;
+        p.x -= dir * push; q.x += dir * push; moved.add(members[i]); moved.add(members[j]); pushed = true;
+      }
+      if (!pushed) break;
+    }
+    return [...moved];
+  }
+
+  // 格子裡離 awayFrom 最遠、而且從 awayFrom 走得到的點（名冊成員出場的預設入口，§13.2：落在格子邊上）。
+  // 從 awayFrom 最近的可走點往外淹（四方向），淹到的點裡挑這一格的；這一格沒有走得到的點（不是主島格）回 null
+  function edgePoint(cell, awayFrom) {
+    const s = nearestWalkable(awayFrom), k0 = index(s.x, s.z);
+    if (!free(k0)) return null;
+    const seen = new Uint8Array(N * N), queue = [k0]; seen[k0] = 1;
+    let best = -1, bestD = -1;
+    for (let h = 0; h < queue.length; h++) {
+      const k = queue[h], i = ix(k), j = jz(k), x = toW(i), z = toW(j), c = cellAt(x, z);
+      if (c && c[0] === cell[0] && c[1] === cell[1]) { const d = Math.hypot(x - awayFrom.x, z - awayFrom.z); if (d > bestD) { bestD = d; best = k; } }
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+        const nk = nj * N + ni; if (!seen[nk] && free(nk)) { seen[nk] = 1; queue.push(nk); }
+      }
+    }
+    return best < 0 ? null : pointOf(best);
+  }
+
+  return { walkable, groundY, setFootprints, nearestWalkable, route, routeLength, slots, wander, separate, separateStanding, edgePoint };
 }
 
 // 最小堆（A* 的 open list）

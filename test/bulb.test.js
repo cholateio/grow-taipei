@@ -183,7 +183,7 @@ test('grow 2 live: the stops light up one at a time in road order (cyclic from w
   }
 });
 // 排隊的那一刻（兩個 ♥ 冒出來時）兩人都在夜市旁；演完回日常後會走開（回合最後回全景那 1 秒也在走）
-test('Lv4: the two nearest islanders queue at the market', async () => {
+test('Lv4: the two nearest people (islanders or the station staff) queue at the market', async () => {
   const h = await headlessShow(), m = landmarkWorld('market');
   const { e, n } = await liveAt(h, SOLUTIONS[0], isBulb(4));
   assert.equal(e.to, 4);
@@ -243,8 +243,8 @@ async function firstStopRun({ stub }) {
 test('grow 2 picks its first stop from where the electrician is when the walk starts, not when the turn is built', () => firstStopRun({ stub: true }));
 test('grow 2 with the roster focus on: the first stop is the nearest to the electrician when the walk starts', () => firstStopRun({ stub: false }));
 test('Lv4 never picks hidden islanders', () => {
-  const vis = { pos: { x: 9, z: 9 }, head: () => ({ x: 9, y: 0, z: 9 }) }, m = landmarkWorld('market');
-  const hid = { pos: { ...m }, hidden: true, head: () => m }, vis2 = { pos: { x: 8, z: 8 }, head: () => ({ x: 8, y: 0, z: 8 }) };
+  const vis = { pos: { x: 9, z: 9 }, mode: 'home', head: () => ({ x: 9, y: 0, z: 9 }) }, m = landmarkWorld('market');
+  const hid = { pos: { ...m }, hidden: true, mode: 'home', head: () => m }, vis2 = { pos: { x: 8, z: 8 }, mode: 'home', head: () => ({ x: 8, y: 0, z: 8 }) };
   const ctx = { B, roster: { members: k => (k === 'landmarks.islanders' ? [hid, vis, vis2] : []) }, nav: { slots: () => [m, m] } };
   const beats = flat(bulb.script.grow[4](E(4), { lv: lv({ bulb: 4 }), flags: {} }, ctx)).filter(b => b.kind === 'walk');
   const who = [];

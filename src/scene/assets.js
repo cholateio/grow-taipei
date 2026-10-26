@@ -139,7 +139,13 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
   };
 
   // merge（預設）：整個模型併成 ≤ 2 個 mesh；要播動畫的模型不併。merge: false = 逐 mesh 換材質（舊行為）。
-  async function spawn(path, { x = 0, y = 0, z = 0, h = 1, ry = 0, anim = null, speed = 1, parent = null, tint = null, glow = null, merge = true } = {}) {
+  // pending：還在載入中的 spawn 個數（截圖等模型都載好才回報 draw call，renderer.js 的 createCallSampler）
+  let inflight = 0;
+  async function spawn(...args) {
+    inflight++;
+    try { return await place(...args); } finally { inflight--; }
+  }
+  async function place(path, { x = 0, y = 0, z = 0, h = 1, ry = 0, anim = null, speed = 1, parent = null, tint = null, glow = null, merge = true } = {}) {
     const src = await load(path);
     let merged = null;
     if (merge && !anim) {
@@ -178,5 +184,5 @@ export function createAssets(THREE, { base = './assets/', draco = './vendor/thre
     holder?.removeFromParent();
   }
 
-  return { load, spawn, release, update: dt => { for (const m of mixers) m.update(dt); }, glowMaterials, get mixerCount() { return mixers.length; } };
+  return { load, spawn, release, update: dt => { for (const m of mixers) m.update(dt); }, glowMaterials, get mixerCount() { return mixers.length; }, get pending() { return inflight; } };
 }

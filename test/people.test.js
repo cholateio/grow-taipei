@@ -148,3 +148,14 @@ test('look on a walker eases the turn over 0.2 s instead of snapping', () => {
   w.gesture = { kind: 'look', k: 0.05 / 0.6, dur: 0.6, yaw: -2.5 }; people.update(0.016, 0); assert.ok(yawOf() < -0.3 && yawOf() > -2.2, `easing ${yawOf().toFixed(2)}`);
   w.gesture = { kind: 'look', k: 0.5, dur: 0.6, yaw: -2.5 }; people.update(0.016, 0); assert.ok(Math.abs(yawOf() + 2.5) < 1e-6);
 });
+// draw call（任務 12）：沒有人用到的配件 InstancedMesh 整個不畫（count 照舊；空的 instanced draw 也算一個 call）
+test('accessory meshes nobody wears this frame are not drawn', () => {
+  const people = createPeople(THREE, { max: 4 }), mesh = n => people.group.getObjectByName(`people:${n}`);
+  const w = people.spawn({ path: ringPath({ x: 0, z: 0 }, 1, 0.65, 8) });
+  people.update(0.1, 0.1);
+  for (const n of ['body', 'head', 'shadow', 'legL']) assert.equal(mesh(n).visible, true, n);
+  for (const n of ['mortar', 'tassel', 'helmet', 'wheelF', 'lens', 'badge', 'vest', 'apron', 'case']) assert.equal(mesh(n).visible, false, n);
+  w.setAccessory('mortar');
+  people.update(0.1, 0.2);
+  assert.equal(mesh('mortar').visible, true); assert.equal(mesh('tassel').visible, true); assert.equal(mesh('helmet').visible, false);
+});

@@ -283,7 +283,9 @@ export const script = {
   // 站牌＋小月台：閃白 → 最近的島民走來月台前（西南角，靠鄰格的橋那側）等車 → ♪
   placed(e, s, ctx) {
     const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT));
-    return [B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.bubble(islander, '♪', 0.5), B.home(islander)];   // ♪ 0.8 → 0.5（裁決 R15：珍奶格不住島民，從別格走來）
+    // 站牌閃白的同時他就出發；♪ 0.8 → 0.6。代幣格不住島民（人數預算，裁決 R16），人是從鄰格走來的：走路 0.5–4 秒不等，
+    // 走路那段至少 2.5 秒（近的時候在月台前多等一下），整級 3–5 秒（例外表 SCRIPT_EXCEPT 'token 1'）
+    return [B.together([B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.wait(2.5)]), B.bubble(islander, '♪', 0.6), B.home(islander)];
   },
   grow: {
     // 小站：閃白售票亭 → 站務員從站後面（入口）走到崗位 → ♪ → LEVEL UP

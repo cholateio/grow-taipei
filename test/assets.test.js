@@ -201,3 +201,17 @@ test('docs/assets/manifest.md has one row per level of every item (61), each wit
   }
   assert.equal(rows.length, ORDER.reduce((s, id) => s + ITEMS[id].max, 0));
 });
+// 截圖回報 draw call 要等模型載好（任務 12：演完那一幀模型還在載，少算 80 多個 call）：pending 數著載入中的 spawn
+test('assets.pending counts spawns still loading (the shot report waits for 0)', async () => {
+  const { createAssets } = await import('../src/scene/assets.js');
+  let release;
+  const gate = new Promise(r => { release = r; });
+  const loader = { load: (url, ok) => { gate.then(() => { const scene = new THREE.Group(); scene.add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())); ok({ scene, animations: [] }); }); } };
+  const assets = createAssets(THREE, { loader });
+  assert.equal(assets.pending, 0);
+  const a = assets.spawn('a.glb'), b = assets.spawn('a.glb');
+  assert.equal(assets.pending, 2);
+  release(); await Promise.all([a, b]); assert.equal(assets.pending, 0);
+  const bad = createAssets(THREE, { loader: { load: (u, ok, p, fail) => fail(new Error('404')) } });
+  await assert.rejects(bad.spawn('x.glb')); assert.equal(bad.pending, 0, 'a failed load is not pending forever');
+});

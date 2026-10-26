@@ -15,7 +15,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { createTimeline } from '../src/show/timeline.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT } from './helpers/show.js';
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
@@ -248,7 +248,7 @@ test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10
     await playItem(show, tracked, order, 'token', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       const big = to === 7 || to === 10;
-      assert.ok(secs >= 3 && secs <= (big ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
+      assert.ok(secs >= 3 && secs <= (big ? 10 : SCRIPT_EXCEPT[`token ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
       if (big) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');

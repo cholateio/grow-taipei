@@ -264,3 +264,23 @@ test('a route stepping off the side of a level bridge onto a cell corner climbs 
   }
   assert.ok(stepped >= 2, `${stepped} side steps checked`);
 });
+// 正面擦身（任務 12，偵防師不變式）：走路的人前方 YIELD_LOOK 內、橫向不到 YIELD_CLEAR 有人 → 往遠離他的那一側讓開，讓到橫向 YIELD_CLEAR；
+// 後面、旁邊夠遠、太遠的人不理；兩個人各讓各的（往自己的右手邊不重要，往遠離對方那側）
+test('yieldOffset: sidestep away from someone ahead within 0.5, to a lateral clearance of YIELD_CLEAR; ignore people behind, beside or far', async () => {
+  const { yieldOffset, YIELD_LOOK, YIELD_CLEAR, SEPARATION } = await import('../src/show/nav.js');
+  assert.equal(YIELD_LOOK, 0.5); assert.ok(YIELD_CLEAR > SEPARATION);
+  const p = { x: 0, z: 0 }, yaw = 0;   // 朝 +z 走；右手邊（side > 0）是 −x
+  const side = (o, y = yaw) => yieldOffset(p, y, [o]);
+  assert.equal(side({ x: 0, z: 0.6 }), 0, 'too far ahead');
+  assert.equal(side({ x: 0, z: -0.3 }), 0, 'behind');
+  assert.equal(side({ x: 0.4, z: 0.3 }), 0, 'beside, already clear');
+  const s = side({ x: 0.05, z: 0.3 }), at = { x: p.x - Math.cos(yaw) * s, z: p.z + Math.sin(yaw) * s };
+  assert.ok(Math.abs(Math.abs(0.05 - at.x) - YIELD_CLEAR) < 1e-9, `clears to ${YIELD_CLEAR} laterally (${s.toFixed(3)})`);
+  assert.ok(at.x < 0, 'away from him (he is a little to the left, +x)');
+  assert.ok(side({ x: -0.05, z: 0.3 }) * s < 0, 'mirror case goes the other way');
+  // 朝 +x 走（yaw π/2）：前方的人在 +x
+  assert.notEqual(side({ x: 0.3, z: 0 }, Math.PI / 2), 0, 'heading matters');
+  assert.equal(yieldOffset(p, yaw, []), 0);
+  // 前方兩個人：照最近的那個讓
+  assert.equal(yieldOffset(p, yaw, [{ x: 0.05, z: 0.4 }, { x: -0.02, z: 0.2 }]), side({ x: -0.02, z: 0.2 }));
+});

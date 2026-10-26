@@ -9,6 +9,21 @@ const PIXEL_RATIO = { high: 1.75, medium: 1.4, low: 1 };
 const SHADOW_MAP = { high: 2048, medium: 1024, low: 0 };
 export const CENTER = { x: 0.4, y: 0.6, z: 0 };
 
+// 截圖回報的 draw call（§10 ≤ 150，tools/shot.mjs 印出來）：?auto 演完之後模型還在非同步載入（assets.pending > 0），
+// 演完那一幀量到的是還沒載好的畫面（少算）；等到連續 frames 幀都沒有載入中的模型，回報這幾幀裡最少的那一幀（一幀的波動不算）。
+// sample({ calls, tris, pending }) 每幀呼叫一次：還沒穩定回 null，穩定那一幀回 { calls, tris }，之後都回 null（只回報一次）
+export function createCallSampler({ frames = 5 } = {}) {
+  let run = [], done = false;
+  return function sample({ calls, tris, pending }) {
+    if (done) return null;
+    if (pending > 0) { run = []; return null; }
+    run.push({ calls, tris });
+    if (run.length < frames) return null;
+    done = true;
+    return run.reduce((a, b) => (b.calls < a.calls ? b : a));
+  };
+}
+
 export function pickQuality(param, { width, mobile }) {
   if (param in PIXEL_RATIO) return param;
   return width <= 800 || mobile ? 'medium' : 'high';

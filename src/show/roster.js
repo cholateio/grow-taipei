@@ -29,7 +29,7 @@ import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
-import { SEPARATION } from './nav.js';
+import { SEPARATION, YIELD_CLEAR, yieldOffset } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 const ROUTE_TRIES = 6;   // 散步挑點：路線借道別格就重挑，最多幾次（wanderRoute）
@@ -400,9 +400,21 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 人被防穿牆擋在半路（游標自己走完了、人還離終點很遠）：不跳到終點（下一幀會被限速從牆裡拖過去），停在原地，下一趟從這裡重新找路
     if (trip.left <= 1e-9) {
       const blocked = Math.hypot(trip.last.x - m.pos.x, trip.last.z - m.pos.z) > trip.speed * dt + 2 * ARRIVE;
-      m.trip = null; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
+      m.trip = null; m.side = 0; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
     }
-    setPose(m, { ...trip.cursor.locate(), walking: true });
+    setPose(m, { ...sidestep(m, trip.cursor.locate(), trip.speed * dt), walking: true });
+  }
+  // 正面擦身（任務 12）：前方 YIELD_LOOK 內有人擋著（走著或站著都算）就往旁邊讓開再走過去（nav.yieldOffset），
+  // 橫移每幀最多 speed × dt（不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
+  function sidestep(m, c, max) {
+    const others = [];
+    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone) others.push(o.pos);
+    const at = side => ({ x: c.x - Math.cos(c.yaw) * side, z: c.z + Math.sin(c.yaw) * side });
+    const toward = (a, b) => a + Math.max(-max, Math.min(max, b - a));
+    let side = toward(m.side ?? 0, yieldOffset(c, c.yaw, others)), p = at(side);
+    if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
+    m.side = side;
+    return side ? { ...c, x: p.x, y: nav.groundY(p.x, p.z), z: p.z } : c;
   }
   // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）
   const hit = ([q, r]) => focus.some(c => c[0] === q && c[1] === r);
@@ -422,13 +434,20 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
 
   // 散步路線：人在家那格裡時，不挑要借道別格（過橋繞去鄰格再回來）才走得到的點——家那格被建築切成兩半時只在自己這半邊走
-  // （人數預算，裁決 R16：路過的人不擠爆別格）。第一個點就好的話跟以前一樣只抽一次亂數；試 ROUTE_TRIES 次都不行就原地休息
+  // （人數預算，裁決 R16：路過的人不擠爆別格）。第一個點就好的話跟以前一樣只抽一次亂數；試 ROUTE_TRIES 次都借道就原地休息
+  // 也不挑別人身邊（< YIELD_CLEAR）的點：走過去停在人家旁邊就是貼著人站（任務 12，偵防師不變式）
   function wanderRoute(m, at, r) {
     const home = cellAt(at.x, at.z), here = cellAt(m.pos.x, m.pos.z);
     const inside = route => route.every(p => { const c = cellAt(p.x, p.z); return c && c[0] === home[0] && c[1] === home[1]; });
     if (!home || !here || here[0] !== home[0] || here[1] !== home[1]) return nav.route(m.pos, nav.wander(at, r));
-    for (let k = 0; k < ROUTE_TRIES; k++) { const route = nav.route(m.pos, nav.wander(at, r)); if (inside(route)) return route; }
-    return [{ ...m.pos }];
+    const clear = p => { for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < YIELD_CLEAR) return false; return true; };
+    let fallback = null;   // 家裡擠到挑不到空位：走到第一個不借道的點（不在原地卡住，走進來的第一趟一定進得來）
+    for (let k = 0; k < ROUTE_TRIES; k++) {
+      const route = nav.route(m.pos, nav.wander(at, r)); if (!inside(route)) continue;
+      if (clear(route.at(-1))) return route;
+      fallback ??= route;
+    }
+    return fallback ?? [{ ...m.pos }];
   }
 
   function idle(m, spec, dt, t) {

@@ -16,9 +16,10 @@ const IDS = ['landmarks', 'tower', 'milk', 'baseball', 'chip', 'rat', 'bulb', 't
 export const ALL = await Promise.all(IDS.map(id => import(`../../src/actors/${id}.js`)));
 
 const DT = 1 / 30, LIMIT = 120;
-// 裁決 R15：非關鍵劇本 ≤ 4.5 s（◆ 關鍵 6–10 s 另外量）。例外（只有走路、R15 不准加快走路）：燈泡 Lv2 巡三站（裁決 R12 ≤ 8 s）、
-// 棒球放置的跑壘（沿壘包慢走一圈 4 s，加上從入口走到本壘）——tools/pace.mjs 的 SCRIPT_EXCEPT 同一張表
-export const SCRIPT_MAX = 4.5, SCRIPT_EXCEPT = { 'bulb 2': 8, 'baseball 1': 6 };
+// 裁決 R15：非關鍵劇本 ≤ 4.5 s（◆ 關鍵 6–10 s 另外量）。例外（主要是走路、R15 不准加快走路）：燈泡 Lv2 巡三站（裁決 R12 ≤ 8 s）、
+// 棒球放置的跑壘（沿壘包慢走一圈 4 s，加上從入口走到本壘）、代幣放置（島民從鄰格走來月台，R16 之後代幣格不住島民）——
+// tools/pace.mjs 的 SCRIPT_EXCEPT 同一張表
+export const SCRIPT_MAX = 4.5, SCRIPT_EXCEPT = { 'bulb 2': 8, 'baseball 1': 6, 'token 1': 5 };
 
 // seed：名冊與走路格的亂數種子，同一個種子每次演出的秒數一模一樣
 // rig：換成真的鏡頭 rig（測試鏡頭最後停在哪）；run 每幀也推它

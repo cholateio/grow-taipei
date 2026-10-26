@@ -27,6 +27,7 @@ const args = process.argv.slice(2);
 const server = await serve(0);   // 0 = 系統挑空的埠，不和開著的開發伺服器撞
 PORT = server.address().port;
 let failed = false;
+const worst = { calls: 0, name: '' };   // 這一趟 draw call 最多的截圖
 try {
   if (args[0] === '--dom') {
     const r = await run([...flags('1280,800'), '--dump-dom', base(args[1] ?? '')]);
@@ -38,14 +39,19 @@ try {
       const r = await run([...flags(sizeOf(name), budgetOf(name, query)), `--screenshot=shots/${name}.png`, base(query)]);
       const bad = (r.stderr || '').split('\n').filter(l => l.includes('CONSOLE') && /Uncaught|Error|Failed/.test(l));
       console.log(`${bad.length ? '✖' : '✔'} shots/${name}.png  (${query || '預設'})`);
-      // app 在 ?auto 時印的 [grow] calls=… 行：draw call 超過 150 加警告
-      for (const l of (r.stderr || '').split('\n').filter(l => l.includes('[grow]'))) {
+      // app 在 ?auto 時印的 [grow] calls=… 行（模型都載好、穩定幾幀之後才印）：draw call 超過 150 加警告；
+      // ?auto 卻沒有這一行 = 截圖那一刻模型還沒載完（量不到），也加警告
+      const grow = (r.stderr || '').split('\n').filter(l => l.includes('[grow]'));
+      for (const l of grow) {
         const m = l.match(/\[grow\][^"]*/), calls = +(l.match(/calls=(\d+)/)?.[1] ?? 0);
         console.log(`   ${calls > 150 ? '⚠ ' : ''}${m ? m[0] : l}`);
+        if (calls > worst.calls) Object.assign(worst, { calls, name });
       }
+      if (!grow.length && /(^|&)auto=/.test(query)) console.log('   ⚠ [grow] 沒有 draw call 回報（截圖時模型還沒載完）');
       for (const l of bad) console.log('   ' + l.replace(/^.*CONSOLE[^"]*/, ''));
       if (bad.length || r.status !== 0) failed = true;
     }
+    if (worst.calls) console.log(`draw call 最多 ${worst.calls}（${worst.name}）${worst.calls > 150 ? ' ⚠ > 150' : ''}`);
   }
 } finally { server.close(); }
 process.exit(failed ? 1 : 0);

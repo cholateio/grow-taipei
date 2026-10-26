@@ -4,6 +4,20 @@ import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, ed
 
 export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25, HALF = 9.5;   // 走路格的點在 -HALF + STEP·i
 export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕，站在牆邊身體不會陷進牆裡（§14.1）
+// 正面擦身（任務 12）：走路的人前方 YIELD_LOOK 內、橫向不到 YIELD_CLEAR 有人，就往遠離他的那一側橫移到橫向 YIELD_CLEAR 再走過去
+export const YIELD_LOOK = 0.5, YIELD_CLEAR = SEPARATION + 0.05;
+// 該橫移多少：沿右手邊（朝 yaw 走時的 (−cos yaw, sin yaw)）的有號距離；前方沒人擋回 0。前方好幾個人照最近的那個讓
+export function yieldOffset(p, yaw, others) {
+  const ux = Math.sin(yaw), uz = Math.cos(yaw), rx = -uz, rz = ux;
+  let best = null;
+  for (const o of others) {
+    const dx = o.x - p.x, dz = o.z - p.z, ahead = dx * ux + dz * uz, lat = dx * rx + dz * rz;
+    if (ahead <= 0 || ahead >= YIELD_LOOK || Math.abs(lat) >= YIELD_CLEAR) continue;
+    if (!best || ahead < best.ahead) best = { ahead, lat };
+  }
+  if (!best) return 0;
+  return best.lat > 0 ? best.lat - YIELD_CLEAR : best.lat + YIELD_CLEAR;
+}
 // 同高兩格之間的拱橋（island.js addBridge → bridgeDecks(a, b, { arch: 0.08 })）：甲板中心 base + sin(π·t)·ARCH，板厚 DECK；
 // 9 片甲板各長 len/9 × 1.08，兩端的板子超出端點半片（PLANK·len）。DENSE：路線過橋那一段每隔多遠補一個點（游標直線內插才貼著拱）
 const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05, STEP_Y = 0.03;   // STEP_Y：相鄰取樣差這麼多就是一階（拱的弧每 0.05 只差 0.02 以內）

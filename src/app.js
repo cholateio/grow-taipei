@@ -1,7 +1,7 @@
 import * as THREE from '../vendor/three/three.module.js';
 // 遊戲本體：場景 → 介面 → 演出層 → 遊戲。由 main.js 動態載入，任何模組載入失敗都會落到 main.js 的錯誤畫面。
 // ?auto=a,b,c 自動依序放（截圖用；&live=1&warp=N 最後一個物品照常演 N 秒）、?time=、?quality=、?simulateFail=webgl、?cam=（座標或物品 id）
-import { createRenderer, pickQuality, CENTER } from './scene/renderer.js';
+import { createRenderer, pickQuality, CENTER, createCallSampler } from './scene/renderer.js';
 import { TIMES } from './scene/daynight.js';
 import { createKit } from './scene/kit.js';
 import { buildIsland } from './scene/island.js';
@@ -125,7 +125,8 @@ export async function start({ params, loading }) {
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
-  let autoDone = false, reported = false, elapsed = 0;
+  let autoDone = false, elapsed = 0;
+  const sampleCalls = createCallSampler();
   const frame = dt => {
     const t = (elapsed += dt);
     const w = stepWorld(world, worldTarget, dt); if (w !== world) { world = w; showWorld(w); }
@@ -135,8 +136,9 @@ export async function start({ params, loading }) {
   view.renderer.setAnimationLoop(() => {
     frame(Math.min(clock.getDelta(), 0.08));
     view.render();
-    // 自動播放（截圖）演完後的第一幀回報 draw call，tools/shot.mjs 會印出來（§10 目標 ≤ 150）
-    if (autoDone && !reported) { reported = true; console.warn(`[grow] calls=${view.renderer.info.render.calls} tris=${view.renderer.info.render.triangles}`); }
+    // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最少，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）
+    const r = autoDone && sampleCalls({ calls: view.renderer.info.render.calls, tris: view.renderer.info.render.triangles, pending: assets.pending });
+    if (r) console.warn(`[grow] calls=${r.calls} tris=${r.tris}`);
   });
   loading.hidden = true;
   if (auto) (async () => {

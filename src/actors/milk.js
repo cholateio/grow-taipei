@@ -207,7 +207,7 @@ export const script = {
       const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE)), front = offset(AT, -0.2, 0.15);
       return [
         // 裁決 R15 一級 ≤ 4.5 s：鋤頭 1.2 → 0.9、閃白的同時 ♥
-        B.walk(islander, front), B.gesture(islander, 'build', 0.9, { at: offset(AT, -0.2, ROW) }),
+        B.together([B.walk(islander, front), B.wait(1.0)]), B.gesture(islander, 'build', 0.9, { at: offset(AT, -0.2, ROW) }),   // 人就在旁邊時也至少 1 秒（一級 ≥ 3 s）
         B.together([B.apply(e), B.bubble(islander, '♥', 0.8)]), B.levelUp('milk'), B.home(islander),
       ];
     },

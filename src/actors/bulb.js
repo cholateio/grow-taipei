@@ -200,7 +200,8 @@ function rotationFrom(p) {
   return LAMP_STOPS.map((_, i) => (k0 + i) % n);
 }
 // 離夜市最近的兩個看得見的島民（每段劇本自己記一組）
-const nearestPair = () => once(c => c.roster.members('landmarks.islanders').filter(m => !m.hidden).sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
+// 離夜市最近的兩個看得見、在日常裡的人：島民或站務員（夜市在捷運站旁；人數預算裁決 R16 之後代幣／珍奶格不住島民，只找島民要從別格走來）
+const nearestPair = () => once(c => ['landmarks.islanders', 'token.staff'].flatMap(k => c.roster.members(k)).filter(m => !m.hidden && m.mode === 'home').sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
 // 第 k 站電工站的那一格
 export const stopCell = k => { const p = lampApproach(LAMP_STOPS[k][0]); return worldToAxial(p.x, p.z); };
 const sameCell = (a, b) => a[0] === b[0] && a[1] === b[1];
@@ -320,7 +321,7 @@ export const script = {
         B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
       ];
     },
-    // 四攤：離夜市最近的兩個島民快步走去夜市前排隊 → 閃白多兩攤、一起 ♥（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 四攤：離夜市最近的兩個人（島民、站務員）快步走去夜市前排隊 → 閃白多兩攤、一起 ♥（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
       return [

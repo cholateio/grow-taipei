@@ -93,8 +93,8 @@ const onlys = beats => flat(beats).filter(b => b.kind === 'apply' && b.only).fla
 const E = to => ({ kind: 'grow', item: 'bulb', to });
 // only 可能是 ctx => 鍵（演到才算）：用假 ctx 解開
 const applies = (beats, ctx) => flat(beats).filter(b => b.kind === 'apply' && b.only).map(b => (typeof b.only === 'function' ? b.only(ctx) : b.only));
-const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market', 'sat.lighthouse'] : [])]);
-test('grow 2 lights the stops one by one along the road (posts with the first; market and lighthouse while he walks the last leg)', () => {
+const stopOrder = from => Array.from({ length: N_STOPS }, (_, i) => [...(i ? [] : ['bulb.posts']), `bulb.lamps.${(i + from) % N_STOPS}`, ...(i === N_STOPS - 2 ? ['bulb.market', 'sat.lighthouse', 'sat.keeper'] : [])]);
+test('grow 2 lights the stops one by one along the road (posts with the first; market, lighthouse and keeper while he walks the last leg)', () => {
   const s = { lv: lv({ bulb: 2 }), flags: {} };
   const c0 = fakeCtx(); assert.deepEqual(applies(bulb.script.grow[2](E(2), s, c0), c0), stopOrder(0));
   // 電工在半路上：從他最近的那站開始，沿路繞一圈（順序照樣沿路）；第 9 盞是第 5 站

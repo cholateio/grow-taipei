@@ -293,6 +293,23 @@ test('stand members with fidget play a short gesture every 3 s and are still bet
   roster.declare('w', kids(1)); for (let i = 0; i < 90; i++) roster.update(1 / 30, i / 30);
   assert.equal(roster.members('w')[0].walker.gesture, null, 'no fidget without the flag');
 });
+// §14.3 溫泉客偶爾看一下：fidget 'look' 帶一個瞥過去的朝向（站位朝向 ± 0.6，每次換邊），0.2 秒轉過去、結束前 0.2 秒轉回來
+test('a look fidget glances ± 0.6 off the spot yaw, alternating sides, and turns back to the spot yaw afterwards', () => {
+  const { roster } = setup(), spot = { ...AT, yaw: 0.5 };
+  roster.declare('k', { kind: 'roster', at: AT, n: 1, home: { kind: 'stand', spots: [spot], fidget: 'look' } }); roster.snap();
+  const [a] = roster.members('k'), yaws = [];
+  for (let i = 0; i < 360; i++) { roster.update(1 / 30, i / 30); const g = a.walker.gesture; yaws.push(g ? (assert.equal(g.kind, 'look'), g.yaw) : null); }
+  const off = yaws.filter(y => y !== null).map(y => y - spot.yaw);
+  assert.ok(off.some(d => Math.abs(Math.abs(d) - 0.6) < 1e-9), 'reaches a full 0.6 glance');
+  assert.ok(off.some(d => d > 0.5) && off.some(d => d < -0.5), 'glances to both sides');
+  assert.ok(off.every(d => Math.abs(d) <= 0.6 + 1e-9));
+  // 每次小動作的第一幀、最後一幀都貼近站位朝向（0.2 秒轉過去、轉回來），之後沒有 gesture、站回原本朝向
+  for (let i = 1; i < yaws.length; i++) {
+    if (yaws[i] !== null && yaws[i - 1] === null) assert.ok(Math.abs(yaws[i] - spot.yaw) <= 0.6 / 6 + 1e-9, `starts near the spot yaw (${yaws[i]})`);
+    if (yaws[i] === null && yaws[i - 1] !== null) assert.ok(Math.abs(yaws[i - 1] - spot.yaw) <= 0.6 / 6 + 1e-9, `ends near the spot yaw (${yaws[i - 1]})`);
+  }
+  assert.ok(Math.abs(a.yaw - spot.yaw) < 1e-9, 'stands at the spot yaw');
+});
 test('a stand home with rescue stands at the nearest walkable point when its spot is inside a footprint', () => {
   const { roster, nav } = setup(), spot = { ...AT, yaw: 0 };
   nav.setFootprints([{ x: AT.x, z: AT.z, r: 0.6 }]);

@@ -36,6 +36,7 @@ export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
+const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度、轉過去／轉回來各 0.2 秒（同小人的 look 轉向）
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
@@ -420,7 +421,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (d <= ARRIVE || kept) {
       m.arriving = false; if (!kept) m.settled = { x: spot.x, z: spot.z };
       setPose(m, { ...(kept ? m.pos : spot), yaw: spot.yaw ?? m.yaw, walking: false });
-      if (inFocus(m, spec)) fidget(m, h, t); else still(m);
+      if (inFocus(m, spec)) fidget(m, h, t, spot.yaw ?? m.yaw); else still(m);
       return;
     }
     m.settled = null; still(m);
@@ -429,11 +430,18 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     go(m, path);
   }
 
-  // fidget：站定的 people 小人每 FIDGET_EVERY 秒做一次 FIDGET_DUR 秒的 gesture，其餘時間不動
-  function fidget(m, h, t) {
+  // fidget：站定的 people 小人每 FIDGET_EVERY 秒做一次 FIDGET_DUR 秒的 gesture，其餘時間不動。
+  // 'look'（溫泉客偶爾看一下，§14.3）：往站位朝向 ± GLANCE 瞥一眼（每次換邊），開頭 GLANCE_TURN 秒轉過去、結尾 GLANCE_TURN 秒轉回來；
+  // gesture 直接帶算好的 yaw、不帶 dur（小人照 yaw 轉好），結束時剛好回到站位朝向
+  function fidget(m, h, t, yaw) {
     if (!h.fidget || !m.walker) return;
-    const ph = (((t + m.i * FIDGET_SHIFT) % FIDGET_EVERY) + FIDGET_EVERY) % FIDGET_EVERY, on = ph < FIDGET_DUR;
-    m.walker.gesture = on ? { kind: h.fidget, k: ph / FIDGET_DUR } : null; m.fidgeting = on;
+    const s = t + m.i * FIDGET_SHIFT, ph = ((s % FIDGET_EVERY) + FIDGET_EVERY) % FIDGET_EVERY, on = ph < FIDGET_DUR;
+    let g = null;
+    if (on && h.fidget === 'look') {
+      const side = Math.floor(s / FIDGET_EVERY) % 2 ? -1 : 1, f = Math.min(1, ph / GLANCE_TURN, (FIDGET_DUR - ph) / GLANCE_TURN);
+      g = { kind: 'look', k: ph / FIDGET_DUR, yaw: yaw + side * GLANCE * f };
+    } else if (on) g = { kind: h.fidget, k: ph / FIDGET_DUR };
+    m.walker.gesture = g; m.fidgeting = on;
   }
   // 離開站位或被劇本拿走：小動作立刻收掉（劇本自己的 gesture 不碰）
   function still(m) { if (m.fidgeting) { m.walker.gesture = null; m.fidgeting = false; } }

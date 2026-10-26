@@ -102,10 +102,11 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
 const everyone = c => c.roster.keys().flatMap(k => c.roster.members(k)).filter(m => m.kind === 'people' && !m.hidden);
-// 最近的建築門口：離 pos 最近的主島建築（footprint 中心），從它面向 pos 那一側找最近的可走點；沒有建築就原地
+// 最近的建築門口：離 pos 最近的主島建築（footprint 中心），從它面向 pos 那一側找最近的可走點；沒有建築就原地。
+// footprint 帶 door 的照它（溫泉池 false：池子不能躲；小澡堂 true：比 DOOR_MIN 小也算門），其他照大小判斷
 function nearestDoor(c, pos) {
   const ext = f => f.r ?? (f.rx != null ? Math.min(f.rx, f.rz) : Math.min(f.w, f.d) / 2);
-  const fps = c.stage.footprints().filter(f => ext(f) >= DOOR_MIN && cellAt(f.x, f.z));
+  const fps = c.stage.footprints().filter(f => (f.door ?? ext(f) >= DOOR_MIN) && cellAt(f.x, f.z));
   if (!fps.length) return pos;
   const f = fps.reduce((a, b) => (Math.hypot(b.x - pos.x, b.z - pos.z) < Math.hypot(a.x - pos.x, a.z - pos.z) ? b : a));
   const d = Math.hypot(pos.x - f.x, pos.z - f.z) || 1, k = ext(f) * 0.9 / d;

@@ -38,7 +38,8 @@ test('islanders: n 5, wander homes cover all six main cells, two of them stand a
     assert.ok(p.z > SPRING.z, `bather ${i} on the camera side`);
   }
 });
-// 審查重點 4：老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時，溫泉客站池邊、老鼠在池裡，10 秒內每一對都 ≥ 0.25
+// 審查重點 4：老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時，溫泉客站池邊、老鼠在池裡，10 秒內每一對都 ≥ 0.25。
+// 兩條正解（其實所有放置順序）都到不了泡溫泉（老鼠 3 時代幣都已 ≥2），所以用合成的老鼠事件直接演到那一刻
 test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays ≥ 0.25 apart over 10 s (review focus 4)', async () => {
   const { headlessShow } = await import('./helpers/show.js'), { ratMode } = await import('../src/actors/rat.js');
   const { show, run } = await headlessShow();

@@ -321,7 +321,11 @@ test('baseball Lv5: 4 fans at the gate, 2 wander on the dome lawn; Lv4 stays 4 a
     const v = baseball.view(lv({ baseball: n }), {}), c = v['baseball.crowd'], l = v['baseball.lawn'];
     assert.deepEqual([c.n, c.home.kind, c.home.spots.length, c.home.fidget], [4, 'stand', 4, 'jump'], `lv${n} gate`);
     for (const p of c.home.spots) assert.ok(Math.abs(Math.hypot(p.x - AT.x, p.z - AT.z) - 1.75) < 1e-9, `lv${n} fan on the gate arc`);
-    assert.deepEqual([l.kind, l.n, l.home.kind, l.home.r, l.home.entry], ['roster', 2, 'wander', 0.8, baseball.CROWD_ENTRY], `lv${n} lawn`);
+    assert.deepEqual([l.kind, l.n, l.home.kind, l.home.r, l.home.entry], ['roster', 2, 'wander', 0.6, baseball.CROWD_ENTRY], `lv${n} lawn`);
+    // 應援棒沒有 footprint：散步圈外擴 0.12（PAD）也碰不到任何一根（審查）
+    const sticks = v['baseball.main'].parts.filter(p => p.color === 0x3fe0ff);
+    assert.equal(sticks.length, 8);
+    for (const p of sticks) assert.ok(Math.hypot(AT.x + p.pos[0] - l.home.at.x, AT.z + p.pos[2] - l.home.at.z) - l.home.r >= 0.12, `lv${n} stick (${p.pos[0].toFixed(2)}, ${p.pos[2].toFixed(2)}) clear of the lawn`);
     assert.ok(Array.isArray(l.shirt));
     const a = l.home.at, e = Math.hypot((a.x - AT.x) / (1.15 + 0.12), (a.z - AT.z) / (0.95 + 0.12));
     assert.ok(e > 1.25, `lv${n} lawn centre clear of the padded dome (${e.toFixed(2)})`);
@@ -331,9 +335,15 @@ test('baseball Lv5: 4 fans at the gate, 2 wander on the dome lawn; Lv4 stays 4 a
   // 真舞台：散步的人一直在可走點上、離巨蛋（外擴後）之外
   const h = await headlessShow(), { show } = h;
   await liveAt(h, SOLUTIONS[0], isBall(5));
+  const sticks = baseball.STICKS.map(([x, z]) => ({ x: AT.x + x, z: AT.z + z })), clear = p => sticks.every(s => Math.hypot(s.x - p.x, s.z - p.z) >= 0.12);
+  // 閒晃挑的點（nav.wander）都離應援棒 ≥ 0.12
+  for (let i = 0; i < 300; i++) assert.ok(clear(show.nav.wander(baseball.LAWN, baseball.LAWN_R)), 'wander target clear of the sticks');
   for (let i = 0; i < 600; i++) {
     show.update(1 / 30, 100 + i / 30);
-    for (const m of show.roster.members('baseball.lawn')) assert.ok(!show.nav.inFootprint(m.pos.x, m.pos.z), `lawn fan ${m.i} outside every footprint`);
+    for (const m of show.roster.members('baseball.lawn')) {
+      assert.ok(!show.nav.inFootprint(m.pos.x, m.pos.z), `lawn fan ${m.i} outside every footprint`);
+      if (!m.walking) assert.ok(clear(m.pos), `lawn fan ${m.i} does not stop on a stick`);
+    }
   }
   assert.equal(show.roster.members('baseball.lawn').length, 2);
 });

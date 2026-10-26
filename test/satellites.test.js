@@ -116,3 +116,20 @@ test('satellites: lighthouse keeper appears at bulb ≥ 2 and rings the island; 
   }
   assert.ok(far > 0.3, 'walks round');
 });
+// 守塔人跟燈塔的燈同一拍出現（燈泡 Lv2 電工走最後一段時），不是回合末才冒出來（審查）
+test('the keeper appears on the same frame as the lighthouse light during bulb Lv2', async () => {
+  const { headlessShow } = await import('./helpers/show.js'), { show, run } = await headlessShow(), update = show.update;
+  let frame = 0, light = null, keeper = null;
+  show.update = (dt, t) => { update(dt, t); frame++; if (light === null && show.stage.partObject('sat.lighthouse')) light = frame; if (keeper === null && show.roster.members('sat.keeper').length) keeper = frame; };
+  let st = engine.createState(spec), done = false;
+  for (const id of stats(enumerate(spec), spec).full[0].order) {
+    const r = engine.place(st, id, spec); st = r.state;
+    for (const e of [...r.events, { kind: 'settle' }]) {
+      if (!done && e.kind === 'grow' && e.item === 'bulb' && e.to === 2) { await run([e]); done = true; }
+      else await run([e], { instant: true });
+    }
+    if (done) break;
+  }
+  assert.ok(done && light !== null, 'the light comes on during the live bulb Lv2');
+  assert.equal(keeper, light, `keeper on frame ${keeper}, light on frame ${light}`);
+});

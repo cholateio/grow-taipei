@@ -27,9 +27,9 @@ const AT = anchorWorld('boba'), BEHIND = offset(AT, 0, -0.45), BESIDE = offset(A
 export const PIER = [0, 1, 2].map(k => offset(AT, 0.35 - 0.25 * k, -1.7));
 // 人龍最多 6 人一排（§14.3，原本鮮奶珍奶時 10 人，排太長擠成一團）
 export const QUEUE_MAX = 6;
-// 閒晃的觀光客：噴泉（外擴後 0.92）幾乎蓋滿攤位半徑 1.0 的圈子，散步圈的中心改放在噴泉西南、人龍尾巴再過去一點
-// （捷運站南邊的空地，半徑 1.0 裡約六成是可走點）
-const STROLL = offset(AT, -1.5, 0.9);
+// 閒晃的觀光客：噴泉（外擴後 0.92）幾乎蓋滿攤位半徑 1.0 的圈子；噴泉南邊、捷運站前又有人龍、站務員的崗位、站門、觀眾下車的月台，
+// 散步圈放在捷運站北邊、夜市西邊的小空地（半徑 0.8 裡約九成是可走點，離上面那些點都 ≥ 1.05）
+export const STROLL = offset(AT, -1.7, -1.5), STROLL_R = 0.8;
 
 export function view(lv) {
   const n = lv.boba, at = AT, v = {};
@@ -58,8 +58,8 @@ export function view(lv) {
   v['boba.owner'] = { kind: 'roster', at, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [{ ...(n < 3 ? BEHIND : BESIDE), yaw: 0 }], fidget: 'wave', rescue: true } };
   // 排隊的點都在噴泉／攤車外；萬一落進別的 footprint，rescue 讓名冊站到最近的可走點
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(at, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
-  // 鮮奶珍奶廣場多來的 4 個觀光客不排隊，在噴泉西南、捷運站前的空地閒晃（§14.3）；一樣從碼頭走來
-  if (n >= 3 && fresh) v['boba.strollers'] = { kind: 'roster', at: STROLL, n: 4, accessory: 'suitcase', shirt: SHIRTS.slice(4), home: { kind: 'wander', at: STROLL, r: 1.0, entry: PIER } };
+  // 鮮奶珍奶廣場多來的 4 個觀光客不排隊，在捷運站北邊、夜市旁的空地閒晃（§14.3）；一樣從碼頭走來
+  if (n >= 3 && fresh) v['boba.strollers'] = { kind: 'roster', at: STROLL, n: 4, accessory: 'suitcase', shirt: SHIRTS.slice(4), home: { kind: 'wander', at: STROLL, r: STROLL_R, entry: PIER } };
   return v;
 }
 

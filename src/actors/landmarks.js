@@ -7,9 +7,11 @@ export const id = 'landmarks';
 // 島民（§14.3 人分散）：五個人一個名冊，散步的家是溫泉格以外的六格（第 i 人用 home.at[i % 6]）；
 // 最擠的珍奶格（人龍、閒晃的觀光客）排在第六個，五個人各住一格、不再往那裡擠。溫泉格住的是下面兩位溫泉客
 const HOMES = [[0, 0], [-1, 1], [1, 0], [-1, 0], [0, -1], [0, 1]].map(cellCentre);
-// 溫泉池（底座半徑 0.7，加上池邊的石頭到 0.75）、小澡堂、木牌各自的 footprint——不再用整個包圍盒（會把池邊整圈都擋掉）
+// 溫泉池（底座半徑 0.7，加上池邊的石頭到 0.75）、小澡堂、木牌各自的 footprint——不再用整個包圍盒（會把池邊整圈都擋掉）。
+// 颱風登陸時池子不能躲（door: false），小澡堂可以（door: true，比一般的門小）
 const POOL_R = 0.75;
-const SPRING_FP = [{ r: POOL_R }, { x: 0.95, z: -0.75, w: 0.6, d: 0.5 }, { x: -0.85, z: 0.75, w: 0.36, d: 0.04 }];
+export const BATHHOUSE = { x: 0.95, z: -0.75, w: 0.6, d: 0.5, door: true };
+const SPRING_FP = [{ r: POOL_R, door: false }, BATHHOUSE, { x: -0.85, z: 0.75, w: 0.36, d: 0.04 }];
 // 溫泉客：池邊靠鏡頭那側兩個位置（池子外擴 PAD 後 0.87 之外），夾在泡湯老鼠（池裡半徑 0.62）之間，離老鼠都 ≥ 0.25；面向池心
 const BATHERS = [0.93, 2.0].map(a => { const p = { x: Math.cos(a) * 0.97, z: Math.sin(a) * 0.97 }; return { p, yaw: Math.atan2(-p.x, -p.z) }; });
 

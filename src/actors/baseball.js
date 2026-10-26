@@ -25,8 +25,11 @@ const AT = anchorWorld('baseball');
 export const PLAYER_ENTRY = [offset(AT, 0.95, -1.45), offset(AT, 1.15, -1.6)];
 const PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);   // 捷運站前：觀眾下車的地方
 export const CROWD_ENTRY = [0, 1, 2, 3].map(k => offset(PLATFORM, (k - 2.7) * 0.25, 0.15));
-// 巨蛋東邊的草皮（散步的觀眾）：在外擴 PAD 後的巨蛋橢圓外（約 1.36 倍）、離門口弧線最東的觀眾 1.0，半徑 0.8 裡約七成是可走點
-const LAWN = offset(AT, 1.7, -0.2);
+// 巨蛋東北邊的草皮（散步的觀眾）：在外擴 PAD 後的巨蛋橢圓外（約 1.5 倍）、離門口弧線最東的觀眾 1.5；
+// 演唱會的應援棒（巨蛋外一圈、沒有 footprint）都在散步圈外 ≥ 0.18，人不會停在棒子上
+export const LAWN = offset(AT, 1.7, -0.7), LAWN_R = 0.6;
+// 演唱會的藍色應援棒：巨蛋外一圈 8 根（相對 at）
+export const STICKS = Array.from({ length: 8 }, (_, i) => { const a = i / 8 * Math.PI * 2; return [Math.cos(a) * 1.3, Math.sin(a) * 1.1]; });
 
 // 觀眾站在巨蛋門前的弧線上，正中間留一條走道給球員；人數少一點，不然和小孩、老鼠擠成一團
 function fans(at, n) {
@@ -53,15 +56,15 @@ export function view(lv, flags) {
       { kind: 'box', pos: [0, 0.25, 0.86], scale: [0.32, 0.26, 0.06], color: C.window },
     );
     if (n >= 4) parts.push({ kind: 'box', pos: [0, 0.72, 0], scale: [1.2, 0.04, 0.12], color: C.yellow, glow: C.yellow });
-    if (n >= 5) for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; parts.push({ kind: 'box', pos: [Math.cos(a) * 1.3, 0.2, Math.sin(a) * 1.1], scale: [0.06, 0.3, 0.06], color: C.neonBlue, glow: C.neonBlue }); }
+    if (n >= 5) for (const [x, z] of STICKS) parts.push({ kind: 'box', pos: [x, 0.2, z], scale: [0.06, 0.3, 0.06], color: C.neonBlue, glow: C.neonBlue });
   }
   if (n <= 2) for (let i = 0; i < 4; i++) v[`baseball.lines.${i}`] = { kind: 'compound', at, footprint: false, parts: [line(BASES[i], BASES[(i + 1) % 4])] };
   if (n >= 2) {
     v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
     v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
     if (n >= 4) v['baseball.crowd'] = { kind: 'roster', at, n: 4, shirt: SHIRTS, home: { kind: 'stand', spots: fans(at, 4), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
-    // 演唱會起多來的兩個觀眾不擠門口，在巨蛋東邊的草皮散步（§14.3）；一樣從月台走來
-    if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 2, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: 0.8, entry: CROWD_ENTRY } };
+    // 演唱會起多來的兩個觀眾不擠門口，在巨蛋東北邊的草皮散步（§14.3）；一樣從月台走來
+    if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 2, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: LAWN_R, entry: CROWD_ENTRY } };
   }
   // 跨年煙火：巨蛋上空循環放
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false };

@@ -147,8 +147,8 @@ export const script = {
       const stop = i => c => order(c)[i], cell = i => c => stopCell(stop(i)(c));
       const at = i => c => lampApproach(LAMP_STOPS[stop(i)(c)][0]), go = i => B.walk(m, at(i), { speed: LIGHTING_SPEED });
       const pan = i => panAhead(B, m, at(i), c => (sameCell(cell(i)(c), cell(i - 1)(c)) ? null : cell(i)(c)), LIGHTING_SPEED);
-      // 夜市兩攤、燈塔島的燈在走最後一段時跟上一站一起亮（他快到了，夜市先開張）；到了最後一站點完燈就 LEVEL UP
-      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 2 ? ['bulb.market', 'sat.lighthouse'] : [])] });
+      // 夜市兩攤、燈塔島的燈（和守塔人）在走最後一段時跟上一站一起亮（他快到了，夜市先開張）；到了最後一站點完燈就 LEVEL UP
+      const light = i => B.apply(e, { only: c => [...(i === 0 ? ['bulb.posts'] : []), `bulb.lamps.${stop(i)(c)}`, ...(i === n - 2 ? ['bulb.market', 'sat.lighthouse', 'sat.keeper'] : [])] });
       return [
         B.focus(cell(0)), go(0), ...Array.from({ length: n - 1 }, (_, i) => B.together([go(i + 1), light(i), pan(i + 1)])), light(n - 1),
         B.home(m), levelUpAtHome(B, cell(n - 1)),

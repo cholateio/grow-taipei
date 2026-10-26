@@ -56,7 +56,6 @@ import { offset } from '../src/actors/palette.js';
 import { LAMP_STOPS } from '../src/actors/bulb.js';
 import * as baseball from '../src/actors/baseball.js';
 import * as milk from '../src/actors/milk.js';
-import * as landmarks from '../src/actors/landmarks.js';
 import { worldEffects } from '../src/actors/world.js';
 import { B } from '../src/show/beats.js';
 import { headlessShow, playItem } from './helpers/show.js';
@@ -287,6 +286,11 @@ test('landing turn live: people vanish at their doors without a blink; the next 
   assert.ok(hides.every(x => x.blinks === 0), `nothing blinks while people hide (${hides.map(x => x.blinks)})`);
   const indoors = hides.filter(x => x.m.hidden && !x.m.gone);
   assert.ok(indoors.length >= 3, 'still indoors at the end of the landing turn');
+  // 溫泉客躲進小澡堂（池子不能躲），不是在池邊原地不見（審查）
+  const { BATHHOUSE } = await import('../src/actors/landmarks.js'), SP = landmarkWorld('spring'), bath = { x: SP.x + BATHHOUSE.x, z: SP.z + BATHHOUSE.z };
+  const bathers = hides.filter(x => x.m.key === 'landmarks.bathers');
+  assert.equal(bathers.length, 2, 'both bathers take shelter');
+  for (const x of bathers) assert.ok(Math.hypot(x.at.x - bath.x, x.at.z - bath.z) < 0.6, `bather ${x.m.i} hides at the bathhouse (${Math.hypot(x.at.x - bath.x, x.at.z - bath.z).toFixed(2)})`);
   // 回合之間也照樣更新幾秒：躲著的人不在門裡亂走
   for (let i = 0; i < 60; i++) show.update(1 / 30, 200 + i / 30);
   for (const x of indoors) assert.ok(Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) < 1e-9, `${x.m.key} stays at the door`);
@@ -311,10 +315,8 @@ test('landing turn live: people vanish at their doors without a blink; the next 
     const f = first.get(x.m);
     assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
     assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
-    // 家就在門口的人（溫泉客躲在池邊、站位離藏身處 < 0.4）出來就到家了，不必走
-    const h = landmarks.view(show.stage.lv, show.stage.flags)[x.m.key]?.home, spot = h?.kind === 'stand' ? h.spots[x.m.i % h.spots.length] : null;
+    assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
-    if (!spot || Math.hypot(spot.x - x.at.x, spot.z - x.at.z) >= 0.4) assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
   }
 });
 // R13：玩家在回合中途拖過鏡頭 → 登陸的 focus('home') 不把鏡頭拉回全景、不清拖過的記號；只有回合最後的 home 照回並清掉

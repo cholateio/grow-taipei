@@ -54,9 +54,10 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   // 沒宣告的 compound 建好時量一次包圍盒（零件已經放在 at，包圍盒就是世界座標）；其他 kind 沒宣告就沒有
   const box = new THREE.Box3(), size = new THREE.Vector3(), centre = new THREE.Vector3();
   // 回傳 footprint 的陣列（沒有就空陣列）
+  // door（可省）：颱風登陸時算不算能躲進去的門（true／false 蓋過照大小判斷，見 typhoon.js nearestDoor）
   const shapeOf = (f, at) => {
-    const x = at.x + (f.x ?? 0), z = at.z + (f.z ?? 0);
-    return f.r !== undefined ? { x, z, r: f.r } : f.rx !== undefined ? { x, z, rx: f.rx, rz: f.rz } : { x, z, w: f.w, d: f.d };
+    const x = at.x + (f.x ?? 0), z = at.z + (f.z ?? 0), door = f.door !== undefined ? { door: f.door } : {};
+    return f.r !== undefined ? { x, z, r: f.r, ...door } : f.rx !== undefined ? { x, z, rx: f.rx, rz: f.rz, ...door } : { x, z, w: f.w, d: f.d, ...door };
   };
   function footprintOf(s, object) {
     const f = s.footprint, at = s.at ?? { x: 0, z: 0 };

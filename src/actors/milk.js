@@ -1,7 +1,8 @@
 // 鮮奶（§5.1）：牛奶箱 → 一層小學與 3 個小孩 → 兩層、小孩長高 1.3 倍 → 三層、升旗 → 鐘塔、棒球帽（有球場就組少棒隊）→ 大學、學士帽。
 // 被老鼠咬或颱風登陸那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來；颱風賴著不走也一樣）。
-// 劇本（§8.1）：島民送奶 → 小學生從校門跑出來 → 去牛奶箱喝奶長高 → 升旗 → 換棒球帽去巨蛋旁練球 → 工程師來邀、一個學生跟去園區。
+// 劇本（§8.1）：島民送奶 → 小學生從校門外跑進操場 → 去牛奶箱喝奶長高 → 升旗 → 換棒球帽去巨蛋旁練球 → 工程師來邀、一個學生跟去園區。
 import { anchorWorld } from './anchors.js';
+import { edgeMidpoint, RING_R } from '../scene/hex.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 
 export const id = 'milk';
@@ -14,6 +15,11 @@ const GATE = offset(AT, 0, 0.1);                      // 校門口（校舍正�
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 const POLE = offset(AT, 0.75, 0.95);                  // 旗桿
 const PARK = offset(anchorWorld('chip'), -0.3, 0.75); // 園區門口（工程師通勤的起點）
+// 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡
+export const KID_ENTRY = offset(AT, 1.65, 0.1);
+// 晶片格往中心格那座橋的晶片格橋頭（Lv6 工程師從園區出發、走到這裡鏡頭才轉回鮮奶格）
+const CHIP_BRIDGE = (({ a }) => ({ ...a, y: anchorWorld('chip').y }))(edgeMidpoint([1, 0], [0, 0], RING_R * Math.sqrt(3) / 2));
+const MILK = [-1, 0], CHIP = [1, 0], DOME = [-1, 1];   // 鏡頭對的格子：校舍、園區、巨蛋
 const league = lv => lv.milk >= 5 && lv.baseball >= 2;
 const DOME_SIDE = offset(anchorWorld('baseball'), 1.3, 0.75);   // 巨蛋東側門前（Lv5 劇本小學生停下來和球員打招呼的地方）
 // 小孩日常的中心：少棒隊在巨蛋旁的空地練球（門口留給球員和觀眾），否則在操場
@@ -62,7 +68,7 @@ export function view(lv, flags, meta = {}) {
   ] };
   if (n >= 2 && !home) v['milk.kids'] = {
     kind: 'roster', at, n: 3, shirt: C.yellow, accessory: n >= 6 ? 'mortar' : n >= 5 ? 'cap' : 'none', scale: n >= 3 ? 1.3 : 1,
-    home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5 },
+    home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRY },
   };
   return v;
 }
@@ -72,9 +78,9 @@ export function view(lv, flags, meta = {}) {
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const kid = (ctx, i) => () => ctx.roster.members('milk.kids')[i] ?? null;
 const KIDS = [0, 1, 2];
-// 從校門口放一個小學生出來；小孩這時躲在校舍裡（老鼠 ≥2、颱風登陸）就沒有名冊可放，這拍跳過
+// 從入口（校門外靠中心格那側）放一個小學生出來；小孩這時躲在校舍裡（老鼠 ≥2、颱風登陸）就沒有名冊可放，這拍跳過
 function spawnKid(ctx) {
-  const beat = ctx.B.spawn('milk.kids', GATE), start = beat.start;
+  const beat = ctx.B.spawn('milk.kids', KID_ENTRY), start = beat.start;
   beat.start = c => (view(c.stage.lv, c.stage.flags, c.stage.meta)['milk.kids'] ? start(c) : false);
   return beat;
 }
@@ -86,7 +92,7 @@ export const script = {
     return [B.walk(islander, offset(CRATE, 0.5, 0.1)), B.gesture(islander, 'look', { at: CRATE }), B.apply(e), B.bubble(islander, '♥'), B.home(islander)];
   },
   grow: {
-    // 一層小學：校舍閃白，3 個小學生一個接一個從校門口跑出來到操場
+    // 一層小學：校舍閃白，3 個小學生一個接一個從校門外跑進操場
     2(e, s, ctx) {
       const { B } = ctx, spot = i => c => c.nav.slots(PLAY, 3, 0.45)[i];
       const run = i => B.walk(kid(ctx, i), spot(i));
@@ -119,22 +125,26 @@ export const script = {
       ];
     },
     // 鐘塔、少棒：閃白換棒球帽 → 一起過橋走到巨蛋旁 → 跳起來、球員 ♪ → 鐘塔閃白 → 回家（自己走到空地練球）
-    // 有球場時先停在巨蛋東側門前（球員看得到；繞到西南空地的最後一段交給日常，不算進回合）
+    // 有球場時先停在巨蛋東側門前（球員看得到；繞到西南空地的最後一段交給日常，不算進回合）；
+    // 鏡頭（§13.1）：一出發就轉去巨蛋格，跳完再轉回校舍格看鐘塔閃白、LEVEL UP
     5(e, s, ctx) {
-      const { B } = ctx, centre = league(s.lv) ? DOME_SIDE : kidsCenter(s.lv), player = () => ctx.roster.members('baseball.players')?.[0] ?? null;
+      const { B } = ctx, away = league(s.lv), centre = away ? DOME_SIDE : kidsCenter(s.lv), player = () => ctx.roster.members('baseball.players')?.[0] ?? null;
       return [
         B.apply(e, { only: ['milk.kids'] }), B.wait(0.3),
-        B.together(KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, 0.4)[i]))),
+        B.together([...(away ? [B.focus(DOME)] : []), ...KIDS.map(i => B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, 0.4)[i]))]),
         B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'jump')), B.bubble(player, '♪', 0.9)]),   // 小學生跳起來、球員 ♪ 同一拍
+        ...(away ? [B.focus(MILK)] : []),
         B.apply(e), B.home(c => c.roster.members('milk.kids')), B.levelUp('milk'),
       ];
     },
-    // 大學：一個工程師（通勤路上離校門最近的那個）走到校門口 → …… → 圖框「學士帽」→ 閃白：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
+    // 大學：一個工程師（通勤路上離園區橋頭最近的那個）從園區出發、過橋走到校門口 → …… → 圖框「學士帽」→ 閃白：拱門、校舍拉長、學士帽 → 一個學生跟工程師走回園區
+    // 鏡頭（§13.1）：先在晶片格看他出發，他走到園區橋頭就轉回鮮奶格等他走進來（沒有工程師就找離校門最近的島民，原地出發）
     6(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
-      const engineer = once(c => (c.roster.members('chip.engineers').length ? c.roster.nearest('chip.engineers', GATE) : c.roster.nearest('landmarks.islanders', GATE)));
+      const engineer = once(c => (c.roster.members('chip.engineers').length ? c.roster.nearest('chip.engineers', CHIP_BRIDGE) : c.roster.nearest('landmarks.islanders', GATE)));
       return [
-        B.walk(engineer, offset(GATE, 0.35, 0.25)), B.bubble(engineer, '……', 1.0), B.bubble(engineer, { icon: 'mortar' }, 1.0),
+        B.focus(CHIP), B.walk(engineer, c => (c.roster.members('chip.engineers').length ? CHIP_BRIDGE : engineer(c)?.pos)), B.together([B.focus(MILK), B.walk(engineer, offset(GATE, 0.35, 0.25))]),
+        B.bubble(engineer, '……', 1.0), B.bubble(engineer, { icon: 'mortar' }, 1.0),
         B.apply(e),
         // 兩人出發走回園區的同時，鮮奶頭上 LEVEL UP（不然要等他們橫越全島才標）
         B.together([B.walk(engineer, PARK), B.walk(k0, offset(PARK, 0.3, 0.1)), B.levelUp('milk')]),

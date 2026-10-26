@@ -183,7 +183,8 @@ export function camera(target) {
   };
 }
 
-// 鏡頭跟主線（§13.1）：target 是格子 [q, r]（平移到格子中心）、物品 id（那個物品的格子）或點 { x, y, z }；
+// 鏡頭跟主線（§13.1）：target 是格子 [q, r]（平移到格子中心）、物品 id（那個物品的格子）或點 { x, y, z }，
+// 也可以是 ctx => 上面三種（演到這拍才算：主角到時候在哪一格；回 null 這拍跳過）；
 // 1 秒平移＋拉近到全景距離 × zoom，名冊只讓那一格的人做日常（§13.4）。玩家拖過鏡頭 → 不動、不佔時間。
 // 拍只佔 FOCUS_BEAT 秒：easeInOut 最後 0.2 秒只剩 3% 的路，劇本先接著演（節奏門檻 50 s，計畫 3.8 Task 3）。
 // 'home'：回全景、名冊全部恢復；拖過也照回（清掉拖過的記號）。不佔時間：回合最後沒有別的要演，鏡頭在回合結束後自己飛完
@@ -194,11 +195,12 @@ export function focus(target, { zoom = 0.6 } = {}) {
     start(ctx) {
       const ms = ctx.instant ? 0 : 1000;
       if (target === 'home') { ctx.roster.setFocus(null); ctx.rig.home(ms); return; }
+      const t = typeof target === 'function' ? target(ctx) : target; if (!t) return false;
       // 點：格子用軸座標反算（衛星島也有自己的格子）
-      const cell = Array.isArray(target) ? target : typeof target === 'string' ? cellOf(target) : worldToAxial(target.x, target.z);
+      const cell = Array.isArray(t) ? t : typeof t === 'string' ? cellOf(t) : worldToAxial(t.x, t.z);
       if (!cell) return false;
       ctx.roster.setFocus([cell]);
-      const point = Array.isArray(target) || typeof target === 'string' ? cellCentre(cell) : target;
+      const point = Array.isArray(t) || typeof t === 'string' ? cellCentre(cell) : t;
       return ctx.rig.grabbed ? false : ctx.rig.focus(point, { zoom, ms });
     },
   };
@@ -280,7 +282,11 @@ export function trainDepart() {
 // 到站後停 stop 秒（預設 3；時鐘偏移跟時間等速倒退，車不動），之後照常開。跳過時什麼都不改（車照原本的時鐘跑）
 // during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
-const durOf = (b, ctx) => { const d = b.estimate ? b.estimate(ctx) : typeof b.dur === 'function' ? b.dur(ctx) : b.dur; return d > 0 ? d : 0; };
+// together（還沒 start，dur 是 0）取子拍估計的最長
+const durOf = (b, ctx) => {
+  if (b.kind === 'together' && b.beats) return Math.max(0, ...b.beats.map(x => durOf(x, ctx)));
+  const d = b.estimate ? b.estimate(ctx) : typeof b.dur === 'function' ? b.dur(ctx) : b.dur; return d > 0 ? d : 0;
+};
 export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [] } = {}) {
   const subs = [].concat(during);
   let k = 1, arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }

@@ -5,10 +5,12 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import * as milk from '../src/actors/milk.js';
 import { anchorWorld } from '../src/actors/anchors.js';
-import { RING_R } from '../src/scene/hex.js';
+import { RING_R, cellAt } from '../src/scene/hex.js';
 import { ROOFS, roofColor } from '../src/actors/palette.js';
-import { lv, worldPoints, distToCell } from './helpers/actors.js';
-import { headlessShow, playItem } from './helpers/show.js';
+import { lv, worldPoints, distToCell, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { B } from '../src/show/beats.js';
+import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
 test('roofColor cycles coral → navy → yellow after the typhoon rebuild', () => {
@@ -79,14 +81,14 @@ test('view: kids are a roster declaration; crate and flag are separate parts; sc
   assert.ok(v['milk.main'].footprint.d <= 0.9); assert.equal(v['milk.gate'], undefined);
   assert.equal(milk.view(lv({ milk: 6 }), {})['milk.gate'].footprint, false);
 });
-test('scripts: every milk event in both solutions plays 2.5–15 s, ends with LEVEL UP on milk, and leaves the kids at home', async () => {
+test('scripts: every milk event in both solutions plays 2.5–18 s, ends with LEVEL UP on milk, and leaves the kids at home', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   for (const order of SOLUTIONS) {
     show.reset();
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
       seen.push(e.kind === 'grow' ? e.to : 1);
-      assert.ok(secs >= 2.5 && secs <= 15, `${e.kind} ${e.to ?? ''} took ${secs}s`);   // 下限因 §13.2 閃白變短而降低（原 3）
+      assert.ok(secs >= 2.5 && secs <= 18, `${e.kind} ${e.to ?? ''} took ${secs}s`);   // 下限因 §13.2 閃白變短而降低（原 3）；上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）
       if (e.kind === 'grow') assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
       for (const m of show.roster.members('milk.kids')) assert.equal(m.mode, 'home');
     });
@@ -95,7 +97,7 @@ test('scripts: every milk event in both solutions plays 2.5–15 s, ends with LE
 });
 
 // Lv6 只在倒數蒙太奇回合長出來（playItem 演不到）：用引擎把正解瞬間演到鮮奶 grow 6 之前（鮮奶 5、晶片 ≥3），再單獨 live 演這一級
-test('milk 6 live: the university plays 3–15 s, LEVEL UP over milk is the last new bubble, kids end at home in mortarboards', async () => {
+test('milk 6 live: the university plays 3–18 s, LEVEL UP over milk is the last new bubble, kids end at home in mortarboards', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   const isSix = e => e.kind === 'grow' && e.item === 'milk' && e.to === 6;
   for (const order of SOLUTIONS) {
@@ -111,12 +113,64 @@ test('milk 6 live: the university plays 3–15 s, LEVEL UP over milk is the last
     assert.ok(e6, 'milk grows to 6');
     assert.equal(show.stage.lv.milk, 5); assert.ok(show.stage.lv.chip >= 3, `chip ${show.stage.lv.chip}`);
     const n = bubblesLog.length, secs = await run([e6]);
-    assert.ok(secs >= 3 && secs <= 15, `grow 6 took ${secs.toFixed(1)}s`);
+    assert.ok(secs >= 3 && secs <= 18, `grow 6 took ${secs.toFixed(1)}s`);   // 上限 15 → 18：計畫 3.8 Task 5（工程師從園區橋頭出發，+3 s）
     const last = bubblesLog.slice(n).at(-1), head = show.stage.headOf('milk');
     assert.equal(last?.text, 'LEVEL UP');
     assert.ok(Math.hypot(last.at.x - head.x, last.at.y - head.y, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
     const kids = show.roster.members('milk.kids');
     assert.equal(kids.length, 3);
     for (const m of kids) { assert.equal(m.mode, 'home'); assert.equal(m.walker.accessory, 'mortar'); }
+  }
+});
+
+// 入口點（§13.2、計畫 3.8 Task 5）：小學生從校門外靠中心格那側的邊上走進來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有少棒隊；兩條正解每一刻的真 footprint）
+test('milk.kids enter from the gate edge toward the centre cell, walkable and ≥ 1.5 from every spot at every level', async () => {
+  const nav = createNav(), bad = [];
+  for (const n of [1, 2, 3, 4, 5, 6]) for (const baseball of [0, 2]) {
+    const v = milk.view(lv({ milk: n, baseball }), {});
+    if (v['milk.kids']) { assert.ok(v['milk.kids'].home.entry, `lv${n} entry declared`); assert.deepEqual(cellAt(v['milk.kids'].home.entry.x, v['milk.kids'].home.entry.z), [-1, 0]); assert.ok(v['milk.kids'].home.entry.x > anchorWorld('milk').x + 1.5, 'east side (toward the centre cell)'); }
+    bad.push(...entryProblems(v, nav, `lv${n} baseball ${baseball}`));
+  }
+  bad.push(...await entriesThroughSolutions(milk, SOLUTIONS));
+  assert.deepEqual(bad, []);
+});
+
+// 鏡頭（§13.1、計畫 3.8 Task 5）：照 order 瞬間演到 pred 那個事件，單獨 live 演；回傳這個事件的鏡頭軌跡（格子…、'home'）
+async function trailAt(h, order, pred) {
+  let s = engine.createState(spec);
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (pred(e)) { const n0 = h.rig.log.length; await h.run([e]); return focusTrail(h.rig.log, n0); }
+      await h.run([e], { instant: true });
+    }
+    await h.run([{ kind: 'settle' }], { instant: true });
+  }
+  throw new Error('event not found');
+}
+const isMilk = to => e => e.kind === 'grow' && e.item === 'milk' && e.to === to;
+const fakeCtx = { B, roster: { members: () => [], nearest: () => null } };
+test('milk 5 with a little league: the camera follows the kids to the dome cell, then comes back to the school for the clock tower', async () => {
+  const s5 = { lv: lv({ milk: 5, baseball: 2 }), flags: {} }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  const beats = milk.script.grow[5]({ kind: 'grow', item: 'milk', to: 5 }, s5, fakeCtx);
+  assert.notEqual(beats[0].kind, 'focus', 'starts on the milk cell (the turn pans there)');
+  assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, fakeCtx)), [[-1, 1], [-1, 0]]);
+  assert.ok(beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'walk')), 'pans while they walk');
+  const noLeague = milk.script.grow[5]({ kind: 'grow', item: 'milk', to: 5 }, { lv: lv({ milk: 5 }), flags: {} }, fakeCtx);
+  assert.equal(flat(noLeague).filter(b => b.kind === 'focus').length, 0, 'no little league: they stay on the playground');
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), trail = await trailAt(h, order, isMilk(5));
+    assert.deepEqual(trail, [[-1, 0], [-1, 1], [-1, 0], 'home'], order.join('>'));
+  }
+});
+test('milk 6: the first beat focuses the chip cell (the engineer sets off), then the milk cell while he walks in', async () => {
+  const beats = milk.script.grow[6]({ kind: 'grow', item: 'milk', to: 6 }, { lv: lv({ milk: 6, chip: 3 }), flags: {} }, fakeCtx);
+  assert.equal(beats[0].kind, 'focus'); assert.deepEqual(focusCell(beats[0], fakeCtx), [1, 0]);
+  const t = beats.find(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus'));
+  assert.deepEqual(focusCell(t.beats.find(x => x.kind === 'focus'), fakeCtx), [-1, 0]); assert.ok(t.beats.some(x => x.kind === 'walk'));
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), trail = await trailAt(h, order, isMilk(6));
+    assert.deepEqual(trail, [[1, 0], [-1, 0], 'home'], order.join('>'));
   }
 });

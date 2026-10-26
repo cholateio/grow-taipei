@@ -86,3 +86,23 @@ export async function playItem(show, run, order, itemId, check) {
     await run([{ kind: 'settle' }], { instant: true });
   }
 }
+
+// 兩條正解（放置 + 倒數三回合）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）
+export async function entriesThroughSolutions(mod, orders) {
+  const { entryProblems } = await import('./actors.js');
+  const { show, run } = await headlessShow(), bad = [];
+  for (const order of orders) {
+    show.reset();
+    let s = engine.createState(spec);
+    const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const step of steps) {
+      const r = step(s); s = r.state;
+      for (const e of [...r.events, { kind: 'settle' }]) {
+        await run([e], { instant: true });
+        const st = show.stage;
+        bad.push(...entryProblems(mod.view(st.lv, st.flags, st.meta), show.nav, `${order.join('>')} ${JSON.stringify(st.lv)}`));
+      }
+    }
+  }
+  return [...new Set(bad)];
+}

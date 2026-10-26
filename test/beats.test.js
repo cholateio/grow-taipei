@@ -271,6 +271,26 @@ test('focus pans to the cell centre at zoom 0.6 (1 s flight, 0.8 s beat) and nar
   assert.deepEqual(rig.calls.slice(4), [['focus', c([0, 0]), { zoom: 0.6, ms: 0 }], ['home', 0]], 'instant uses 0 ms');
   return Promise.resolve().then(() => assert.ok(ended));
 });
+// 計畫 3.8 Task 5：target 可以是 ctx => 目標（演到才算：主角到時候在哪一格）；回 null 這拍跳過、不佔時間
+test('focus with a function target resolves it when the beat starts; null skips the beat', () => {
+  const { ctx, tl, rig, roster } = fake(); let cell = null; const seen = [];
+  const f = B.focus(cx => { seen.push(cx); return cell; });
+  assert.equal(f.kind, 'focus');
+  tl.play([f], ctx); tl.update(0);
+  assert.deepEqual(seen, [ctx]); assert.equal(rig.calls.length, 0); assert.equal(tl.busy, false, 'null → skipped');
+  cell = [0, 1]; tl.play([f], ctx); tl.update(0);
+  assert.equal(tl.currentDur, FOCUS_BEAT); assert.deepEqual(rig.calls[0], ['focus', c([0, 1]), { zoom: 0.6, ms: 1000 }]); assert.deepEqual(roster.focus.at(-1), [[0, 1]]);
+  tl.skip();
+});
+// trainStop 的 during 長度在 start 前就要估：together 取子拍估計的最長（不估成 0，不然車開走時還沒走完的人被瞬移到終點）
+test('trainStop during: a together sub-beat counts as its longest child', () => {
+  const { ctx, tl, rail } = fake({ parts: ['token.train'] }); rail.offset = 0;
+  ctx.now = (STATION_A - 0.35) / 0.35;   // 1 s 到站
+  const sub = dur => ({ kind: 'x', dur });
+  tl.play([B.trainStop({ stop: 1, during: [sub(0.5), B.together([sub(2), sub(0.8)])] })], ctx); tl.update(0);
+  assert.ok(Math.abs(tl.currentDur - (1 + 2.5)) < 1e-6, `lasts until the together is done (${tl.currentDur})`);
+  tl.skip();
+});
 // §13.2：spawn 不閃、不佔時間（之後由 walk 帶進場）
 test('spawn takes a held member out at once without a blink; home hands members back to the roster', () => {
   const { ctx, tl, member, roster, blink } = fake(); const at = { x: 1, y: 0.6, z: 1 };

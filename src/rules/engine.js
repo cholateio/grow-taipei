@@ -1,5 +1,5 @@
 // 連鎖規則引擎：place(state, id) → { state, events }。不可變，Node 與瀏覽器共用。
-// 語意見設計文件 §6.2：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合最多一級）→ 回合結束反應。
+// 語意見設計文件 §6.2 與物品 v2 §3：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合一步：+1 或跳級 +2；連 delta 最多 +2）→ 回合結束反應。
 import * as defaultSpec from './spec.js';
 import { compile } from './conditions.js';
 
@@ -103,13 +103,19 @@ function applyAction(s, a, kind, cause, rules, events, depth = 0) {
   }
 }
 
+// 每回合開始時各物品的級數（R4 的 +2 上限用）；鍵是 turn() 裡的工作狀態，回合結束就沒人引用
+const turnStart = new WeakMap();
+
 function actionEvent(s, a, kind, cause, rules) {
   if (!a.test(s)) return null;
   const ev = { kind, item: cause, cause };
   if (a.delta) {
     const { target, by } = a.delta;
     if (!(s.lv[target] > 0)) return null;
-    const from = s.lv[target], to = Math.max(1, Math.min(rules.items[target].max, from + by));
+    // 裁決 R4：每回合每物品最多 +2，delta 也算——正向 delta 壓到「回合開始的級數 +2」，壓到不動就整條不發
+    const cap = by > 0 ? (turnStart.get(s)?.[target] ?? s.lv[target]) + 2 : Infinity;
+    const from = s.lv[target], to = Math.max(1, Math.min(rules.items[target].max, from + by, Math.max(from, cap)));
+    if (by > 0 && to === from) return null;
     s.lv[target] = to; if (to !== from) s.held[target] = 0;
     ev.item = target;
     ev.delta = { target, from, to };
@@ -137,53 +143,44 @@ function turn(state, id, spec, rules) {
 
   // age = 放下幾回合；held = 停在目前這一級幾回合（delay 用；升級或被 delta 改級就歸零）
   for (const k of spec.ORDER) if (s.lv[k] > 0) { s.age[k] += 1; s.held[k] = (s.held[k] ?? 0) + 1; }
+  turnStart.set(s, { ...s.lv });
   if (id) {
     s.lv[id] = 1; s.age[id] = 0; s.held[id] = 0;
     events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
     for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
   }
 
-  // GROW 的節奏（使用者 2026-10-25、物品 v2 §3）：每回合每個物品只走一步——跳級（+2）或 +1，剛放下的物品當回合不長。
-  // 掃描反覆到不動為止，A 升了讓 B 升的連鎖還在。同一輪裡先看跳級：先做成立的跳級，再做沒有跳級可等的 +1，
-  // 最後才一個一個做「跳級條件還沒成立」的 +1（別人這回合長上來可能讓它改成跳級，所以讓它最後走）。
+  // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5）：每回合每個物品只走一步——在 n−2 且 jump[n] 成立就跳（+2），
+  // 否則 up 成立就 +1；剛放下的物品當回合不長；連 delta 在內一回合最多比回合開始高 2 級。
+  // 照 ORDER 反覆掃到不動為止（A 升了讓 B 升的連鎖還在），掃到誰就當場決定，不為了等跳級延後 +1。
   // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。
-  const stalled = new Set(), grown = new Set(id ? [id] : []);
+  const stalled = new Set(), grown = new Set(id ? [id] : []), start = turnStart.get(s);
   let lastGrown = null;
-  const step = (k, it, lv, to, jump) => {
-    for (let n = lv + 1; n <= to; n++) {
-      s.lv[k] = n; s.held[k] = 0;
-      const e = { kind: 'grow', item: k, from: n - 1, to: n, story: spec.STORIES.grow[k][n], via: jump ? it.jumpDeps[to] : it.deps[n] };
-      if (jump && n === to) e.jump = true;
-      events.push(e);
-      for (const a of it.onLevel[n] || []) applyAction(s, a, 'fx', k, rules, events);
-    }
-    lastGrown = k; grown.add(k);
-  };
-  // 這一刻 k 能走哪一步：'jump' | 'up' | 'later'（只有 +1、但跳級可能稍後成立）| null
-  const option = k => {
-    const it = rules.items[k], lv = s.lv[k];
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) return null;
-    const st = it.stall.find(r => r.test(s));
-    if (st) {
-      if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
-      return null;
-    }
-    const ready = n => !(it.delay[n] && it.delay[n](s) && s.held[k] < 2);
-    const canJump = lv + 2 <= it.max && !!it.jump[lv + 2];
-    if (canJump && it.jump[lv + 2](s) && ready(lv + 2)) return 'jump';
-    if (!it.up[lv + 1](s) || !ready(lv + 1)) return null;
-    return canJump ? 'later' : 'up';
-  };
   for (let scan = 0; ; scan++) {
     if (scan >= SCAN_LIMIT) throw new Error(`scan limit ${SCAN_LIMIT} exceeded while growing ${lastGrown}`);
     let changed = false;
-    for (const k of spec.ORDER) if (option(k) === 'jump') { step(k, rules.items[k], s.lv[k], s.lv[k] + 2, true); changed = true; }
-    if (changed) continue;
-    for (const k of spec.ORDER) if (option(k) === 'up') { step(k, rules.items[k], s.lv[k], s.lv[k] + 1, false); changed = true; }
-    if (changed) continue;
-    const k = spec.ORDER.find(k => option(k) === 'later');
-    if (!k) break;
-    step(k, rules.items[k], s.lv[k], s.lv[k] + 1, false);
+    for (const k of spec.ORDER) {
+      const it = rules.items[k], lv = s.lv[k];
+      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) continue;
+      const st = it.stall.find(r => r.test(s));
+      if (st) {
+        if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
+        continue;
+      }
+      const room = start[k] + 2, ready = n => n <= room && !(it.delay[n] && it.delay[n](s) && s.held[k] < 2);
+      const jump = lv + 2 <= it.max && it.jump[lv + 2] && ready(lv + 2) && it.jump[lv + 2](s);
+      if (!jump && !(ready(lv + 1) && it.up[lv + 1](s))) continue;
+      const to = jump ? lv + 2 : lv + 1;
+      lastGrown = k; changed = true; grown.add(k);
+      for (let n = lv + 1; n <= to; n++) {
+        s.lv[k] = n; s.held[k] = 0;
+        const e = { kind: 'grow', item: k, from: n - 1, to: n, story: spec.STORIES.grow[k][n], via: jump ? it.jumpDeps[to] : it.deps[n] };
+        if (jump && n === to) e.jump = true;
+        events.push(e);
+        for (const a of it.onLevel[n] || []) applyAction(s, a, 'fx', k, rules, events);
+      }
+    }
+    if (!changed) break;
   }
 
   // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；

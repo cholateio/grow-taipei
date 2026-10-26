@@ -72,3 +72,14 @@ test('report: with chip eighth every other item reaches max−1 in some order', 
   assert.equal(rep.ok, rep.best.short.length === 0);
   assert.equal(rep.ok, true, `best chip-eighth order still leaves ${rep.best.short.join(',')} below max−1`);
 });
+// 審稿第 1 輪故事要求：照正解玩不會看到災難附註；颱風擋飛彈、鮮奶過期都當得上標題（不是永遠被前面的蓋掉）
+function storyGoals(results, s) {
+  const out = [];
+  for (const r of s.full) for (const id of ['blackout', 'flood', 'domeRats']) if (r.satisfied.includes(id)) out.push(`${r.order.join(',')} 有 ${id}`);
+  for (const id of ['typhoonDeflect', 'milkExpired']) if (!results.some(r => r.ending.id === id)) out.push(`${id} 從來不是標題`);
+  if (results.filter(r => r.satisfied.includes('typhoonDeflect')).every(r => r.satisfied.includes('blackout'))) out.push('颱風擋飛彈的順序都是大停電');
+  return out;
+}
+test('story: true solutions carry no disaster extras; typhoonDeflect and milkExpired each title some orders', () => {
+  assert.deepEqual(storyGoals(all, st), []);
+});

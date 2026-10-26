@@ -5,6 +5,7 @@
 // 物品 v2（2026-10-26）：合計 61 級、六個跳級（每物品最多一個）、離島鏈 代幣7 → 燈泡7 → 燈泡8 → 晶片6 → 7 → 8 → 9。
 // 每回合每物品只走一步（+1 或跳級），剛放下的當回合不長，第 8 個放完後再長 CLOSING_TURNS 回合。
 // 條件數字和設計表不同的地方都是求解器逼出來的（見任務 1 報告）：11 回合裡鮮奶、晶片、棒球都是零餘裕。
+// 珍奶的跳級從設計的 2→4 移到 1→3：一回合 +2 上限（裁決 R4）下，第 7 個放的珍奶在颱風登陸那回合正好在 2，跳級和外送 +1 不能疊。
 // 設計文件：docs/superpowers/specs/2026-10-26-items-v2-design.md §3、§4；主規格 2026-10-24 §6
 
 export const ORDER = ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'];
@@ -23,10 +24,10 @@ const present = id => ({ present: id });
 export const ITEMS = {
   milk: {
     name: '鮮奶', max: 10,
-    // 牛奶箱 → 早餐店 → 小學 → 兩層 → 三層（自己長）→ 鐘塔要有少棒隊 → 升格大學（北士科或捷運帶來學生；晶片夠高直接跳）
+    // 牛奶箱 → 早餐店 → 小學 → 兩層 → 三層（自己長）→ 鐘塔要有少棒隊 → 升格大學（北士科或捷運帶來學生；晶片夠高、大巨蛋也蓋好就直接跳）
     // → 研究大樓 → 畢業典禮（全島 LED）→ 鮮奶節（珍奶噴泉廣場）
     up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: min('baseball', 2), 7: or(min('chip', 3), min('token', 4)), 8: min('token', 4), 9: min('bulb', 5), 10: min('boba', 4) },
-    jump: { 7: min('chip', 5) },
+    jump: { 7: and(min('chip', 5), min('baseball', 3)) },
   },
   chip: {
     name: '晶片', max: 9,
@@ -49,15 +50,16 @@ export const ITEMS = {
   },
   typhoon: {
     name: '颱風', max: 3,
-    // 烏雲 → 下一回合登陸 → 再下一回合放晴（抽水站要有電：大停電就一直不放晴）；
+    // 烏雲 → 下一回合登陸 → 再下一回合放晴（抽水站要變電所供電：燈泡 ≥6，不然颱風一直不走、最後擋飛彈）；
     // 颱風賴在大巨蛋（棒球 ≥3）就多等一回合——除非矽盾已經測試過（晶片 ≥8），罩子一閃把颱風推走
-    up: { 2: auto, 3: min('bulb', 3) },
+    up: { 2: auto, 3: min('bulb', 6) },
     delay: { 3: and(min('baseball', 3), max('chip', 7)) },
     onLevel: {
+      // 鼠災要老鼠已經分岔（≥4）才鬧得起來：照正解玩，颱風登陸時老鼠還小
       2: [
         { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },
         { when: and(present('token'), max('token', 2)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },
-        { when: and(min('rat', 2), min('baseball', 3)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
+        { when: and(min('rat', 4), min('baseball', 3)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
         { when: present('milk'), story: '颱風假！小朋友在家看電視' },
         { when: present('boba'), delta: { target: 'boba', by: 1 }, story: '颱風天珍奶外送爆單' },
       ],
@@ -80,9 +82,9 @@ export const ITEMS = {
   },
   boba: {
     name: '珍奶', max: 7,
-    // 攤車 → 人龍 → 珍奶店（自己長）→ 噴泉廣場要廠房的工程師（鮮奶夠高直接跳：鮮奶珍奶）→ 連鎖店 → ★ 燈塔島旗艦店 → 世界珍奶節
+    // 攤車 →（鮮奶夠了直接跳：鮮奶珍奶）人龍 → 珍奶店 → 噴泉廣場要廠房的工程師 → 連鎖店 → ★ 燈塔島旗艦店 → 世界珍奶節
     up: { 2: auto, 3: auto, 4: min('chip', 2), 5: min('token', 4), 6: min('token', 7), 7: min('bulb', 5) },
-    jump: { 4: min('milk', 4) },
+    jump: { 3: min('milk', 4) },
     onLevel: {
       4: [{ when: max('milk', 2), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },

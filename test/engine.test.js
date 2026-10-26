@@ -199,7 +199,7 @@ test('landsTyphoon: only the event that brings the typhoon to Lv2', () => {
 
 // 物品 v2（設計 2026-10-26 §3）：跳級 jump[n] 從 n−2 一次升兩級；delay[n] 成立時那一級要多等一回合
 const hop = {
-  ORDER: ['a', 'b', 'c', 'd'],
+  ORDER: ['b', 'a', 'c', 'd'],   // b 先掃：b 這回合長上來，同一輪掃到 a 時 a 就能跳
   ITEMS: {
     a: { name: 'A', max: 5, up: { 2: { always: true }, 3: { always: true }, 4: { minLevel: ['b', 9] }, 5: { always: true } },
          jump: { 4: { minLevel: ['b', 2] } }, onLevel: { 3: [{ flag: { name: 'a3' } }], 4: [{ flag: { name: 'a4' } }] } },
@@ -220,6 +220,42 @@ test('jump: an item at n−2 whose jump[n] holds rises two levels in one turn wi
   assert.deepEqual([g1.story, g2.story], ['a3', 'a4']); assert.deepEqual(g2.via, ['b']); assert.equal(g1.jump, undefined);
   assert.equal(r.state.flags.a3, true, 'the skipped-through level still fires its onLevel'); assert.equal(r.state.flags.a4, true);
   assert.equal(place(r.state, 'c', hop).state.lv.a, 5, 'next turn back to +1');
+});
+// R2／R5：照 ORDER 掃，每個物品每次掃到就決定——跳級條件成立就跳，否則 +1；不為了等跳級而延後 +1
+test('an item whose jump never comes true still takes its +1 that turn', () => {
+  let s = place(createState(hop), 'a', hop).state; s = place(s, 'c', hop).state;   // a2（b 沒放，jump[4] 永遠不成立）
+  const r = place(s, 'd', hop);
+  assert.deepEqual(grows(r).filter(g => g.startsWith('a')), ['a2>3']);
+  // 掃到 a 時跳級還不成立、a 先 +1；之後同回合 b 才長上來也不會再跳
+  const late = { ...hop, ORDER: ['a', 'b', 'c', 'd'] };
+  let t = place(createState(late), 'a', late).state; t = place(t, 'b', late).state;   // a2；b1
+  const r2 = place(t, 'd', late);
+  assert.equal(r2.state.lv.b, 2); assert.deepEqual(grows(r2).filter(g => g.startsWith('a')), ['a2>3']);
+});
+// 裁決 R4：每回合每物品最多 +2，連 delta 一起算（正向 delta 被壓到「回合開始的級數 +2」，壓到 0 就不發事件）
+const push = {
+  ORDER: ['x', 'p', 'q', 'z'],
+  ITEMS: {
+    x: { name: 'X', max: 9, up: { 2: { always: true }, 3: { always: true }, 4: { always: true }, 5: { always: true }, 6: { always: true }, 7: { always: true }, 8: { always: true }, 9: { always: true } },
+         jump: { 6: { always: true } } },
+    p: { name: 'P', max: 1, up: {}, fx: [{ delta: { target: 'x', by: 5 }, story: 'p推x' }] },
+    q: { name: 'Q', max: 1, up: {}, fx: [{ delta: { target: 'x', by: 1 }, story: 'q推x' }] },
+    z: { name: 'Z', max: 1, up: {}, fx: [{ delta: { target: 'x', by: 1 }, story: 'z推x' }, { delta: { target: 'x', by: 1 }, story: 'z再推x' }, { delta: { target: 'x', by: 1 }, story: 'z三推x' }] },
+  },
+  AFTER_TURN: [], STORIES: { placed: { x: '', p: '', q: '', z: '' }, grow: { x: { 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '', 9: '' }, p: {}, q: {}, z: {} } },
+};
+test('R4: a positive delta never lifts an item past its turn-start level + 2, and growth respects the same cap', () => {
+  let s = place(createState(push), 'x', push).state;              // x1
+  const r = place(s, 'p', push);                                  // +5 → 壓成 +2（1 → 3），x 這回合不再長
+  assert.deepEqual(r.events.find(e => e.delta).delta, { target: 'x', from: 1, to: 3 }); assert.equal(r.state.lv.x, 3);
+  assert.deepEqual(grows(r), []);
+  const q = place(s, 'q', push);                                  // +1（1 → 2），再 +1 → 3（剛好 +2）
+  assert.equal(q.state.lv.x, 3);
+  let t = place(createState(push), 'x', push).state; t = advance(t, push).state; t = advance(t, push).state;   // x3
+  const j = place(t, 'q', push);                                  // delta +1 → 4；jump[6] 成立但那是 +3 → 不跳，改 +1 → 5
+  assert.equal(j.state.lv.x, 5); assert.deepEqual(grows(j), ['x4>5']);
+  const z = place(t, 'z', push);                                  // 三次 +1：第三次壓到 0 → 沒有那個事件
+  assert.equal(z.state.lv.x, 5); assert.deepEqual(z.events.filter(e => e.delta).map(e => e.story), ['z推x', 'z再推x']);
 });
 test('jump fires only from exactly n−2: one level short or past it, the item takes +1 or waits', () => {
   let s = place(createState(hop), 'b', hop).state; s = place(s, 'a', hop).state;   // b2；a1
@@ -277,7 +313,7 @@ test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn 
   assert.deepEqual(lvs.slice(4).map(l => l.typhoon), [1, 2, 2, 3]);
   // 矽盾測試過（晶片 ≥8）：罩子把颱風推走，不多等
   const s0 = createState(real);
-  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 5, chip: 8 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, turn: 9 };   // 颱風上回合剛登陸
+  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 6, chip: 8 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, turn: 9 };   // 颱風上回合剛登陸
   assert.equal(advance(lingering, real).state.lv.typhoon, 3);
   assert.equal(advance({ ...lingering, lv: { ...lingering.lv, chip: 6 } }, real).state.lv.typhoon, 2);
 });
@@ -301,4 +337,15 @@ test('ratBranch at rat Lv4: chip ≥ 8 → cyber, else alien', () => {
   assert.equal(cyber.state.lv.chip, 8); assert.equal(alien.state.lv.chip, 6);
   assert.equal(cyber.state.lv.rat, 4); assert.equal(cyber.state.flags.ratBranch, 'cyber');
   assert.equal(alien.state.lv.rat, 4); assert.equal(alien.state.flags.ratBranch, 'alien');
+});
+
+test('R4 invariant on the real spec: over all 8! orders (with closing turns) no item rises more than 2 in one turn', () => {
+  let worst = 0, turns = 0;
+  const check = (before, after) => { turns++; for (const k of real.ORDER) if (before.lv[k] > 0) worst = Math.max(worst, after.lv[k] - before.lv[k]); };
+  const walk = (s, left) => {
+    if (!left.length) { let t = s; for (let i = 0; i < real.CLOSING_TURNS; i++) { const n = advance(t, real).state; check(t, n); t = n; } return; }
+    for (const id of left) { const n = place(s, id, real).state; check(s, n); walk(n, left.filter(x => x !== id)); }
+  };
+  walk(createState(real), real.ORDER);
+  assert.ok(turns > 100000); assert.ok(worst <= 2, `an item rose ${worst} in one turn`);
 });

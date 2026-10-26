@@ -35,6 +35,7 @@ export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
+const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度、轉過去／轉回來各 0.2 秒（同小人的 look 轉向）
 
@@ -377,10 +378,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築
   function replan(m) {
-    const { last, speed, calm, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
+    const { last, speed, calm, offgrid, goal, spot } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
     if (offgrid && (end.x !== last.x || end.z !== last.z)) path.push(last);
     go(m, path);
-    if (m.trip) { m.trip.speed = calm ?? speed; delete m.trip.calm; hurry(m, m.trip.speed); if (goal) m.trip.goal = goal; }
+    if (m.trip) { m.trip.speed = calm ?? speed; delete m.trip.calm; hurry(m, m.trip.speed); if (goal) m.trip.goal = goal; if (spot) m.trip.spot = spot; }
   }
   function walk(m, dt) {
     const trip = m.trip;
@@ -468,19 +469,41 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s });
   }
   // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
+  // 不擠（最終審查：偵防師貼著泡湯客停了整個結局）：動身時就在目標周圍挑一個離每個人 ≥ SEPARATION 的站位走過去
+  //   （trip.spot：走到站位才停，不在 dist 內提早停）；站著時有人靠到 SEPARATION 內也重挑；挑不到就先站著，FOLLOW_RETRY 秒後再挑
   function follow(m, spec, dt) {
     const h = spec.home, dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
     if (!target && m.arriving) { if (!m.trip) go(m, nav.route(m.pos, spec.at)); if (m.trip) walk(m, dt); else m.arriving = false; return; }
     if (m.arriving) { m.arriving = false; m.trip = null; }   // 目標出現了：改跟目標（走進來那一趟沒有 goal）
     if (!target) { if (m.trip || m.walking) { m.trip = null; setPose(m, { ...m.pos, walking: false }); } return; }
     const d = Math.hypot(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
-    if (m.trip && d <= dist) { m.trip = null; setPose(m, { ...m.pos, walking: false }); return; }
-    if (!m.trip && d <= dist + FOLLOW_SLACK) return;
+    if (m.trip && !m.trip.spot && d <= dist) { m.trip = null; setPose(m, { ...m.pos, walking: false }); }
+    if (!m.trip && d <= dist + FOLLOW_SLACK) {
+      if (!crowded(m) || (m.rest -= dt) > 0) return;
+      const p = followSpot(m, target, dist); if (!p) { m.rest = FOLLOW_RETRY; return; }
+      go(m, nav.route(m.pos, p)); if (!m.trip) { m.rest = FOLLOW_RETRY; return; }
+      m.trip.goal = { ...target.pos }; m.trip.spot = true;
+    }
     if (!m.trip || Math.hypot(target.pos.x - m.trip.goal.x, target.pos.z - m.trip.goal.z) > FOLLOW_REPLAN) {
-      go(m, nav.route(m.pos, target.pos)); if (!m.trip) return;
-      m.trip.goal = { ...target.pos };
+      const p = followSpot(m, target, dist);   // 直接走去不擠的站位（不走到目標旁邊、站到別人身上才發現擠）；挑不到就照舊走向目標
+      go(m, nav.route(m.pos, p ?? target.pos)); if (!m.trip) return;
+      m.trip.goal = { ...target.pos }; m.trip.spot = !!p;
     }
     walk(m, dt);
+  }
+
+  // follow 的站位：目標周圍 dist、dist + FOLLOW_SLACK 兩圈上可走、離每個露出來的成員 ≥ SEPARATION、走得到的點
+  function followSpot(m, target, dist) {
+    const others = [...groups.values()].flatMap(g => g.members).filter(o => o !== m && !o.hidden);
+    const rings = [dist, dist + FOLLOW_SLACK].map(r => Array.from({ length: FOLLOW_DIRS }, (_, k) => {
+      const a = 2 * Math.PI * k / FOLLOW_DIRS; return { x: target.pos.x + Math.cos(a) * r, z: target.pos.z + Math.sin(a) * r };
+    }).filter(p => nav.walkable(p.x, p.z) && others.every(o => Math.hypot(o.pos.x - p.x, o.pos.z - p.z) >= SEPARATION + 0.02)));
+    // 先挑 dist 那一圈（停在 dist 外，照原本的距離跟著），那一圈都擠才用外圈；同一圈裡挑離自己最近、走得到的
+    for (const ring of rings) {
+      ring.sort((a, b) => Math.hypot(a.x - m.pos.x, a.z - m.pos.z) - Math.hypot(b.x - m.pos.x, b.z - m.pos.z));
+      for (const p of ring.slice(0, 3)) { const end = nav.route(m.pos, p).at(-1); if (Math.hypot(end.x - p.x, end.z - p.z) < ARRIVE) return { x: p.x, y: nav.groundY(p.x, p.z), z: p.z }; }
+    }
+    return null;
   }
 
   function update(dt, t) {

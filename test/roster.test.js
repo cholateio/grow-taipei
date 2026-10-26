@@ -565,9 +565,11 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // 走進來的人回合演完後再給 ARRIVE_MAX 秒在背景走完；還在 arriving 的就是卡住了（PAD 讓 101 與吊車／公園之間、夜市攤位之間、校舍牆邊的走道變窄）。
 // 審查修正：每個名冊（最終審查：不再只看幾個名單上的鍵）不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
 // 只有站位畫在 footprint 裡（泡溫泉）、坐在車頂（ride，不在走路格上）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
-// 最終審查修正：同一趟 live 也查橋上的人貼著橋面：|y − groundY| ≤ BRIDGE_TOL，橋頭一閃 ≤ BRIDGE_END、不超過 BRIDGE_BLIP 秒。
-// 兩條正解只演一次，幾個測試共用（livePlay）
+// 最終審查修正：同一趟 live 也查（1）橋上的人貼著橋面：|y − groundY| ≤ BRIDGE_TOL，橋頭一閃 ≤ BRIDGE_END、不超過 BRIDGE_BLIP 秒；
+// （2）外星結局（closing 起）偵防師離每個露出來的人 ≥ SEPARATION。兩條正解只演一次，幾個測試共用（livePlay）
 const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
+const SEP_TOL = 0.005;   // 兩個走路的人互推剛好推到 SEPARATION（每幀限速的那一截下一幀才補上），差一點點不算擠
+const BODY = 0.16, PASS_MAX = 0.5;   // 兩個小人身體（半徑 0.08）不相碰；走路擦身而過貼近不超過 0.5 秒
 let livePlayed = null;
 const livePlay = () => (livePlayed ??= playBoth());
 async function playBoth() {
@@ -581,8 +583,9 @@ async function playBoth() {
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
   const results = { bad, slow, stuck, walls, sunk, crowd, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; } };
   for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
-    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map();
-    let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
+    const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map(), decked = new WeakSet(), stepping = new Map();
+    let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;
+    const passing = new Map();   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
     const authored = (h, i) => { if (h?.kind !== 'stand' || h.rescue) return false; const p = h.spots[i % h.spots.length]; return show.nav.inFootprint(p.x, p.z); };
     const check = () => {
       const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), changed = show.nav.version !== version;
@@ -598,17 +601,30 @@ async function playBoth() {
           else if (!wallIn.has(m) && wallOut.has(m) && !changed && !rebuilt) walls.add(`${what} ${JSON.stringify(fps.find(f => inShape(f, m.pos.x, m.pos.z)))}`);
           else { if (!wallIn.has(m)) wallIn.set(m, t); if (t - wallIn.get(m) > CAUGHT_MAX) walls.add(`${what} still inside after ${CAUGHT_MAX} s`); }
         }
-        // 橋上：貼著橋面（ride 坐在車頂、藏起來的人不算）
-        if (!m.hidden && h?.kind !== 'ride' && onBridge(m.pos)) {
+        // 橋上：貼著橋面（ride 坐在車頂、藏起來的人不算）。從橋側邊踏上／踏下拱橋的那一幀（上一幀還在橋外、下一幀就到橋外：
+        // 格子邊上緊貼著橋身，橋面比格面高到 0.1，這一幀正在跨那一階）只看時間、不看 BRIDGE_END
+        const onDeck = !m.hidden && h?.kind !== 'ride' && onBridge(m.pos);
+        if (onDeck) {
           bridgeFrames++;
+          if (stepping.has(m)) sunk.add(stepping.get(m));   // 上一幀超過 BRIDGE_END，這一幀還在橋上：不是踏下橋的那一步
+          stepping.delete(m);
           const dy = m.pos.y - show.nav.groundY(m.pos.x, m.pos.z), what = `${label} ${k}#${m.i} ${m.mode}${m.cursor ? ' path' : ''} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}) dy ${dy.toFixed(3)}`;
-          if (Math.abs(dy) > BRIDGE_END) sunk.add(what);
+          if (Math.abs(dy) > BRIDGE_END && decked.has(m)) stepping.set(m, what);
           if (Math.abs(dy) > BRIDGE_TOL) { if (!off.has(m)) off.set(m, t); else if (t - off.get(m) > BRIDGE_BLIP + 1e-9) sunk.add(`${what} for > ${BRIDGE_BLIP} s`); } else off.delete(m);
-        } else off.delete(m);
-        // 外星結局：偵防師不貼著任何人
+          decked.add(m);
+        } else { off.delete(m); decked.delete(m); stepping.delete(m); }
+        // 外星結局：偵防師站著時不貼著任何人；走路經過別人身邊不撞上（≥ BODY）、貼近（< SEPARATION）也不超過 PASS_MAX 秒
         if (closing && k === 'chip.detective' && !m.hidden && !m.gone) {
           detectiveFrames++;
-          for (const o of seen) { const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z); if (o !== m && d < SEPARATION) crowd.add(`${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} ${d.toFixed(2)} from ${o.key}#${o.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`); }
+          let near = false;
+          for (const o of seen) {
+            const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z); if (o === m || d >= SEPARATION - SEP_TOL) continue;
+            near = true;
+            const what = `${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} ${d.toFixed(2)} from ${o.key}#${o.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
+            if (!m.walking || d < BODY) crowd.add(what);
+            else if (passing.has(m) && t - passing.get(m) > PASS_MAX) crowd.add(`${what} for > ${PASS_MAX} s`);
+          }
+          if (near && m.walking) { if (!passing.has(m)) passing.set(m, t); } else passing.delete(m);
         }
         const inside = bare.walkable(m.pos.x, m.pos.z) && show.nav.inFootprint(m.pos.x, m.pos.z);
         if (exempt || !inside) { caught.delete(m); if (exempt) outside.delete(m); else outside.add(m); continue; }
@@ -681,6 +697,13 @@ test('live, both solutions: everyone on a bridge stays on the deck (y within 0.0
   const { sunk, bridgeFrames } = await livePlay();
   assert.ok(bridgeFrames > 1000, `${bridgeFrames} member-frames on bridges`);
   assert.deepEqual([...sunk].slice(0, 20), [], `${sunk.size} off the deck`);
+});
+// 最終審查修正：偵防師（follow 老鼠）停下來時不貼著別人（泡湯客）——外星結局 closing 起站著時離每個露出來的人 ≥ 0.25
+// （走路經過別人身邊：身體不相碰、貼近不超過 0.5 秒）
+test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
+  const { crowd, detectiveFrames } = await livePlay();
+  assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);
+  assert.deepEqual([...crowd].slice(0, 20), [], `${crowd.size} frames too close`);
 });
 // §14.1：走到一半，路上長出建築——從現在的位置重新找路繞過去，不照舊路穿過
 test('a walker whose route is cut by a new footprint replans around it and still arrives', () => {

@@ -9,7 +9,7 @@ import { createNav } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
 import * as sat from '../src/actors/satellites.js';
 import * as chip from '../src/actors/chip.js';
@@ -130,7 +130,7 @@ async function liveAt({ run, bubblesLog }, order, pred) {
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (pred(e)) { const n = bubblesLog.length; return { e, secs: await run([e]), n }; }
+      if (pred(e)) { const n = bubblesLog.length; return { e, secs: await run([solo(e)]), n }; }
       await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });

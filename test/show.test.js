@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, ALL } from './helpers/show.js';
+import { headlessShow, ALL, turnSteps, towerCrossings } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
@@ -323,12 +323,13 @@ function skylineRig() {
   const topNdc = show => { camera.lookAt(controls.target); camera.updateMatrixWorld(); const h = show.stage.headOf('tower'); return new THREE.Vector3(h.x, h.y, h.z).project(camera).y; };
   return { rig, camera, controls, topNdc };
 }
-// 第一條正解放到第 5 回合（instant），回傳第 6 回合（物品 v2：16 → 21 跨進 101 完工、頭頂 7.75）的事件
-async function beforeFull(h) {
-  const order = SOLUTIONS[0]; let s = engine.createState(spec);
-  for (const id of order.slice(0, 5)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
-  return [...place(s, order[5]).events, { kind: 'settle' }];
+// 第一條正解 instant 演到跨進 101 完工（頭頂 7.75）的前一回合，回傳跨進那一回合的事件（回合數從總等級曲線找）
+async function beforeTurn(h, n) {
+  const steps = turnSteps(SOLUTIONS[0]); let s = engine.createState(spec);
+  for (const step of steps.slice(0, n - 1)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  return [...steps[n - 1](s).events, { kind: 'settle' }];
 }
+const beforeFull = h => beforeTurn(h, towerCrossings(SOLUTIONS[0]).at.full);
 test('after a turn in which the tower top rose above 3, the final home framing includes the top (NDC y ≤ 0.8); skip during that turn also updates the skyline (review focus 5)', async () => {
   // 照常演完：回合最後回全景之前更新天際線，飛完頭頂在上緣 10% 以內
   const a = skylineRig(), ha = await headlessShow({ rig: a.rig }), events = await beforeFull(ha);
@@ -352,11 +353,11 @@ test('after a turn in which the tower top rose above 3, the final home framing i
 });
 
 // 蒙太奇跨進 101 點燈：劇本中途的 focus('home') 留著（MONTAGE_KEEP 有 focus），在 LEVEL UP 之前。
-// 物品 v2 的正解第 7 回合（21 → 30）就點燈、倒數回合不再跨門檻：把第 7 回合當蒙太奇演
+// 點燈落在倒數回合（從總等級曲線找）
 test('montage turn with a stage crossing keeps the mid-script focus(home)', async () => {
-  const h = await headlessShow(), { show, rig } = h, log = [];
-  let s = engine.createState(spec);
-  for (const id of SOLUTIONS[0].slice(0, 6)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const h = await headlessShow(), { show, rig } = h, log = [], { at } = towerCrossings(SOLUTIONS[0]);
+  assert.ok(at.lit > SOLUTIONS[0].length, `點燈 in a countdown turn (${at.lit})`);
+  const events = await beforeTurn(h, at.lit);
   let now = 0;
   const update = show.update; show.update = (dt, t) => { now = t; update(dt, t); };
   const { focus, home } = rig;
@@ -364,8 +365,7 @@ test('montage turn with a stage crossing keeps the mid-script focus(home)', asyn
   rig.home = ms => { log.push(['home', now, ms]); return home(ms); };
   const levelUp = show.bubbles.levelUp;
   show.bubbles.levelUp = (head, o = {}) => { log.push(['levelUp', now, o.text]); return levelUp(head, o); };
-  const r = place(s, SOLUTIONS[0][6]);
-  await h.run([...r.events, { kind: 'settle' }], { montage: true });
+  await h.run(events, { montage: true });
   const lit = log.findIndex(l => l[0] === 'levelUp' && l[2] === '101 點燈');
   assert.ok(lit >= 0, 'the montage turn crosses into 點燈');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');

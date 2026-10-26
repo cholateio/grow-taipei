@@ -12,7 +12,7 @@ import { ROOFS, roofColor, C } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
@@ -23,7 +23,7 @@ async function trailAt(h, order, pred) {
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (pred(e)) { const n0 = h.rig.log.length; await h.run([e]); return focusTrail(h.rig.log, n0); }
+      if (pred(e)) { const n0 = h.rig.log.length; await h.run([solo(e)]); return focusTrail(h.rig.log, n0); }
       await h.run([e], { instant: true });
     }
     await h.run([{ kind: 'settle' }], { instant: true });

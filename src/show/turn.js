@@ -8,7 +8,7 @@
 //   劇本第一拍自己就是 focus（或 together 裡有 focus）的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
-// 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——第二個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
+// 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
 //   關鍵劇本的每一拍（together 裡也是）標 keep，蒙太奇不過濾、超過 MONTAGE_CAP 拿掉走路時也不拿，倒數回合裡照樣看得到。
@@ -118,8 +118,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
 
     const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
     if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') { out.push(mark(e), ...indoors(e), B.apply(e)); return; }
-    // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
-    const jumped = e.kind === 'grow' && e.jump && events[i - 1]?.kind === 'grow' && events[i - 1].item === e.item && events[i - 1].to === e.from;
+    // 跳級的第二級：只看 e.jump（引擎只把它標在同物品 +2 的第二個 grow 上；中間插了第一級的 fx 也一樣）
+    const jumped = e.kind === 'grow' && e.jump;
     let beats;
     if (jumped && !key) {
       out.push(mark(e), B.apply(e), B.levelUp(e.item), B.apply(e));

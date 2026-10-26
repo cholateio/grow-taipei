@@ -16,7 +16,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem } from './helpers/show.js';
+import { headlessShow, playItem, solo } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 賽博那條（老鼠在 Lv4 分岔成機器鼠）
 const ALIEN = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;   // 外星那條（變異鼠，Lv5 要颱風 ≥2）
@@ -195,7 +195,7 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
     const r = step(s); s = r.state;
     if (whole && r.events.some(pred)) { const n = bubblesLog.length; return { events: r.events, secs: await run([...r.events, { kind: 'settle' }]), n }; }
     for (const e of r.events) {
-      if (!whole && pred(e)) { const n = bubblesLog.length; return { e, secs: await run([e]), n }; }
+      if (!whole && pred(e)) { const n = bubblesLog.length; return { e, secs: await run([solo(e)]), n }; }
       await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });

@@ -15,7 +15,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { createTimeline } from '../src/show/timeline.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
@@ -307,7 +307,7 @@ async function liveAt(h, order, to) {
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (e.kind === 'grow' && e.item === 'token' && e.to === to) { await h.run([e]); return e; }
+      if (e.kind === 'grow' && e.item === 'token' && e.to === to) { await h.run([solo(e)]); return e; }
       await h.run([e], { instant: true });
     }
     await h.run([{ kind: 'settle' }], { instant: true });

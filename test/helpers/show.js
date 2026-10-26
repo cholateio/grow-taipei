@@ -73,20 +73,37 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   return { show, people, assets, rig, worldLog, bubblesLog, run, scriptElapsed, scene, rail };
 }
 
+// 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），
+// 單獨測那一級自己的劇本（別條正解 +1 走到這級時會演）要當一般事件
+export const solo = ({ jump, ...e }) => e;
+
 // 照 order 放完一局、再長 CLOSING_TURNS 回合（物品 v2：很多級落在倒數回合）：itemId 的 placed／grow 事件單獨 live 演並呼叫
 // check(e, secs)，其他事件 instant；每回合最後 settle instant（單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）。
-// 單獨演的跳級第二級（e.jump）前面沒有同物品的上一級，turn.js 照一般事件演；跳級連著演的樣子由 turn／show 測試驗
+// 單獨演的跳級第二級拿掉 jump（solo）照一般事件演；跳級連著演的樣子由 turn／show 測試驗
 export async function playItem(show, run, order, itemId, check) {
   let s = engine.createState(spec);
   const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (e.item === itemId && (e.kind === 'placed' || e.kind === 'grow')) { const secs = await run([e]); await check(e, secs); }
+      if (e.item === itemId && (e.kind === 'placed' || e.kind === 'grow')) { const secs = await run([solo(e)]); await check(e, secs); }
       else await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });
   }
+}
+
+// 一局的每一回合：照 order 放完、再 CLOSING_TURNS 個倒數回合（step(s) → { state, events }）
+export const turnSteps = order => [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+// 101 的階段在這一局哪一回合跨過（物品 v2 任務 10）：totals[i] = 第 i+1 回合結算後的總等級；at[stage] = 第一次到那個階段的回合（1 起算，含倒數回合）
+export function towerCrossings(order) {
+  const { stageOf } = ALL.find(m => m.id === 'tower'), totals = [], at = {};
+  let s = engine.createState(spec);
+  for (const step of turnSteps(order)) {
+    s = step(s).state; totals.push(Object.values(s.lv).reduce((a, b) => a + b, 0));
+    at[stageOf(totals.at(-1))] ??= totals.length;
+  }
+  return { totals, at };
 }
 
 // 兩條正解（放置 + 倒數三回合）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）

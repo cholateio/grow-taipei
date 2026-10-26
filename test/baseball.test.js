@@ -14,7 +14,7 @@ import { TRACK } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
@@ -123,7 +123,7 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
     const r = step(s); s = r.state;
     if (whole && r.events.some(pred)) { const n = bubblesLog.length; return { events: r.events, secs: await run([...r.events, { kind: 'settle' }]), n, r: rig.log.length }; }
     for (const e of r.events) {
-      if (!whole && pred(e)) { const n = bubblesLog.length, c = rig.log.length; return { e, secs: await run([e]), n, r: c }; }
+      if (!whole && pred(e)) { const n = bubblesLog.length, c = rig.log.length; return { e, secs: await run([solo(e)]), n, r: c }; }
       await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });

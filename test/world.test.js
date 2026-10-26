@@ -9,6 +9,15 @@ test('worldEffects: lamps set the clock, blackout kills the glow at night', () =
   assert.equal(worldEffects(lv({ bulb: 3 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 4 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 5 }), {}).time, TIMES.night);
   assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0, storm: 0, rain: 0 });
 });
+// 物品 v2 §4.4：燈泡 Lv3 霓虹／傍晚、Lv5 全島 LED／夜晚、Lv9 全島賽博霓虹（發光加強）
+test('worldEffects keys on the bulb ladder: dusk at 3, night at 5, the neon glow boost at 9', () => {
+  const at = n => worldEffects(lv({ bulb: n }), {});
+  assert.equal(at(2).time, TIMES.day); assert.equal(at(3).time, TIMES.dusk); assert.equal(at(4).time, TIMES.dusk);
+  assert.equal(at(5).time, TIMES.night); assert.equal(at(8).time, TIMES.night); assert.equal(at(9).time, TIMES.night);
+  for (const n of [0, 3, 5, 8]) assert.equal(at(n).glowScale, 1, `bulb ${n}`);
+  assert.ok(at(9).glowScale > 1, 'the island-wide cyber neon glows brighter');
+  assert.equal(worldEffects(lv({ bulb: 9 }), { blackout: true }).glowScale, 0, 'a blackout still kills every glow');
+});
 // 錄影審查 2026-10-25：颱風被大巨蛋卡在 Lv2 時，全島的人不能消失到結局
 test('the typhoon clears the streets only on its landing turn; a lingering storm is lighter', () => {
   const landing = worldEffects(lv({ typhoon: 2 }), {}, { landing: true }), linger = worldEffects(lv({ typhoon: 2 }), {}, { landing: false });

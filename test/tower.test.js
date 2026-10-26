@@ -9,23 +9,35 @@ import { B } from '../src/show/beats.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow } from './helpers/show.js';
+import { headlessShow, turnSteps, towerCrossings } from './helpers/show.js';
 import { createCameraRig } from '../src/scene/camera.js';
 import { existsSync } from 'node:fs';
 import { C } from '../src/actors/palette.js';
 import { MAIN_CELLS, axialToWorld, hexCorners, R } from '../src/scene/hex.js';
 const PALETTE = new Set(Object.values(C));
 const zero = { milk: 0, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: 0, boba: 0, baseball: 0 };
-const lvOf = (total, extra = {}) => { const caps = { milk: 6, baseball: 6, token: 6, rat: 5, boba: 4, chip: 6, bulb: 5 }, out = { ...zero }; let left = total; for (const id in caps) { out[id] = Math.min(caps[id], left); left -= out[id]; } return { ...out, ...extra }; };
+const lvOf = (total, extra = {}) => { const caps = { milk: 10, baseball: 8, token: 10, rat: 5, boba: 7, typhoon: 3, chip: 9, bulb: 9 }, out = { ...zero }; let left = total; for (const id in caps) { out[id] = Math.min(caps[id], left); left -= out[id]; } return { ...out, ...extra }; };
 const tiers = v => v['tower.main'].parts.filter(p => p.kind === 'frustum4').length;
 
 test('stageOf thresholds (§5.2)', () => {
-  // 41 級後門檻跟著放大：0–8 工地、9–18 半成品、19–29 完工、30+ 點燈
+  // 物品 v2 的 61 級：0–8 工地、9–25 半成品、26–53 完工、54+ 點燈
   assert.equal(tower.stageOf(0), 'site'); assert.equal(tower.stageOf(8), 'site'); assert.equal(tower.stageOf(9), 'half');
-  assert.equal(tower.stageOf(18), 'half'); assert.equal(tower.stageOf(19), 'full'); assert.equal(tower.stageOf(29), 'full'); assert.equal(tower.stageOf(30), 'lit');
+  assert.equal(tower.stageOf(25), 'half'); assert.equal(tower.stageOf(26), 'full'); assert.equal(tower.stageOf(53), 'full'); assert.equal(tower.stageOf(54), 'lit');
+  assert.equal(tower.stageOf(61), 'lit');
+});
+// 兩條正解的總等級曲線上，四個階段各在不同回合跨過、散在整局（約 4／7／10 回合），結束前都點燈
+test('both solutions cross the four stages in four different turns, spread through the game, lit by the end', () => {
+  for (const order of SOLUTIONS) {
+    const { totals, at } = towerCrossings(order), turns = [at.site, at.half, at.full, at.lit], why = `${order.join('>')} totals ${totals.join(' ')} at ${JSON.stringify(at)}`;
+    assert.equal(at.site, 1, why);
+    for (let i = 1; i < 4; i++) assert.ok(turns[i] > turns[i - 1], why);
+    assert.equal(new Set(turns).size, 4, why);
+    assert.ok(at.half >= 3 && at.half <= 5, why); assert.ok(at.full >= 6 && at.full <= 8, why); assert.ok(at.lit >= 9 && at.lit <= totals.length, why);
+    assert.equal(tower.stageOf(totals.at(-1)), 'lit', why);
+  }
 });
 test('view: site has a crane and cones, half 4 tiers + crane, full 8 tiers + cap and no crane, lit glows', () => {
-  const site = tower.view(zero, {}), half = tower.view(lvOf(10), {}), full = tower.view(lvOf(20), {}), lit = tower.view(lvOf(31), {});
+  const site = tower.view(zero, {}), half = tower.view(lvOf(10), {}), full = tower.view(lvOf(27), {}), lit = tower.view(lvOf(55), {});
   assert.equal(tiers(site), 1); assert.ok(site['tower.crane']); assert.ok(site['tower.main'].parts.some(p => p.kind === 'cone'));
   assert.equal(tiers(half), 5); assert.ok(half['tower.crane']);
   assert.equal(tiers(full), 10); assert.equal(full['tower.crane'], undefined);
@@ -47,7 +59,7 @@ test('antenna (Cyberpunk Kit glb + ring) appears at chip 7 and pulses from chip 
   assert.equal(tower.view({ ...zero, bulb: 5 }, {})['tower.show'].kind, 'lightshow');
 });
 test('the antenna sits on the spire top of whatever stage the tower is in', () => {
-  for (const total of [0, 10, 20, 31]) {
+  for (const total of [0, 10, 27, 55]) {
     const v = tower.view(lvOf(total, { chip: 7 }), {}, { total }), top = Math.max(...v['tower.main'].parts.map(p => p.pos[1] + (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2));
     const a = v['tower.antenna'];
     assert.ok(Math.abs(a.parts[0].pos[1] - top) < 0.6, `ring at the top (${total})`);
@@ -62,7 +74,7 @@ test('the shield is a hemisphere centred on the 101 base that covers every corne
 });
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');
-  for (const v of [tower.view(zero, {}), tower.view(lvOf(31, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);
+  for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);
 });
 test('crane, antenna pulse and lightshow builders animate', () => {
   const glow = createGlowRegistry(); glow.setNight(1);
@@ -80,8 +92,8 @@ test('crane, antenna pulse and lightshow builders animate', () => {
 
 // 101 跳階只在回合最後的 settle 發生（計畫 3.6）：view 用 meta.total，沒給才自己加總
 test('view uses meta.total when given; stage names for the float', () => {
-  assert.equal(tiers(tower.view(lvOf(20), {}, { total: 0 })), 1, 'meta.total wins');
-  assert.equal(tiers(tower.view(lvOf(20), {})), 10);
+  assert.equal(tiers(tower.view(lvOf(27), {}, { total: 0 })), 1, 'meta.total wins');
+  assert.equal(tiers(tower.view(lvOf(27), {})), 10);
   assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' });
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
@@ -96,7 +108,7 @@ const labelOf = beats => {
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 8→9 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→18 yield nothing', () => {
+test('settle crossing 8→9 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→25 yield nothing', () => {
   const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
   const beats = tower.script.settle(e, { total: 9, prevTotal: 8 }, ctx);
   assert.deepEqual(beats.map(b => b.kind), ['focus', 'walk', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
@@ -104,9 +116,9 @@ test('settle crossing 8→9 yields focus(tower) + walk + build + focus(home) + a
   assert.equal(beats[0].target, 'tower'); assert.equal(beats[3].target, 'home'); assert.equal(beats[3].final, false); assert.equal(beats[3].dur, 0.8);
   assert.equal(labelOf(beats), '101 蓋一半');
   assert.deepEqual(tower.script.settle(e, { total: 8, prevTotal: 8 }, ctx), []);
-  assert.deepEqual(tower.script.settle(e, { total: 18, prevTotal: 9 }, ctx), []);
-  assert.equal(labelOf(tower.script.settle(e, { total: 21, prevTotal: 16 }, ctx)), '101 完工');
-  assert.equal(labelOf(tower.script.settle(e, { total: 33, prevTotal: 27 }, ctx)), '101 點燈');
+  assert.deepEqual(tower.script.settle(e, { total: 25, prevTotal: 9 }, ctx), []);
+  assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), '101 完工');
+  assert.equal(labelOf(tower.script.settle(e, { total: 57, prevTotal: 50 }, ctx)), '101 點燈');
 });
 
 test('settle hero: the worker if visible, else the nearest visible islander to the tower foot (looked up when the beat plays)', () => {
@@ -118,11 +130,11 @@ test('settle hero: the worker if visible, else the nearest visible islander to t
   assert.equal(hero({}), undefined, 'nobody around → the beats skip');
 });
 
-// 照正解放完 order（再 advance closing 回合）：只有最後一回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
+// 照正解演到第 n 回合（放置回合之後接倒數回合）：只有第 n 回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
 // montage：最後一回合要不要當蒙太奇演（預設：倒數回合才是）
-async function liveTurn(h, order, { closing = 0, montage: lastMontage } = {}) {
+async function liveTurn(h, order, n, { montage: lastMontage } = {}) {
   let s = engine.createState(spec);
-  const turns = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: closing }, () => st => engine.advance(st, spec))];
+  const turns = turnSteps(order).slice(0, n);
   for (let i = 0; i < turns.length; i++) {
     const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i + 1 === turns.length && lastMontage !== undefined ? lastMontage : i >= order.length;
     if (i + 1 < turns.length) { await h.run(events, { instant: true, montage }); continue; }
@@ -135,21 +147,23 @@ async function liveTurn(h, order, { closing = 0, montage: lastMontage } = {}) {
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
 const nearHead = (show, at) => { const h = show.stage.headOf('tower'); assert.ok(Math.hypot(at.x - h.x, at.z - h.z) < 0.5, 'label over the tower'); };
 
-// 物品 v2 的正解：第 3 回合總等級 3 → 6（不跨）、第 4 回合 6 → 11 跨進「蓋一半」
-test('headless: the turn crossing 6→11 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
-  const h = await headlessShow(), order = SOLUTIONS[0];
-  const before = await liveTurn(h, order.slice(0, 3));
+// 跨進「蓋一半」的那一回合（從總等級曲線找，不寫死回合數）；前一回合不跨
+test('headless: the turn crossing into 蓋一半 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
+  const h = await headlessShow(), order = SOLUTIONS[0], { totals, at } = towerCrossings(order);
+  const before = await liveTurn(h, order, at.half - 1);
   assert.ok(before.settleSecs < 0.05, `no crossing → no time (${before.settleSecs})`);
   h.show.reset();
-  const t = await liveTurn(h, order.slice(0, 4));
+  const t = await liveTurn(h, order, at.half);
   assert.equal(t.bubbles.at(-1).text, '101 蓋一半'); nearHead(h.show, t.bubbles.at(-1).at);
   assert.ok(t.settleSecs >= 4 && t.settleSecs <= 8, `settle ${t.settleSecs.toFixed(2)} s`);
-  allHome(h.show); assert.equal(h.show.stage.meta.total, 11);
+  allHome(h.show); assert.equal(h.show.stage.meta.total, totals[at.half - 1]);
 });
 
-// 物品 v2 的正解第 7 回合（21 → 30）就點燈，倒數回合不再跨門檻：把那一回合當蒙太奇演
+// 點燈落在倒數回合（蒙太奇）：照樣看得到階段名
 test('headless: a montage turn crossing into 點燈 still shows the label', async () => {
-  const h = await headlessShow(), t = await liveTurn(h, SOLUTIONS[0].slice(0, 7), { montage: true });
+  const order = SOLUTIONS[0], { at } = towerCrossings(order);
+  assert.ok(at.lit > order.length, `點燈 in a countdown turn (${at.lit})`);
+  const h = await headlessShow(), t = await liveTurn(h, order, at.lit);
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });
 
@@ -163,16 +177,17 @@ test('the 101 stage upgrade hero stands at frontOf(tower) and plays build (1.6 s
       const g = m.walker?.gesture; if (g?.kind === 'build' && Math.hypot(m.pos.x - front.x, m.pos.z - front.z) < 0.6) frames.push({ t, g, pos: { ...m.pos }, front, total: show.stage.meta.total });
     }
   };
-  await liveTurn(h, SOLUTIONS[0].slice(0, 4));   // 物品 v2：第 4 回合 6 → 11
+  const { totals, at: into } = towerCrossings(SOLUTIONS[0]), crossed = totals[into.half - 1];
+  await liveTurn(h, SOLUTIONS[0], into.half);   // 跨進「蓋一半」的那一回合
   assert.ok(frames.length > 10, `build frames ${frames.length}`);
   assert.ok(frames.at(-1).t - frames[0].t >= 1.4, `build lasted ${(frames.at(-1).t - frames[0].t).toFixed(2)} s`);
   assert.equal(frames[0].g.dur, 1.6);
   for (const f of frames) {
     assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, `stands at the front ${f.pos.x.toFixed(2)},${f.pos.z.toFixed(2)}`);
     const d = f.g.yaw - Math.atan2(at.x - f.pos.x, at.z - f.pos.z); assert.ok(Math.abs(Math.atan2(Math.sin(d), Math.cos(d))) < 1e-6, 'faces the tower');
-    assert.notEqual(f.total, 11, 'builds before the tower changes');
+    assert.notEqual(f.total, crossed, 'builds before the tower changes');
   }
-  assert.equal(show.stage.meta.total, 11);
+  assert.equal(show.stage.meta.total, crossed);
 });
 
 // §14.4 大升級回全景：101 那一格 → 鏡頭側揮鋤頭 → 回全景（換零件之前）→ 閃白跳階、LEVEL UP 在全景裡演，頭頂不出框
@@ -196,12 +211,12 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
     const p = head(); log.push(['levelUp', now, { flying: rig.flying, target: controls.target.clone(), top: new THREE.Vector3(p.x, p.y, p.z).project(camera).y }]);
     return levelUp(head, opts);
   };
-  // 第 6 回合（物品 v2 的正解 16 → 21）跨進「101 完工」（頭頂 7.75，舊的全景會出框）
-  const order = SOLUTIONS[0].slice(0, 6), events = [];
+  // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）
+  const steps = turnSteps(SOLUTIONS[0]).slice(0, towerCrossings(SOLUTIONS[0]).at.full), events = [];
   let s = engine.createState(spec);
-  for (const [i, id] of order.entries()) {
-    const r = engine.place(s, id, spec); s = r.state;
-    if (i + 1 < order.length) { await h.run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+  for (const [i, step] of steps.entries()) {
+    const r = step(s); s = r.state;
+    if (i + 1 < steps.length) { await h.run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
     events.push(...r.events, { kind: 'settle' });
   }
   const before = show.stage.meta.total;

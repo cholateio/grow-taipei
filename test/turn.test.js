@@ -230,9 +230,9 @@ test('two consecutive grow events of one item in a turn: the second plays only a
   const second = between(raw, 2);
   assert.deepEqual(second.map(b => b.kind), ['apply', 'levelUp', 'apply']);
   assert.notEqual(second[0].blink, false, 'the jump level blinks its parts');
-  // 跳級的第二個事件前面不是同物品的 grow（中間被別的物品插了）：照一般事件演
+  // 只看 e.jump：中間被別的事件隔開（第一級的 fx 插進來）也一樣只演 apply + LEVEL UP
   const apart = buildTurn([{ kind: 'grow', item: 'chip', from: 3, to: 4 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, jump], base([quietTower, chip]), fakeCtx());
-  assert.deepEqual(between(apart, 2).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
+  assert.deepEqual(between(apart, 2).map(b => b.kind), ['apply', 'levelUp', 'apply']);
 });
 
 // 裁決 R11：◆ 關鍵節點（劇本函數帶 key: true）在正解裡也要看得到——跳級的第二級落在關鍵級就演完整劇本（第一級照常演自己的），

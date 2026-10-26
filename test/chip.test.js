@@ -13,7 +13,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 const AT = anchorWorld('chip'), CELL = cellOf('chip'), TOWER = anchorWorld('tower');
@@ -171,7 +171,7 @@ async function liveAt(h, order, pred) {
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (pred(e)) { const n = h.bubblesLog.length, r0 = h.rig.log.length; return { e, secs: await h.run([e]), n, r: r0 }; }
+      if (pred(e)) { const n = h.bubblesLog.length, r0 = h.rig.log.length; return { e, secs: await h.run([solo(e)]), n, r: r0 }; }
       await h.run([e], { instant: true });
     }
     await h.run([{ kind: 'settle' }], { instant: true });

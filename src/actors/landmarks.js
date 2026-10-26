@@ -5,10 +5,10 @@ import { trainCars } from './token.js';
 
 export const id = 'landmarks';
 
-// 島民（§14.3 人分散）：五個人一個名冊，散步的家是溫泉格以外的六格（第 i 人用 home.at[i % 6]）；
-// 最擠的珍奶格（人龍、閒晃的觀光客）排在第六個，五個人各住一格、不再往那裡擠。溫泉格住的是下面兩位溫泉客
-export const HOME_R = 1.8;   // 散步半徑：格子中心常被建築蓋住，要夠大才挑得到走得到的點
-export const HOMES = [[0, 0], [-1, 1], [1, 0], [-1, 0], [0, -1], [0, 1]].map(cellCentre);   // 鮮奶節的小孩也住這六格（milk.js）
+// 島民（§14.3 人分散）：四個人一個名冊，一人住一格散步（第 i 人用 home.at[i]）——人數預算（裁決 R16）：
+// 最擠的球場格（球員、觀眾、草皮、搭車來的球迷）與珍奶格（人龍、站務員）不住島民；溫泉格住的是下面兩位溫泉客
+export const HOME_R = 1.8;   // 散步半徑：格子中心常被建築蓋住，要夠大才挑得到走得到的點（鮮奶節的小孩同一個半徑，milk.js）
+export const HOMES = [[0, 0], [1, 0], [-1, 0], [0, -1]].map(cellCentre);
 // 溫泉池（底座半徑 0.7，加上池邊的石頭到 0.75）、小澡堂、木牌各自的 footprint——不再用整個包圍盒（會把池邊整圈都擋掉）。
 // 颱風登陸時池子不能躲（door: false），小澡堂可以（door: true，比一般的門小）
 const POOL_R = 0.75;
@@ -45,7 +45,7 @@ export function view(lv = {}) {
       footprint: SPRING_FP,
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
-    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: 5, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
+    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: HOMES.length, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
     // 溫泉客：站在池邊偶爾看一下池子；rescue：萬一池邊被擋住就站到最近的可走點（不站進池子裡）
     'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: BATHERS.map(({ p, yaw }) => ({ ...offset(s, p.x, p.z), yaw })), fidget: 'look', rescue: true } },
   };

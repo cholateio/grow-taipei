@@ -122,8 +122,9 @@ const NEST_SHORE = shoreAt(NEST_A), PARK_SHORE = shoreAt(PARK_A), SPRING_SHORE =
 export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const JUMP = 0.5, FOLLOW = 0.3, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
-// 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.2 s 落地），跳的時候車不動
-const TRAIN_IN = 1.3, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.2;
+// 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
+// （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05）
+const TRAIN_IN = 1.3, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
 // 分岔（spec.js 老鼠 onLevel 4 的 ratBranch：條件照規則資料編譯，跟引擎同一個判斷，不寫死門檻）。分岔旗標是 grow 之後的 fx 事件才帶來的，
 // grow 4 的劇本先用一個同值的 fx 事件套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
 const BRANCH = ITEMS.rat.onLevel[4].find(a => a.branch).branch, BRANCH_TEST = compile(BRANCH.when, {});
@@ -197,7 +198,7 @@ export const script = {
           B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
           B.together([B.bubble(rat(0), '！', 0.8), ...ids.map(i => B.walk(rat(i), c => wait(c)[i]))]),
           B.trainStop({ at: NEST_A, arrive: TRAIN_IN, back: TRAIN_BACK, stop: HOLD, during: [B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] }),
-          B.apply(e), B.home(RATS), B.levelUp('rat'),
+          B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃（裁決 R15 一級 ≤ 4.5 s）
         ];
       }
       // 泡溫泉（列車還沒有）：五隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）
@@ -205,7 +206,7 @@ export const script = {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
           // 蒙太奇走路兩倍速：快跑不再加倍
-          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: ctx.montage ? DASH / 2 : DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.8))]),
+          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: ctx.montage ? DASH / 2 : DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
           B.home(RATS), B.levelUp('rat'),
         ];
       }

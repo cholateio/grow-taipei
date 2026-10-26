@@ -14,7 +14,7 @@ import { TRACK } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
@@ -27,7 +27,8 @@ const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]].map(([x, z]) => offset(
 
 test('baseball has its v2 ladder (max 8)', () => { assert.equal(spec.ITEMS.baseball.max, 8); });
 test('baseball has something new at every level 1–8: sand lot, stands, dome, roof slit, concert, fireworks, bigger dome, dome station', () => {
-  assert.deepEqual(Object.keys(views[1]), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3']);
+  assert.deepEqual(Object.keys(views[1]), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3', 'baseball.players']);
+  assert.equal(views[1]['baseball.players'].n, 1, 'Lv1: the player who runs the bases');
   for (let n = 2; n <= 8; n++) assert.ok(diffParts(nonRoster(views[n - 1]), nonRoster(views[n])).add.length, `lv${n}: something new`);
   assert.ok(views[2]['baseball.stands'] && views[2]['baseball.players'].home.spots.length === 2 && views[2]['baseball.ball'].kind === 'ball');
   assert.ok(views[4]['baseball.deco'].parts.some(p => p.glow === C.yellow), 'Lv4 roof slit');
@@ -59,6 +60,7 @@ test('people budget: fans 3 / 4 / 5 (Lv8: 3 stay, 2 came by the new line), lawn 
   for (let n = 1; n <= 8; n++) assert.ok(fans(views[n]) + (views[n]['baseball.lawn']?.n ?? 0) + (views[n]['baseball.players']?.n ?? 0) <= 8, `lv${n}`);
   assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8].map(n => views[n]['baseball.lawn']?.n ?? 0), [0, 0, 0, 0, 1, 1, 1, 1]);
   for (let n = 2; n <= 8; n++) assert.equal(views[n]['baseball.players'].n, 2);
+  assert.equal(views[1]['baseball.players'].n, 1);
   // 加人不換位置：同一批人的站位一樣；Lv8 門口 + 新線的站位剛好是 Lv7 那五個位置
   assert.deepEqual(views[4]['baseball.crowd'].home.spots, views[5]['baseball.crowd'].home.spots.slice(0, 3));
   assert.deepEqual(views[5]['baseball.crowd'].home.spots, views[7]['baseball.crowd'].home.spots.slice(0, 4));
@@ -135,7 +137,7 @@ const KEY = [3, 8];
 function checkBall({ show, bubblesLog }, e, secs, n, timing) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
   (timing[to] ??= []).push(+secs.toFixed(1));
-  assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : 5), `${what} took ${secs.toFixed(2)} s`);
+  assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
   if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('baseball');
@@ -165,30 +167,31 @@ test('◆ Lv3 and Lv8 are the key nodes and end on the overview before the LEVEL
     assert.ok(i > 0 && beats[i].dur >= 1 && beats.at(-1).kind === 'levelUp', `lv${n}`);
   }
 });
-test('placed: an islander walks to home plate and round the four bases; each base line appears as he runs its leg', async () => {
+// 人數預算（裁決 R16）：球場格不住島民——跑壘的是 Lv1 的第一個球員，從看台後方的入口進場
+test('placed: the first player enters from behind the stands, walks to home plate and round the four bases; each base line appears as he runs its leg', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, visits = [], shownAt = [];
   let runner = null;
   show.update = (dt, t) => {
     update(dt, t);
     for (let i = 0; i < 4; i++) { const o = show.stage.partObject(`baseball.lines.${i}`); if (o?.visible && shownAt[i] === undefined) shownAt[i] = t; }
-    const m = runner ?? show.roster.members('landmarks.islanders').find(x => x.mode !== 'home');
+    const m = runner ?? show.roster.members('baseball.players').find(x => x.mode !== 'home');
     if (m && m.mode !== 'home') { runner = m; BASES.forEach((b, i) => { if (near(m.pos, b, 0.15) && visits.at(-1) !== i) visits.push(i); }); }
   };
   await liveAt(h, SOLUTIONS[0], e => e.kind === 'placed' && e.item === 'baseball');
   assert.deepEqual(visits.slice(visits.indexOf(0)), [0, 1, 2, 3, 0], `home → 1st → 2nd → 3rd → home: ${visits}`);
   assert.ok(shownAt.length === 4 && shownAt.every((t, i) => i === 0 || t > shownAt[i - 1] + 0.3), `lines appear one by one: ${shownAt}`);
-  assert.equal(runner.mode, 'home');
+  assert.equal(runner.mode, 'home'); assert.equal(show.roster.members('landmarks.islanders').filter(x => x.mode !== 'home').length, 0, 'no islander borrowed');
 });
-test('Lv2: two players spawn at their entry behind the stands and walk onto the field', async () => {
+test('Lv2: the second player spawns at its entry behind the stands and walks onto the field (the first is there since Lv1)', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('baseball.players')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
   await liveAt(h, SOLUTIONS[0], isBall(2));
   assert.equal(firsts.size, 2);
-  for (const p of firsts.values()) assert.ok(baseball.PLAYER_ENTRY.some(e => near(p, e, 0.2)), `spawned at the entry (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+  const p = firsts.get(show.roster.members('baseball.players')[1]); assert.ok(near(p, baseball.PLAYER_ENTRY[1], 0.2), `spawned at the entry (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots;
   show.roster.members('baseball.players').forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.15), `player ${i} on the field`));
 });
-// 蓋東西站鏡頭側（§14）：大巨蛋那一級，離巨蛋最近的島民在巨蛋的鏡頭側揮兩次鋤頭
+// 蓋東西站鏡頭側（§14）：大巨蛋那一級，離巨蛋鏡頭側最近的球員（裁決 R16：球場格不住島民）在那裡揮兩次鋤頭
 const gestureLog = (show, keys, frontAt) => {
   const update = show.update, log = [];
   show.update = (dt, t) => {
@@ -199,13 +202,13 @@ const gestureLog = (show, keys, frontAt) => {
   return log;
 };
 const runs = (log, kind) => log.filter(f => f.kind === kind).reduce((n, f, i, a) => n + (i === 0 || a[i - 1].m !== f.m || f.k < a[i - 1].k ? 1 : 0), 0);
-test('◆ Lv3: a player …… and the dome icon; the nearest islander builds twice at the dome front; the dome blocks, the gate stays walkable', async () => {
+test('◆ Lv3: a player …… and the dome icon; the nearest player builds twice at the dome front; the dome blocks, the gate stays walkable', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, bubblesLog } = h, log = gestureLog(show, KEYS, nav => frontOf(AT, baseball.FRONT_R, nav));
     const { n } = await liveAt(h, order, isBall(3));
     const kinds = bubblesLog.slice(n).map(b => b.kind ?? b.text);
     assert.ok(kinds.indexOf('……') >= 0 && kinds.findIndex(k => k?.icon === 'dome') > kinds.indexOf('……'));
-    assert.equal(runs(log, 'build'), 2, 'two builds');
+    assert.equal(runs(log, 'build'), 2, 'two builds'); assert.ok(log.filter(x => x.kind === 'build').every(f => f.key === 'baseball.players'), 'a player builds');
     for (const f of log.filter(x => x.kind === 'build')) assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, 'at the dome front');
     for (const p of [...baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots, GATE]) assert.ok(show.nav.walkable(p.x, p.z));
     assert.ok(!show.nav.walkable(AT.x, AT.z), 'the dome blocks');

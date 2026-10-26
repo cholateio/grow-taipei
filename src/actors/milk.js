@@ -4,8 +4,8 @@
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
 // 被老鼠咬或颱風登陸那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來；颱風賴著不走也一樣）。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv7、Lv10 ≤ 10 秒、最後回全景定格。
-import { anchorWorld } from './anchors.js';
-import { HOMES, HOME_R } from './landmarks.js';
+import { anchorWorld, cellCentre } from './anchors.js';
+import { HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
 
@@ -16,6 +16,7 @@ const AT = anchorWorld('milk');
 const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（灰）
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
+export const FESTIVAL_HOMES = [[-1, 0], [1, 0], [1, -1]].map(cellCentre);   // 鮮奶節多的三個小孩：鮮奶格、晶片格、溫泉格（裁決 R16）
 const POLE = offset(AT, 0.75, 0.95);                  // 旗桿
 const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（中心、兩根柱子離中心多遠）；右柱離小學生入口 ≥ 0.3（柱子有 footprint）
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
@@ -161,8 +162,8 @@ export function view(lv, flags, meta = {}) {
       kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n), scale: n >= 4 ? 1.3 : 1,
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRY },
     };
-    // 鮮奶節：全島每格多一個小孩（同島民的家：溫泉格以外的六格、同樣的散步半徑，各自從自己那格的邊上走進來）
-    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: HOMES[3], n: HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: HOMES, r: HOME_R } };
+    // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
+    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: FESTIVAL_HOMES[0], n: FESTIVAL_HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: FESTIVAL_HOMES, r: HOME_R } };
   }
   return v;
 }
@@ -205,8 +206,9 @@ export const script = {
     2(e, s, ctx) {
       const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE)), front = offset(AT, -0.2, 0.15);
       return [
-        B.walk(islander, front), B.gesture(islander, 'build', 1.2, { at: offset(AT, -0.2, ROW) }),
-        B.apply(e), B.bubble(islander, '♥', 0.8), B.levelUp('milk'), B.home(islander),
+        // 裁決 R15 一級 ≤ 4.5 s：鋤頭 1.2 → 0.9、閃白的同時 ♥
+        B.walk(islander, front), B.gesture(islander, 'build', 0.9, { at: offset(AT, -0.2, ROW) }),
+        B.together([B.apply(e), B.bubble(islander, '♥', 0.8)]), B.levelUp('milk'), B.home(islander),
       ];
     },
     // 小學：校舍閃白，3 個小學生從校門外一起跑進操場（一個接一個出發）→ ♪ → 跳一下、LEVEL UP

@@ -14,7 +14,7 @@ import { diffParts } from '../src/actors/stage.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
 import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
@@ -202,7 +202,7 @@ test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 
     const seen = [];
     await playItem(show, tracked, order, 'boba', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : 5), `${what} took ${secs.toFixed(2)} s`);
+      assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
       if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('boba');
@@ -229,7 +229,7 @@ test('scripts: the levels the typhoon delivery skips (Lv4, Lv5) also play 3–5 
       if (i >= 0) {
         await h.run(r.events.slice(0, i), { instant: true });
         const r0 = h.rig.log.length, secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
-        assert.ok(secs >= 3 && secs <= 5, `lv${to} took ${secs.toFixed(2)} s`);
+        assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `lv${to} took ${secs.toFixed(2)} s`);
         if (to === 5) {
           const f = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(f.q, f.r), trail = focusTrail(h.rig.log, r0).map(String);
           assert.deepEqual(trail.slice(-3), [String(worldToAxial(c.x, c.z)), String(CELL), 'home'], 'forest island, back to boba for LEVEL UP, then home');

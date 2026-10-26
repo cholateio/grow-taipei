@@ -155,3 +155,10 @@ test('cable: dark = one clay mesh along the path (with the landing pole); lit ad
   lit.object.userData.progress(1); assert.ok(glow.geometry.drawRange.count >= total);
   dark.dispose(); lit.dispose();
 });
+// 裁決 R15：蒙太奇倍速——test({ speed: 2 }) 閃三下、收起來都快兩倍
+test('shield test({ speed: 2 }) runs the flashes at double speed (hidden by half of SHIELD_TEST_DUR)', () => {
+  const { f } = setup(), s = shieldOf(f, 'test'), [m] = s.object.children;
+  s.object.userData.test({ speed: 2 }); run(s, SHIELD_TEST_DUR / 2 - 0.2); assert.ok(m.visible, 'still showing just before half time');
+  run(s, 0.3); assert.equal(m.visible, false, 'retracted by half time');
+  s.object.userData.test(); run(s, SHIELD_TEST_DUR / 2 + 0.1); assert.ok(m.visible, 'a plain test() is back to ×1');
+});

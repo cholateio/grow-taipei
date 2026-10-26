@@ -162,23 +162,23 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  // 飛天車：平常停在 park；object.userData.fly({ delay }) 從 from 飛一趟（劇本的拍叫它），land() 立刻停好（跳過）；
+  // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 從 from 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，蒙太奇 2），land() 立刻停好（跳過）；
   // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。模型在 at 底下，位置相對 at
   function orbit(spec) {
     const object = new THREE.Group(), at = spec.at;
     const model = glb({ path: spec.path, h: spec.size, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 });
     object.add(model.object);
-    let flying = false, start = 'from', t = 0, idle = 0;
+    let flying = false, start = 'from', t = 0, idle = 0, rate = 1;
     const put = p => { model.object.position.set(p.x - at.x, p.y - at.y, p.z - at.z); model.object.rotation.y = p.yaw; };
     const land = () => { flying = false; idle = 0; put(orbitPose(spec, Infinity)); };
     land();
-    object.userData.fly = ({ delay = 0 } = {}) => { flying = true; start = 'from'; t = -delay; put(orbitPose(spec, 0, 'from')); };
+    object.userData.fly = ({ delay = 0, speed = 1 } = {}) => { flying = true; start = 'from'; t = -delay; rate = speed; put(orbitPose(spec, 0, 'from')); };
     object.userData.land = land;
     return {
       object,
       update(dt) {
-        if (!flying) { if (spec.rest == null || (idle += dt) < spec.rest) return; flying = true; start = 'park'; t = 0; }
-        t += dt; const p = orbitPose(spec, Math.max(0, t), start); put(p);
+        if (!flying) { if (spec.rest == null || (idle += dt) < spec.rest) return; flying = true; start = 'park'; t = 0; rate = 1; }
+        t += dt * rate; const p = orbitPose(spec, Math.max(0, t), start); put(p);
         if (p.done) land();
       },
       dispose: model.dispose,
@@ -207,21 +207,21 @@ export function createPartFactory(THREE, ctx) {
   // 矽盾罩：半徑 r 的半球立在 at（101 底座）；格紋貼圖共用，材質每個零件自己一份（不透明度各演各的）。
   // 單面（FrontSide）：從全景看得到靠鏡頭的那半面，罩裡的島透得出來；不寫深度、不投影，一個 draw call。
   // 演法照 shieldPose；縮放與藏起來動的是裡面的 mesh，劇本的 scaleIn／閃白照樣作用在外層。
-  // test 建好時就是演完的樣子（收起來、藏著）：閃三下由劇本叫 object.userData.test() 開演、finish() 跳到收好
-  //   （跳過、reduced-motion、舞台重建零件都不會重閃）
+  // test 建好時就是演完的樣子（收起來、藏著）：閃三下由劇本叫 object.userData.test({ speed }) 開演、finish() 跳到收好
+  //   （跳過、reduced-motion、舞台重建零件都不會重閃）；speed：演出倍速（蒙太奇 2，裁決 R15），閃三下跟著快
   function shield(spec) {
     const geo = new THREE.SphereGeometry(spec.r, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), map = hexGrid(THREE).clone();
     map.repeat.set(24, 3.5); map.needsUpdate = true;
     const mat = new THREE.MeshBasicMaterial({ color: SHIELD.color, map, transparent: true, depthWrite: false, side: THREE.FrontSide });
     const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group(); mesh.castShadow = mesh.receiveShadow = false; mesh.renderOrder = 2; object.add(mesh);
-    let t = spec.state === 'test' ? Infinity : 0;
+    let t = spec.state === 'test' ? Infinity : 0, rate = 1;
     const put = () => { const p = shieldPose(spec.state, t); mesh.visible = p.visible; mesh.scale.setScalar(p.scale); mat.opacity = p.opacity; };
-    object.userData.test = () => { t = 0; put(); };
+    object.userData.test = ({ speed = 1 } = {}) => { t = 0; rate = speed; put(); };
     object.userData.finish = () => { t = Infinity; put(); };
     put();
     return {
       object,
-      update(dt) { t += dt; put(); map.offset.y = (map.offset.y + dt * 0.05) % 1; },   // 格紋慢慢往上捲
+      update(dt) { t += dt * rate; put(); map.offset.y = (map.offset.y + dt * 0.05) % 1; },   // 格紋慢慢往上捲
       dispose() { geo.dispose(); mat.dispose(); map.dispose(); },
     };
   }

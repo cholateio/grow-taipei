@@ -65,3 +65,12 @@ test('a beat whose start skips its own timeline is ended once and the timeline i
   tl.update(0.1); await p; tl.update(0.1);
   assert.deepEqual(log, ['s:start', 's:end', 'b:start', 'b:end']); assert.ok(!tl.busy); assert.equal(tl.currentKind, null);
 });
+// 裁決 R15：ctx.speed（倒數蒙太奇 2）——拍的 t 與 step 的 dt 都乘 speed，elapsed／currentDur 是真實秒數
+test('ctx.speed runs every beat faster: k and step dt scale, elapsed and currentDur stay real seconds', async () => {
+  log.length = 0; const tl = createTimeline(), dts = [];
+  const p = tl.play([{ ...beat('a', 1), step: (k, dt) => { log.push(`a:${k.toFixed(2)}`); dts.push(dt); } }, together([beat('b', 0.4)])], { speed: 2 });
+  tl.update(0.25); assert.equal(log.at(-1), 'a:0.50'); assert.ok(Math.abs(dts[0] - 0.5) < 1e-9, 'step gets show-time dt');
+  assert.ok(Math.abs(tl.currentDur - 0.5) < 1e-9, 'currentDur in real seconds');
+  tl.update(0.25); tl.update(0.2); await p;
+  assert.ok(log.includes('b:end')); assert.ok(Math.abs(tl.elapsed - 0.7) < 1e-9, 'elapsed is real time');
+});

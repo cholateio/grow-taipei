@@ -271,7 +271,7 @@ export const script = {
       const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(k)));
       return [
         B.apply(e, { hold: ['boba.queue'] }), ...sp,
-        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: k * 0.25 }))),
+        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: k * 0.15 }))),   // 一個接一個出發，間隔 0.25 → 0.15（裁決 R15）
         B.home(shown('boba.queue')), B.levelUp('boba'),
       ];
     },

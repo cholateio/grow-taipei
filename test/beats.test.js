@@ -80,12 +80,14 @@ test('walk, gesture, bubble and jump skip a hidden member: no time, not claimed,
   assert.equal(tl.busy, false, 'nothing to play');
   assert.equal(roster.claimed.length, 0); assert.deepEqual(member.pos, at); assert.equal(bubbles.shown.length, 0);
 });
-test('walk at double speed in montage; an empty route takes no time', () => {
+// 裁決 R15：蒙太奇的兩倍速由時間軸統一換算（ctx.speed 2）——走路自己不再加倍，estimate 是演出時間、真實秒數減半
+test('walk at double speed in montage (timeline ctx.speed 2); an empty route takes no time', () => {
   const { ctx, tl, member, roster } = fake({ pos: c([-1, 1]) }); const to = c([-1, 0]);
   const len = ctx.nav.routeLength(ctx.nav.route(c([-1, 1]), to));
-  ctx.montage = true; const w = B.walk(() => member, () => to);
-  assert.ok(Math.abs(w.estimate(ctx) - len / 3.2) < 1e-6); assert.equal(roster.claimed.length, 0, 'estimate leaves the member alone');
-  tl.play([w], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - len / 3.2) < 1e-6); assert.equal(member.mode, 'script');
+  ctx.montage = true; ctx.speed = 2; const w = B.walk(() => member, () => to);
+  assert.ok(Math.abs(w.estimate(ctx) - len / 1.6) < 1e-6, 'estimate in show time'); assert.equal(roster.claimed.length, 0, 'estimate leaves the member alone');
+  tl.play([w], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - len / 3.2) < 1e-6, 'half the real seconds'); assert.equal(member.mode, 'script');
+  const p0 = { ...member.pos }; tl.update(0.1); assert.ok(Math.abs(Math.hypot(member.pos.x - p0.x, member.pos.z - p0.z) - 0.1 * 3.2) < 0.05, 'covers 3.2 per real second');
   tl.skip();
   const r = ctx.nav.route(c([-1, 1]), to), [p, q] = r.slice(-2);
   assert.ok(Math.abs(member.yaw - Math.atan2(q.x - p.x, q.z - p.z)) < 1e-9, 'faces along the last segment');
@@ -347,4 +349,19 @@ test('a walk whose route is cut by a new footprint replans around it and still e
   }
   assert.ok(Math.abs(t - dur) <= 1 / 30 + 1e-6, `ends on time (${t.toFixed(2)} vs ${dur.toFixed(2)})`);
   assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6, 'arrives');
+});
+// 裁決 R15：蒙太奇倍速（ctx.speed 2）——交給真實時間在跑的東西自己換算：泡泡、LEVEL UP、鏡頭飛行縮短；列車照計畫的曲線快兩倍、停站時不動
+test('ctx.speed 2: bubble, LEVEL UP and camera flight are handed real-time lengths; trainStop keeps the train still while held', () => {
+  const { ctx, tl, bubbles, rig, rail } = fake({ parts: ['token.train'] }); ctx.speed = 2;
+  tl.play([B.bubble('milk', '！', 1.2), B.levelUp('milk'), B.focus([1, 0])], ctx); tl.update(0);
+  assert.equal(bubbles.shown[0].dur, 0.6); assert.ok(Math.abs(tl.currentDur - 0.6) < 1e-9);
+  tl.update(0.6); assert.equal(bubbles.levels[0].opts.dur, 0.5); tl.update(0.5);
+  assert.deepEqual(rig.calls.at(-1), ['focus', c([1, 0]), { zoom: 0.6, ms: 500 }]); tl.skip();
+  const one = fake(); one.tl.play([B.levelUp('milk')], one.ctx); one.tl.update(0); assert.equal(one.bubbles.levels[0].opts.dur, undefined, '×1 keeps the default');
+  rail.offset = 0; ctx.now = (STATION_A - Math.PI) / 0.35;
+  tl.play([B.trainStop()], ctx); tl.update(0);
+  assert.ok(Math.abs(tl.currentDur - (TRAIN_ARRIVE + SPUR_BRAKE / 2 + TRAIN_STOP) / 2) < 1e-6, 'the whole stop at ×2');
+  for (let i = 0; i < 22; i++) { ctx.now += 0.1; tl.update(0.1); }
+  const a = ((ctx.now + rail.offset) * 0.35 - STATION_A) % (2 * Math.PI); assert.ok(Math.abs(a) < 0.05 || Math.abs(a - 2 * Math.PI) < 0.05, `head at the station after 2.2 s (${a.toFixed(3)})`);
+  const o = rail.offset; ctx.now += 0.5; tl.update(0.5); assert.ok(Math.abs(rail.offset - (o - 0.5)) < 1e-6, 'held: the train stands still in real time');
 });

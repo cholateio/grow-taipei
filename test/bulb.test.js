@@ -9,7 +9,7 @@ import { createNav } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT } from './helpers/show.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
 import * as sat from '../src/actors/satellites.js';
 import * as chip from '../src/actors/chip.js';
@@ -140,7 +140,7 @@ async function liveAt({ run, bubblesLog }, order, pred) {
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
 // 物品 v2 §6：一級 3–5 s；Lv2 點最近三站＋其餘一站站亮 ≤ 8 s（裁決）；
 // ◆ Lv7（離岸風電）、Lv9（全島霓虹）6–10 s——含鏡頭平移與回全景的整段（show.elapsed，裁決 R8）
-const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, 8] : KEY.includes(to) ? [3, 10] : [3, 5]);
+const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [3, 10] : [3, SCRIPT_MAX]);
 const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
 const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
 function checkBulb({ show, bubblesLog }, e, secs, n, timing) {

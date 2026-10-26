@@ -7,6 +7,7 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
+import { MONTAGE_SPEED } from '../src/show/turn.js';
 import * as THREE from '../vendor/three/three.module.js';
 import { createCameraRig, overviewDistance } from '../src/scene/camera.js';
 import { cellCentre } from '../src/actors/anchors.js';
@@ -367,7 +368,8 @@ test('montage turn with a stage crossing keeps the mid-script focus(home)', asyn
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
   const tower = cellCentre([0, 0]);
   assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
-  assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
+  // 停 0.8 s（演出時間）；蒙太奇 MONTAGE_SPEED 倍速（裁決 R15）→ 真實秒數除以倍速
+  assert.ok(log[lit][1] - log[mid][1] >= 0.8 / MONTAGE_SPEED - 1e-6, `the home holds 0.8 s (show time) before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
   assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');
 });
 
@@ -496,13 +498,14 @@ test('alien landing turn live: the ◆ rat Lv4 branch and ◆ bulb Lv9 still pla
     await run([...r.events, { kind: 'settle' }], { montage: true, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
     const seg = e => { const k = marks.findIndex(([x]) => x === e); return { secs: (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1], bubbles: bubblesLog.slice(marks[k][2], marks[k + 1]?.[2]) }; };
     const r4 = seg(rat4), b9 = seg(bulb9);
-    assert.ok(r4.secs > 3, `rat Lv4 script played (${r4.secs.toFixed(1)} s)`); assert.ok(r4.bubbles.some(b => b.kind === '……' || b.kind === '？'), 'the mutant ……／？');
-    assert.ok(b9.secs > 2.5, `bulb Lv9 script played (${b9.secs.toFixed(1)} s)`);
+    // 蒙太奇 MONTAGE_SPEED 倍速（裁決 R15）：劇本的真實秒數除以倍速
+    assert.ok(r4.secs > 3 / MONTAGE_SPEED, `rat Lv4 script played (${r4.secs.toFixed(1)} s)`); assert.ok(r4.bubbles.some(b => b.kind === '……' || b.kind === '？'), 'the mutant ……／？');
+    assert.ok(b9.secs > 2.5 / MONTAGE_SPEED, `bulb Lv9 script played (${b9.secs.toFixed(1)} s)`);
     assert.equal(show.stage.flags.ratBranch, 'alien'); assert.ok(show.roster.members('rat.pack')[0].dress.eye, 'mutant');
     const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
     assert.ok(hidden.length > 0 && hidden.every(m => m.mode !== 'script'), 'people indoors stay indoors');
     // 非關鍵級（例：鮮奶、珍奶）只有 apply + LEVEL UP：1.2 s 以內
-    for (const e of after.filter(x => x.kind === 'grow' && !isKey(x))) assert.ok(seg(e).secs <= 1.2 + 1e-6, `${e.item} ${e.to} ${seg(e).secs.toFixed(2)} s`);
+    for (const e of after.filter(x => x.kind === 'grow' && !isKey(x))) assert.ok(seg(e).secs <= 1.2 / MONTAGE_SPEED + 2 / 30, `${e.item} ${e.to} ${seg(e).secs.toFixed(2)} s`);
     return;
   }
   assert.fail('no landing turn');

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import { installFakeDom } from './helpers/fakedom.js';
 installFakeDom();
-const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP } = await import('../src/show/turn.js');
+const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP, MONTAGE_SPEED, GAP } = await import('../src/show/turn.js');
 const { B } = await import('../src/show/beats.js');
 
 const zero = Object.fromEntries(spec.ORDER.map(id => [id, 0]));
@@ -37,7 +37,7 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-3).map(b => b.kind), ['home', 'world', 'focus']);
   assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
   const beats = noMarks(raw), kinds = kindsOf(raw);
-  // 每個有東西演的事件前面平移過去（不同物品之間空 0.6 s）；等待事件不平移；回合最後回全景
+  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件不平移；回合最後回全景
   assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'bubble', 'wait', 'focus', 'home', 'world', 'focus']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
@@ -103,7 +103,7 @@ test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bub
   // 短路程：走路留著；bubble、gesture、wait 拿掉（together 裡也拿掉，空的 together 整個丟掉）
   const short = fakeCtx({ nav: navOf(2) });
   const beats = buildTurn([e], { ...base([tower, milk(2)]), montage: true }, short);
-  assert.equal(short.montage, true);
+  assert.equal(short.montage, true); assert.equal(MONTAGE_SPEED, 2); assert.equal(short.speed, MONTAGE_SPEED, 'R15: the montage plays at ×2');
   const kinds = kindsOf(beats);
   assert.deepEqual(kinds.slice(0, 3), ['bubble', 'bubble', 'bubble']);
   assert.deepEqual(beats.slice(0, 3).map(b => b.dur), [0.6, 0.6, 0.6]);
@@ -121,6 +121,11 @@ test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bub
   assert.ok(estimateTurn(long, far) <= MONTAGE_CAP);
 });
 
+test('estimateTurn returns real seconds: show-time beat lengths divided by ctx.speed', () => {
+  const beats = [B.wait(1), B.wait(2)];
+  assert.equal(estimateTurn(beats, fakeCtx()), 3); assert.equal(estimateTurn(beats, { ...fakeCtx(), speed: 2 }), 1.5);
+  const live = fakeCtx({ nav: navOf(2) }); buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base([tower]), live); assert.equal(live.speed, 1, 'a placement turn plays at ×1');
+});
 test('estimateTurn adds numeric durs, uses estimate for function durs, and takes the longest child of together', () => {
   const ctx = fakeCtx({ nav: navOf(3) });
   assert.equal(estimateTurn([B.wait(1), B.together([B.wait(2), B.wait(0.5)]), B.walk(walker, { x: 3, z: 0 }), B.apply({ kind: 'settle' })], ctx), 1 + 2 + 3 + 0.15, 'a blinking apply counts one blink');
@@ -162,17 +167,17 @@ test('a part knocked askew last turn is righted with a blink at the start of thi
 // §13.1 鏡頭跟主線
 const quietTower = { id: 'tower', view() {}, script: { settle: () => [] } };   // 跟真的 101 一樣：沒跨門檻 0 拍
 const focusTargets = beats => noMarks(beats).filter(b => b.kind === 'focus').map(b => b.target);
-test('buildTurn inserts a focus before each event, skips repeats on the same cell, waits 0.6 s between items, and returns home last', () => {
+test('buildTurn inserts a focus before each event, skips repeats on the same cell, waits GAP (0.4 s) between items, and returns home last', () => {
   const ctx = fakeCtx();
   const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'settle' }];
   const beats = buildTurn(events, base([quietTower]), ctx), kinds = kindsOf(beats).filter(k => k !== 'apply');
   assert.deepEqual(kinds, ['focus', 'levelUp', 'wait', 'focus', 'levelUp', 'home', 'world', 'focus']);
   assert.deepEqual(focusTargets(beats), [[-1, 0], [1, 0], 'home']);
-  assert.equal(noMarks(beats).find(b => b.kind === 'wait').dur, 0.6);
+  assert.equal(GAP, 0.4); assert.equal(noMarks(beats).find(b => b.kind === 'wait').dur, GAP);
   // 平移在 mark 後面（pace 量到的事件秒數包含平移與空拍）
   const raw = beats.map(b => b.kind), chip = raw.indexOf('wait');
   assert.equal(raw[chip - 1], 'mark'); assert.equal(raw[chip + 1], 'focus');
-  // 同一格的不同物品（燈泡、颱風都在中心格）：空 0.6 s，但不再平移
+  // 同一格的不同物品（燈泡、颱風都在中心格）：空 GAP，但不再平移
   const same = buildTurn([{ kind: 'placed', item: 'bulb', to: 1 }, { kind: 'placed', item: 'typhoon', to: 1 }], base([quietTower]), ctx);
   assert.deepEqual(kindsOf(same).filter(k => k !== 'apply'), ['focus', 'wait', 'home', 'world', 'focus']);
   // 101 跨門檻（settle 有拍）：平移到 101 那一格
@@ -204,7 +209,7 @@ test('focus beats set the roster focus cells; the final home focus clears them',
   assert.deepEqual(set, [[[-1, 0]], [[1, 0]], null]);
 });
 
-// 審查：有東西演但沒有格子的事件（cause 'turn' 之類）不平移，也不算「換物品」，不多空 0.6 s
+// 審查：有東西演但沒有格子的事件（cause 'turn' 之類）不平移，也不算「換物品」，不多空 GAP
 test('an event with no cell neither pans nor counts as a change of item', () => {
   const rat = { id: 'rat', view() {}, script: { fx: (e, s, c) => [c.B.wait(0.5)] } };
   const beats = noMarks(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'after', item: 'turn', cause: 'rat', flag: { name: 'x', value: true } }, { kind: 'grow', item: 'milk', from: 1, to: 2 }], base([quietTower, rat]), fakeCtx()));
@@ -224,7 +229,7 @@ test('two consecutive grow events of one item in a turn: the second plays only a
   const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 3, to: 4 }, jump, { kind: 'settle' }];
   const raw = buildTurn(events, base([quietTower, chip]), fakeCtx());
   assert.deepEqual(asked, [4], 'the second level of a jump asks no script');
-  // 第一級照常：換物品空 0.6 s、平移到晶片格、劇本、補的 apply
+  // 第一級照常：換物品空 GAP、平移到晶片格、劇本、補的 apply
   assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
   // 第二級：只有 apply + LEVEL UP（+ 每個事件補的 apply）
   const second = between(raw, 2);

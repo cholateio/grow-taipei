@@ -7,7 +7,8 @@
 // 鏡頭跟主線（§13.1）：有東西演的事件，劇本前面先 focus 到事件的格子（同一格連續不重複），不同物品之間先空 GAP 秒；
 //   劇本第一拍自己就是 focus（或 together 裡有 focus）的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
-// 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
+// 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉；
+//   整串拍用 MONTAGE_SPEED 倍速演（裁決 R15：ctx.speed，時間軸統一換算——等待、泡泡、停格、小動作、走路、關鍵劇本一起快）。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
@@ -22,20 +23,21 @@ import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
 
-export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'];
-export const GAP = 0.6;   // 不同物品的事件之間空幾秒（§13.1）
+export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'], MONTAGE_SPEED = 2;
+export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
 const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.2;
 
 const sum = lv => Object.values(lv).reduce((a, b) => a + b, 0);
 
-// 預估一串拍的秒數：有 estimate 用 estimate；數字 dur 直接加；函數 dur（start 之後才知道）算 0；together 取最長的子拍
+// 預估一串拍的秒數：有 estimate 用 estimate；數字 dur 直接加；函數 dur（start 之後才知道）算 0；together 取最長的子拍。
+// 回真實秒數：拍的長度是演出時間，除以 ctx.speed（蒙太奇 2 倍速）
 export function estimateTurn(beats, ctx) {
   const one = b => {
     if (b.kind === 'together' && b.beats) return Math.max(0, ...b.beats.map(one));
     if (b.estimate) return b.estimate(ctx);
     return typeof b.dur === 'number' && b.dur > 0 ? b.dur : 0;
   };
-  return beats.reduce((t, b) => t + one(b), 0);
+  return beats.reduce((t, b) => t + one(b), 0) / (ctx?.speed > 0 ? ctx.speed : 1);
 }
 
 // 有沒有一拍（together 裡也算）符合 f
@@ -90,8 +92,10 @@ function upright(key) {
   };
 }
 
-// mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
-const mark = e => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } });
+// mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）；
+// 第二個參數 info = { gap, key }：gap 是劇本前面補的空拍（不同物品之間的 GAP）真實秒數——pace 用「不含 focus 拍的秒數」量劇本本身，
+// 再扣掉它；key 是不是 ◆ 關鍵劇本
+const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e, info); } });
 
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
@@ -100,7 +104,7 @@ function scriptMembers(roster) {
 
 export function buildTurn(events, { modules, spec, lv, flags, meta, montage = false }, ctx) {
   const mod = id => modules.find(m => m.id === id);
-  ctx.montage = montage;
+  ctx.montage = montage; ctx.speed = montage ? MONTAGE_SPEED : 1;
   const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
@@ -154,7 +158,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
-    out.push(mark(e), ...lead, ...beats, B.apply(e));
+    out.push(mark(e, { gap: estimateTurn(lead.filter(b => b.kind === 'wait'), ctx), key }), ...lead, ...beats, B.apply(e));
     if (landsTyphoon(e)) landed = true;
   });
 

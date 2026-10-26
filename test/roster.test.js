@@ -773,3 +773,13 @@ test('a walk-in blocked by a wall mid-trip is not snapped to its trip end nor dr
   for (let i = 0; i < 240; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`); }
   assert.ok(m.pos.x < Q.x, 'stayed on its side of the wall');
 });
+// 人數預算（任務 12、裁決 R16）：散步不借道別格——家那格被建築切成兩半時，散步只挑不出這格就走得到的點（不從橋繞去鄰格再回來）
+test('wander never routes through another cell: a cell split by a wall keeps its walker on one side', () => {
+  const { roster, nav } = setup(), home = centre([-1, 0]);
+  nav.setFootprints([{ x: home.x, z: home.z, w: 6, d: 0.2 }]);
+  roster.declare('k', { kind: 'roster', at: { ...home, z: home.z + 1 }, n: 1, home: { kind: 'wander', at: home, r: 1.8 } });
+  roster.snap();
+  const [m] = roster.members('k'), cells = new Set();
+  for (let i = 0; i < 30 * 120; i++) { roster.update(1 / 30, i / 30); const c = cellAt(m.pos.x, m.pos.z); cells.add(c ? String(c) : 'bridge'); }
+  assert.deepEqual([...cells], ['-1,0'], `visited ${[...cells]}`);
+});

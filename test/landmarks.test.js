@@ -16,15 +16,14 @@ import { MAIN_CELLS, cellAt } from '../src/scene/hex.js';
 import { landmarkWorld } from '../src/actors/anchors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 const SPRING = landmarkWorld('spring');
-test('islanders: n 5, wander homes cover all six main cells, two of them stand at the spring pool edge with fidget look and never inside the pool footprint', () => {
+// 人數預算（裁決 R16）：島民 4 人、一人一格；最擠的球場格（-1,1）與珍奶格（0,1）不住島民，溫泉格（1,-1）是溫泉客的
+test('islanders: n 4, one wander home per cell on the four main cells that are not baseball/boba/spring; two bathers stand at the spring pool edge with fidget look and never inside the pool footprint', () => {
   const v = landmarks.view(zero, {}), r = v['landmarks.islanders'];
-  assert.equal(r.kind, 'roster'); assert.equal(r.n, 5); assert.deepEqual(r.accessory, ['none', 'cap']);
-  assert.equal(r.home.kind, 'wander'); assert.equal(r.home.r, 1.8); assert.equal(r.home.at.length, 6);
+  assert.equal(r.kind, 'roster'); assert.equal(r.n, 4); assert.deepEqual(r.accessory, ['none', 'cap']);
+  assert.equal(r.home.kind, 'wander'); assert.equal(r.home.r, 1.8); assert.equal(r.home.at.length, r.n);
   const cells = r.home.at.map(p => String(cellAt(p.x, p.z)));
-  assert.deepEqual([...cells].sort(), MAIN_CELLS.filter(c => String(c) !== '1,-1').map(String).sort(), 'six main cells, the spring cell is the bathers\'');
+  assert.deepEqual([...cells].sort(), MAIN_CELLS.filter(c => !['1,-1', '-1,1', '0,1'].includes(String(c))).map(String).sort(), 'not the spring, baseball or boba cell');
   r.home.at.forEach((p, i) => { const c = axialToWorld(...cellAt(p.x, p.z)); assert.deepEqual(p, { x: c.x, y: cellTop(cellAt(p.x, p.z)), z: c.z }, `home ${i} is the cell centre`); });
-  // 五個散步的人家都不一樣，不擠在珍奶格（最擠的那格排在第六個）
-  assert.equal(new Set(Array.from({ length: r.n }, (_, i) => cells[i % 6])).size, 5); assert.equal(cells[5], '0,1');
   const b = v['landmarks.bathers'];
   assert.deepEqual([b.kind, b.n, b.home.kind, b.home.fidget, b.home.rescue, b.home.spots.length], ['roster', 2, 'stand', 'look', true, 2]);
   const fp = [].concat(v['landmarks.spring'].footprint), nav = createNav();

@@ -16,7 +16,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, solo } from './helpers/show.js';
+import { headlessShow, playItem, solo, SCRIPT_MAX } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 賽博那條（老鼠在 Lv4 分岔成機器鼠）
 const ALIEN = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;   // 外星那條（變異鼠，Lv5 要颱風 ≥2）
@@ -208,7 +208,7 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
 const KEY_LV = [4, 5];
 function checkRat({ show, bubblesLog }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
-  assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? 10 : 5), `${what} took ${secs.toFixed(2)}s`);
+  assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
   if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('rat');
@@ -293,7 +293,7 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
   const n = bubblesLog.length, e = { kind: 'grow', item: 'rat', from: 2, to: 3 }, secs = await run([e]);
-  assert.ok(secs >= 3 && secs <= 5, `${secs.toFixed(1)} s`);
+  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${secs.toFixed(1)} s`);
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 5); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }

@@ -22,6 +22,8 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const ease = k => k * k * (3 - 2 * k);
 const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));   // 從角 a 轉到 b 的最短轉角
 const call = (v, ctx) => (typeof v === 'function' ? v(ctx) : v);
+// 演出速度（裁決 R15，時間軸的 ctx.speed）：交給真實時間在跑的東西（泡泡、LEVEL UP、鏡頭飛行、列車時鐘）要自己換算
+export const rate = ctx => (ctx?.speed > 0 ? ctx.speed : 1);
 const isPartKey = t => typeof t === 'string' && t.includes('.');
 const offsetOf = o => ({ dx: o?.dx ?? 0, dy: o?.dy ?? 0, dz: o?.dz ?? 0 });   // move 的 from／to 可以寫 0
 // 列車角速度：跟 token.js 的 view 一樣，淹水時停駛
@@ -81,7 +83,7 @@ export function walk(who, to, { speed, delay = 0 } = {}) {
   const plan = ctx => {
     const mm = memberOf(who, ctx); if (!mm || mm.hidden) return null;   // 躲進門裡的人不拉出來（裁決 R14）
     const r = ctx.nav.route(mm.pos, call(to, ctx));
-    return { mm, r, len: ctx.nav.routeLength(r), v: (speed ?? mm.speed) * (ctx.montage ? 2 : 1) };
+    return { mm, r, len: ctx.nav.routeLength(r), v: speed ?? mm.speed };   // 蒙太奇的兩倍速由時間軸統一換算（ctx.speed）
   };
   return {
     kind: 'walk',
@@ -117,7 +119,7 @@ export function bubble(who, kind, dur = 1.2) {
   let handle = null;
   return {
     kind: 'bubble', dur,
-    start(ctx) { const r = resolveTarget(who, ctx); if (!r || r.member?.hidden) return false; handle = ctx.bubbles.show(r.head, kind, dur); },
+    start(ctx) { const r = resolveTarget(who, ctx); if (!r || r.member?.hidden) return false; handle = ctx.bubbles.show(r.head, kind, dur / rate(ctx)); },
     end() { handle?.cancel(); handle = null; },
   };
 }
@@ -186,7 +188,7 @@ export function levelUp(target, { text = 'LEVEL UP', down = false } = {}) {
     kind: 'levelUp', dur: 1.0, down,
     start(ctx) {
       const r = resolveTarget(target, ctx); if (!r) return false;
-      handle = ctx.bubbles.levelUp(r.head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down });
+      handle = ctx.bubbles.levelUp(r.head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) });
     },
     end() { handle?.cancel(); handle = null; },
   };
@@ -206,7 +208,7 @@ export function focus(target, { zoom = 0.6, final = false, hold = 0, skyline } =
   return {
     kind: 'focus', dur: target === 'home' ? hold : FOCUS_BEAT, target, final,
     start(ctx) {
-      const ms = ctx.instant ? 0 : 1000;
+      const ms = ctx.instant ? 0 : 1000 / rate(ctx);
       if (target === 'home') {
         ctx.roster.setFocus(null);
         if (skyline != null) ctx.rig.setSkyline(call(skyline, ctx));
@@ -354,7 +356,9 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
   // 進支線後第 u 秒車頭在支線上第幾公尺（緩起緩停）
   const tripS = u => trip.total * (u < out ? ease(u / out) : u < out + stop ? 1 : 1 - ease(Math.min(1, (u - out - stop) / out)));
   let arrive = 0, t = 0, total = stop, i = 0, cur = null;   // cur：正在演的 during 拍 { beat, t0, dur }
-  let need = 0, offset0 = 0, run = () => 0;   // 要趕的環上時間、開始時的時鐘偏移（每幀直接算偏移 = offset0 + 環上走了多少 − t）、趕路那段的曲線（trainRun）
+  // 要趕的環上時間、開始時的時鐘偏移（每幀直接算偏移 = offset0 + 環上走了多少 − 真實經過的秒數 real）、趕路那段的曲線（trainRun）。
+  // t 是演出時間（蒙太奇 2 倍速時列車整段跟著快）；列車時鐘 ctx.now 是真實時間，所以偏移扣的是 real
+  let need = 0, offset0 = 0, real = 0, run = () => 0;
   // 第 u 秒環上走了多少（以原速的秒計）：趕路（trainRun）→ 停住 → 加速回原速
   const ringRun = u => {
     if (u < arrive) return run(u);
@@ -377,12 +381,12 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
       i = 0; cur = null;
       if (!partOf('token.train', ctx) || !trainSpeed(ctx)) return false;
       ({ need, arrive, run } = trainRun(ctx, trip ? trip.a : at, { within, boost, launch, back }));
-      t = 0; offset0 = ctx.rail.offset;
+      t = 0; real = 0; offset0 = ctx.rail.offset;
       const sub = subs.reduce((a, b) => a + durOf(b, ctx), 0);
       total = trip ? out + Math.max(stop + out + SPUR_PULL, sub) : Math.max(stop, sub);
     },
     step(_k, dt, ctx) {
-      t += dt; ctx.rail.offset = offset0 + ringRun(t) - t;
+      t += dt; real += dt / rate(ctx); ctx.rail.offset = offset0 + ringRun(t) - real;
       if (trip) ctx.rail.trip = t > arrive && t < arrive + hold ? { ...trip, s: tripS(t - arrive) } : null;
       if (t < arrive + out) return;
       if (!cur && i === 0) open(ctx, arrive + out);

@@ -207,6 +207,8 @@ const sameCell = (a, b) => a[0] === b[0] && a[1] === b[1];
 // 走向另一格那段的鏡頭：和那段走路放在同一個 together，等到他進格前 FLIGHT 秒（鏡頭飛行時間）才轉，他過橋進格時鏡頭剛好到。
 // 拍開始時用同一條路線（nav.route 從他現在的位置，和 walk 同一幀算）量出進格要走多遠；cellFn 回 null（同一格）這拍跳過
 const FLIGHT = 1, SAMPLE = 0.05;
+// 走路那段至少幾秒（人本來就在附近時站著等，一級才不短於 3 秒；裁決 R15 把其餘的拍砍短之後才需要）：Lv4 夜市、Lv6 變電所
+const MIN_WALK = { market: 1.7, substation: 1.0 };
 function entryDistance(route, cell) {
   let s = 0;
   for (let k = 1; k < route.length; k++) {
@@ -224,8 +226,8 @@ function panAhead(B, who, to, cellFn, speed) {
     start(c) {
       inner = null; d = 0;
       const cell = cellFn(c), m = who(c); if (!cell || !m) return false;
-      const v = speed * (c.montage ? 2 : 1);
-      left = Math.max(0, entryDistance(c.nav.route(m.pos, to(c)), cell) / v - FLIGHT);
+      // 演出時間：蒙太奇倍速由時間軸換算（step 的 dt 已經乘過），鏡頭飛行 FLIGHT 秒也跟著快
+      left = Math.max(0, entryDistance(c.nav.route(m.pos, to(c)), cell) / speed - FLIGHT);
       inner = B.focus(cell); d = left + inner.dur;
       if (left <= 0) fire(c);
     },
@@ -318,25 +320,28 @@ export const script = {
         B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
       ];
     },
-    // 四攤：離夜市最近的兩個島民快步走去夜市前排隊 → 一起 ♥ → 閃白多兩攤（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 四攤：離夜市最近的兩個島民快步走去夜市前排隊 → 閃白多兩攤、一起 ♥（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
       return [
-        B.focus(MARKET_CELL), B.together([0, 1].map(i => B.walk(islander(i), slot(i), { speed: QUEUE_SPEED }))), B.together([0, 1].map(i => B.bubble(islander(i), '♥', 0.8))),
-        B.apply(e), B.home([islander(0), islander(1)]), levelUpAtHome(B),
+        // 閃白多兩攤的同時一起 ♥（裁決 R15 一級 ≤ 4.5 s）
+        B.focus(MARKET_CELL), B.together([...[0, 1].map(i => B.walk(islander(i), slot(i), { speed: QUEUE_SPEED })), B.wait(MIN_WALK.market)]), B.together([B.apply(e), ...[0, 1].map(i => B.bubble(islander(i), '♥', 0.4))]),
+        B.home([islander(0), islander(1)]), levelUpAtHome(B),
       ];
     },
     // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ → 閃白全島 LED、101 燈光秀 → 入夜
     5(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
-      return [B.walk(m, FOOT), B.bubble(m, '！'), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
+      return [B.walk(m, FOOT), B.bubble(m, '！', 0.8), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
     },
-    // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）→ ♪（嗡嗡響）
+    // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）、♪（嗡嗡響）
     6(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
+      // 揮一下、閃白的同時 ♪（裁決 R15 一級 ≤ 4.5 s：鋤頭 1.0 → 0.6）；他本來就在空地旁邊時走路那段至少 MIN_WALK 秒（站著等一下），整級不短於 3 秒
       return [
-        B.walk(m, c => frontOf(SUBSTATION, SUBSTATION_FRONT.z - SUBSTATION.z, c.nav), { speed: LIGHTING_SPEED }), B.gesture(m, 'build', 1.0, { at: SUBSTATION }),
-        B.apply(e), B.bubble(m, '♪', 0.8), B.home(m), B.levelUp('bulb'),
+        B.together([B.walk(m, c => frontOf(SUBSTATION, SUBSTATION_FRONT.z - SUBSTATION.z, c.nav), { speed: LIGHTING_SPEED }), B.wait(MIN_WALK.substation)]),
+        B.gesture(m, 'build', 0.6, { at: SUBSTATION }),
+        B.together([B.apply(e), B.bubble(m, '♪', 0.6)]), B.home(m), B.levelUp('bulb'),
       ];
     },
     // ★◆ 離岸風電啟動（代幣 ≥7：支線通到風車島）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
@@ -359,8 +364,9 @@ export const script = {
     8(e, s, ctx) {
       const { B } = ctx, m = onIsland(ctx);
       return [
-        B.focus(WIND, { zoom: ISLAND_ZOOM }), B.walk(m, SWITCH_FRONT), B.gesture(m, 'build', 1.0, { at: SWITCH }),
-        B.apply(e, { only: ['chip.cable'] }), B.bubble(m, '♪', 1.0), B.home(m),
+        // 裁決 R15（颱風回合 ≤ 50 s）：一敲 1.0 → 0.8、♪ 1.0 → 0.8
+        B.focus(WIND, { zoom: ISLAND_ZOOM }), B.walk(m, SWITCH_FRONT), B.gesture(m, 'build', 0.8, { at: SWITCH }),
+        B.apply(e, { only: ['chip.cable'] }), B.bubble(m, '♪', 0.8), B.home(m),
         B.focus('home', { hold: 1.0 }), B.levelUp('bulb'),
       ];
     },

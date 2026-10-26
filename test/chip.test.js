@@ -13,7 +13,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 const AT = anchorWorld('chip'), CELL = cellOf('chip'), TOWER = anchorWorld('tower');
@@ -191,7 +191,7 @@ test('scripts: every chip event in both solutions plays 3–5 s (◆ Lv9 6–10 
     await playItem(show, tracked, order, 'chip', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       // Lv7：列車從現在的位置趕來（≤ 4.5 倍、減速進站，不瞬移）最多 4.3 s，加上停站、抱箱子、LEVEL UP，上限放到 7.3 s（審稿第 2 輪）
-      assert.ok(secs >= 3 && secs <= (to === 9 ? 10 : to === 7 ? TRAIN_ARRIVE + SPUR_BRAKE / 2 + 3 : 5), `${what} took ${secs.toFixed(2)}s`);
+      assert.ok(secs >= 3 && secs <= (to === 9 ? 10 : to === 7 ? TRAIN_ARRIVE + SPUR_BRAKE / 2 + 3 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
       if (to === 9) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('chip');

@@ -201,7 +201,7 @@ const replay = (e, key, dur, { begin, step, finish }) => {
     kind: 'replay', dur, keep: true,
     start(c) {
       if (c.stage.apply(e, { only: [key] }).changed.length) c.nav.setFootprints(c.stage.footprints());
-      o = c.stage.partObject(key); if (!o || !begin(o)) return false;
+      o = c.stage.partObject(key); if (!o || !begin(o, c)) return false;
     },
     step(k) { step?.(o, k); },
     end() { if (o) finish(o); },
@@ -214,7 +214,7 @@ const surge = (e, dur) => replay(e, 'chip.cable', dur, {
 });
 // 矽盾測試：罩子閃三下又收起（零件的 userData.test／finish）
 const shieldTest = e => replay(e, 'tower.shield', SHIELD_TEST_DUR, {
-  begin: o => { if (!o.userData.test) return false; o.userData.test(); return true; }, finish: o => o.userData.finish?.(),
+  begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
 });
 // 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 LOOKERS 個。
 // 這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）

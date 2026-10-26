@@ -32,6 +32,7 @@ import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 import { SEPARATION } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
+const ROUTE_TRIES = 6;   // 散步挑點：路線借道別格就重挑，最多幾次（wanderRoute）
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
@@ -420,6 +421,16 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     return false;
   }
 
+  // 散步路線：人在家那格裡時，不挑要借道別格（過橋繞去鄰格再回來）才走得到的點——家那格被建築切成兩半時只在自己這半邊走
+  // （人數預算，裁決 R16：路過的人不擠爆別格）。第一個點就好的話跟以前一樣只抽一次亂數；試 ROUTE_TRIES 次都不行就原地休息
+  function wanderRoute(m, at, r) {
+    const home = cellAt(at.x, at.z), here = cellAt(m.pos.x, m.pos.z);
+    const inside = route => route.every(p => { const c = cellAt(p.x, p.z); return c && c[0] === home[0] && c[1] === home[1]; });
+    if (!home || !here || here[0] !== home[0] || here[1] !== home[1]) return nav.route(m.pos, nav.wander(at, r));
+    for (let k = 0; k < ROUTE_TRIES; k++) { const route = nav.route(m.pos, nav.wander(at, r)); if (inside(route)) return route; }
+    return [{ ...m.pos }];
+  }
+
   function idle(m, spec, dt, t) {
     const h = spec.home ?? {};
     if (h.kind === 'ride') { setPose(m, { ...seat(h, m.i, t), walking: false }); return; }
@@ -431,7 +442,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       // 走進來的第一趟、擠著別人、站在走路格外（建築長在身上、劇本放在門裡）時不等、不看焦點
       if (!m.arriving && !crowded(m) && nav.walkable(m.pos.x, m.pos.z) && (!inFocus(m, spec) || (m.rest -= dt) > 0)) return;
       const { at, r } = wanderHome(spec, m.i);
-      go(m, nav.route(m.pos, nav.wander(at, r)));
+      go(m, wanderRoute(m, at, r));
       if (!m.trip) { m.rest = pause(); m.arriving = false; }
       return;
     }

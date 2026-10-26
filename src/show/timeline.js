@@ -3,6 +3,9 @@
 // 拍 = { kind, dur, start?(ctx), step?(k, dt, ctx), end?(ctx), estimate? }；dur 是數字或 ctx => 數字，start 之後才算。
 // start 回 false 或 dur ≤ 0 → 這拍沒東西演，直接 end、不佔時間，同一幀接著處理下一拍。
 // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）；reduced-motion 時 play 整串都這樣同步跑完。
+// 演出速度（裁決 R15）：ctx.speed（預設 1；倒數蒙太奇 2，turn.js 設）——時間軸用「演出時間」推進拍：每幀 dt × speed 給拍的 t 與 step，
+// 所以拍的 dur、等待、泡泡、小動作、走路（走路的 step 用 dt 推進位置）一律跟著快；elapsed、currentDur 是真實秒數。
+// 跟真實時鐘綁的拍（列車 trainStop 改 rail.offset、零件自己演的動畫）自己讀 ctx.speed 換算。
 // 中止（RESET）：正在演的拍 end，剩下的丟掉。不管哪種結束，play 的 Promise 一定有結果，不留懸掛：
 // 演完、跳過、中止 → resolve；某一拍丟錯 → 收掉正在演的拍、reject，update／skip／abort 也把錯往外丟。
 
@@ -12,7 +15,7 @@ const resolveDur = (beat, ctx) => {
 };
 
 export function createTimeline({ reducedMotion = false } = {}) {
-  let queue = [], ctx = null, current = null, busy = false, elapsed = 0, settle = () => {};
+  let queue = [], ctx = null, current = null, busy = false, elapsed = 0, speed = 1, settle = () => {};
 
   // 拉下一個要佔時間的拍；沒東西演的拍就地 start → end。
   // start 期間 current 就先指著它：start 丟錯時 fail 才收得到它；start 自己跳過／中止這條時間軸也一樣
@@ -85,13 +88,13 @@ export function createTimeline({ reducedMotion = false } = {}) {
   return {
     get busy() { return busy; },
     get elapsed() { return elapsed; },
-    get currentDur() { return current ? current.dur : 0; },
+    get currentDur() { return current ? current.dur / speed : 0; },   // 真實秒數
     get currentKind() { return current ? current.beat.kind : null; },
     // 不是 async：忙碌中再呼叫要同步丟錯，呼叫端才擋得住連點
     play(beats, playCtx) {
       if (busy) throw new Error('timeline busy');
       elapsed = 0;
-      queue = [...beats]; ctx = playCtx; current = null; busy = true;
+      queue = [...beats]; ctx = playCtx; current = null; busy = true; speed = playCtx?.speed > 0 ? playCtx.speed : 1;
       const done = new Promise((resolve, reject) => { settle = err => (err === undefined ? resolve() : reject(err)); });
       // reduced-motion：當場全部 start → end；丟錯就交給 Promise（skip 已經 reject 了），不再同步丟
       if (reducedMotion) { try { skip(); } catch { /* 已經 reject */ } }
@@ -102,7 +105,7 @@ export function createTimeline({ reducedMotion = false } = {}) {
       elapsed += dt;
       if (!current) next();
       if (!busy) return;
-      if (current) advance(dt);
+      if (current) advance(dt * speed);
       else finish();
     }),
     skip,

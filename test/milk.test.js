@@ -6,13 +6,13 @@ import { enumerate, stats } from '../src/solver/run.js';
 import * as milk from '../src/actors/milk.js';
 import * as landmarks from '../src/actors/landmarks.js';
 import { anchorWorld } from '../src/actors/anchors.js';
-import { RING_R, cellAt, axialToWorld, MAIN_CELLS } from '../src/scene/hex.js';
+import { RING_R, cellAt, axialToWorld } from '../src/scene/hex.js';
 import { existsSync } from 'node:fs';
 import { ROOFS, roofColor, C } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
@@ -82,7 +82,7 @@ test('milk Lv3/7/8 use the school / university / research glb models with the pa
   assert.ok(width(7) >= 1.8 * width(3), `university ${width(7).toFixed(2)} vs school ${width(3).toFixed(2)}`);
   assert.ok(tallest(8) >= 1.8 * tallest(7) && tallest(7) <= 1.1 * tallest(3), 'the research building towers over the low wings');
 });
-test('milk kids count: 3 from Lv3; Lv10 adds one kid per main cell (landmarks.extraKids)', () => {
+test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', () => {
   assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
   for (let n = 3; n <= 10; n++) assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`);
   assert.equal(views[3]['milk.kids'].scale, 1); assert.equal(views[4]['milk.kids'].scale, 1.3);
@@ -90,9 +90,9 @@ test('milk kids count: 3 from Lv3; Lv10 adds one kid per main cell (landmarks.ex
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
   assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
-  assert.deepEqual(x.home.at, landmarks.HOMES, 'the islanders\' homes'); assert.equal(x.home.r, landmarks.view()['landmarks.islanders'].home.r, 'and their wander radius');
-  assert.equal(new Set(cells).size, 6, 'one kid in each of six cells');
-  assert.ok(cells.every(c => MAIN_CELLS.some(m => m.join(',') === c)) && !cells.includes('1,-1'), 'main cells except the spring');
+  assert.equal(x.n, 3); assert.deepEqual(x.home.at, milk.FESTIVAL_HOMES); assert.equal(x.home.r, landmarks.view()['landmarks.islanders'].home.r, 'the islanders\' wander radius');
+  assert.deepEqual(cells, ['-1,0', '1,0', '1,-1'], 'one kid each on the milk, chip and spring cells');
+  x.home.at.forEach(p => { const c = cellAt(p.x, p.z); const w = axialToWorld(...c); assert.ok(Math.hypot(p.x - w.x, p.z - w.z) < 1e-9, 'cell centre'); });
   assert.equal(milk.view(lv({ milk: 10, typhoon: 2 }), {}, { landing: true })['milk.extraKids'], undefined, 'the festival kids hide on the landing turn too');
 });
 test('milk draw calls stay ≤ 12 for the whole cell at every level (glb parts merged; lit windows included)', () => {
@@ -178,7 +178,7 @@ test('scripts: every milk event in both solutions plays 3–5 s (◆ Lv7 / Lv10 
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      const [lo, hi] = to === 7 || to === 10 ? [3, 10] : [3, 5];
+      const [lo, hi] = to === 7 || to === 10 ? [3, 10] : [3, SCRIPT_MAX];
       assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs.toFixed(2)}s`);
       // ◆（§6「8–10 秒」= 上限 10、軟下限 6，控制者裁決）：含鏡頭平移與回全景定格的整段 6–10 s
       if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
@@ -198,11 +198,11 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
     assert.ok(i > 0 && beats[i].dur >= 1, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
   }
 });
-test('lv10 live: the festival kids walk in to all six cells, the truck and boat appear, the camera ends on the overview', async () => {
+test('lv10 live: the three festival kids walk in, the truck and boat appear, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), trail = await trailAt(h, order, isMilk(10));
     assert.ok(trail.indexOf('home') >= 1 && trail.at(-1) === 'home', `${order.join('>')} ${JSON.stringify(trail)}`);
-    assert.equal(h.show.roster.members('milk.extraKids').length, 6);
+    assert.equal(h.show.roster.members('milk.extraKids').length, 3);
     assert.ok(h.show.stage.partKeys().includes('milk.truck') && h.show.stage.partKeys().includes('milk.boat'));
   }
 });
@@ -239,9 +239,9 @@ test('festival kids: every home\'s wander disk is ≥ 30% walkable at the end of
       assert.ok(ok / all >= 0.3, `${order.join('>')} home ${cellAt(c.x, c.z)}: ${(100 * ok / all).toFixed(0)}% walkable`);
     }
     const kids = show.roster.members('milk.extraKids'), start = kids.map(m => ({ ...m.pos })), moved = new Set();
-    assert.equal(kids.length, 6);
+    assert.equal(kids.length, 3);
     for (let f = 0; f < 300; f++) { show.update(1 / 30, 500 + f / 30); kids.forEach((m, i) => { if (Math.hypot(m.pos.x - start[i].x, m.pos.z - start[i].z) > 0.05) moved.add(i); }); }
-    assert.equal(moved.size, 6, `${order.join('>')}: kids that moved ${[...moved]}`);
+    assert.equal(moved.size, 3, `${order.join('>')}: kids that moved ${[...moved]}`);
   }
 });
 test('the arch gate pillars block walkers (r 0.06 each); the passage between them and the kids\' entry stay walkable', () => {

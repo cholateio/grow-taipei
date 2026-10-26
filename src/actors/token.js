@@ -1,5 +1,5 @@
 // 代幣（物品 v2 §4.1，max 10）：站牌＋小月台 → 小站（售票亭、站務員）→ 大車站（站體、站前廣場）→ 環狀線 3 節通勤車 → 5 節
-//   → 高鐵（白底橘線）→ ★◆ 支線通到風車島與遊樂場島（列車開過去）→ 離島接駁車、站務員 2 人 → 豪華賽博站（霓虹站體、懸浮月台）
+//   → 高鐵（白底橘線）→ ★◆ 支線通到風車島與遊樂場島（列車開過去）→ 離島接駁車 → 豪華賽博站（霓虹站體、懸浮月台）
 //   → ◆ 飛天車（三台繞 101 一圈、停在車站屋頂）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
 // 列車用 Kenney Train Kit（subway／bullet，車頭、中間車、車尾），賽博站用 Quaternius Cyberpunk Kit（月台、欄杆、招牌），
 //   飛天車用 Kenney Space Kit 的 speeder（零件 kind 'orbit'，parts.js），都經載入器 tint 重上色票。
@@ -19,7 +19,6 @@ const GAP = 0.6;   // 車廂間距（弧長）
 const POOL = 0xa4d4da;
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower');
 export const POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站務員的崗位（站門口旁）、站門
-const POST2 = offset(AT, -0.55, 0.6);   // 第二位站務員（Lv8 起）：站門另一側
 // 名冊入口（§13.2）：站體北側（背面），站務員與泳客都從這裡繞過站體走來。計畫給的 offset(AT, 1.6, 0.9) 離崗位只有 1.06；
 // 往外推到 ≥ 1.5 的點（+x、+z 那側）又會穿過珍奶攤車前的人龍。這一點離崗位 2.4、離泳客站位 ≥ 1.6，兩條正解每一刻都走得到，
 // 走到崗位的路線離 Lv1–2 每個排隊站位 ≥ 0.3、不經過攤車前方
@@ -208,7 +207,8 @@ export function view(lv, flags) {
   // 站務員（Lv2 起 1 人、Lv8 起 2 人）站在站門口、面向外；淹水時站務員原地換成泳客（from），泳客共 2 人（人數預算 ≤ 3）。
   // 站位落在站體（含 PAD）裡就站到最近的可走點（rescue）
   if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }], rescue: true, entry: STAFF_ENTRY } };
-  else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: n >= 8 ? 2 : 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }, { ...POST2, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
+  // 站務員一直只有一位：Lv8 原本多一位（站門另一側），人數預算（裁決 R16，全島 ≤ 30）拿掉——鮮奶節那一回合全島剛好多一個人
+  else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
   if (n >= 9 && !flags.flooded) v['token.deck'] = { kind: 'deck', at: DECK_AT, models: DECK_MODELS, footprint: false };
   if (n >= 4) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
@@ -261,7 +261,7 @@ export const builders = {
 // ── 劇本（§6）──
 // 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-const staffOf = (i = 0) => once(c => c.roster.members('token.staff').filter(m => !m.hidden)[i] ?? null);
+const staffOf = () => once(c => c.roster.members('token.staff').find(m => !m.hidden) ?? null);
 const kid = i => c => c.roster.members('sat.playground')[i] ?? null;
 const satCentre = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP - 0.2, z: c.z }; };
 const WINDMILL = satCentre('windmill'), PLAYGROUND = satCentre('playground');
@@ -275,7 +275,7 @@ const CAR_KEYS = [0, 1, 2].map(i => `token.cars.${i}`);
 // 飛天車起飛：三台錯開 FLY_STAGGER 秒從海上飛進來（零件的 userData.fly）；跳過時 land 立刻停好
 const fly = () => ({
   kind: 'fly', dur: FLIGHT + FLY_STAGGER * (CAR_KEYS.length - 1),
-  start(c) { CAR_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * FLY_STAGGER })); },
+  start(c) { CAR_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * FLY_STAGGER, speed: c.speed ?? 1 })); },
   end(c) { for (const k of CAR_KEYS) c.stage.partObject(k)?.userData.land?.(); },
 });
 
@@ -283,7 +283,7 @@ export const script = {
   // 站牌＋小月台：閃白 → 最近的島民走來月台前（西南角，靠鄰格的橋那側）等車 → ♪
   placed(e, s, ctx) {
     const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT));
-    return [B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.bubble(islander, '♪', 0.8), B.home(islander)];
+    return [B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.bubble(islander, '♪', 0.5), B.home(islander)];   // ♪ 0.8 → 0.5（裁決 R15：珍奶格不住島民，從別格走來）
   },
   grow: {
     // 小站：閃白售票亭 → 站務員從站後面（入口）走到崗位 → ♪ → LEVEL UP
@@ -332,7 +332,7 @@ export const script = {
       ];
     },
     // 接駁車：鏡頭到遊樂場島（zoom 0.8）→ 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥3（有小學）時兩個小孩下車走到溜滑梯
-    //   → 第二位站務員（閃白名冊、從站後面走來）→ 鏡頭跟 LEVEL UP 一起回代幣格
+    //   → 鏡頭跟 LEVEL UP 一起回代幣格
     8(e, s, ctx) {
       const { B } = ctx, kids = s.lv.milk >= 3;
       return [
@@ -346,16 +346,16 @@ export const script = {
         B.apply(e), levelUpAtStation(B),
       ];
     },
-    // 豪華賽博站：站務員看站、另一位 ！ → 閃白霓虹站體 → 懸浮月台（連欄杆、招牌）在地面閃白出現、浮上來 → ♪、跳 → LEVEL UP
+    // 豪華賽博站：站務員看站、！ → 閃白霓虹站體 → 懸浮月台（連欄杆、招牌）在地面閃白出現、浮上來 → ♪、跳 → LEVEL UP
     9(e, s, ctx) {
-      const { B } = ctx, st = staffOf(0), st2 = staffOf(1);
+      const { B } = ctx, st = staffOf();
       return [
-        B.together([B.gesture(st, 'look', { at: AT }), B.bubble(st2, '！', 0.8)]),
+        B.together([B.gesture(st, 'look', { at: AT }), B.bubble(st, '！', 0.8)]),
         B.apply(e, { only: ['token.main'] }),
         // 同一幀先建好（藏著）、移到地面，再閃白露出來往上浮
         B.together([B.apply(e, { only: ['token.deck'] }), B.move('token.deck', { from: { dy: -DECK_RISE }, to: 0, dur: 1.0 })]),
-        B.together([B.bubble(st, '♪', 0.8), B.gesture(st2, 'jump')]),
-        B.apply(e), B.levelUp('token'), B.home([st, st2]),
+        B.together([B.bubble(st, '♪', 0.8), B.gesture(st, 'jump')]),
+        B.apply(e), B.levelUp('token'), B.home(st),
       ];
     },
     // ◆ 飛天車：回全景 → 三台懸浮車從海上飛進來、繞 101 一圈、停到車站屋頂 → 全景定格 → LEVEL UP

@@ -15,7 +15,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { createTimeline } from '../src/show/timeline.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX } from './helpers/show.js';
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
@@ -78,12 +78,12 @@ test('trainPose with a trip: the head runs out along the spur, cars behind it st
 });
 
 // ── view：每一級看得到的變化（§4.1）──
-test('token view: something new at every level 1–10; staff from Lv2 (one), two from Lv8', () => {
+test('token view: something new at every level 1–10; one staff from Lv2 (people budget R16: no second staff at Lv8)', () => {
   assert.deepEqual(Object.keys(views[0]), []);
   assert.deepEqual(Object.keys(views[1]), ['token.main'], 'Lv1 sign and a small platform, nobody yet');
   for (let n = 2; n <= 10; n++) assert.ok(diffParts(nonRoster(views[n - 1]), nonRoster(views[n])).add.length, `lv${n}: something new`);
   for (const n of [2, 3, 9]) assert.notEqual(JSON.stringify(views[n]['token.main']), JSON.stringify(views[n - 1]['token.main']), `lv${n} station changes`);
-  assert.deepEqual([1, 2, 3, 7, 8, 10].map(n => views[n]['token.staff']?.n ?? 0), [0, 1, 1, 1, 2, 2]);
+  assert.deepEqual([1, 2, 3, 7, 8, 10].map(n => views[n]['token.staff']?.n ?? 0), [0, 1, 1, 1, 1, 1]);
   for (let n = 2; n <= 10; n++) { const st = views[n]['token.staff']; assert.deepEqual([st.kind, st.accessory, st.home.kind], ['roster', 'uniform', 'stand']); }
   const keys = n => Object.keys(views[n]);
   assert.ok(!keys(3).includes('token.track') && keys(4).includes('token.track'), 'ring line at Lv4');
@@ -248,7 +248,7 @@ test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10
     await playItem(show, tracked, order, 'token', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       const big = to === 7 || to === 10;
-      assert.ok(secs >= 3 && secs <= (big ? 10 : 5), `${what} took ${secs.toFixed(2)}s`);
+      assert.ok(secs >= 3 && secs <= (big ? 10 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
       if (big) assert.ok(show.elapsed >= 6 && show.elapsed <= 10, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');
@@ -256,7 +256,7 @@ test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10
         assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to), `${what} camera trail`);
       }
       for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
-      assert.equal(show.roster.members('token.staff').length, to >= 8 ? 2 : to >= 2 ? 1 : 0, `${what} staff count`);
+      assert.equal(show.roster.members('token.staff').length, to >= 2 ? 1 : 0, `${what} staff count`);
       assert.equal(h.rail.trip ?? null, null, `${what} no trip left on the rail`);
     });
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `token events seen: ${seen}`);
@@ -322,7 +322,7 @@ test('Lv7 live: the train rides out to the windmill island while the camera is t
   const done = !!await liveAt(h, SOLUTIONS[0], 7);
   assert.ok(done && near >= 15, `head near the windmill island for ${near} frames`);
 });
-test('Lv8 live: the playground kids get off the shuttle at the island end and go home on the island; a second staff joins', async () => {
+test('Lv8 live: the playground kids get off the shuttle at the island end and go home on the island; still one staff (R16)', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, end = token.spurPath('playground').at(-1);
   let first = null;
   show.update = (dt, t) => { update(dt, t); const ks = show.roster.members('sat.playground'); if (!first && ks.length) first = ks.map(k => ({ ...k.pos })); };
@@ -333,7 +333,7 @@ test('Lv8 live: the playground kids get off the shuttle at the island end and go
   assert.equal(ks.length, 2);
   for (let i = 0; i < 120; i++) show.update(1 / 30, 100 + i / 30);
   for (const k of ks) { assert.equal(cellAt(k.pos.x, k.pos.z), null); assert.ok(Math.hypot(k.pos.x - c.x, k.pos.z - c.z) < 1.5, 'stays on the playground island'); }
-  assert.equal(show.roster.members('token.staff').length, 2);
+  assert.equal(show.roster.members('token.staff').length, 1);
 });
 test('Lv10 live: the three speeders fly a lap round 101 and land on the station roof', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, lap = new Set();
@@ -424,4 +424,12 @@ test('the station has a footprint at every level and staff/swimmer spots are wal
       }
     }
   }
+});
+// 裁決 R15：蒙太奇倍速——fly({ speed: 2 }) 整趟飛行快兩倍（delay 也照演出時間）
+test('orbit part fly({ speed: 2 }) flies the lap at double speed and parks in half the time', () => {
+  const s = views[10]['token.cars.0'], time = speed => {
+    const p = factory().build(s), o = () => p.object.children[0].position, park = () => Math.hypot(s.at.x + o().x - s.park.x, s.at.y + o().y - s.park.y, s.at.z + o().z - s.park.z) < 1e-9;
+    p.object.userData.fly({ speed }); let n = 0; p.update(0, 0); while (!park() && n < 900) { p.update(1 / 30, n / 30); n++; } return n / 30;
+  };
+  const one = time(1), two = time(2); assert.ok(Math.abs(two - one / 2) < 0.1, `×1 ${one.toFixed(2)} s, ×2 ${two.toFixed(2)} s`);
 });

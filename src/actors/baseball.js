@@ -127,8 +127,9 @@ export function view(lv, flags = {}) {
     if (big) deco.push({ kind: 'rail', pos: [0, h * 0.42, 0], scale: [2.2, 1.9, 2.2], rot: [Math.PI / 2, 0, 0], ...neon, led: true });
     v['baseball.deco'] = { kind: 'compound', at, footprint: false, parts: deco };
   }
+  // 球員：Lv1 一個（放置時從看台後方的格邊進場跑壘，之後站在本壘前），Lv2 起兩個傳接球
+  v['baseball.players'] = { kind: 'roster', at, n: n >= 2 ? 2 : 1, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
   if (n >= 2) {
-    v['baseball.players'] = { kind: 'roster', at, n: 2, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
     v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
     // 觀眾：Lv8 兩個是坐新線來的（baseball.riders），門口的名冊留前三個人
     const fans = n >= 8 ? 3 : crowdN(n);
@@ -190,43 +191,46 @@ const cheer = (B, dur = 0.9) => B.together(Array.from({ length: ALL_FANS }, (_, 
 const STOP_WITHIN = 2.0, STOP_BACK = Math.PI / 2, STOP_FOR = 0.6;
 
 export const script = {
-  // 閃白沙地 → 最近的島民走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就閃白出現
+  // 閃白沙地 → 第一個球員從看台後方的格邊（入口）進場、走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就閃白出現 → 站到本壘前。
+  // 人數預算（裁決 R16）：球場格不住島民，從別格過橋走來要 3–4 秒（一級 3–5 秒放不下），所以跑壘的是球場自己的球員
   placed(e, s, ctx) {
-    const { B } = ctx, m = once(c => nearestIslander(c, BASE_AT[0]));
+    const { B } = ctx, sp = B.spawn('baseball.players', PLAYER_ENTRY[0]), m = () => sp.member;
     return [
-      B.apply(e, { only: ['baseball.main'] }), B.walk(m, BASE_AT[0]),
+      B.apply(e, { only: ['baseball.main', 'baseball.players'], hold: ['baseball.players'] }), sp, B.walk(m, BASE_AT[0]),
       ...BASE_AT.map((_, i) => B.together([B.walk(m, BASE_AT[(i + 1) % 4], { speed: RUN_SPEED }), B.apply(e, { only: [`baseball.lines.${i}`] })])),
       B.home(m),
     ];
   },
   grow: {
-    // 看台、球員：閃白木看台 → 2 個球員從看台後方（入口）出來、繞過看台走到本壘前 → 閃白球（傳接球）
+    // 看台、球員：閃白木看台 → 第二個球員從看台後方（入口）出來、繞過看台走到本壘前（第一個放置時就在了）→ 閃白球（傳接球）
     2(e, s, ctx) {
       const { B } = ctx, spots = players(AT);
-      const sp = PLAYER_ENTRY.map(p => B.spawn('baseball.players', p));
+      const sp = B.spawn('baseball.players', PLAYER_ENTRY[1]);
       return [
-        B.apply(e, { only: ['baseball.stands', 'baseball.players'], hold: ['baseball.players'] }), ...sp,
-        B.together(sp.map((b, i) => B.walk(() => b.member, spots[i]))), B.apply(e),
+        B.apply(e, { only: ['baseball.stands', 'baseball.players'], hold: ['baseball.players'] }), sp,
+        B.walk(() => sp.member, spots[1]), B.apply(e),
         B.home(c => c.roster.members('baseball.players')), B.levelUp('baseball'),
       ];
     },
-    // ◆ 大巨蛋：球員 …… → 圖框「巨蛋」→ 離巨蛋最近的島民走到巨蛋的鏡頭側 → 揮鋤頭 ×2 → 閃白巨蛋 → 回全景定格 → LEVEL UP
+    // ◆ 大巨蛋：球員 …… → 圖框「巨蛋」→ 離巨蛋鏡頭側最近的球員走過去 → 揮鋤頭 ×2 → 閃白巨蛋 → 回全景定格 → LEVEL UP
+    // （人數預算，裁決 R16：球場格不住島民，從別格過橋找人來蓋要多 3–4 秒；沒有球員才找島民）
     3(e, s, ctx) {
-      const { B } = ctx, front = c => frontOf(AT, FRONT_R, c.nav), w = once(c => nearestIslander(c, front(c)));
+      const { B } = ctx, front = c => frontOf(AT, FRONT_R, c.nav);
+      const w = once(c => shown('baseball.players')(c).sort((a, b) => dist(a.pos, front(c)) - dist(b.pos, front(c)))[0] ?? nearestIslander(c, front(c)));
       return [
         B.bubble(player(0), '……', 0.8), B.bubble(player(0), { icon: 'dome' }, 0.9),
         B.walk(w, front), B.gesture(w, 'build', 1.2, { at: AT }), B.gesture(w, 'build', 1.2, { at: AT }), B.apply(e), B.home(w),
         B.focus('home', { hold: 1.4 }), B.levelUp('baseball'),
       ];
     },
-    // 開打：三個觀眾從捷運站那座橋的橋頭走來（剛下車）→ 走到門口一起 ♪ → 閃白頂縫透光
+    // 開打：三個觀眾從捷運站那座橋的橋頭走來（剛下車）→ 走到門口 → 閃白頂縫透光、一起 ♪
     4(e, s, ctx) {
       const { B } = ctx, spots = fanSpots(3);
       const sp = BRIDGE_IN.map(p => B.spawn('baseball.crowd', c => c.nav.nearestWalkable(p)));
       return [
         B.apply(e, { only: ['baseball.crowd'], hold: ['baseball.crowd'] }), ...sp,
         B.together(sp.map((b, i) => B.walk(() => b.member, spots[i], { delay: i * 0.2 }))),
-        B.together([0, 1, 2].map(i => B.bubble(fan(i), '♪', 0.8))), B.apply(e),
+        B.together([B.apply(e), ...[0, 1, 2].map(i => B.bubble(fan(i), '♪', 0.6))]),   // 頂縫閃白的同時 ♪（裁決 R15）
         B.home(shown('baseball.crowd')), B.levelUp('baseball'),
       ];
     },
@@ -243,8 +247,9 @@ export const script = {
       const tourist = i => c => tourists(c)[i] ?? null, slot = i => c => c.nav.slots(GATE, n, 1.2)[i];
       const everyone = c => [...shown('baseball.players')(c), ...fansAll(c), ...tourists(c)];
       return [
-        B.focus('boba'), B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]), B.apply(e),
-        B.together(Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪', 0.8))),
+        B.focus('boba'), B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]),
+        // 煙火閃白的同時大家 ♪（裁決 R15 一級 ≤ 4.5 s）
+        B.together([B.apply(e), ...Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪', 0.6))]),
         B.home(tourists), B.levelUp('baseball'),
       ];
     },

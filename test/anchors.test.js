@@ -48,6 +48,16 @@ test('frontOf(at, r) is r from at along the camera direction; with nav it is wal
     const a = anchorWorld(id), q = frontOf(a, r, nav), dist = Math.hypot(q.x - a.x, q.z - a.z);
     assert.ok(nav.walkable(q.x, q.z), `${id} front walkable`); assert.ok(Math.abs(dist - r) <= 0.5, `${id} front ${dist.toFixed(2)} from at (r ${r})`);
     assert.ok(q.y > WATER_Y + 0.1, `${id} front not in water`);
+    assert.ok((q.x - a.x) * OVERVIEW_DIR.x / d + (q.z - a.z) * OVERVIEW_DIR.z / d > 0, `${id} front on the camera side`);
   }
   assert.ok(Math.hypot(frontOf(at, 1.1, nav).x - raw.x, frontOf(at, 1.1, nav).z - raw.z) > 0.2, 'moved out of the footprint');
+  // 巨蛋：沒擋住就原樣（直接回 raw）；raw 那一點被擋住時走 nearestWalkable 的退路，落點照樣可走、在鏡頭側、不在水裡
+  const domeRaw = frontOf(dome, 1.6), open = frontOf(dome, 1.6, nav);
+  assert.ok(Math.abs(open.x - domeRaw.x) < 1e-9 && Math.abs(open.z - domeRaw.z) < 1e-9, 'walkable raw front is kept');
+  const blocked = createNav(); blocked.setFootprints([{ x: dome.x, z: dome.z, rx: 1.15, rz: 0.95 }, { x: domeRaw.x, z: domeRaw.z, r: 0.2 }]);
+  assert.ok(!blocked.walkable(domeRaw.x, domeRaw.z), 'raw dome front blocked');
+  const q = frontOf(dome, 1.6, blocked), dist = Math.hypot(q.x - dome.x, q.z - dome.z);
+  assert.ok(blocked.walkable(q.x, q.z) && Math.hypot(q.x - domeRaw.x, q.z - domeRaw.z) > 0.3, 'fallback moved to a walkable point');
+  assert.ok(Math.abs(dist - 1.6) <= 0.5 && q.y > WATER_Y + 0.1, `fallback ${dist.toFixed(2)} from the dome, on land`);
+  assert.ok((q.x - dome.x) * OVERVIEW_DIR.x / d + (q.z - dome.z) * OVERVIEW_DIR.z / d > 0, 'fallback still on the camera side');
 });

@@ -6,7 +6,7 @@ export const SHIRTS = [0xdb6a41, 0x5a88b2, 0xf2b5c6, 0x8db86f, 0xfcea8b, 0xfffff
 export const ACCESSORIES = ['none', 'cap', 'coat', 'suitcase', 'glass', 'helmet', 'bike', 'mortar', 'vest', 'uniform', 'apron'];
 // 六角內切半徑 2.165，步道帶在邊中點只到 2.1 左右，用 2.0 走才不會踩出島外
 export const WALK_RADIUS = 2.0;
-const SKIN = 0xf3c9a5, HAIR = 0x3a2a22, INK = 0x211d1d, PANTS = [0x3a3a4a, 0x3f5a8a, 0x5c5650];
+const SKIN = 0xf3c9a5, HAIR = 0x3a2a22, INK = 0x211d1d, WOOD = 0x9b6b43, STEEL = 0x8a8f96, PANTS = [0x3a3a4a, 0x3f5a8a, 0x5c5650];
 
 export function walkPose(ph) { const s = Math.sin(ph); return { leg: 0.55 * s, arm: -0.45 * s, bob: Math.abs(s) * 0.012 }; }
 
@@ -32,8 +32,6 @@ function partDefs(THREE) {
     ['mortar', new THREE.BoxGeometry(0.13, 0.015, 0.13)], ['tassel', new THREE.BoxGeometry(0.008, 0.05, 0.008)],   // 大學生的學士帽
     // 黃背心（志工）、圍裙（店員）：身前一塊薄板；制服帽沿用 cap 幾何，只換顏色
     ['vest', new THREE.BoxGeometry(0.1, 0.08, 0.012)], ['apron', new THREE.BoxGeometry(0.1, 0.12, 0.012)],
-    // 蓋東西（build）時右手拿的鋤頭：木柄順著手臂往外伸，刃在柄尾垂直折向身後（揮下去時朝地）
-    ['toolHandle', new THREE.CylinderGeometry(0.006, 0.006, 0.14, 5)], ['toolBlade', new THREE.BoxGeometry(0.05, 0.012, 0.045)],
     ['shadow', new THREE.CircleGeometry(0.07, 16).rotateX(-Math.PI / 2)],
   ];
 }
@@ -61,7 +59,9 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     set('legL', w.pants); set('legR', w.pants); set('armL', shirt); set('armR', shirt); set('body', shirt);
     set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
     set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK); set('mortar', INK); set('tassel', 0xfcea8b);
-    set('vest', 0xfcea8b); set('apron', 0xdb6a41); set('toolHandle', 0x9b6b43); set('toolBlade', 0x8a8f96);
+    set('vest', 0xfcea8b); set('apron', 0xdb6a41);
+    // 蓋東西（build）時 handle、case 借來當鋤頭的柄和刃（不多開 InstancedMesh，省 draw call）：換成木頭與鐵灰
+    if (w.gesture?.kind === 'build') { set('handle', WOOD); set('case', STEEL); }
     for (const m of Object.values(meshes)) m.instanceColor.needsUpdate = true;
   }
   function resize() { for (const m of Object.values(meshes)) m.count = walkers.length; walkers.forEach((w, i) => paint(i, w)); }
@@ -99,17 +99,24 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
   const tr = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
   const rx = a => new THREE.Matrix4().makeRotationX(a);
   const rz = a => new THREE.Matrix4().makeRotationZ(a);
+  const sc = (x, y, z) => new THREE.Matrix4().makeScale(x, y, z);
+  // 鋤頭：handle（0.05 長）拉成 0.16 的柄、case（0.07 × 0.09 × 0.04）壓成 0.07 × 0.03 × 0.02 的刃（柄尾往身後折，揮下去時朝地）
+  const HOE_HANDLE = [tr(0, -0.15, 0), sc(1.4, 3.2, 1.4)], HOE_BLADE = [tr(0, -0.23, -0.02), sc(1, 1 / 3, 0.5)];
+  const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  const TURN = 0.2;   // look、build 轉向用 0.2 秒轉過去（k × dur；沒帶 dur 就直接轉好）
 
   const show = (on, name, i, ...ops) => { if (on) at(name, i, ...ops); else meshes[name].setMatrixAt(i, hidden); };
 
   function place(w, t, k = 1) {
     const i = walkers.indexOf(w), p = locate(w), still = w.controlled ? !w.pose.walking : w.speed === 0, pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就蓋掉朝向）
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）
     const g = w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
+    if (build !== !!w.hoe) { w.hoe = build; paint(i, w); }   // 拿起、放下鋤頭時重塗 handle、case 的顏色
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
-    const yaw = g?.kind === 'look' || build ? (g.yaw ?? p.yaw) : p.yaw, wave = g?.kind === 'wave';
+    const turn = (g?.kind === 'look' || build) && g.yaw !== undefined ? Math.min(1, g.dur ? gk * g.dur / TURN : 1) : 0;
+    const yaw = turn ? p.yaw + turnBy(p.yaw, g.yaw) * turn : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
@@ -118,12 +125,11 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
     if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
     else if (build) {
-      // 鋤頭每秒揮兩下：rx −2.7（舉過頭）↔ −0.9（揮到身前地上）；節奏用秒數（k × dur），動作長短不同也一樣快
-      const sw = rx(-1.8 - 0.9 * Math.cos(gk * (g.dur ?? 1) * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
+      // 鋤頭整個動作剛好兩下：rx −0.9（身前地上）→ −2.7（舉過頭）→ −0.9，從低點開始、在低點結束，手臂不會在最後一幀彈回去
+      const sw = rx(-1.8 + 0.9 * Math.cos(gk * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
       at('armR', i, L, sh, sw, tr(0, -0.04, 0));
-      at('toolHandle', i, L, sh, sw, tr(0, -0.12, 0)); at('toolBlade', i, L, sh, sw, tr(0, -0.19, -0.02));
+      at('handle', i, L, sh, sw, ...HOE_HANDLE); at('case', i, L, sh, sw, ...HOE_BLADE);
     } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
-    if (!build) { meshes.toolHandle.setMatrixAt(i, hidden); meshes.toolBlade.setMatrixAt(i, hidden); }
     at('body', i, L, tr(0, 0.15 + lift, 0));
     at('head', i, L, tr(0, 0.28 + lift, 0));
     show(acc !== 'helmet', 'hair', i, L, tr(0, 0.292 + lift, -0.006));
@@ -133,9 +139,9 @@ export function createPeople(THREE, { max = 48, seed = 21 } = {}) {
     show(acc === 'coat', 'badge', i, L, tr(0.03, 0.17, 0.052));
     show(acc === 'vest', 'vest', i, L, tr(0, 0.17, 0.052));
     show(acc === 'apron', 'apron', i, L, tr(0, 0.13, 0.052));
-    show(acc === 'suitcase', 'case', i, tr(0.1, 0.045, 0));
+    if (!build) show(acc === 'suitcase', 'case', i, tr(0.1, 0.045, 0));
     show(acc === 'glass', 'lens', i, L, tr(0.09, 0.2, 0.06));
-    show(acc === 'glass', 'handle', i, L, tr(0.09, 0.15, 0.06));
+    if (!build) show(acc === 'glass', 'handle', i, L, tr(0.09, 0.15, 0.06));
     show(acc === 'helmet', 'helmet', i, L, tr(0, 0.3 + lift, 0));
     show(acc === 'mortar', 'mortar', i, L, tr(0, 0.36, 0)); show(acc === 'mortar', 'tassel', i, L, tr(0.055, 0.34, 0.03));
     const ry = new THREE.Matrix4().makeRotationY(Math.PI / 2);

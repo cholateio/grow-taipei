@@ -9,7 +9,7 @@ import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
 import { axialToWorld, cellTop, cellAt } from '../src/scene/hex.js';
 installFakeDom();
-const { createRoster, HEAD_Y } = await import('../src/show/roster.js');
+const { createRoster, HEAD_Y, WANDER_SPEED } = await import('../src/show/roster.js');
 
 const AT = anchorWorld('milk');
 const kids = n => ({ kind: 'roster', at: AT, n, shirt: 0xfcea8b, home: { kind: 'wander', at: AT, r: 1.0 } });
@@ -609,7 +609,7 @@ test('a walker whose route is cut by a new footprint replans around it and still
   for (let i = 0; i < 150; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at ${m.pos.x.toFixed(2)},${m.pos.z.toFixed(2)}`); }
   assert.ok(gap(m.pos, B) < 0.05, `arrived (${gap(m.pos, B).toFixed(2)})`);
 });
-// §14.1：建築長在身上（footprint 換了的那一幀人就在裡面）——用走路速度（不是閒晃的 0.5）走出來，走路中、休息中都一樣
+// §14.1：建築長在身上（footprint 換了的那一幀人就在裡面）——用走路速度（不是閒晃的 0.5）走出來，走路中、休息中都一樣；出來就恢復閒晃速度
 test('a wanderer caught inside a new footprint walks out at walking speed, not the wander dawdle', () => {
   for (const moving of [true, false]) {
     const { roster, nav } = setup(); roster.declare('k', kids(1)); roster.snap(); const [m] = roster.members('k');
@@ -618,5 +618,7 @@ test('a wanderer caught inside a new footprint walks out at walking speed, not t
     nav.setFootprints([{ x: m.pos.x, z: m.pos.z, r: 0.6 }]);   // 外擴 PAD 後 0.72：閒晃速度要 1.44 s，走路速度 0.45 s
     let out = null; for (let i = 0; i < 60 && out === null; i++) { roster.update(1 / 30, t); t += 1 / 30; if (!nav.inFootprint(m.pos.x, m.pos.z)) out = i / 30; }
     assert.ok(out !== null && out < 0.7, `${moving ? 'walking' : 'resting'}: out after ${out} s`);
+    roster.update(1 / 30, t);   // 走出來之後這一趟回到閒晃速度
+    assert.ok(m.trip, 'still on the trip'); assert.equal(m.trip.speed, WANDER_SPEED, 'boost ends once outside the footprint');
   }
 });

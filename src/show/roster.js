@@ -355,24 +355,28 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
 
   // ── 日常 ──
-  // 走進來、走出去用走路速度，日常散步用 WANDER_SPEED（出發時定好）
+  // 走進來、走出去用走路速度，日常散步用 WANDER_SPEED（出發時定好）；只有站在 footprint 裡的那一段例外（見 hurry）
   // offgrid：終點本來就在走路格外（屋頂、footprint 裡的站位、橋頭的折線），重新規劃時照樣走上去
-  // 速度：走進來、走出去、建築長在身上（人站在外擴後的 footprint 裡，§14.1）用走路速度，其餘閒晃速度
-  const caught = m => !nav.walkable(m.pos.x, m.pos.z);
+  // 建築長在身上（人站在外擴後的 footprint 裡，或主島格上被 footprint 夾住、走不出去的夾縫，§14.1）：先用走路速度走出來
+  // （閒晃的 0.5 要一秒多才走得出底座），一走到可走的地方就回到這趟原本的速度（trip.calm）。衛星島、屋頂、水上不算
+  const caught = m => nav.inFootprint(m.pos.x, m.pos.z) || (!!cellAt(m.pos.x, m.pos.z) && !nav.walkable(m.pos.x, m.pos.z));
+  const hurry = (m, speed) => { if (m.trip && caught(m) && m.speed > speed) { m.trip.calm = speed; m.trip.speed = m.speed; } };
   function go(m, path) {
-    const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' || caught(m) ? m.speed : WANDER_SPEED;
+    const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' ? m.speed : WANDER_SPEED;
     m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed, offgrid: !nav.walkable(last.x, last.z) } : null;
+    hurry(m, speed);
   }
-  // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築；
-  // 建築長在身上的人用走路速度走完這一趟（閒晃的 0.5 要一秒多才走得出底座）
+  // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築
   function replan(m) {
-    const { last, speed, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1), fast = caught(m);
+    const { last, speed, calm, offgrid, goal } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
     if (offgrid && (end.x !== last.x || end.z !== last.z)) path.push(last);
     go(m, path);
-    if (m.trip) { m.trip.speed = fast ? Math.max(speed, m.speed) : speed; if (goal) m.trip.goal = goal; }
+    if (m.trip) { m.trip.speed = calm ?? speed; delete m.trip.calm; hurry(m, m.trip.speed); if (goal) m.trip.goal = goal; }
   }
   function walk(m, dt) {
-    const trip = m.trip, ds = Math.min(trip.speed * dt, trip.left);
+    const trip = m.trip;
+    if (trip.calm !== undefined && !caught(m)) { trip.speed = trip.calm; delete trip.calm; }
+    const ds = Math.min(trip.speed * dt, trip.left);
     trip.cursor.advance(ds); trip.left -= ds;
     // 走到底：開放路徑的游標會折返（yaw 翻面），所以直接停在終點、保留原本朝向
     if (trip.left <= 1e-9) { m.trip = null; m.rest = pause(); m.arriving = false; setPose(m, { ...trip.last, yaw: m.yaw, walking: false }); return; }

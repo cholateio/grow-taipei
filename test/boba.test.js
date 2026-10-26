@@ -9,7 +9,9 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem } from './helpers/show.js';
-import { lv, worldPoints, distToCell } from './helpers/actors.js';
+import { lv, worldPoints, distToCell, focusTrail } from './helpers/actors.js';
+import { cellOf } from '../src/actors/anchors.js';
+import { worldToAxial } from '../src/scene/hex.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const AT = anchorWorld('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
@@ -74,8 +76,9 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
   }
   throw new Error('event not found');
 }
-// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
-const RANGE = { 1: [4, 9], 2: [2.5, 10], 3: [5, 15], 4: [5, 12] };
+// 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長。
+// Lv4 下限 5 → 3.5（計畫 3.8 Task 6）：兩個 1 秒的 camera 拍換成 focus，劇本秒數不算 focus 拍（實測 3.9 s）
+const RANGE = { 1: [4, 9], 2: [2.5, 10], 3: [5, 15], 4: [3.5, 12] };
 function checkBoba({ show, bubblesLog, rig }, e, secs, n, r) {
   const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = RANGE[lvl];
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
@@ -87,15 +90,17 @@ function checkBoba({ show, bubblesLog, rig }, e, secs, n, r) {
   const v = boba.view(show.stage.lv, show.stage.flags);
   assert.equal(show.roster.members('boba.owner').length, 1, `${what} owner`);
   assert.equal(show.roster.members('boba.queue').length, v['boba.queue']?.n ?? 0, `${what} queue`);
-  // 鏡頭只在 Lv4 平移到小森林島，演完回全景
-  const cam = rig.log.slice(r), pans = cam.filter(c => c[0] === 'panTo');
-  assert.equal(pans.length, lvl === 4 ? 1 : 0, `${what} pans`);
-  if (pans.length) {
-    const s = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(s.q, s.r);
-    assert.ok(near(pans[0][1], c, 1e-6), 'pans to the forest island'); assert.equal(cam.at(-1)[0], 'home', `${what} camera home`);
+  // 鏡頭（§13.1，計畫 3.8 Task 6 換成 focus）：沒有舊的 panTo；Lv4 到小森林島（zoom 0.8），LEVEL UP 時回珍奶格，演完回全景
+  const cam = rig.log.slice(r);
+  assert.equal(cam.filter(c => c[0] === 'panTo').length, 0, `${what} no panTo`);
+  if (lvl === 4) {
+    const s = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(s.q, s.r), BOBA = String(cellOf('boba'));
+    const isle = cam.filter(k => k[0] === 'focus' && near(k[1], c, 1e-6));
+    assert.equal(isle.length, 1, 'focus on the forest island'); assert.equal(isle[0][2].zoom, 0.8);
+    assert.deepEqual(focusTrail(rig.log, r).map(String).slice(-3), [String(worldToAxial(c.x, c.z)), BOBA, 'home'], `${what} back to boba for LEVEL UP, then home`);
   }
 }
-test('scripts: every boba level in both solutions plays in range, ends with LEVEL UP on boba, everyone home; camera pans only at Lv4', async () => {
+test('scripts: every boba level in both solutions plays in range, ends with LEVEL UP on boba, everyone home; camera goes to the forest island only at Lv4', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
     let n = 0, r = 0;

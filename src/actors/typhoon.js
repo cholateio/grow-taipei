@@ -92,6 +92,10 @@ export const builders = {
 const AT = anchorWorld('typhoon'), DOME = anchorWorld('baseball'), GATE = offset(DOME, 0, 1.1);
 const CLOUD_Y = 3.9, HURRY = 2.0, FLUSHED = 4.0;   // 雲頭上的泡泡高度；趕著躲雨的走路速度；老鼠被大水沖（兩倍速）
 const DOOR_MIN = 0.35;   // 算「建築」的 footprint 最小半寬（路燈 0.15、牛奶箱 0.3 不算門）
+// 鏡頭（§13.1、計畫 3.8 Task 6）：雲在 4–5 單位高，對著颱風格的地面拉近會把雲切掉——注視點抬到雲和地面中間、zoom 0.8。
+// 登陸、雨過天晴、大停電是全島的事：回全景（focus('home')）；其他反應對著事情發生的那一格
+const CLOUD_VIEW = { x: AT.x, y: 2.6, z: AT.z }, CLOUD_ZOOM = 0.8;
+const cloudFocus = B => B.focus(CLOUD_VIEW, { zoom: CLOUD_ZOOM });
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
@@ -116,7 +120,8 @@ function crowd(B, fn) {
     end(c) { inner?.end(c); inner = null; },
   };
 }
-// 走到門口就躲進去（藏起來，整回合躲著；下一回合開始 show.turn 會 showAll，跳過時 snap 也會全部露出來）
+// 走到門口就躲進去（藏起來、不閃，整回合躲在門口；下一回合開始 show.turn 的 showAll({ walk: true }) 讓他從門口走回家，
+// 跳過時 snap 也會全部露出來）
 function toDoor(B, m) {
   const w = B.walk(m, c => nearestDoor(c, m.pos), { speed: HURRY }), end = w.end;
   w.end = c => { end(c); c.roster.hide(m); };
@@ -140,6 +145,7 @@ const cloudHead = ctx => ctx.B.partHead('typhoon.main', CLOUD_Y, ctx);
 function blackout(e, ctx) {
   const { B } = ctx, n = LAMP_STOPS.length;
   return [
+    B.focus('home'),
     ...Array.from({ length: n }, (_, i) => B.apply(e, { only: [`bulb.lamps.${n - 1 - i}`] })),
     B.apply(e, { only: ['bulb.main', 'bulb.market', 'sat.lighthouse', 'sat.windmill'] }),
     B.bubble('tower', '！', 0.8), B.world({ glowScale: 0 }),
@@ -150,7 +156,7 @@ function blackout(e, ctx) {
 function flooded(e, ctx) {
   const { B } = ctx, st = once(c => c.roster.members('token.staff')[0] ?? null);   // 他登陸時躲起來了：不濾 hidden
   return [
-    reveal(c => [].concat(st(c) ?? [])), B.bubble(st, '！', 0.8),
+    B.focus('token'), reveal(c => [].concat(st(c) ?? [])), B.bubble(st, '！', 0.8),
     B.apply(e, { only: ['token.main', 'token.swimmers', 'token.staff', 'token.train', 'token.shuttle'] }),
     reveal(c => c.roster.members('token.swimmers')),   // hidden 跟著成員走：保險起見泳客全部露出來
   ];
@@ -159,6 +165,7 @@ function flooded(e, ctx) {
 function domeRats(e, ctx) {
   const { B } = ctx, staff = i => c => c.roster.members('baseball.staff')[i] ?? null;
   return [
+    B.focus('baseball'),
     crowd(B, c => { const rats = c.roster.members('rat.pack'), slots = c.nav.slots(GATE, rats.length, 0.6); return rats.map((m, i) => B.walk(m, slots[i], { speed: FLUSHED })); }),
     B.apply(e, { hold: ['baseball.staff'] }),
     B.spawn('baseball.staff', GATE), B.spawn('baseball.staff', GATE),
@@ -171,7 +178,7 @@ export const script = {
   // 烏雲從台地後面飄進來停在島上空 → ……
   placed(e, s, ctx) {
     const { B } = ctx;
-    return [B.apply(e, { blink: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 4 }), B.bubble(cloudHead(ctx), '……', 1.5)];
+    return [cloudFocus(B), B.apply(e, { blink: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 4 }), B.bubble(cloudHead(ctx), '……', 1.5)];
   },
   grow: {
     // 登陸：雲鼓脹 → 閃白變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
@@ -179,7 +186,7 @@ export const script = {
     2(e, s, ctx) {
       const { B } = ctx, cast = once(c => everyone(c));
       return [
-        B.gesture('typhoon.main', 'puff'),
+        B.focus('home'), B.gesture('typhoon.main', 'puff'),
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
         crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))),
         crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m))),   // 衛星島上的人不走（走路格只有主島）
@@ -188,11 +195,11 @@ export const script = {
       ];
     },
     // 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園 → 小人一起 ♪ 回日常 → 屋頂依序換色 → LEVEL UP
-    // （人在回合開始時已經 showAll 出來了）
+    // （躲著的人在回合開始時已經從門口出來、走回家了：show.turn 的 showAll({ walk: true })）
     3(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
+        B.focus('home'), B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
         B.apply(e, { only: ['typhoon.rainbow'], blink: false }), B.scaleIn('typhoon.rainbow', { dur: 1.5 }),
         B.apply(e, { only: ['typhoon.park'] }),
         crowd(B, c => everyone(c).map(m => B.bubble(m, '♪', 1.0))), B.home(everyone),
@@ -207,13 +214,13 @@ export const script = {
     if (e.flag?.name === 'flooded') return flooded(e, ctx);
     if (e.flag?.name === 'domeRats') return domeRats(e, ctx);
     if (e.delta?.target === 'boba') return [blinkIn('typhoon.scooter'), B.apply(e), B.levelUp('boba')];   // 外送爆單：機車在攤車旁閃白出現、繞圈 → 珍奶升級
-    if (e.story?.includes('颱風假')) return [B.apply(e), B.bubble(B.partHead('milk.main', 1.2, ctx), '♪', 1.0)];
+    if (e.story?.includes('颱風假')) return [B.focus('milk'), B.apply(e), B.bubble(B.partHead('milk.main', 1.2, ctx), '♪', 1.0)];
     return null;
   },
   // 賴著不走（stall 事件；現在的規則不會出，賴在巨蛋改由 view 的 lingers 處理）：雲飄到巨蛋上空停著（move 的偏移留在零件上）→ ……
   stall(e, s, ctx) {
     const { B } = ctx;
-    return [B.move('typhoon.main', { to: { dx: DOME.x - AT.x, dy: 0, dz: DOME.z - AT.z }, dur: 2 }), B.bubble(cloudHead(ctx), '……', 1.0)];
+    return [cloudFocus(B), B.move('typhoon.main', { to: { dx: DOME.x - AT.x, dy: 0, dz: DOME.z - AT.z }, dur: 2 }), B.bubble(cloudHead(ctx), '……', 1.0)];
   },
   rep: () => null,   // 颱風沒有等待
 };

@@ -70,3 +70,21 @@ test('satellites reset to the opening state (review focus 4)', async () => {
   stage.reset();
   assert.deepEqual(stage.partKeys().filter(k => k.startsWith('sat.')).sort(), ['sat.boats', 'sat.chest', 'sat.windmill']);
 });
+
+// 計畫 3.8 Task 6：衛星島上的名冊（遊樂場小孩、小森林觀光客）家不在主島走路格上——名冊不從入口走進來（衛星島照舊：
+// 小孩由代幣 Lv5 在接駁車旁 spawn、觀光客跟著珍奶分店閃白出現），所以沒有 entry，入口檢查沒有東西要查
+import { entryProblems, rosterSpots } from './helpers/actors.js';
+import { cellAt } from '../src/scene/hex.js';
+import { createNav } from '../src/show/nav.js';
+test('satellite rosters live off the main island: no entry declared, nothing for the entry check', () => {
+  const nav = createNav();
+  for (const extra of [{ token: 5, milk: 2 }, { token: 6, milk: 5, boba: 4 }, allMax]) {
+    const v = sat.view(lv(extra), {}), rosters = Object.entries(v).filter(([, d]) => d.kind === 'roster');
+    assert.ok(rosters.length, JSON.stringify(extra));
+    for (const [k, d] of rosters) {
+      assert.equal(d.home.entry, undefined, k);
+      assert.ok(rosterSpots(d).every(p => cellAt(p.x, p.z) === null), `${k} lives on its satellite island`);
+    }
+    assert.deepEqual(entryProblems(v, nav), []);
+  }
+});

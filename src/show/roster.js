@@ -4,7 +4,7 @@
 //   held／pending：hold 住的宣告，等 sync() 才套用；pending 為 null 表示「hold 中被 retire，等 sync 再退」
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開）、follow 跟在另一個名冊最近的成員旁邊。
-// 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。
+// 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
@@ -318,8 +318,19 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
   function hide(m) { m.hidden = true; place(m); }
   function show(m) { m.hidden = false; place(m); }
-  // 全部露出來：hidden 只在一回合裡有效（颱風登陸躲進門裡），下一回合開始、跳過、RESET 都收掉
-  function showAll() { for (const g of groups.values()) for (const m of g.members) if (m.hidden) show(m); }
+  // 全部露出來：hidden 只在一回合裡有效（颱風登陸躲進門裡），下一回合開始、跳過、RESET 都收掉。
+  // walk（下一回合開始，計畫 3.8 Task 6）：躲著的人從藏起來的地方（門口）出來、用走路速度走回家（不閃）；
+  // 不帶 walk（跳過、snap）只露出來，snap 自己會讓每個人瞬間到家
+  function showAll({ walk = false } = {}) {
+    for (const g of groups.values()) for (const m of g.members) {
+      if (!m.hidden) continue;
+      show(m);
+      if (!walk || m.mode !== 'home') continue;
+      const kind = current(g)?.home?.kind;
+      if (kind === 'ride') { home(m); continue; }
+      m.trip = null; m.cursor = null; m.rest = 0; m.settled = null; m.arriving = true;
+    }
+  }
 
   // 跳過（§4.3 立刻到最終狀態）：先套用 hold 住的宣告，再讓每個人（劇本手上的、還在走的都算）瞬間到家、停下、露出來
   function snap() {
@@ -432,7 +443,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home') { idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled && !m.hidden) standing.push(m); }   // 藏起來的人不推別人
+        if (m.mode === 'home' && !m.hidden) { idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           m.holder.rotation.z = spec.model?.wave ? Math.sin(t * 3) * 0.15 : 0;

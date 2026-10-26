@@ -247,6 +247,27 @@ test('showAll un-hides every member and puts them back on the ground', () => {
   assert.ok(ms.every(m => !m.hidden));
   for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
 });
+// 計畫 3.8 Task 6：下一回合開頭 showAll({ walk: true })——躲著的人不在門裡亂走，從門口（藏起來的地方）出來走回家、不閃
+test('showAll({ walk: true }): hidden members stay put indoors, reappear at their door and walk home without a blink', () => {
+  const { roster, blink } = setup();
+  roster.declare('k', kids(2)); roster.declare('q', queue(1)); roster.snap(); run(roster, 30);
+  const ms = [...roster.members('k'), ...roster.members('q')];
+  // 劇本帶到門口藏起來、回合收尾交回日常（同颱風登陸）
+  const doorOf = m => (m.key === 'q' ? { x: Q.x, z: Q.z - 1.2 } : { x: AT.x + 1.2, z: AT.z });
+  const doors = ms.map(m => { roster.claim(m); roster.setPose(m, doorOf(m)); roster.hide(m); roster.home(m); return { ...m.pos }; });
+  run(roster, 30 * 5);
+  ms.forEach((m, i) => assert.ok(gap(m.pos, doors[i]) < 1e-9, `${m.key} stays inside the door while hidden`));
+  blink.log.length = 0;
+  roster.showAll({ walk: true });
+  ms.forEach((m, i) => { assert.equal(m.hidden, false); assert.ok(gap(m.pos, doors[i]) < 1e-9, 'reappears at its door'); assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9); });
+  const walked = new Set();
+  for (let i = 0; i < 30 * 4; i++) { roster.update(1 / 30, 10 + i / 30); for (const m of ms) if (m.walking) walked.add(m); }
+  assert.equal(walked.size, ms.length, 'everyone walks home');
+  assert.ok(gap(roster.members('q')[0].pos, QSPOTS[0]) < 0.3, 'the stand member is back on its spot');
+  assert.deepEqual(blink.log, [], 'no blink');
+  // 不帶 walk（跳過、snap）：照舊只露出來，不另外出發
+  const [a] = roster.members('k'); roster.hide(a); roster.showAll(); assert.equal(a.hidden, false); assert.equal(a.arriving, false);
+});
 // §13.2／R9：退場不閃；藏起來的人（躲進門裡）直接拿掉，其他人走回入口才拿掉
 test('leavers are removed without a blink; a hidden leaver goes at once, the others walk out first', () => {
   const { roster, blink, people } = setup();

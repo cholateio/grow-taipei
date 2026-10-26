@@ -65,8 +65,14 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { headlessShow, playItem } from './helpers/show.js';
+import { lv as LV, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
+import { entriesThroughSolutions } from './helpers/show.js';
+import { createNav } from '../src/show/nav.js';
+import { cellOf } from '../src/actors/anchors.js';
+import { worldToAxial } from '../src/scene/hex.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const AT = anchorWorld('token'), TWO_PI = 2 * Math.PI;
+const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
 const satC = kind => { const s = SATELLITES.find(x => x.kind === kind); return axialToWorld(s.q, s.r); };
 
 test('view: the station staff is a roster at the door; flooded turns them into swimmers; gone at Lv6', () => {
@@ -126,9 +132,12 @@ function checkToken({ show, bubblesLog, rig }, e, secs, n, r) {
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over token`);
   }
   for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
-  // 鏡頭只在 Lv4／Lv5 平移，演完回全景
-  const cam = rig.log.slice(r), pans = cam.filter(c => c[0] === 'panTo').length;
-  assert.equal(pans, [4, 5].includes(e.to) ? 1 : 0, `${what} pans`); if (pans) assert.equal(cam.at(-1)[0], 'home', `${what} camera home`);
+  // 鏡頭（§13.1）：不再用舊的 panTo；Lv4 去燈塔島、Lv5 去遊樂場島（zoom 0.8），LEVEL UP 時回代幣格，最後回全景；其他級只對著代幣格
+  const cam = rig.log.slice(r), trail = focusTrail(rig.log, r).map(String), TOKEN = String(cellOf('token'));
+  assert.equal(cam.filter(c => c[0] === 'panTo').length, 0, `${what} no panTo`);
+  const want = e.to === 4 ? [TOKEN, String(satCell('lighthouse')), TOKEN, 'home'] : e.to === 5 ? [String(satCell('playground')), TOKEN, 'home'] : [TOKEN, 'home'];
+  assert.deepEqual(trail, want, `${what} camera trail`);
+  if ([4, 5].includes(e.to)) assert.ok(cam.some(c => c[0] === 'focus' && c[2].zoom === 0.8 && cellAt(c[1].x, c[1].z) === null), `${what} island at zoom 0.8`);
   const lvl = e.kind === 'grow' ? e.to : 1;
   assert.equal(show.roster.members('token.staff').length, lvl < 6 && !show.stage.flags.flooded ? 1 : 0, `${what} staff count`);
 }
@@ -175,7 +184,7 @@ test('Lv5: the playground kids get off the shuttle at the island end, then go ho
   assert.equal(ks.length, 2);
   for (let i = 0; i < 120; i++) show.update(1 / 30, 100 + i / 30);
   for (const k of ks) { assert.equal(k.mode, 'home'); assert.equal(cellAt(k.pos.x, k.pos.z), null); assert.ok(Math.hypot(k.pos.x - c.x, k.pos.z - c.z) < 1.5, 'stays on the playground island'); }
-  const pans = h.rig.log.slice(r0); assert.equal(pans.filter(r => r[0] === 'panTo').length, 1); assert.equal(pans.at(-1)[0], 'home', 'camera back home');
+  assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(satCell('playground')), String(cellOf('token')), 'home'], 'camera: playground island, token for LEVEL UP, home');
 });
 test('Lv6: the staff runs into the station and is gone; the train turns neon', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
@@ -206,4 +215,33 @@ test('grow 2 in a full live turn: the train departs from behind the station', as
   assert.ok(Math.abs(d) < 0.05, `head car at ${angle} vs ${STATION_A - 0.6}`);
   assert.ok(Math.hypot(staffAt.x, staffAt.z) > Math.hypot(AT.x, AT.z) + 0.5, 'staff walked out to the shore first');
   assert.ok(show.stage.partObject('token.train'));
+});
+
+// ── 計畫 3.8 Task 6：入口點、鏡頭焦點 ──
+// 站務員（淹水時的泳客同一個入口）從月台外側走來：入口走得到、離每個站位 ≥ 1.5（每一級、淹水與否；兩條正解每一刻的真 footprint）
+test('token rosters enter from outside the platform, walkable and ≥ 1.5 from every spot; placement spawns the staff there', async () => {
+  const nav = createNav(), bad = [];
+  for (const n of [1, 2, 3, 4, 5, 6]) for (const flooded of [false, true]) {
+    const v = token.view(LV({ token: n }), { flooded });
+    for (const [k, d] of Object.entries(v)) if (d.kind === 'roster') assert.equal(d.home.entry, token.STAFF_ENTRY, `lv${n} ${k} entry`);
+    bad.push(...entryProblems(v, nav, `lv${n}${flooded ? ' flooded' : ''}`));
+  }
+  bad.push(...await entriesThroughSolutions(token, SOLUTIONS));
+  assert.deepEqual(bad, []);
+  assert.deepEqual(cellAt(token.STAFF_ENTRY.x, token.STAFF_ENTRY.z), [0, 1]);
+  const beats = token.script.placed({ kind: 'placed', item: 'token', to: 1 }, { lv: LV({ token: 1 }), flags: {} }, { B, roster: { members: () => [] } });
+  const sp = beats.find(b => b.kind === 'spawn'), at = [];
+  sp.start({ roster: { spawnHeld: (k, p) => { at.push([k, p]); return null; } } });
+  assert.deepEqual(at, [['token.staff', token.STAFF_ENTRY]]);
+});
+test('token 4 / 5: the satellite island is a focus at zoom 0.8 (no camera beats); LEVEL UP pans back to the token cell', () => {
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  for (const [to, kind] of [[4, 'lighthouse'], [5, 'playground']]) {
+    const beats = token.script.grow[to]({ kind: 'grow', item: 'token', to }, { lv: LV({ token: to, milk: 2 }), flags: {} }, ctx);
+    assert.ok(!flat(beats).some(b => b.kind === 'camera'), `lv${to} no camera beat`);
+    const focus = flat(beats).filter(b => b.kind === 'focus');
+    assert.deepEqual(focus.map(b => focusCell(b, ctx)), [satCell(kind), cellOf('token')], `lv${to} focus cells`);
+    if (to === 5) assert.equal(beats[0].kind, 'focus', 'lv5 starts on the playground island');
+    const last = beats.at(-1); assert.equal(last.kind, 'together'); assert.deepEqual(last.beats.map(b => b.kind).sort(), ['focus', 'levelUp']);
+  }
 });

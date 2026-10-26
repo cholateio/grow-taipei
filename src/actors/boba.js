@@ -124,12 +124,13 @@ export const script = {
         B.home(engs), B.levelUp('boba'),
       ];
     },
-    // 分店：老闆 …… → 圖框「小島」→ 鏡頭到小森林島 → 閃白分店、觀光客 2 人 → 觀光船多 2 艘 → 鏡頭回家
+    // 分店：老闆 …… → 圖框「小島」→ 鏡頭到小森林島（focus，zoom 0.8）→ 閃白分店、觀光客 2 人 → 觀光船多 2 艘 →
+    // 鏡頭跟 LEVEL UP 一起回珍奶格（levelUp 1 秒 ≥ focus 拍，不多佔時間）
     4(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.bubble(owner, '……'), B.bubble(owner, { icon: 'islet' }), B.camera(FOREST),
-        B.apply(e, { only: ['sat.forestShop', 'sat.forest'] }), B.apply(e), B.camera('home'), B.levelUp('boba'),
+        B.bubble(owner, '……'), B.bubble(owner, { icon: 'islet' }), B.focus(FOREST, { zoom: 0.8 }),
+        B.apply(e, { only: ['sat.forestShop', 'sat.forest'] }), B.apply(e), B.together([B.focus('boba'), B.levelUp('boba')]),
       ];
     },
   },

@@ -53,7 +53,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
     camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
-    roster.showAll();   // 上一回合躲進門裡的人（颱風登陸）這回合回到街上
+    roster.showAll({ walk: true });   // 上一回合躲進門裡的人（颱風登陸）從門口出來、走回家（不閃）
     refresh();
     const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage }, ctx);
     const me = playing = {};

@@ -255,3 +255,65 @@ test('after a landing turn with baseball ≥ 3, the next turn ends with the stor
   const o = show.stage.partObject('typhoon.main').position;
   assert.ok(Math.hypot(o.x - dome.x, o.z - dome.z) < 1e-6, 'cloud over the dome');
 });
+
+// ── 計畫 3.8 Task 6：鏡頭焦點、登陸躲進門裡不閃、下一回合從門口走出來 ──
+import { focusCell, focusTrail } from './helpers/actors.js';
+const firstFocus = beats => { assert.equal(beats[0].kind, 'focus', 'the script starts with its own focus'); return beats[0].target === 'home' ? 'home' : focusCell(beats[0], fakeCtx()); };
+test('focus: the cloud (placed, stall) frames the typhoon cell; landing, clearing and the blackout are island-wide; reactions focus where they happen', () => {
+  const s = (extra, flags = {}) => ({ lv: lv({ typhoon: 2, ...extra }), flags });
+  assert.deepEqual(firstFocus(typhoon.script.placed({ kind: 'placed', item: 'typhoon', to: 1 }, s({ typhoon: 1 }), fakeCtx())), [0, 0]);
+  assert.deepEqual(firstFocus(typhoon.script.stall({ kind: 'stall', item: 'typhoon' }, s({}), fakeCtx())), [0, 0]);
+  for (const to of [2, 3]) assert.equal(firstFocus(typhoon.script.grow[to]({ kind: 'grow', item: 'typhoon', from: to - 1, to }, s({ typhoon: to }), fakeCtx())), 'home', `grow ${to}`);
+  const fx = (e, extra, flags) => firstFocus(typhoon.script.fx({ kind: 'fx', item: 'typhoon', cause: 'typhoon', ...e }, s(extra, flags), fakeCtx()));
+  assert.equal(fx({ item: 'milk', flag: { name: 'blackout', value: true }, delta: { target: 'milk', from: 2, to: 1 } }, { bulb: 2, milk: 1 }, { blackout: true }), 'home');
+  assert.deepEqual(fx({ flag: { name: 'flooded', value: true } }, { token: 2 }, { flooded: true }), cellOfItem('token'));
+  assert.deepEqual(fx({ flag: { name: 'domeRats', value: true } }, { rat: 2, baseball: 3 }, { domeRats: true }), cellOfItem('baseball'));
+  assert.deepEqual(fx({ story: '颱風假！小朋友在家看電視' }, { milk: 1 }), cellOfItem('milk'));
+});
+import { cellOf as cellOfItem } from '../src/actors/anchors.js';
+test('placed live: the camera frames the cloud over the typhoon cell at zoom 0.8, then home', async () => {
+  const h = await headlessShow(); let n0 = 0, opts = null;
+  await playItem(h.show, (evs, o) => { if (!o?.instant) n0 = h.rig.log.length; return h.run(evs, o); }, SOLUTIONS[0], 'typhoon', e => {
+    if (e.kind === 'placed') opts = h.rig.log.slice(n0).filter(([k]) => k === 'focus').map(([, t, o]) => ({ y: t.y, zoom: o.zoom }));
+  });
+  assert.equal(opts.length, 1, JSON.stringify(opts)); assert.equal(opts[0].zoom, 0.8); assert.ok(opts[0].y > 2, 'aimed up at the cloud, not the ground');
+});
+// 登陸回合 live：每個人走到門口才藏起來，藏的時候不閃（blink.count 0）；下一回合開頭從門口（藏起來的地方）走出來回家、不閃
+test('landing turn live: people vanish at their doors without a blink; the next turn they walk out of those doors', async () => {
+  const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
+  const evs = await turnWith(run, order, landing);
+  const hide = show.roster.hide, hides = [];
+  show.roster.hide = m => { hides.push({ m, blinks: show.blink.count, at: { ...m.pos } }); return hide(m); };
+  try { await run(evs); } finally { show.roster.hide = hide; }
+  assert.ok(hides.length >= 3, `${hides.length} people took shelter`);
+  assert.ok(hides.every(x => x.blinks === 0), `nothing blinks while people hide (${hides.map(x => x.blinks)})`);
+  const indoors = hides.filter(x => x.m.hidden && !x.m.gone);
+  assert.ok(indoors.length >= 3, 'still indoors at the end of the landing turn');
+  // 回合之間也照樣更新幾秒：躲著的人不在門裡亂走
+  for (let i = 0; i < 60; i++) show.update(1 / 30, 200 + i / 30);
+  for (const x of indoors) assert.ok(Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) < 1e-9, `${x.m.key} stays at the door`);
+  // 下一回合（瞬間跑完前面的放置：只換到這一步的事件）live 演
+  let st = engine.createState(spec);
+  for (const id of order) { const r = engine.place(st, id, spec); st = r.state; if (r.events.some(landing)) break; }
+  const next = [...engine.place(st, order[order.indexOf('typhoon') + 2], spec).events, { kind: 'settle' }];
+  const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { blinked.add(w); return walker(w); };
+  // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.5 以上；日常散步 0.5/s 只走得到 0.25）
+  const update = show.update, walked = new Set(), first = new Map(); let frames = 0;
+  show.update = (dt, t) => {
+    update(dt, t); frames++;
+    for (const x of indoors) {
+      if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
+      const f = first.get(x.m);
+      if (frames <= 15 && x.m.walking && Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z) > 0.4) walked.add(x.m);
+    }
+  };
+  const p = run(next);
+  try { await p; } finally { show.update = update; show.blink.walker = walker; }
+  for (const x of indoors) {
+    const f = first.get(x.m);
+    assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
+    assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
+    assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
+    assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
+  }
+});

@@ -8,7 +8,7 @@ export function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.po
 
 export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y: 0.6, z: 0 }, reducedMotion = false }) {
   const home = new THREE.Vector3(center.x, center.y, center.z);
-  let aspect = 16 / 9, flight = null;
+  let aspect = 16 / 9, flight = null, grabbed = false;
   const v = (p) => new THREE.Vector3(p.x, p.y, p.z);
 
   function go(pos, target, ms) {
@@ -21,16 +21,25 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
 
   return {
     get flying() { return !!flight; },
+    // 玩家拖過鏡頭：這回合 focus 不再搶鏡頭，home 回全景時清掉（§13.1）
+    get grabbed() { return grabbed; },
     setReducedMotion(flag) { reducedMotion = flag; if (flag && flight) go(flight.pos, flight.target, 0); },
     fit(a) { aspect = a; go(overviewPos(), home.clone(), 0); },
     // 回到全景框景
-    home(ms = 1000) { go(overviewPos(), home.clone(), ms); },
+    home(ms = 1000) { grabbed = false; go(overviewPos(), home.clone(), ms); },
     // 平移：鏡頭與注視點同向移動 target − home，視角不變
     panTo(target, ms = 1000) {
       const t = v(target), delta = t.clone().sub(home);
       go(overviewPos().add(delta), t, ms);
     },
-    cancel() { flight = null; },
+    // 平移＋拉近：注視點移到 target，沿目前視線方向退到全景距離 × zoom（§13.1）
+    focus(target, { zoom = 0.6, ms = 1000 } = {}) {
+      if (grabbed) return;
+      const t = v(target), dir = camera.position.clone().sub(controls.target);
+      if (dir.lengthSq() < 1e-12) dir.copy(v(OVERVIEW_DIR));
+      go(t.clone().addScaledVector(dir.normalize(), overviewDistance(aspect) * zoom), t, ms);
+    },
+    cancel() { flight = null; grabbed = true; },
     update(dt) {
       if (flight) {
         flight.t += dt * 1000;

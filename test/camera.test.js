@@ -25,3 +25,14 @@ test('overview flies back to the fitted framing', () => {
   rig.panTo({ x: 5, y: 0, z: 5 }); rig.update(1.1); rig.home(800); rig.update(1);
   assert.ok(camera.position.distanceTo(home) < 1e-6);
 });
+test('focus moves the target to the point and brings the camera to zoom × overview distance along the same direction', () => {
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); const dir = camera.position.clone().sub(controls.target).normalize();
+  rig.focus({ x: 4, y: 0.65, z: 2 }, { zoom: 0.6, ms: 1000 }); rig.update(1.1);
+  assert.ok(controls.target.distanceTo(new THREE.Vector3(4, 0.65, 2)) < 1e-6);
+  const d = camera.position.clone().sub(controls.target); assert.ok(Math.abs(d.length() - 19 * 0.6) < 1e-6); assert.ok(d.normalize().distanceTo(dir) < 1e-6);
+});
+test('cancel marks the rig grabbed; home clears it; focus while grabbed does nothing', () => {
+  const { rig, controls } = rigWith(); rig.fit(16 / 9); rig.focus({ x: 4, y: 0, z: 2 }); rig.update(0.3); rig.cancel();
+  assert.equal(rig.grabbed, true); const mid = controls.target.clone(); rig.focus({ x: -4, y: 0, z: 0 }); rig.update(1); assert.ok(controls.target.distanceTo(mid) < 1e-9);
+  rig.home(0); assert.equal(rig.grabbed, false);
+});

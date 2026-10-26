@@ -75,7 +75,7 @@ export async function start({ params, loading }) {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const rig = createCameraRig({ THREE, camera: view.camera, controls, center: CENTER, reducedMotion: motion.matches });
   motion.addEventListener?.('change', e => rig.setReducedMotion(e.matches));
-  view.renderer.domElement.addEventListener('pointerdown', () => rig.cancel());
+  view.renderer.domElement.addEventListener('pointerdown', () => rig.cancel()); // 停掉飛行並標記 grabbed：這回合不再自動 focus
   const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); };
   fit(); new ResizeObserver(fit).observe(document.body);
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫

@@ -94,12 +94,13 @@ test('settle hero: the worker if visible, else the nearest visible islander to t
   assert.equal(hero({}), undefined, 'nobody around → the beats skip');
 });
 
-// 照正解放完 order（再 advance closing 回合）：只有最後一回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡
-async function liveTurn(h, order, { closing = 0 } = {}) {
+// 照正解放完 order（再 advance closing 回合）：只有最後一回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
+// montage：最後一回合要不要當蒙太奇演（預設：倒數回合才是）
+async function liveTurn(h, order, { closing = 0, montage: lastMontage } = {}) {
   let s = engine.createState(spec);
   const turns = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: closing }, () => st => engine.advance(st, spec))];
   for (let i = 0; i < turns.length; i++) {
-    const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i >= order.length;
+    const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i + 1 === turns.length && lastMontage !== undefined ? lastMontage : i >= order.length;
     if (i + 1 < turns.length) { await h.run(events, { instant: true, montage }); continue; }
     const n0 = h.bubblesLog.length; let mark = null;
     // 劇本秒數（不含鏡頭 focus 拍）：settle 那一段 = 回合結束 − settle 開始
@@ -110,19 +111,21 @@ async function liveTurn(h, order, { closing = 0 } = {}) {
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
 const nearHead = (show, at) => { const h = show.stage.headOf('tower'); assert.ok(Math.hypot(at.x - h.x, at.z - h.z) < 0.5, 'label over the tower'); };
 
-test('headless: the turn crossing 8→11 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
+// 物品 v2 的正解：第 3 回合總等級 3 → 6（不跨）、第 4 回合 6 → 11 跨進「蓋一半」
+test('headless: the turn crossing 6→11 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
   const h = await headlessShow(), order = SOLUTIONS[0];
-  const before = await liveTurn(h, order.slice(0, 4));
+  const before = await liveTurn(h, order.slice(0, 3));
   assert.ok(before.settleSecs < 0.05, `no crossing → no time (${before.settleSecs})`);
   h.show.reset();
-  const t = await liveTurn(h, order.slice(0, 5));
+  const t = await liveTurn(h, order.slice(0, 4));
   assert.equal(t.bubbles.at(-1).text, '101 蓋一半'); nearHead(h.show, t.bubbles.at(-1).at);
   assert.ok(t.settleSecs >= 4 && t.settleSecs <= 8, `settle ${t.settleSecs.toFixed(2)} s`);
   allHome(h.show); assert.equal(h.show.stage.meta.total, 11);
 });
 
-test('headless: the first closing montage turn crossing into 點燈 still shows the label', async () => {
-  const h = await headlessShow(), t = await liveTurn(h, SOLUTIONS[0], { closing: 1 });
+// 物品 v2 的正解第 7 回合（21 → 30）就點燈，倒數回合不再跨門檻：把那一回合當蒙太奇演
+test('headless: a montage turn crossing into 點燈 still shows the label', async () => {
+  const h = await headlessShow(), t = await liveTurn(h, SOLUTIONS[0].slice(0, 7), { montage: true });
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });
 
@@ -136,7 +139,7 @@ test('the 101 stage upgrade hero stands at frontOf(tower) and plays build (1.6 s
       const g = m.walker?.gesture; if (g?.kind === 'build' && Math.hypot(m.pos.x - front.x, m.pos.z - front.z) < 0.6) frames.push({ t, g, pos: { ...m.pos }, front, total: show.stage.meta.total });
     }
   };
-  await liveTurn(h, SOLUTIONS[0].slice(0, 5));
+  await liveTurn(h, SOLUTIONS[0].slice(0, 4));   // 物品 v2：第 4 回合 6 → 11
   assert.ok(frames.length > 10, `build frames ${frames.length}`);
   assert.ok(frames.at(-1).t - frames[0].t >= 1.4, `build lasted ${(frames.at(-1).t - frames[0].t).toFixed(2)} s`);
   assert.equal(frames[0].g.dur, 1.6);
@@ -169,8 +172,8 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
     const p = head(); log.push(['levelUp', now, { flying: rig.flying, target: controls.target.clone(), top: new THREE.Vector3(p.x, p.y, p.z).project(camera).y }]);
     return levelUp(head, opts);
   };
-  // 第 7 回合跨進「101 完工」（頭頂 7.75，舊的全景會出框）
-  const order = SOLUTIONS[0].slice(0, 7), events = [];
+  // 第 6 回合（物品 v2 的正解 16 → 21）跨進「101 完工」（頭頂 7.75，舊的全景會出框）
+  const order = SOLUTIONS[0].slice(0, 6), events = [];
   let s = engine.createState(spec);
   for (const [i, id] of order.entries()) {
     const r = engine.place(s, id, spec); s = r.state;

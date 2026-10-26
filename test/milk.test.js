@@ -9,7 +9,8 @@ import { RING_R, cellAt } from '../src/scene/hex.js';
 import { ROOFS, roofColor } from '../src/actors/palette.js';
 import { lv, worldPoints, distToCell, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
@@ -87,8 +88,11 @@ test('scripts: every milk event in both solutions plays 2.5–18 s, ends with LE
     show.reset();
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
-      seen.push(e.kind === 'grow' ? e.to : 1);
-      assert.ok(secs >= 2.5 && secs <= 18, `${e.kind} ${e.to ?? ''} took ${secs}s`);   // 下限因 §13.2 閃白變短而降低（原 3）；上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）
+      const to = e.kind === 'grow' ? e.to : 1; seen.push(to);
+      // 下限因 §13.2 閃白變短而降低（原 3）；上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）；物品 v2 過渡期：超過舊 max 走預設劇本
+      // 放置的下限 2.5 → 1.8：物品 v2 正解鮮奶第 3 個放，最近的島民離牛奶箱比較近（實測 2.1 s）
+      const [lo, hi] = scripted('milk', to) ? [e.kind === 'placed' ? 1.8 : 2.5, 18] : DEFAULT_SECS;
+      assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs}s`);
       if (e.kind === 'grow') assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
       for (const m of show.roster.members('milk.kids')) assert.equal(m.mode, 'home');
     });

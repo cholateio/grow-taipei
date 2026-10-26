@@ -64,7 +64,8 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
-import { headlessShow, playItem } from './helpers/show.js';
+import { headlessShow, playItem, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 import { lv as LV, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 import { entriesThroughSolutions } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
@@ -126,7 +127,9 @@ async function liveAt({ run, bubblesLog, rig }, order, pred) {
 const isToken = to => e => e.kind === 'grow' && e.item === 'token' && e.to === to;
 function checkToken({ show, bubblesLog, rig }, e, secs, n, r) {
   const what = `${e.kind} ${e.to ?? ''}`;
-  assert.ok(secs >= 1.5 && secs <= 15, `${what} took ${secs.toFixed(1)}s`);   // 下限因 §13.2 閃白變短而降低（原 2.5）
+  // 下限因 §13.2 閃白變短而降低（原 2.5）；物品 v2 過渡期：超過舊 max 的級數走預設劇本
+  const [lo, hi] = scripted('token', e.kind === 'grow' ? e.to : 1) ? [1.5, 15] : DEFAULT_SECS;
+  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('token');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over token`);

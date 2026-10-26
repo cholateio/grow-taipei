@@ -9,7 +9,8 @@ import { createNav } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 const heads = s => s.parts.filter(p => p.kind === 'sphere');
 
@@ -132,7 +133,9 @@ const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
 const MAX_SECS = { 1: 11, 2: 22, 3: 13, 4: 13, 5: 13 }, MIN_SECS = { 1: 2.5, 2: 3, 3: 3, 4: 3, 5: 3 };
 function checkBulb({ show, bubblesLog }, e, secs, n) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1;
-  assert.ok(secs >= MIN_SECS[to] && secs <= MAX_SECS[to], `${what} took ${secs.toFixed(1)}s`);
+  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
+  const [lo, hi] = scripted('bulb', to) ? [MIN_SECS[to], MAX_SECS[to]] : DEFAULT_SECS;
+  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('bulb');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);

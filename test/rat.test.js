@@ -18,6 +18,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 賽博那條（老鼠在 Lv4 分岔成機器鼠）
 const RAT = 'quat/enemies/Rat.glb', AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
 const GATE = offset(anchorWorld('baseball'), 0, 1.1);
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
@@ -56,7 +57,7 @@ test('view: home shapes — one/nest wander by the nest, spring stands in the po
   assert.deepEqual(one.home, { kind: 'wander', at: AT, r: 0.7 });
   const nest = rat.view(lv({ rat: 2 }), {});
   assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 });
-  assert.equal(nest['rat.main'].kind, 'compound'); assert.equal(nest['rat.main'].footprint, undefined, 'nest footprint is automatic');
+  assert.equal(nest['rat.main'].kind, 'compound'); assert.deepEqual(nest['rat.main'].footprint, { r: 0.2 }, 'nest footprint is a circle (clear of the road on the bridge)');
   assert.equal(rat.view(lv({ rat: 1 }), {})['rat.main'], undefined);
   const spring = rat.view(lv({ rat: 3 }), {})['rat.pack'].home;
   assert.equal(spring.kind, 'stand'); assert.equal(spring.spots.length, 5);
@@ -212,14 +213,16 @@ test('Lv3 spring (token < 2): five rats walk up to the hot spring and ♥', asyn
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
 });
-// 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合（引擎：鮮奶 Lv1 被咬不掉級），名冊都是演到才找
-test('the nest turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
+// 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。
+// 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），珍奶 Lv1 → 2 攤車不重建、照樣歪著
+test('the placement turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
-  const { events, secs, n } = await liveAt(h, ['boba', 'rat', 'milk', 'chip', 'token'], isRat(2), { whole: true });
+  const { events, secs, n } = await liveAt(h, ['milk', 'boba', 'rat', 'chip', 'token'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');
-  assert.ok(secs >= 8 && secs <= 30, `${secs.toFixed(1)} s`);
+  assert.ok(secs >= 8 && secs <= 40, `${secs.toFixed(1)} s`);   // 上限 30 → 40：這回合還有珍奶 Lv2 排隊、被咬的小學生跑回校舍（實測 32.5 s；回合門檻 50 由 pace 管）
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'cart knocked askew');
-  assert.ok(Math.abs(show.stage.partObject('milk.crate').rotation.z - 0.35) < 1e-9, 'the bite that costs nothing still tips the crate');
+  assert.ok(milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.crate'].parts.some(p => p.spill), 'the bite tips the crate over (spilled milk)');
+  assert.ok(bubblesLog.slice(n).some(b => b.down), 'LEVEL DOWN');
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 1);
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
   assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 20);
@@ -267,7 +270,7 @@ test('cyber Lv5: the rocks-islet rats go with the army apply, before LEVEL UP; n
   show.blink.part = (...a) => { blinks.push(bubblesLog.length); return part(...a); };
   show.blink.walker = (...a) => { blinks.push(bubblesLog.length); return walker(...a); };
   show.bubbles.levelUp = (head, o) => { rocksAtLevelUp = show.stage.partKeys().includes('sat.rocks') || show.stage.pendingKeys().includes('sat.rocks'); return levelUp(head, o); };
-  const { e, secs, n } = await liveAt(h, SOLUTIONS.find(o => o.indexOf('chip') < o.indexOf('milk')), isRat(5));
+  const { e, secs, n } = await liveAt(h, CYBER, isRat(5));
   assert.equal(show.stage.flags.ratBranch, 'cyber'); checkRat(h, e, secs, n);
   assert.equal(rocksAtLevelUp, false, 'sat.rocks gone before LEVEL UP');
   const lu = bubblesLog.findIndex((b, i) => i >= n && b.text === 'LEVEL UP');
@@ -279,7 +282,7 @@ test('cyber Lv4: the rats set off for the park one after another, ≥ 0.25 s apa
   let now = 0, icon = false;
   show.update = (dt, t) => { now += dt; icon ||= bubblesLog.some(b => b.kind?.icon === 'chip'); update(dt, t); };
   show.roster.setPose = (m, p) => { if (icon && m.key === 'rat.pack' && p.walking && !starts.has(m)) starts.set(m, now); return setPose(m, p); };
-  const { e, secs, n } = await liveAt(h, SOLUTIONS.find(o => o.indexOf('chip') < o.indexOf('milk')), isRat(4));
+  const { e, secs, n } = await liveAt(h, CYBER, isRat(4));
   checkRat(h, e, secs, n);
   const t = [...starts.values()].sort((a, b) => a - b);
   assert.equal(t.length, 5);
@@ -322,7 +325,7 @@ test('focus: train Lv3 token then nest; cyber Lv4 chip, Lv5 101; spring / alien 
   const cases = [
     ['train 3', grow(3, { token: 2 }), [cellOf('token'), cellOf('rat')]],
     ['spring 3', grow(3, {}), [SPRING_CELL]],
-    ['cyber 4', grow(4, { chip: 3, token: 2 }, {}, { lv: lv({ rat: 3, chip: 3, token: 2 }), flags: {} }), [cellOf('chip')]],
+    ['cyber 4', grow(4, { chip: 8, token: 2 }, {}, { lv: lv({ rat: 3, chip: 8, token: 2 }), flags: {} }), [cellOf('chip')]],   // 物品 v2：晶片 ≥8 才分岔成機器鼠
     ['cyber 5', grow(5, { chip: 3 }, { ratBranch: 'cyber' }), [cellOf('tower')]],
     ['alien 4', grow(4, { token: 2 }, {}, { lv: lv({ rat: 3, token: 2 }), flags: {} }), [SPRING_CELL]],
     ['alien 5', grow(5, {}, { ratBranch: 'alien' }), [SPRING_CELL]],

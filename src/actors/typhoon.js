@@ -7,6 +7,7 @@ import { LAMP_STOPS } from './bulb.js';
 import { mulberry32 } from '../scene/random.js';
 import { C, offset } from './palette.js';
 import { BLINK } from '../show/blink.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
@@ -17,6 +18,7 @@ const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
 const lingers = (lv, meta) => lv.typhoon === 2 && lv.baseball >= 3 && !meta.landing;
 
 export function view(lv, flags, meta = {}) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.typhoon, at = anchorWorld('typhoon'), v = {};
   if (!n) return v;
   if (n === 1) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, footprint: false, parts: [

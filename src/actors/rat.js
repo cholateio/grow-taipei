@@ -7,6 +7,8 @@ import { anchorWorld, landmarkWorld } from './anchors.js';
 import { ENGINEER_ROUTE } from './chip.js';
 import { CRATE } from './milk.js';
 import { C, offset } from './palette.js';
+import { ITEMS } from '../rules/spec.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
@@ -34,11 +36,13 @@ const SPRING_SPOTS = Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Mat
 // 名冊入口（§13.2，view 的 home.entry）：補進來的老鼠從哪裡走來。泡溫泉：從窩那邊（溫泉格的格邊離池子都不到 1.5）；
 // 賽博 Lv5 軍團：多的五隻從園區門口（原本五隻變身的地方）走去 101。其他模式用名冊預設（家那格邊上離家最遠的點）
 export function view(lv, flags) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   switch (ratMode(lv, flags)) {
     case null: return {};
     case 'one': return { 'rat.pack': pack(AT, 1, wander(AT, 0.7)) };
+    // 鼠窩的 footprint 用圓（r 0.2 蓋住圓角盒）：包圍盒的角外擴 PAD 後會擦到窩邊那座橋上的電工主路（物品 v2：燈泡先放，電工繞島時老鼠正在生窩）
     case 'nest': return {
-      'rat.main': { kind: 'compound', at: AT, parts: [{ kind: 'rbox', pos: [0, 0.12, 0], scale: [0.35, 0.24, 0.3], color: 0x9a6a3c }, { kind: 'sphere', pos: [0, 0.12, 0.15], scale: [0.12, 0.1, 0.04], color: C.ink }] },
+      'rat.main': { kind: 'compound', at: AT, footprint: { r: 0.2 }, parts: [{ kind: 'rbox', pos: [0, 0.12, 0], scale: [0.35, 0.24, 0.3], color: 0x9a6a3c }, { kind: 'sphere', pos: [0, 0.12, 0.15], scale: [0.12, 0.1, 0.04], color: C.ink }] },
       'rat.pack': pack(AT, 5, wander(AT, 0.7)),
     };
     case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
@@ -103,9 +107,10 @@ const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const JUMP = 0.5, HOP = 0.15, FOLLOW = 0.3;   // 跳一次的秒數、依序跳車的間隔、排隊跟著走的出發間隔
 // 列車停到 n 隻依序跳完（再多停 0.2 s 落地），跳的時候車不動
 const hold = n => n * JUMP + (n - 1) * HOP + 0.2;
-// 分岔（spec.js 老鼠 onLevel 4：晶片 ≥3 → 賽博）。分岔旗標是 grow 之後的 fx 事件才帶來的，grow 4 的劇本先用一個同值的 fx 事件
-// 套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
-const branchOf = s => (s.lv.chip >= 3 ? 'cyber' : 'alien');
+// 分岔（spec.js 老鼠 onLevel 4：晶片夠高 → 賽博）。分岔旗標是 grow 之後的 fx 事件才帶來的，grow 4 的劇本先用一個同值的 fx 事件
+// 套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面；門檻照規則資料讀，不寫死
+const [BRANCH_ID, BRANCH_MIN] = ITEMS.rat.onLevel[4].find(a => a.branch).branch.when.minLevel;
+const branchOf = s => (s.lv[BRANCH_ID] >= BRANCH_MIN ? 'cyber' : 'alien');
 const branchEvent = value => ({ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: 'ratBranch', value } });
 const riding = s => ratMode(s.prev.lv, s.prev.flags) === 'train';   // 這次升級前老鼠在車頂上
 

@@ -203,3 +203,37 @@ test('an event with no cell neither pans nor counts as a change of item', () => 
   assert.deepEqual(beats.filter(b => b.kind === 'wait').map(b => b.dur), [0.5], 'only the script wait');
   assert.deepEqual(focusTargets(beats), [[-1, 0], 'home']);
 });
+
+// 物品 v2 跳級（§3、§6）：同一物品一回合連兩個 grow、第二個 jump: true——第二個 LEVEL UP 緊接著出，不重走路、不平移、不空拍、不查劇本
+const between = (raw, k) => { const at = raw.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return raw.slice(at[k] + 1, at[k + 1] ?? raw.length - 3); };
+test('two consecutive grow events of one item in a turn: the second plays only apply + LEVEL UP, no focus, no gap (review focus 2)', () => {
+  const asked = [];
+  const chip = { id: 'chip', view() {}, script: { grow: {
+    4: (e, s, c) => { asked.push(e.to); return [c.B.wait(1), c.B.levelUp('chip')]; },
+    5: (e, s, c) => { asked.push(e.to); return [c.B.wait(2), c.B.levelUp('chip')]; },
+  } } };
+  const jump = { kind: 'grow', item: 'chip', from: 4, to: 5, jump: true };
+  const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 3, to: 4 }, jump, { kind: 'settle' }];
+  const raw = buildTurn(events, base([quietTower, chip]), fakeCtx());
+  assert.deepEqual(asked, [4], 'the second level of a jump asks no script');
+  // 第一級照常：換物品空 0.6 s、平移到晶片格、劇本、補的 apply
+  assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
+  // 第二級：只有 apply + LEVEL UP（+ 每個事件補的 apply）
+  const second = between(raw, 2);
+  assert.deepEqual(second.map(b => b.kind), ['apply', 'levelUp', 'apply']);
+  assert.notEqual(second[0].blink, false, 'the jump level blinks its parts');
+  // 跳級的第二個事件前面不是同物品的 grow（中間被別的物品插了）：照一般事件演
+  const apart = buildTurn([{ kind: 'grow', item: 'chip', from: 3, to: 4 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, jump], base([quietTower, chip]), fakeCtx());
+  assert.deepEqual(between(apart, 2).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
+});
+
+// 新級數（§4）：物品模組還沒改寫的，超過舊 max 的級數不查劇本，走預設 apply + LEVEL UP
+test('a grow above the item’s old max falls back to the default script', () => {
+  const asked = [];
+  const chip = { id: 'chip', view() {}, script: { grow: Object.fromEntries([6, 7, 8].map(n => [n, (e, s, c) => { asked.push(n); return [c.B.wait(3)]; }])) } };
+  const raw = buildTurn([{ kind: 'grow', item: 'chip', from: 6, to: 7 }], base([quietTower, chip]), fakeCtx());
+  assert.deepEqual(asked, []);
+  assert.deepEqual(between(raw, 0).map(b => b.kind), ['focus', 'apply', 'levelUp', 'apply']);
+  buildTurn([{ kind: 'grow', item: 'chip', from: 5, to: 6 }], base([quietTower, chip]), fakeCtx());
+  assert.deepEqual(asked, [6], 'levels up to the old max still use the module script');
+});

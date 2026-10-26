@@ -136,11 +136,12 @@ test('skip and reset still snap when a beat throws in end', async () => {
 });
 
 // 颱風登陸那回合：每個人走到門口各自藏起來、整回合藏著；下一回合一開始全部露出來（§8.5「登陸後的回合：人在街上」）
+// 物品 v2：颱風最後放，登陸在倒數第 1 回合，所以連倒數回合一起走
 test('people hidden at their doors on the landing turn are all back out when the next turn starts', async () => {
   const { show, run } = await headlessShow();
   let s = engine.createState(spec), landed = false;
-  for (const id of SOLUTIONS[0]) {
-    const r = place(s, id); s = r.state;
+  for (const step of [...SOLUTIONS[0].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
+    const r = step(s); s = r.state;
     const evs = [...r.events, { kind: 'settle' }];
     if (landed) {
       const p = show.turn(evs);
@@ -155,29 +156,32 @@ test('people hidden at their doors on the landing turn are all back out when the
   assert.ok(landed);
 });
 
-// 老鼠撞歪攤車（§8.6「下回合白光扶正」，§13.2 改成攤車自己閃白）
-test('a knocked cart is righted with a blink at the start of the next turn', async () => {
-  const { show, run } = await headlessShow();
-  let s = engine.createState(spec), knocked = false;
-  for (const id of ['boba', 'rat', 'milk', 'chip', 'token']) {
-    const r = place(s, id); s = r.state;
-    const evs = [...r.events, { kind: 'settle' }];
-    if (knocked) {
-      const p = show.turn(evs), cart = show.stage.partObject('boba.main');
-      assert.ok(Math.abs(cart.rotation.z - 0.25) < 1e-9, 'still askew as the turn starts');
-      const part = show.blink.part, blinked = [];
-      show.blink.part = (o, ...rest) => { blinked.push(o); return part(o, ...rest); };
-      for (let i = 0; i < 30 && Math.abs(cart.rotation.z) > 0; i++) show.update(1 / 30, i / 30);
-      assert.equal(cart.rotation.z, 0, 'righted within the first second'); assert.ok(blinked.includes(cart), 'the cart itself blinks');
-      assert.equal(show.stage.partObject('milk.crate').rotation.z, 0, 'the tipped milk crate is righted too');
-      show.skip(); await p; break;
+// 老鼠撞歪攤車、牛奶箱（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
+// 物品 v2：兩個都是老鼠的放置反應，放老鼠那回合同時撞不歪兩個（鮮奶 Lv1 時珍奶一定在那回合長成噴泉、攤車重建），分兩局：
+//   珍奶、老鼠：攤車歪；鮮奶、老鼠：鮮奶 Lv1 被咬不掉級、箱子撞歪（鮮奶升 Lv2 箱子不重建）
+for (const [order, key, rz] of [[['boba', 'rat', 'milk', 'chip', 'token'], 'boba.main', 0.25], [['milk', 'rat', 'boba', 'chip', 'token'], 'milk.crate', 0.35]]) {
+  test(`a knocked part is righted with a blink at the start of the next turn (${key})`, async () => {
+    const { show, run } = await headlessShow();
+    let s = engine.createState(spec), knocked = false;
+    for (const id of order) {
+      const r = place(s, id); s = r.state;
+      const evs = [...r.events, { kind: 'settle' }];
+      if (knocked) {
+        const p = show.turn(evs), obj = show.stage.partObject(key);
+        assert.ok(Math.abs(obj.rotation.z - rz) < 1e-9, 'still askew as the turn starts');
+        const part = show.blink.part, blinked = [];
+        show.blink.part = (o, ...rest) => { blinked.push(o); return part(o, ...rest); };
+        for (let i = 0; i < 30 && Math.abs(obj.rotation.z) > 0; i++) show.update(1 / 30, i / 30);
+        assert.equal(obj.rotation.z, 0, 'righted within the first second'); assert.ok(blinked.includes(obj), 'the part itself blinks');
+        show.skip(); await p; break;
+      }
+      if (!r.events.some(e => e.kind === 'fx' && e.cause === 'rat')) { await run(evs, { instant: true }); continue; }
+      await run(evs); knocked = true;
+      assert.ok(Math.abs(show.stage.partObject(key).rotation.z - rz) < 1e-9, 'knocked at the end of the rat turn');
     }
-    if (!r.events.some(e => e.cause === 'rat' && e.story?.includes('珍奶'))) { await run(evs, { instant: true }); continue; }
-    await run(evs); knocked = true;
-    assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'knocked at the end of the rat turn');
-  }
-  assert.ok(knocked);
-});
+    assert.ok(knocked);
+  });
+}
 
 // 開局：島民一出來就要繞開建築（101 工地的沙地也算），也不留沒收掉的閃白（終審 Important 1）
 test('on the opening screen no islander stands inside a building and no blink is pending, for seeds 1–40', async () => {
@@ -319,11 +323,11 @@ function skylineRig() {
   const topNdc = show => { camera.lookAt(controls.target); camera.updateMatrixWorld(); const h = show.stage.headOf('tower'); return new THREE.Vector3(h.x, h.y, h.z).project(camera).y; };
   return { rig, camera, controls, topNdc };
 }
-// 第一條正解放到第 6 回合（instant），回傳第 7 回合（跨進 101 完工、頭頂 7.75）的事件
+// 第一條正解放到第 5 回合（instant），回傳第 6 回合（物品 v2：16 → 21 跨進 101 完工、頭頂 7.75）的事件
 async function beforeFull(h) {
   const order = SOLUTIONS[0]; let s = engine.createState(spec);
-  for (const id of order.slice(0, 6)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
-  return [...place(s, order[6]).events, { kind: 'settle' }];
+  for (const id of order.slice(0, 5)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  return [...place(s, order[5]).events, { kind: 'settle' }];
 }
 test('after a turn in which the tower top rose above 3, the final home framing includes the top (NDC y ≤ 0.8); skip during that turn also updates the skyline (review focus 5)', async () => {
   // 照常演完：回合最後回全景之前更新天際線，飛完頭頂在上緣 10% 以內
@@ -347,11 +351,12 @@ test('after a turn in which the tower top rose above 3, the final home framing i
   assert.ok(c.topNdc(hc.show) <= 0.8, `instant: top at NDC ${c.topNdc(hc.show).toFixed(3)}`);
 });
 
-// 蒙太奇（倒數回合）跨進 101 點燈：劇本中途的 focus('home') 留著（MONTAGE_KEEP 有 focus），在 LEVEL UP 之前
+// 蒙太奇跨進 101 點燈：劇本中途的 focus('home') 留著（MONTAGE_KEEP 有 focus），在 LEVEL UP 之前。
+// 物品 v2 的正解第 7 回合（21 → 30）就點燈、倒數回合不再跨門檻：把第 7 回合當蒙太奇演
 test('montage turn with a stage crossing keeps the mid-script focus(home)', async () => {
   const h = await headlessShow(), { show, rig } = h, log = [];
   let s = engine.createState(spec);
-  for (const id of SOLUTIONS[0]) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  for (const id of SOLUTIONS[0].slice(0, 6)) { const r = place(s, id); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   let now = 0;
   const update = show.update; show.update = (dt, t) => { now = t; update(dt, t); };
   const { focus, home } = rig;
@@ -359,7 +364,7 @@ test('montage turn with a stage crossing keeps the mid-script focus(home)', asyn
   rig.home = ms => { log.push(['home', now, ms]); return home(ms); };
   const levelUp = show.bubbles.levelUp;
   show.bubbles.levelUp = (head, o = {}) => { log.push(['levelUp', now, o.text]); return levelUp(head, o); };
-  const r = engine.advance(s, spec);
+  const r = place(s, SOLUTIONS[0][6]);
   await h.run([...r.events, { kind: 'settle' }], { montage: true });
   const lit = log.findIndex(l => l[0] === 'levelUp' && l[2] === '101 點燈');
   assert.ok(lit >= 0, 'the montage turn crosses into 點燈');
@@ -369,4 +374,57 @@ test('montage turn with a stage crossing keeps the mid-script focus(home)', asyn
   assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
   assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
   assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');
+});
+
+// 物品 v2（§3、§6）：跳級時跳過，兩級都要落地（第二級的 apply 也在 skip 時套上）
+test('skip during a jump lands both levels', async () => {
+  const order = SOLUTIONS[0];
+  let s = engine.createState(spec), at = -1, r = null;
+  // 找第一個有跳級的放置回合；之前的回合瞬間演完（live 與 ref 兩個舞台一樣）
+  const live = await headlessShow(), ref = await headlessShow();
+  for (const [i, id] of order.entries()) {
+    r = place(s, id);
+    if (r.events.some(e => e.jump)) { at = i; break; }
+    s = r.state;
+    for (const h of [live, ref]) await h.run([...r.events, { kind: 'settle' }], { instant: true });
+  }
+  assert.ok(at >= 0, 'a solution turn has a jump');
+  const jump = r.events.find(e => e.jump), events = [...r.events, { kind: 'settle' }];
+  await ref.run(events, { instant: true });
+  // live：演到跳級的第二個事件開始後 0.3 s（閃白中）跳過
+  let started = null, before = null;
+  const p = live.show.turn(events, { onMark: e => { if (e === jump) { started = live.show.elapsed; before = live.show.stage.lv[jump.item]; } } });
+  for (let t = 0; started === null || live.show.elapsed < started + 0.3; t += 1 / 30) { live.show.update(1 / 30, t); assert.ok(t < 60, 'reaches the jump'); }
+  assert.equal(before, jump.from, 'the first level was in when the jump started');
+  assert.ok(live.show.busy && live.show.blink.count + live.show.bubbles.count > 0, 'mid-jump: the second level is still showing');
+  live.show.skip(); await p;
+  assert.equal(live.show.stage.lv[jump.item], jump.to);
+  assert.deepEqual(live.show.stage.lv, r.state.lv);
+  assert.equal(live.show.stage.pendingKeys().length, 0);
+  assert.deepEqual(snapshot(live.show), snapshot(ref.show));
+});
+
+// 物品 v2 新級數：還沒改寫的演員 view 把超過舊 max 的級數夾住（跟舊 max 一模一樣，不丟錯、不畫垃圾）；
+// 兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿
+test('both new solutions play to the end without a script error at every level (views clamp levels they do not know yet)', async () => {
+  const { OLD_MAX, clampLv } = await import('../src/actors/clamp.js');
+  const top = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max])), old = { ...top, ...OLD_MAX };
+  assert.deepEqual(clampLv(top), old); assert.equal(clampLv(old), old, 'nothing above the old max → the same object');
+  for (const mod of ALL) {
+    for (const id of spec.ORDER) for (let n = 0; n <= top[id]; n++) assert.doesNotThrow(() => mod.view({ ...old, [id]: n }, {}, {}), `${mod.id} with ${id} ${n}`);
+    if (spec.ORDER.includes(mod.id) && mod.id in OLD_MAX) assert.equal(JSON.stringify(mod.view(top, {}, {})), JSON.stringify(mod.view(old, {}, {})), `${mod.id} clamps`);
+  }
+  const { show, run, bubblesLog } = await headlessShow();
+  for (const order of SOLUTIONS) {
+    show.reset(); bubblesLog.length = 0;
+    let s = engine.createState(spec), grows = 0;
+    const steps = [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+    for (const [i, step] of steps.entries()) {
+      const r = step(s); s = r.state; grows += r.events.filter(e => e.kind === 'grow').length;
+      await run([...r.events, { kind: 'settle' }], { montage: i >= order.length });
+      assert.deepEqual(show.stage.lv, s.lv, `${order.join('>')} step ${i + 1}`);
+    }
+    assert.deepEqual(show.stage.lv, top, 'all max');
+    assert.ok(bubblesLog.filter(b => b.text === 'LEVEL UP').length >= grows, `${order.join('>')}: a LEVEL UP for every grow (${grows})`);
+  }
 });

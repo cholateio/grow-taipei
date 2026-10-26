@@ -4,6 +4,7 @@
 import { anchorWorld } from './anchors.js';
 import { edgeMidpoint, RING_R } from '../scene/hex.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'milk';
 export const labelY = 1.4;
@@ -26,6 +27,7 @@ const DOME_SIDE = offset(anchorWorld('baseball'), 1.3, 0.75);   // 巨蛋東側�
 const kidsCenter = lv => (league(lv) ? offset(anchorWorld('baseball'), -1.15, 0.75) : PLAY);
 
 export function view(lv, flags, meta = {}) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
   // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本閃白換上、LEVEL DOWN）

@@ -2,6 +2,7 @@
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
 import { anchorWorld, frontOf } from './anchors.js';
 import { C, offset } from './palette.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'baseball';
 export const labelY = 1.3;
@@ -9,7 +10,9 @@ const SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 
 
 // 四個壘包（本壘在前、一壘在右）：島民放置時照這個順序跑一圈，白線一段段跟著出現
 const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]];
-const STANDS = { x: 0, z: -1.33, w: 1.5, d: 0.6 };
+// 木看台寬 1.2（原 1.4）、footprint 只比看台寬 0.05（原 0.1）：西端外擴 PAD 後才不蓋到球場格西北的橋頭（電工主路 ROAD 經過）——
+// 物品 v2 的正解燈泡先放，電工繞島時棒球正好在 Lv2（計畫 4 任務 2）
+const STANDS_W = 1.2, STANDS = { x: 0, z: -1.33, w: STANDS_W + 0.05, d: 0.6 };
 // 兩壘之間的白線（相對 at）
 function line([x0, z0], [x1, z1]) {
   const dx = x1 - x0, dz = z1 - z0;
@@ -40,6 +43,7 @@ function fans(at, n) {
 }
 
 export function view(lv, flags) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.baseball, at = anchorWorld('baseball'), v = {};
   if (!n) return v;
   const parts = [];
@@ -48,7 +52,7 @@ export function view(lv, flags) {
     parts.push({ kind: 'cylinder', pos: [0, 0.015, 0], scale: [2.0, 0.03, 2.0], color: C.sand });
     for (const [x, z] of BASES) parts.push({ kind: 'box', pos: [x, 0.04, z], scale: [0.1, 0.03, 0.1], color: C.white });
     for (let i = 0; i < 6; i++) { const a = Math.PI * (0.75 + i * 0.1); parts.push({ kind: 'box', pos: [Math.cos(a) * 1.05, 0.1, Math.sin(a) * 1.05], scale: [0.04, 0.2, 0.36], rot: [0, -a, 0], color: C.wood }); }
-    if (n === 2) for (let r = 0; r < 3; r++) parts.push({ kind: 'box', pos: [0, 0.08 + r * 0.12, -1.15 - r * 0.18], scale: [1.4, 0.16 + r * 0.12, 0.18], color: C.wood, stand: true });
+    if (n === 2) for (let r = 0; r < 3; r++) parts.push({ kind: 'box', pos: [0, 0.08 + r * 0.12, -1.15 - r * 0.18], scale: [STANDS_W, 0.16 + r * 0.12, 0.18], color: C.wood, stand: true });
   } else {
     parts.push(
       { kind: 'cylinder', pos: [0, 0.06, 0], scale: [2.3, 0.12, 1.9], color: C.curb },

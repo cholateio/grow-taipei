@@ -474,7 +474,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function follow(m, spec, dt) {
     const h = spec.home, dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
     if (!target && m.arriving) { if (!m.trip) go(m, nav.route(m.pos, spec.at)); if (m.trip) walk(m, dt); else m.arriving = false; return; }
-    if (m.arriving) { m.arriving = false; m.trip = null; }   // 目標出現了：改跟目標（走進來那一趟沒有 goal）
+    // 目標出現了：改跟目標（走進來那一趟沒有 goal）。走進來／從門口出來的那一趟跟上目標照樣用走路速度（物品 v2：偵防師躲進 101 門口，下一回合出來追老鼠）
+    const coming = m.arriving;
+    if (m.arriving) { m.arriving = false; m.trip = null; }
     if (!target) { if (m.trip || m.walking) { m.trip = null; setPose(m, { ...m.pos, walking: false }); } return; }
     const d = Math.hypot(target.pos.x - m.pos.x, target.pos.z - m.pos.z);
     if (m.trip && !m.trip.spot && d <= dist) { m.trip = null; setPose(m, { ...m.pos, walking: false }); }
@@ -488,6 +490,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const p = followSpot(m, target, dist);   // 直接走去不擠的站位（不走到目標旁邊、站到別人身上才發現擠）；挑不到就照舊走向目標
       go(m, nav.route(m.pos, p ?? target.pos)); if (!m.trip) return;
       m.trip.goal = { ...target.pos }; m.trip.spot = !!p;
+      if (coming) m.trip.speed = Math.max(m.trip.speed, m.speed);
     }
     walk(m, dt);
   }

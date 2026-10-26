@@ -5,6 +5,7 @@ import { anchorWorld, landmarkWorld } from './anchors.js';
 import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R } from '../scene/hex.js';
 import { TIMES } from '../scene/daynight.js';
 import { C, offset } from './palette.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'bulb';
 export const labelY = 0.8;
@@ -63,6 +64,7 @@ const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.
 const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 
 export function view(lv, flags) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.bulb, at = AT, v = {};
   if (!n) return v;
   const lit = !flags.blackout, head = i => {

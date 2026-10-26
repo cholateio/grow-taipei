@@ -11,7 +11,8 @@ import { offset } from '../src/actors/palette.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem } from './helpers/show.js';
+import { headlessShow, playItem, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 
 test('baseball lv1 sand lot; lv2 wooden stands + two players and a ball; lv3 the dome', () => {
   const v1 = baseball.view(lv({ baseball: 1 }), {}); assert.deepEqual(Object.keys(v1), ['baseball.main', 'baseball.lines.0', 'baseball.lines.1', 'baseball.lines.2', 'baseball.lines.3']);
@@ -92,7 +93,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
 // 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
 const RANGE = { 1: [4, 9], 2: [2, 8], 3: [5, 12], 4: [6, 15], 5: [4, 10], 6: [4, 10] };
 function checkBall({ show, bubblesLog }, e, secs, n) {
-  const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = RANGE[lvl];
+  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
+  const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = scripted('baseball', lvl) ? RANGE[lvl] : DEFAULT_SECS;
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('baseball');

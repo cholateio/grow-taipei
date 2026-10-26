@@ -73,12 +73,17 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   return { show, people, assets, rig, worldLog, bubblesLog, run, scriptElapsed, scene, rail };
 }
 
-// 照 order 放完一局：itemId 的 placed／grow 事件單獨 live 演並呼叫 check(e, secs)，其他事件 instant；每回合最後 settle instant
-// （單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）
+// 預設劇本（apply + LEVEL UP，§6.6）單獨 live 演的劇本秒數：物品 v2 過渡期，超過舊 max 的級數（actors/clamp.js）走這個
+export const DEFAULT_SECS = [0.9, 2.5];
+
+// 照 order 放完一局、再長 CLOSING_TURNS 回合（物品 v2：很多級落在倒數回合）：itemId 的 placed／grow 事件單獨 live 演並呼叫
+// check(e, secs)，其他事件 instant；每回合最後 settle instant（單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）。
+// 單獨演的跳級第二級（e.jump）前面沒有同物品的上一級，turn.js 照一般事件演；跳級連著演的樣子由 turn／show 測試驗
 export async function playItem(show, run, order, itemId, check) {
   let s = engine.createState(spec);
-  for (const id of order) {
-    const r = engine.place(s, id, spec); s = r.state;
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
     for (const e of r.events) {
       if (e.item === itemId && (e.kind === 'placed' || e.kind === 'grow')) { const secs = await run([e]); await check(e, secs); }
       else await run([e], { instant: true });

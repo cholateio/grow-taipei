@@ -8,7 +8,8 @@ import { offset } from '../src/actors/palette.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem } from './helpers/show.js';
+import { headlessShow, playItem, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 import { lv, worldPoints, distToCell, focusTrail } from './helpers/actors.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const AT = anchorWorld('boba');
@@ -79,7 +80,8 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
 // Lv4 下限 5 → 3.5（計畫 3.8 Task 6）：兩個 1 秒的 camera 拍換成 focus，劇本秒數不算 focus 拍（實測 3.9 s）
 const RANGE = { 1: [4, 9], 2: [2.5, 10], 3: [5, 15], 4: [3.5, 12] };
 function checkBoba({ show, bubblesLog, rig }, e, secs, n, r) {
-  const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = RANGE[lvl];
+  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
+  const lvl = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${lvl}`, [lo, hi] = scripted('boba', lvl) ? RANGE[lvl] : DEFAULT_SECS;
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s (want ${lo}–${hi})`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('boba');
@@ -106,13 +108,8 @@ test('scripts: every boba level in both solutions plays in range, ends with LEVE
     const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
     const seen = new Set();
     await playItem(show, tracked, order, 'boba', (e, secs) => { seen.add(e.kind === 'grow' ? e.to : 1); checkBoba(h, e, secs, n, r); });
-    assert.ok(seen.has(1), `boba events seen: ${[...seen]}`);
-    // 珍奶是最後放的：Lv2–4 都落在倒數回合，playItem 演不到，自己演
-    for (const to of [2, 3, 4].filter(t => !seen.has(t))) {
-      show.reset();
-      const { e, secs, n: before, r: r0 } = await liveAt(h, order, isBoba(to));
-      checkBoba(h, e, secs, before, r0);
-    }
+    // 物品 v2：playItem 也演倒數回合；颱風外送 +1（fx 的 delta）帶上去的那一級不是 grow 事件，不在這裡
+    assert.ok([1, 2, 3].every(l => seen.has(l)), `boba events seen: ${[...seen]}`);
   }
 });
 // 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走 3–4 s；每一幀攤車都在他面前 0.3–0.6；攤車在出發點閃白出現
@@ -128,7 +125,8 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
   };
   const { n } = await liveAt(h, SOLUTIONS[0], e => e.kind === 'placed' && e.item === 'boba');
   const secs = frames.length / 30;
-  assert.ok(secs >= 2.5 && secs <= 4.5, `push took ${secs.toFixed(2)} s`);
+  // 上限 4.5 → 6：物品 v2 正解珍奶第 7 個放，那時燈泡夜市、代幣車站都長大了，老闆繞路（實測 5.2 s）
+  assert.ok(secs >= 2.5 && secs <= 6, `push took ${secs.toFixed(2)} s`);
   assert.ok(frames.every(f => f.speed === 1.6), 'walking speed');
   for (const [i, f] of frames.entries()) {
     const dx = f.c.x - f.o.x, dz = f.c.z - f.o.z, d = Math.hypot(dx, dz), dot = Math.sin(f.yaw) * dx + Math.cos(f.yaw) * dz;
@@ -140,7 +138,9 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
   assert.ok(Math.abs(cart.position.x - AT.x) < 1e-9 && Math.abs(cart.position.z - AT.z) < 1e-9 && cart.rotation.z === 0, 'cart parked at its anchor');
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '♪'));
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
-  assert.ok(near(show.roster.members('boba.owner')[0].pos, offset(AT, 0, -0.45), 0.1), 'owner behind the cart');
+  // 物品 v2 正解放珍奶時夜市已經 4 攤，攤車後面被夜市擋住：老闆照 rescue 站到最近的可走點
+  const behind = offset(AT, 0, -0.45), stand = show.nav.walkable(behind.x, behind.z) ? behind : show.nav.nearestWalkable(behind);
+  assert.ok(near(show.roster.members('boba.owner')[0].pos, stand, 0.1), 'owner behind the cart (or as near as he can get)');
 });
 // 審查 I2：噴泉廣場的人龍排在噴泉外的走路格上
 test('Lv3: every queue spot is outside the fountain and walkable once the footprints are set', async () => {
@@ -175,19 +175,20 @@ test('Lv3: two engineers queue up and ♥, the owner ！, then the fountain', as
   assert.ok(hearts >= 2 && bang > 0 && mine.slice(0, bang).filter(b => b.kind === '♥').length === 2, 'two ♥ before the ！');
   assert.ok(show.stage.partObject('boba.main'));
 });
-test('Lv3 with milk ≤ 1 is the sugar rush: every islander ♥', async () => {
+// 物品 v2：糖分超標移到珍奶 Lv4（鮮奶 ≤2），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）
+test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
-  let s = engine.createState(spec), e3 = null, rest = [];
+  let s = engine.createState(spec), e4 = null, rest = [];
   for (const id of ['boba', 'chip', 'rat', 'typhoon', 'token']) {
     const r = engine.place(s, id, spec); s = r.state;
-    const i = r.events.findIndex(isBoba(3));
-    if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e3 = r.events[i]; rest = r.events.slice(i + 1); break; }
+    const i = r.events.findIndex(isBoba(4));
+    if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e4 = r.events[i]; rest = r.events.slice(i + 1); break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
-  assert.ok(e3, 'boba reaches Lv3'); assert.ok(rest.some(e => e.flag?.name === 'bobaSugar'), 'the sugar flag follows');
-  const n = bubblesLog.length, secs = await run([e3, ...rest, { kind: 'settle' }]);
+  assert.ok(e4, 'boba reaches Lv4'); assert.equal(rest[0]?.flag?.name, 'bobaSugar', 'the sugar flag follows');
+  const n = bubblesLog.length, secs = await run([e4, ...rest, { kind: 'settle' }]);
   const islanders = show.roster.members('landmarks.islanders').length, hearts = bubblesLog.slice(n).filter(b => b.kind === '♥').length;
-  assert.ok(hearts >= 2 + islanders, `${hearts} ♥ for ${islanders} islanders`);
+  assert.ok(islanders > 0 && hearts >= islanders, `${hearts} ♥ for ${islanders} islanders`);
   assert.ok(secs <= 20, `${secs.toFixed(1)} s`);
   assert.equal(show.stage.flags.bobaSugar, true);
 });
@@ -211,7 +212,8 @@ test('the Lv3 closing turn plays whole and live: everyone ends at home', async (
 // 老鼠撞珍奶（§8.6）：攤車歪了、老闆 ！
 test('a rat knocks the cart: it tilts and the owner ！ over his head', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n } = await liveAt(h, ['boba', 'rat', 'milk', 'chip', 'token'], e => e.kind === 'grow' && e.item === 'rat' && e.to === 2, { whole: true });
+  // 物品 v2：撞攤車是老鼠的放置反應（fx）
+  const { n } = await liveAt(h, ['boba', 'rat', 'milk', 'chip', 'token'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   const o = show.roster.members('boba.owner')[0];
   assert.ok(o, 'owner exists');
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9);

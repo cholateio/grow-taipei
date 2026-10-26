@@ -8,7 +8,8 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, DEFAULT_SECS } from './helpers/show.js';
+import { scripted } from '../src/actors/clamp.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
 
@@ -72,7 +73,9 @@ function checkChip({ show, bubblesLog }, e, secs, n) {
   const what = `${e.kind} ${e.to ?? ''}`;
   // 上限 15 → 18：計畫 3.8 Task 5 入口點、鏡頭焦點（+3 s）。下限 3 → 2.5：§14.1 塔架 footprint 縮成底座後，
   // 工人從 101 工地走到廠門不再繞過塔架（路長 4.2，原 6.1–7.7）
-  assert.ok(secs >= 2.5 && secs <= 18, `${what} took ${secs.toFixed(1)}s`);
+  // 物品 v2 過渡期：超過舊 max 的級數走預設劇本
+  const [lo, hi] = scripted('chip', e.kind === 'grow' ? e.to : 1) ? [2.5, 18] : DEFAULT_SECS;
+  assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('chip');
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over chip`);
@@ -96,9 +99,10 @@ test('scripts: every chip level in both solutions plays 2.5–18 s, ends with LE
     }
   }
 });
+// 物品 v2 的兩條正解晶片 Lv3 時老鼠都還沒生窩：老鼠先放、晶片第二個放（老鼠 Lv3 時晶片升到 3）
 test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { e, secs, n } = await liveAt(h, SOLUTIONS[0], isChip(3));
+  const { e, secs, n } = await liveAt(h, ['rat', 'chip', 'milk', 'bulb', 'token', 'typhoon', 'boba', 'baseball'], isChip(3));
   checkChip(h, e, secs, n); assert.ok(show.stage.lv.rat >= 2);
   const [d] = show.roster.members('chip.detective'); assert.equal(d?.walker.accessory, 'glass');
   assert.equal(show.roster.members('chip.engineers').length, 3);

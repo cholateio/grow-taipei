@@ -8,9 +8,13 @@
 //   劇本第一拍自己就是 focus 的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
 // 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉。
+// 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——第二個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
+//   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
+// 過渡期（計畫 4 任務 2）：超過舊 max 的級數（actors/clamp.js 的 OLD_MAX）不查模組劇本，走預設。
 import { foldEvent } from '../rules/engine.js';
 import { anchorWorld, cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
+import { scripted } from '../actors/clamp.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
 
@@ -70,6 +74,9 @@ function upright(key) {
   };
 }
 
+// mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
+const mark = e => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } });
+
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
@@ -92,7 +99,13 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     if (e.kind === 'settle') settled = total;
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
+    // 跳級的第二級：緊接在同物品上一級的 grow 後面（中間被別的事件隔開就照一般事件演）
+    const jumped = e.kind === 'grow' && e.jump && events[i - 1]?.kind === 'grow' && events[i - 1].item === e.item && events[i - 1].to === e.from;
     let beats;
+    if (jumped) {
+      out.push(mark(e), B.apply(e), B.levelUp(e.item), B.apply(e));
+      return;
+    }
     if (e.kind === 'wait') {
       // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近、看得到的島民
       beats = [B.apply(e, { blink: false })];
@@ -103,7 +116,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       }
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
-      const fn = { placed: sc?.placed, grow: sc?.grow?.[e.to], fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
+      const fn = { placed: sc?.placed, grow: scripted(e.item, e.to) ? sc?.grow?.[e.to] : undefined, fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
     }
     if (montage) beats = keepOnly(beats, b => MONTAGE_KEEP.includes(b.kind));
@@ -120,8 +133,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
-    // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）
-    out.push({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e); } }, ...lead, ...beats, B.apply(e));
+    out.push(mark(e), ...lead, ...beats, B.apply(e));
   });
 
   // 收尾：劇本手上的人回日常；全島效果照舞台最後的狀態瞄準（演到這拍才讀，跳過時 ctx.instant 讓它貼齊）；

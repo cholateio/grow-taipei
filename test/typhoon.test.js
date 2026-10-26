@@ -125,11 +125,13 @@ test('scripts: typhoon placed / Lv2 / Lv3 in both solutions play within budget, 
   }
 });
 
-// 照 order 放到 pred 命中的那一回合為止（之前的回合瞬間演），回傳那一回合的事件（含 settle）
+// 照 order 放（再長 CLOSING_TURNS 回合）到 pred 命中的那一回合為止（之前的回合瞬間演），回傳那一回合的事件（含 settle）。
+// 物品 v2：正解颱風最後放，登陸、放晴都在倒數回合
 async function turnWith(run, order, pred) {
   let s = engine.createState(spec);
-  for (const id of order) {
-    const r = engine.place(s, id, spec); s = r.state;
+  const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
     if (r.events.some(pred)) return [...r.events, { kind: 'settle' }];
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
@@ -188,7 +190,7 @@ for (const [name, order, react] of [['blackout', BLACKOUT, 'blackout'], ['flood'
 // §8.5 的全套五個反應：引擎裡大停電只會碰到剛放下的燈泡（Lv1，還沒有路燈），也不會和淹水同回合——
 // 自己堆出燈泡 Lv2、代幣 Lv2、鮮奶、珍奶、老鼠 Lv2、棒球 Lv3、颱風 Lv1（除了颱風都鎖住不長），下一回合登陸
 test('landing with all five reactions (crafted state) live as one turn: 12–25 s, lamps out one stop at a time in reverse road order', async () => {
-  const h = await headlessShow(), LV = { bulb: 2, token: 2, milk: 1, boba: 1, rat: 2, baseball: 3, typhoon: 1 };
+  const h = await headlessShow(), LV = { bulb: 2, token: 2, milk: 1, boba: 1, rat: 4, baseball: 3, typhoon: 1 };   // 物品 v2：鼠災要老鼠 ≥4
   await h.run([...Object.entries(LV).flatMap(([item, to]) => [{ kind: 'placed', item, to: 1 }, ...Array.from({ length: to - 1 }, (_, i) => ({ kind: 'grow', item, from: i + 1, to: i + 2 }))]), { kind: 'settle' }], { instant: true });
   const st = engine.createState(spec);
   for (const [id, n] of Object.entries(LV)) { st.lv[id] = n; st.age[id] = 0; if (id !== 'typhoon') st.locked[id] = true; }
@@ -294,19 +296,22 @@ test('landing turn live: people vanish at their doors without a blink; the next 
   // 回合之間也照樣更新幾秒：躲著的人不在門裡亂走
   for (let i = 0; i < 60; i++) show.update(1 / 30, 200 + i / 30);
   for (const x of indoors) assert.ok(Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) < 1e-9, `${x.m.key} stays at the door`);
-  // 下一回合（瞬間跑完前面的放置：只換到這一步的事件）live 演
-  let st = engine.createState(spec);
-  for (const id of order) { const r = engine.place(st, id, spec); st = r.state; if (r.events.some(landing)) break; }
-  const next = [...engine.place(st, order[order.indexOf('typhoon') + 2], spec).events, { kind: 'settle' }];
+  // 下一回合（瞬間跑完前面的回合：只換到這一步的事件）live 演；物品 v2：颱風最後放，登陸在倒數第 1 回合，下一回合是倒數第 2 回合
+  const steps = [...order.map(id => s => engine.place(s, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => s => engine.advance(s, spec))];
+  let st = engine.createState(spec), k = 0;
+  for (; k < steps.length; k++) { const r = steps[k](st); st = r.state; if (r.events.some(landing)) break; }
+  const next = [...steps[k + 1](st).events, { kind: 'settle' }];
   const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { blinked.add(w); return walker(w); };
-  // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.5 以上；日常散步 0.5/s 只走得到 0.25）
-  const update = show.update, walked = new Set(), first = new Map(); let frames = 0;
+  // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.4 以上；日常散步 0.5/s 只走得到 0.25）。
+  // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、平均每秒 1.0 以上也算
+  const update = show.update, walked = new Set(), first = new Map(), early = new Map(); let frames = 0;
   show.update = (dt, t) => {
     update(dt, t); frames++;
     for (const x of indoors) {
       if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
-      const f = first.get(x.m);
-      if (frames <= 15 && x.m.walking && Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z) > 0.4) walked.add(x.m);
+      const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0 };
+      if (frames <= 15) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); early.set(x.m, r); }
+      if (frames <= 15 && x.m.walking && d > 0.4) walked.add(x.m);
     }
   };
   const p = run(next);
@@ -315,7 +320,9 @@ test('landing turn live: people vanish at their doors without a blink; the next 
     const f = first.get(x.m);
     assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
     assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
-    assert.ok(walked.has(x.m), `${x.m.key} walks home at walking speed from the start of the turn`);
+    // 家就在門邊的不用走（物品 v2 正解登陸時巨蛋已經蓋好，球員的站位就在巨蛋門口）
+    const r = early.get(x.m), arrived = r.walk > 0 && r.walk < 15 && r.d / (r.walk / 30) >= 1.0;
+    if (Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) > 0.5) assert.ok(walked.has(x.m) || arrived, `${x.m.key} walks home at walking speed from the start of the turn`);
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
   }
 });

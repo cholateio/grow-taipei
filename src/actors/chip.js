@@ -5,6 +5,7 @@ import { anchorWorld, routeBetween, frontOf } from './anchors.js';
 import { worldToAxial } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'chip';
 export const labelY = 1.5;
@@ -29,6 +30,7 @@ const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
 export const ENGINEER_ROUTE = [COMMUTE[0], { ...DOOR_WEST, y: COMMUTE[0].y }, ...COMMUTE.slice(1)];
 
 export function view(lv) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.chip, at = AT, v = {};
   if (!n) return v;
   const parts = [];

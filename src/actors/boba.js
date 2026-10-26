@@ -3,8 +3,8 @@
 import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
 import { island } from './satellites.js';
-import { ITEMS } from '../rules/spec.js';
 import { BLINK } from '../show/blink.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'boba';
 export const labelY = 1.0;
@@ -33,6 +33,7 @@ export const QUEUE_MAX = 6;
 export const STROLL = offset(AT, -2.8, -0.4), STROLL_R = 0.6;
 
 export function view(lv) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.boba, at = AT, v = {};
   if (!n) return v;
   const fresh = lv.milk >= 2;
@@ -104,9 +105,6 @@ function push(w) {
     end() { if (obj) { obj.position.set(AT.x, AT.y, AT.z); obj.rotation.z = 0; obj.visible = true; } },
   };
 }
-// 糖分超標：grow 3 的劇本建拍時旗標還沒折進來（是緊接著的 onLevel 事件），照規則資料自己判斷
-const [SUGAR_ID, SUGAR_MAX] = ITEMS.boba.onLevel[3].find(a => a.flag?.name === 'bobaSugar').when.maxLevel;
-const sugary = s => !!s.flags.bobaSugar || s.lv[SUGAR_ID] <= SUGAR_MAX;
 // 觀光客從碼頭出來，一批三個一人一個入口點（被擋就站到最近的可走點）
 const pier = k => c => c.nav.nearestWalkable(PIER[k]);
 
@@ -128,13 +126,12 @@ export const script = {
       const batch = js => { const sp = js.map((j, k) => B.spawn('boba.queue', pier(k))); return [...sp, B.together(js.map((j, k) => B.walk(() => sp[k].member, spots[j])))]; };
       return [B.apply(e, { hold: ['boba.queue'] }), ...batch([0, 1, 2]), ...batch([3, 4, 5]), B.home(c => c.roster.members('boba.queue')), B.levelUp('boba')];
     },
-    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 閃白噴泉廣場（鮮奶 ≥2 時 4 個觀光客從碼頭走來閒晃、老闆走到噴泉旁）；糖分超標：島民一起 ♥
+    // 噴泉：兩個工程師下班走到人龍尾 → ♥ ♥ → 老闆 ！ → 閃白噴泉廣場（鮮奶 ≥2 時 4 個觀光客從碼頭走來閒晃、老闆走到噴泉旁）
     3(e, s, ctx) {
       const { B } = ctx, tail = queue(AT, 8).slice(6), engs = [0, 1].map(engineer);
       return [
         B.together(engs.map((g, i) => B.walk(g, tail[i]))), B.together(engs.map(g => B.bubble(g, '♥'))),
         B.bubble(owner, '！'), B.apply(e),
-        ...(sugary(s) ? [B.together(Array.from({ length: ISLANDERS }, (_, i) => B.bubble(islander(i), '♥')))] : []),
         B.home(engs), B.levelUp('boba'),
       ];
     },
@@ -148,7 +145,11 @@ export const script = {
       ];
     },
   },
-  // 糖分超標在 grow 3 裡演了；這裡只把旗標折進來
-  fx: (e, s, ctx) => (e.flag?.name === 'bobaSugar' ? [ctx.B.apply(e, { blink: false })] : null),
+  // 糖分超標（物品 v2：珍奶升到 Lv4 時鮮奶 ≤2，旗標事件緊接在 grow 4 後面）：折進旗標、島民一起 ♥
+  fx(e, s, ctx) {
+    if (e.flag?.name !== 'bobaSugar') return null;
+    const { B } = ctx;
+    return [B.apply(e, { blink: false }), B.together(Array.from({ length: ISLANDERS }, (_, i) => B.bubble(islander(i), '♥')))];
+  },
   rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };

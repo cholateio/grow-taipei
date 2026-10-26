@@ -616,15 +616,16 @@ async function playBoth() {
         // 外星結局：偵防師站著時不貼著任何人；走路經過別人身邊不撞上（≥ BODY）、貼近（< SEPARATION）也不超過 PASS_MAX 秒
         if (closing && k === 'chip.detective' && !m.hidden && !m.gone) {
           detectiveFrames++;
+          // 擦身而過：偵防師在走、或別人走過站著的偵防師身邊（物品 v2：倒數回合變異鼠從車頂走去溫泉邊，經過跟著牠的偵防師）
           let near = false;
           for (const o of seen) {
             const d = Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z); if (o === m || d >= SEPARATION - SEP_TOL) continue;
             near = true;
-            const what = `${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} ${d.toFixed(2)} from ${o.key}#${o.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
-            if (!m.walking || d < BODY) crowd.add(what);
+            const what = `${label} ${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} ${d.toFixed(2)} from ${o.key}#${o.i}${o.walking ? ' walking' : ''} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`;
+            if (!(m.walking || o.walking) || d < BODY) crowd.add(what);
             else if (passing.has(m) && t - passing.get(m) > PASS_MAX) crowd.add(`${what} for > ${PASS_MAX} s`);
           }
-          if (near && m.walking) { if (!passing.has(m)) passing.set(m, t); } else passing.delete(m);
+          if (near) { if (!passing.has(m)) passing.set(m, t); } else passing.delete(m);
         }
         const inside = bare.walkable(m.pos.x, m.pos.z) && show.nav.inFootprint(m.pos.x, m.pos.z);
         if (exempt || !inside) { caught.delete(m); if (exempt) outside.delete(m); else outside.add(m); continue; }
@@ -699,7 +700,7 @@ test('live, both solutions: everyone on a bridge stays on the deck (y within 0.0
   assert.deepEqual([...sunk].slice(0, 20), [], `${sunk.size} off the deck`);
 });
 // 最終審查修正：偵防師（follow 老鼠）停下來時不貼著別人（泡湯客）——外星結局 closing 起站著時離每個露出來的人 ≥ 0.25
-// （走路經過別人身邊：身體不相碰、貼近不超過 0.5 秒）
+// （走路經過別人身邊、別人走過他身邊：身體不相碰、貼近不超過 0.5 秒）
 test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
   const { crowd, detectiveFrames } = await livePlay();
   assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);

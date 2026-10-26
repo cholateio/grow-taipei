@@ -4,6 +4,7 @@ import { anchorWorld } from './anchors.js';
 import { TOP, groundAt, axialToWorld, SATELLITES } from '../scene/hex.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { createPathCursor } from '../scene/path.js';
+import { clampLv } from './clamp.js';
 
 export const id = 'token';
 export const labelY = 1.0;
@@ -52,6 +53,7 @@ function spur(kind) {
 }
 
 export function view(lv, flags) {
+  lv = clampLv(lv);   // 過渡期：超過舊 max 的級數先照舊 max 畫（clamp.js）
   const n = lv.token, at = anchorWorld('token'), v = {};
   if (!n) return v;
   // 站體的 footprint（§14.1，錄影裡有人站進站體）：平常是站房＋圓頂＋售票機的框，淹水是整個泳池

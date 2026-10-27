@@ -10,6 +10,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, turnSteps, towerCrossings } from './helpers/show.js';
+import { EXAMPLE } from './helpers/endings.js';
 import { createCameraRig } from '../src/scene/camera.js';
 import { existsSync } from 'node:fs';
 import { C } from '../src/actors/palette.js';
@@ -20,24 +21,25 @@ const lvOf = (total, extra = {}) => { const caps = { milk: 10, baseball: 8, toke
 const tiers = v => v['tower.main'].parts.filter(p => p.kind === 'frustum4').length;
 
 test('stageOf thresholds (§5.2)', () => {
-  // 物品 v2 的 61 級：0–8 工地、9–25 半成品、26–53 完工、54+ 點燈
-  assert.equal(tower.stageOf(0), 'site'); assert.equal(tower.stageOf(8), 'site'); assert.equal(tower.stageOf(9), 'half');
-  assert.equal(tower.stageOf(25), 'half'); assert.equal(tower.stageOf(26), 'full'); assert.equal(tower.stageOf(53), 'full'); assert.equal(tower.stageOf(54), 'lit');
+  // 選擇帶動升級的 61 級：0–6 工地、7–28 半成品、29–50 完工、51+ 點燈
+  assert.equal(tower.stageOf(0), 'site'); assert.equal(tower.stageOf(6), 'site'); assert.equal(tower.stageOf(7), 'half');
+  assert.equal(tower.stageOf(28), 'half'); assert.equal(tower.stageOf(29), 'full'); assert.equal(tower.stageOf(50), 'full'); assert.equal(tower.stageOf(51), 'lit');
   assert.equal(tower.stageOf(61), 'lit');
 });
-// 兩條正解的總等級曲線上，四個階段各在不同回合跨過、散在整局（約 4／7／10 回合），結束前都點燈
+// 兩條正解的總等級曲線上，四個階段各在不同回合跨過、散在整局（9 回合裡約第 3／6／8 回合），結束前都點燈
 test('both solutions cross the four stages in four different turns, spread through the game, lit by the end', () => {
   for (const order of SOLUTIONS) {
     const { totals, at } = towerCrossings(order), turns = [at.site, at.half, at.full, at.lit], why = `${order.join('>')} totals ${totals.join(' ')} at ${JSON.stringify(at)}`;
     assert.equal(at.site, 1, why);
     for (let i = 1; i < 4; i++) assert.ok(turns[i] > turns[i - 1], why);
     assert.equal(new Set(turns).size, 4, why);
-    assert.ok(at.half >= 3 && at.half <= 5, why); assert.ok(at.full >= 6 && at.full <= 8, why); assert.ok(at.lit >= 9 && at.lit <= totals.length, why);
+    assert.equal(totals.length, spec.ORDER.length + spec.CLOSING_TURNS, why);
+    assert.ok(at.half >= 2 && at.half <= 4, why); assert.ok(at.full >= 5 && at.full <= 7, why); assert.ok(at.lit >= 8 && at.lit <= totals.length, why);
     assert.equal(tower.stageOf(totals.at(-1)), 'lit', why);
   }
 });
 test('view: site has a crane and cones, half 4 tiers + crane, full 8 tiers + cap and no crane, lit glows', () => {
-  const site = tower.view(zero, {}), half = tower.view(lvOf(10), {}), full = tower.view(lvOf(27), {}), lit = tower.view(lvOf(55), {});
+  const site = tower.view(zero, {}), half = tower.view(lvOf(10), {}), full = tower.view(lvOf(31), {}), lit = tower.view(lvOf(55), {});
   assert.equal(tiers(site), 1); assert.ok(site['tower.crane']); assert.ok(site['tower.main'].parts.some(p => p.kind === 'cone'));
   assert.equal(tiers(half), 5); assert.ok(half['tower.crane']);
   assert.equal(tiers(full), 10); assert.equal(full['tower.crane'], undefined);
@@ -76,7 +78,7 @@ test('the shield is a hemisphere centred on the 101 base that covers every corne
 // 終局時 101 一定完工或點燈；工地／蓋一半照完工的樣子彎（不丟錯，審稿重點 3）。站位不變：彎過的塔 footprint 照底座
 test('view with missile hit: body is bent at full and lit — the upper tiers rotated about z by π/2, no antenna/lightshow/shield parts; site/half do not throw (review focus 3)', () => {
   const near = (a, b) => Math.abs(a - b) < 1e-9;
-  for (const total of [27, 55]) {
+  for (const total of [31, 55]) {
     const lv = lvOf(total, { chip: 8, bulb: 5 }), plain = tower.view(lv, {}, { total }), v = tower.view(lv, { missile: 'hit' }, { total });
     assert.ok(plain['tower.antenna'] && plain['tower.show'] && plain['tower.shield'], 'normally drawn');
     for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane']) assert.equal(v[k], undefined, `${total}: no ${k}`);
@@ -104,7 +106,7 @@ test('view with missile hit: body is bent at full and lit — the upper tiers ro
     let v; assert.doesNotThrow(() => { v = tower.view(lvOf(total, { chip: 7 }), { missile: 'hit' }, { total }); });
     assert.deepEqual(v['tower.main'].parts, tower.body('full', { bent: true }).parts, `total ${total}: the full shape, bent`);
     assert.equal(v['tower.crane'], undefined); assert.equal(v['tower.antenna'], undefined);
-    assert.equal(v['tower.main'].labelY, tower.view(lvOf(27), {}, { total: 27 })['tower.main'].labelY, `total ${total}: head of the full tower`);
+    assert.equal(v['tower.main'].labelY, tower.view(lvOf(31), {}, { total: 31 })['tower.main'].labelY, `total ${total}: head of the full tower`);
     assert.deepEqual(tower.bendPoint(tower.stageOf(total)), tower.bendPoint('full'));
   }
   assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');
@@ -112,7 +114,7 @@ test('view with missile hit: body is bent at full and lit — the upper tiers ro
 // 審稿第 1 輪：101 頭頂（天際線）不因彎 L 而降低——回合收尾的 focus('home', { final, skyline }) 在全景時 setSkyline 會瞬間跳鏡頭
 test('headless: stage headOf(tower).y is unchanged by the missile hit (same levels, same skyline)', async () => {
   const { finaleEvents } = await import('../src/game.js'), { resolve, missile } = await import('../src/rules/endings.js');
-  const { show, run } = await headlessShow(), order = [...spec.ORDER];
+  const { show, run } = await headlessShow(), order = [...EXAMPLE.hit];
   let s = engine.createState(spec);
   for (const step of turnSteps(order)) {
     const r = step(s); s = r.state;
@@ -120,7 +122,7 @@ test('headless: stage headOf(tower).y is unchanged by the missile hit (same leve
   }
   assert.equal(missile(s, spec), 'hit');
   const y0 = show.stage.headOf('tower').y;
-  await run([finaleEvents(resolve(s, spec))[0]], { finale: true, instant: true });
+  await run([finaleEvents(resolve(s, spec)).find(e => e.kind === 'missile')], { finale: true, instant: true });
   assert.equal(show.stage.flags.missile, 'hit');
   assert.ok(show.stage.partObject('tower.main'), 'bent tower in place');
   assert.equal(show.stage.headOf('tower').y, y0);
@@ -231,8 +233,8 @@ test('crane, antenna pulse and lightshow builders animate', () => {
 
 // 101 跳階只在回合最後的 settle 發生（計畫 3.6）：view 用 meta.total，沒給才自己加總
 test('view uses meta.total when given; stage names for the float', () => {
-  assert.equal(tiers(tower.view(lvOf(27), {}, { total: 0 })), 1, 'meta.total wins');
-  assert.equal(tiers(tower.view(lvOf(27), {})), 10);
+  assert.equal(tiers(tower.view(lvOf(31), {}, { total: 0 })), 1, 'meta.total wins');
+  assert.equal(tiers(tower.view(lvOf(31), {})), 10);
   assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' });
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
@@ -247,21 +249,21 @@ const labelOf = beats => {
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 8→9 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 8→8 and 9→25 yield nothing', () => {
+test('settle crossing 6→7 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 6→6 and 7→28 yield nothing', () => {
   const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
-  const beats = tower.script.settle(e, { total: 9, prevTotal: 8 }, ctx);
+  const beats = tower.script.settle(e, { total: 7, prevTotal: 6 }, ctx);
   assert.deepEqual(beats.map(b => b.kind), ['focus', 'walk', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
   // 先對著 101 那一格；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
   assert.equal(beats[0].target, 'tower'); assert.equal(beats[3].target, 'home'); assert.equal(beats[3].final, false); assert.equal(beats[3].dur, 0.8);
   assert.equal(labelOf(beats), '101 蓋一半');
-  assert.deepEqual(tower.script.settle(e, { total: 8, prevTotal: 8 }, ctx), []);
-  assert.deepEqual(tower.script.settle(e, { total: 25, prevTotal: 9 }, ctx), []);
+  assert.deepEqual(tower.script.settle(e, { total: 6, prevTotal: 6 }, ctx), []);
+  assert.deepEqual(tower.script.settle(e, { total: 28, prevTotal: 7 }, ctx), []);
   assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), '101 完工');
   assert.equal(labelOf(tower.script.settle(e, { total: 57, prevTotal: 50 }, ctx)), '101 點燈');
 });
 
 test('settle hero: the worker if visible, else the nearest visible islander to the tower foot (looked up when the beat plays)', () => {
-  const foot = anchorWorld('tower'), e = { kind: 'settle' }, s = { total: 9, prevTotal: 8 };
+  const foot = anchorWorld('tower'), e = { kind: 'settle' }, s = { total: 7, prevTotal: 6 };
   const hero = groups => { const roster = fakeRoster({}), ctx = { B, roster }; const beats = tower.script.settle(e, s, ctx); roster.members = k => groups[k] ?? []; beats.at(-1).start(ctx); return roster.homed[0]?.name; };
   const near = person('near', foot.x + 1, foot.z), far = person('far', foot.x + 6, foot.z), hid = person('hid', foot.x + 0.9, foot.z + 0.3, true);
   assert.equal(hero({ 'chip.worker': [person('worker', 0, 0)], 'landmarks.islanders': [near] }), 'worker');

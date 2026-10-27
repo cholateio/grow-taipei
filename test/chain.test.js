@@ -71,6 +71,7 @@ let played = null;
 const playBoth = () => (played ??= (async () => { const out = []; for (const order of SOLUTIONS) out.push(await playChain(order)); return out; })());
 
 test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 8 → 9 in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
+  let jumped8 = false;   // 至少一條正解的晶片 Lv8 是跳級的第二級（◆ 照演完整劇本的那個情況真的有量到）
   for (const [n, { turns, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), at = (id, lv) => turns.findIndex(t => t.lv[id] >= lv);
     // 事件順序：鏈上每一節的 grow 都在，照順序
@@ -94,14 +95,15 @@ test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 
     // 晶片 Lv7 天線；Lv8 那回合測試閃三下（其他回合不閃）、演完收起來；Lv9 起罩子常駐
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
     assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
-    // 選擇帶動升級：Lv8 是跳級的第二級時（賽博：晶片 6 → 8）只演 apply + LEVEL UP，不閃；其他回合都不閃
-    const test8 = jumps.has('chip8') ? 0 : 3;
-    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? test8 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
+    // 選擇帶動升級裁決 R6：Lv8 標 ◆，是跳級的第二級時（賽博：晶片 6 → 8）也演完整的測試、閃三下；其他回合都不閃
+    if (jumps.has('chip8')) jumped8 = true;
+    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
     assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
     turns.forEach((t, i) => assert.equal(t.shieldOut, i >= c9, `${name} turn ${i + 1}: standby shield out only from chip 9 (turn ${c9 + 1})`));
     // 一回合最多 +2：相鄰兩節可以同一回合（跳級），隔一節的一定分在不同回合
     assert.ok(c6 <= c7 && c7 <= c8 && c8 <= c9 && c6 < c8 && c7 < c9, `${name}: chip chain ${c6 + 1} ${c7 + 1} ${c8 + 1} ${c9 + 1}`);
   }
+  assert.ok(jumped8, 'chip 8 is the second level of a jump in some solution');
 });
 
 // 事件層級：每個零件第一次出現在鏈上那一節的事件演完時（不是同一回合別的事件帶出來、也不是回合末才補上），之後一直都在

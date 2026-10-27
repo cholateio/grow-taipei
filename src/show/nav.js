@@ -321,7 +321,8 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）
   function separate(members, _dt) {
     const walkers = members.filter(m => m.walking === true);
-    const nudge = (p, x, z) => { const on = walkable(x, z); if (on || !walkable(p.x, p.z)) { p.x = x; p.z = z; if (on) p.y = groundY(x, z); } };
+    // 本來在外擴 footprint 外的人不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：選擇帶動升級任務 4 量到老鼠在窩邊）
+    const nudge = (p, x, z) => { const on = walkable(x, z); if (on || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)))) { p.x = x; p.z = z; if (on) p.y = groundY(x, z); } };
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
       if (d >= SEPARATION) continue;

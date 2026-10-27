@@ -353,29 +353,39 @@ test('Lv10 live: the three speeders fly a lap round 101 and land on the station 
     assert.ok(Math.hypot(o.position.x + p.x - park.x, o.position.y + p.y - park.y, o.position.z + p.z - park.z) < 1e-6, `car ${i} parked on the roof`);
   }
 });
+// ◆ 關鍵節點：Lv4 環狀線（選擇帶動升級裁決 R6）、Lv7 通車到離島、Lv10 飛天車（裁決 R11）
+test('the ◆ key nodes are Lv4 (R6), Lv7 and Lv10 (R11)', () => {
+  assert.deepEqual(Object.entries(token.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [4, 7, 10]);
+});
 // 兩個事件以上的回合整段 live 演：Lv4 環狀線的列車從站後面 0.6 rad 駛出
-// 選擇帶動升級：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級（第二級只演 apply + LEVEL UP），Lv4 劇本在真的局裡演不到（同裁決 R4 的死碼）。
-// 照正解演到跳級那回合，把 Lv4 拿掉 jump 當一般事件，整回合 live 演（別的劇本在前面，列車的位置跟著時鐘走）
+// 選擇帶動升級：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級；Lv4 標 ◆（裁決 R6），跳級的第二級照演完整劇本。
+// 照正解演到跳級那回合，整回合原樣 live 演（別的劇本在前面，列車的位置跟著時鐘走）
 test('grow 4 in a full live turn: the ring line rises and the train departs from behind the station', async () => {
-  const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0], is4 = e => e.kind === 'grow' && e.item === 'token' && e.to === 4;
-  let st = engine.createState(spec), evs = null;
-  for (const id of order) {
-    const r = engine.place(st, id, spec); st = r.state;
-    if (r.events.some(is4)) { evs = r.events.map(e => (is4(e) ? solo(e) : e)); break; }
-    await run([...r.events, { kind: 'settle' }], { instant: true });
+  const h = await headlessShow(), { show, run } = h, is4 = e => e.kind === 'grow' && e.item === 'token' && e.to === 4;
+  for (const order of SOLUTIONS) {
+    show.reset();
+    let st = engine.createState(spec), evs = null;
+    for (const id of order) {
+      const r = engine.place(st, id, spec); st = r.state;
+      if (r.events.some(is4)) { evs = r.events; break; }
+      await run([...r.events, { kind: 'settle' }], { instant: true });
+    }
+    assert.ok(evs, 'grow 4 happens in a placement turn');
+    assert.ok(evs.find(is4).jump, 'grow 4 is the second level of a jump (2 → 4)');
+    assert.ok(evs.findIndex(is4) > 1, 'other scripts play before it');
+    const scripted = token.script.grow[4]; let angle = null;
+    token.script.grow[4] = (e, s2, ctx) => {
+      const beats = scripted(e, s2, ctx), dep = flat(beats).find(b => b.kind === 'trainDepart'), start = dep.start;
+      dep.start = c => { const r = start(c); angle = (c.now + c.rail.offset) * 0.35; return r; };
+      return beats;
+    };
+    token.script.grow[4].key = scripted.key;   // 包一層照樣是 ◆（拿掉旗標的話 turn.js 只演 apply + LEVEL UP，列車不會出發）
+    try { await run([...evs, { kind: 'settle' }]); } finally { token.script.grow[4] = scripted; }
+    assert.ok(angle != null, `${order.join('>')}: the Lv4 script played (train departed)`);
+    const d = ((((angle - (STATION_A - 0.6)) % TWO_PI) + TWO_PI + Math.PI) % TWO_PI) - Math.PI;
+    assert.ok(Math.abs(d) < 0.05, `head car at ${angle} vs ${STATION_A - 0.6}`);
+    assert.ok(show.stage.partObject('token.train') && show.stage.partObject('token.track'));
   }
-  assert.ok(evs, 'grow 4 happens in a placement turn');
-  assert.ok(evs.findIndex(is4) > 1, 'other scripts play before it');
-  const scripted = token.script.grow[4]; let angle = null;
-  token.script.grow[4] = (e, s2, ctx) => {
-    const beats = scripted(e, s2, ctx), dep = flat(beats).find(b => b.kind === 'trainDepart'), start = dep.start;
-    dep.start = c => { const r = start(c); angle = (c.now + c.rail.offset) * 0.35; return r; };
-    return beats;
-  };
-  try { await run([...evs, { kind: 'settle' }]); } finally { token.script.grow[4] = scripted; }
-  const d = ((((angle - (STATION_A - 0.6)) % TWO_PI) + TWO_PI + Math.PI) % TWO_PI) - Math.PI;
-  assert.ok(Math.abs(d) < 0.05, `head car at ${angle} vs ${STATION_A - 0.6}`);
-  assert.ok(show.stage.partObject('token.train') && show.stage.partObject('token.track'));
 });
 
 // ── 入口點、站體 footprint、站務員不穿過珍奶人龍（計畫 3.8 Task 6、§14.1）──

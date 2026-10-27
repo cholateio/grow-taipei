@@ -302,9 +302,10 @@ test('R11: the second level of a jump plays its full script when it is a key nod
   assert.deepEqual(asked, [4, 5], 'both levels ask their scripts');
   assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'fly', 'walk', 'levelUp', 'apply'], 'the key script, no extra focus on the same cell');
 });
-test('R11: key nodes are flagged on token Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 flies the speeders in', async () => {
+// 選擇帶動升級裁決 R6：代幣 Lv4 也標 ◆（2 → 4 一定跳級，環狀線是主線）
+test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 flies the speeders in', async () => {
   const token = await import('../src/actors/token.js'), milkMod = await import('../src/actors/milk.js');
-  for (const [mod, keys] of [[token, [7, 10]], [milkMod, [7, 10]]]) assert.deepEqual(Object.entries(mod.script.grow).filter(([, f]) => f.key).map(([n]) => +n), keys, mod.id);
+  for (const [mod, keys] of [[token, [4, 7, 10]], [milkMod, [7, 10]]]) assert.deepEqual(Object.entries(mod.script.grow).filter(([, f]) => f.key).map(([n]) => +n), keys, mod.id);
   const ctx = fakeCtx({ roster: { members: () => [], nearest: () => null, keys: () => [] } });
   const beats = buildTurn([{ kind: 'grow', item: 'token', from: 9, to: 10 }], { ...base([quietTower, token]), lv: { ...zero, token: 9 } }, ctx);
   assert.ok(beats.some(b => b.kind === 'fly'), 'the speeders fly in');

@@ -208,9 +208,9 @@ test('scripts: every chip event in both solutions plays 3–5 s (◆ Lv9 6–10 
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9], `chip events seen: ${seen}`);
   }
 });
-test('the ◆ Lv9 standby is a key node (R11) and holds on the overview before the LEVEL UP; Lv8 is a short (non-key) script', () => {
-  assert.equal(chip.script.grow[9].key, true);
-  for (let n = 2; n <= 8; n++) assert.ok(!chip.script.grow[n].key, `lv${n}`);
+// 選擇帶動升級裁決 R6：Lv7 天線、Lv8 矽盾測試也標 ◆（跳級的第二級照演完整劇本）；其他級不是
+test('the ◆ key nodes are Lv7, Lv8 (R6) and Lv9 (R11); the Lv9 standby holds on the overview before the LEVEL UP', () => {
+  assert.deepEqual(Object.entries(chip.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [7, 8, 9]);
   const beats = flat(chip.script.grow[9]({ kind: 'grow', item: 'chip', to: 9 }, { lv: at(9), flags: {} }, fakeCtx));
   const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 2), j = beats.findIndex(b => b.kind === 'levelUp');
   assert.ok(i > 0 && j > i, 'holds on the overview before LEVEL UP');

@@ -375,5 +375,6 @@ export const script = {
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）
   rep: (s, ctx) => ctx.roster.members('token.staff').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
-script.grow[7].key = script.grow[10].key = true;
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這幾級，也演完整劇本（turn.js）。
+// Lv4 環狀線（選擇帶動升級裁決 R6）：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級——環狀線與列車是整局的主線，不標 ◆ 就只剩 apply + LEVEL UP
+script.grow[4].key = script.grow[7].key = script.grow[10].key = true;

@@ -172,7 +172,8 @@ export const script = {
       return [
         B.focus('home'), B.gesture('typhoon.main', 'puff'),
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
-        crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))), shelter,
+        // ！ 跟 Lv3 的 ♪ 一樣只給主島上的人：衛星島最外圈的人在全景邊上（選擇帶動升級裁決 R6 晶片 Lv8 標 ◆ 之後，賽博第 8 回合量到 ！ 整段在畫面外）
+        crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '！', 0.8))), shelter,
         B.apply(e), B.levelUp('typhoon'),
       ];
     },

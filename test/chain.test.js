@@ -1,5 +1,7 @@
-// test/chain.test.js：離島鏈（物品 v2 §5）整局 live 演完——代幣 Lv7 通車 → 燈泡 Lv7 風車轉、燈塔亮 → 燈泡 Lv8 海底電纜
+// test/chain.test.js：離島鏈（物品 v2 §5）整局 live 演完——燈泡 Lv7 風車轉、燈塔亮 → 燈泡 Lv8 海底電纜
 // → 晶片 Lv6 通電 → Lv7 天線 → Lv8 測試閃三下 → Lv9 待命，每個零件在對的回合出現（不早、不晚）；結局接點（§8）讀新的狀態。
+// 選擇帶動升級：燈泡 up[7] 要高鐵（代幣 ≥6），代幣 Lv7 通車到離島不一定在前面（賽博正解第 6 回合燈泡 7、第 7 回合代幣 7）——
+// 風車島的支線在兩者先到的那個事件長出來（燈泡 Lv7 自己鋪），遊樂場島的支線跟代幣 Lv7。
 // 兩條正解各演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂、
 // 每個 LEVEL UP 與泡泡至少一半的時間在畫面裡）
 import { test } from 'node:test';
@@ -13,14 +15,14 @@ import { finaleStep } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const FLASH = 0.4;   // 測試閃光的峰值 0.55、谷底 0.04；待命的淡輪廓 0.08–0.2 不會越過
-const CHAIN = [['token', 7], ['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], ['chip', 9]];
+const CHAIN = [['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], ['chip', 9]];
 
 // 一條正解 live 演完：每回合記下演完後的等級、零件鍵、風車轉不轉、電纜亮不亮、罩子露不露出來，和這回合罩子閃了幾下；
 // 每個事件演完（下一個事件的 mark 拍、或回合結束）再記一次零件鍵與電纜亮不亮（events：{ e: 'bulb8' 之類, keys, cableLit }）——
 // 同一回合裡先後發生的兩節（例如燈泡 Lv8 鋪電纜、晶片 Lv6 通電）也分得出是哪個事件帶出來的。
-// 倒數回合照 game.js 演（closingEvents：最前面是倒數字 3、2、1）；倒數演完再演終局回合（飛彈＋尾聲，finale: true），
-// 終局之前玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：回合開頭會放開記號，終局照樣回全景）；不變式一路查到終局回合演完。
-// finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, countdowns（倒數回合演到的倒數字）, flags, keys, script（演完還在劇本手上的人數）}
+// 最後一輪照一般回合演（選擇帶動升級 §4：沒有倒數字）；演完再演終局回合（警告＋飛彈＋尾聲，finale: true），
+// 終局回合演到一半玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：收尾照樣回全景）；不變式一路查到終局回合演完。
+// finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, kinds（整局演到的事件種類）, flags, keys, script（演完還在劇本手上的人數）}
 async function playChain(order) {
   const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), update = show.update;
   let flashes = 0, high = false;
@@ -31,10 +33,10 @@ async function playChain(order) {
     high = op > FLASH;
   };
   const blades = () => show.stage.partObject('sat.windmill')?.children[0].rotation.z ?? 0;
-  const turns = [], grows = [], events = [], cableLit = () => show.stage.partObject('chip.cable')?.children.length === 2;
+  const turns = [], grows = [], jumps = new Set(), events = [], cableLit = () => show.stage.partObject('chip.cable')?.children.length === 2;
   const tag = e => (e.kind === 'grow' ? `${e.item}${e.to}` : e.kind === 'placed' ? `${e.item}1` : e.kind);
   let prev = null;
-  const countdowns = [];
+  const kinds = new Set();
   const done = () => { if (prev) events.push({ e: tag(prev), keys: new Set(show.stage.partKeys()), cableLit: cableLit() }); prev = null; };
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
@@ -42,7 +44,8 @@ async function playChain(order) {
     const turn = `${order.join('>')} turn ${i + 1}`;
     inv.label(turn);
     grows.push(...r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`));
-    await run([...r.events, { kind: 'settle' }], { onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); if (e.kind === 'countdown') countdowns.push(e.n); } });
+    for (const e of r.events) if (e.kind === 'grow' && e.jump) jumps.add(`${e.item}${e.to}`);
+    await run([...r.events, { kind: 'settle' }], { onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); kinds.add(e.kind); } });
     done(); inv.turnEnd();
     const z0 = blades(); for (let f = 0; f < 6; f++) show.update(1 / 30, 2000 + f / 30);
     const shield = show.stage.partObject('tower.shield')?.children[0];
@@ -59,28 +62,29 @@ async function playChain(order) {
   await run(fin, { finale: true, onMark: e => { inv.label(`${label} [${e.kind}]`); if (e.kind === 'epilogue') cam.rig.cancel(); } });
   inv.turnEnd();
   const finale = {
-    ending, events: fin, countdowns, secs: show.elapsed, flags: { ...show.stage.flags }, keys: new Set(show.stage.partKeys()), busy: show.busy,
+    ending, events: fin, kinds, secs: show.elapsed, flags: { ...show.stage.flags }, keys: new Set(show.stage.partKeys()), busy: show.busy,
     script: show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.mode === 'script').length,
   };
-  return { turns, grows, events, state: s, inv, finale };
+  return { turns, grows, jumps, events, state: s, inv, finale };
 }
 let played = null;
 const playBoth = () => (played ??= (async () => { const out = []; for (const order of SOLUTIONS) out.push(await playChain(order)); return out; })());
 
-test('island chain, both solutions live: token 7 → bulb 7 → bulb 8 → chip 6 → 7 → 8 → 9 in order, each part in its own turn', async () => {
-  for (const [n, { turns, grows }] of (await playBoth()).entries()) {
+test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 8 → 9 in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
+  for (const [n, { turns, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), at = (id, lv) => turns.findIndex(t => t.lv[id] >= lv);
     // 事件順序：鏈上每一節的 grow 都在，照順序
     const idx = CHAIN.map(([id, lv]) => grows.indexOf(`${id}${lv}`));
     assert.ok(idx.every(i => i >= 0), `${name}: every chain level grows (${JSON.stringify(idx)})`);
     assert.deepEqual([...idx].sort((a, b) => a - b), idx, `${name}: chain events in order ${JSON.stringify(idx)}`);
     const before = (k, i) => turns.slice(0, i).every(t => !t.keys.has(k)), from = (k, i) => turns.slice(i).every(t => t.keys.has(k));
-    // 代幣 Lv7：支線（風車島、遊樂場島）在代幣到 7 的那一回合長出來
-    const t7 = at('token', 7);
-    for (const k of ['token.spur.windmill', 'token.spur.playground']) assert.ok(before(k, t7) && from(k, t7), `${name}: ${k} from turn ${t7 + 1}`);
+    // 代幣 Lv7：遊樂場島的支線在代幣到 7 的那一回合長出來；風車島的支線在代幣 7、燈泡 7 先到的那一回合（電工搭高鐵過去，支線一定在）
+    const t7 = at('token', 7), b7 = at('bulb', 7), w7 = Math.min(t7, b7);
+    assert.ok(t7 >= 0 && grows.includes('token7'), `${name}: token reaches 7`);
+    assert.ok(before('token.spur.playground', t7) && from('token.spur.playground', t7), `${name}: playground spur from turn ${t7 + 1}`);
+    assert.ok(before('token.spur.windmill', w7) && from('token.spur.windmill', w7), `${name}: windmill spur from turn ${w7 + 1}`);
+    assert.ok(turns[b7].lv.token >= 6, `${name}: the HSR carries the electrician (token ${turns[b7].lv.token} at bulb 7)`);
     // 燈泡 Lv7：風車轉、燈塔亮、守塔人都在燈泡到 7 的那一回合（之前沒有颱風的回合風車不轉、燈塔暗）
-    const b7 = at('bulb', 7);
-    assert.ok(b7 >= t7, `${name}: the electrician rides the spur (bulb 7 turn ${b7 + 1} ≥ token 7 turn ${t7 + 1})`);
     turns.slice(0, b7).forEach((t, i) => { assert.ok(!t.keys.has('sat.lighthouse') && !t.keys.has('sat.beam') && !t.keeper, `${name} turn ${i + 1}: lighthouse dark`); if (t.lv.typhoon !== 2) assert.equal(t.spin, false, `${name} turn ${i + 1}: windmill still`); });
     turns.slice(b7).forEach((t, i) => assert.ok(t.spin && t.keys.has('sat.lighthouse') && t.keys.has('sat.beam') && t.keeper === 1, `${name} turn ${b7 + i + 1}: windmill turns, lighthouse lit, keeper out`));
     // 燈泡 Lv8 鋪電纜（暗）、晶片 Lv6 通電（亮）
@@ -90,19 +94,23 @@ test('island chain, both solutions live: token 7 → bulb 7 → bulb 8 → chip 
     // 晶片 Lv7 天線；Lv8 那回合測試閃三下（其他回合不閃）、演完收起來；Lv9 起罩子常駐
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
     assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
-    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
+    // 選擇帶動升級：Lv8 是跳級的第二級時（賽博：晶片 6 → 8）只演 apply + LEVEL UP，不閃；其他回合都不閃
+    const test8 = jumps.has('chip8') ? 0 : 3;
+    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? test8 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
     assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
     turns.forEach((t, i) => assert.equal(t.shieldOut, i >= c9, `${name} turn ${i + 1}: standby shield out only from chip 9 (turn ${c9 + 1})`));
-    assert.ok(c6 < c7 && c7 < c8 && c8 < c9, `${name}: chip chain in four separate turns`);
+    // 一回合最多 +2：相鄰兩節可以同一回合（跳級），隔一節的一定分在不同回合
+    assert.ok(c6 <= c7 && c7 <= c8 && c8 <= c9 && c6 < c8 && c7 < c9, `${name}: chip chain ${c6 + 1} ${c7 + 1} ${c8 + 1} ${c9 + 1}`);
   }
 });
 
 // 事件層級：每個零件第一次出現在鏈上那一節的事件演完時（不是同一回合別的事件帶出來、也不是回合末才補上），之後一直都在
 test('island chain, event by event: each chain part first appears with its own event and stays', async () => {
-  const PARTS = [['token.spur.windmill', 'token7'], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
-    ['chip.cable', 'bulb8'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']];
-  for (const [n, { events }] of (await playBoth()).entries()) {
+  for (const [n, { events, grows }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), first = has => events.findIndex(has), idx = tag => events.findIndex(x => x.e === tag);
+    const windmill = grows.indexOf('bulb7') < grows.indexOf('token7') ? 'bulb7' : 'token7';   // 風車島支線：燈泡 Lv7 先到就自己鋪
+    const PARTS = [['token.spur.windmill', windmill], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
+      ['chip.cable', 'bulb8'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']];
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));
       assert.equal(events[i]?.e, tag, `${name}: ${key} first after ${events[i]?.e} (want ${tag})`);
@@ -129,13 +137,14 @@ test('both solutions end on the shield: every item MAX, no disaster flag, cyber 
   assert.deepEqual(branches.sort(), ['alien', 'cyber']);
 });
 
-// 最終章（計畫 5 任務 8，設計 §10）：倒數三回合各演到一個倒數字（3、2、1），終局回合演矽盾擋下＋各自的尾聲，演完回全景（turnEnd 查）、
-// 劇本手上沒人；終局前拖過鏡頭也一樣（不丟錯）。不穿牆、不瞬移、字在畫面裡由下面兩個測試查（不變式掛到終局回合演完）
-test('both solutions live through the finale: countdown events, finale turn, game invariants clean, ends on the overview; a camera grab before the finale does not break it', async () => {
-  for (const [n, { finale, inv }] of (await playBoth()).entries()) {
+// 最終章（選擇帶動升級 §4）：最後一輪是一般回合（沒有倒數字），終局回合演警告＋矽盾擋下＋各自的尾聲，演完回全景（turnEnd 查）、
+// 劇本手上沒人；終局中途拖過鏡頭也一樣（不丟錯）。不穿牆、不瞬移、字在畫面裡由下面兩個測試查（不變式掛到終局回合演完）
+test('both solutions live through the finale: one plain closing turn, finale turn [warning, missile, epilogue], game invariants clean, ends on the overview; a camera grab during the finale does not break it', async () => {
+  for (const [n, { finale, inv, turns }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
-    assert.deepEqual(finale.countdowns, [3, 2, 1], `${name}: one countdown digit per closing turn`);
-    assert.deepEqual(finale.events.map(e => e.kind), ['missile', 'epilogue'], `${name}: missile then epilogue`);
+    assert.equal(turns.length, spec.ORDER.length + spec.CLOSING_TURNS, `${name}: 8 placements + ${spec.CLOSING_TURNS} closing turn`);
+    assert.ok(!finale.kinds.has('countdown'), `${name}: no countdown event`);
+    assert.deepEqual(finale.events.map(e => e.kind), ['warning', 'missile', 'epilogue'], `${name}: warning, missile, epilogue`);
     assert.equal(finale.flags.missile, 'shield'); assert.equal(finale.flags.epilogue, finale.ending.id);
     assert.ok(finale.keys.has(finale.ending.id === 'cyber' ? 'finale.car' : 'finale.ufos'), `${name}: the ${finale.ending.id} epilogue parts`);
     assert.ok(!finale.keys.has('finale.flare'), `${name}: the flare is out`);

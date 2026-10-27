@@ -215,6 +215,9 @@ export function view(lv, flags) {
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
     v['token.track'] = { kind: 'compound', at: origin, parts, footprint: false };
     if (n >= 7) for (const kind of SPURS) v[`token.spur.${kind}`] = spur(kind);
+    // 燈泡 Lv7 離岸風電（spec：要高鐵，代幣 ≥6）在代幣通車到離島（Lv7）之前就可能發生（賽博正解第 6 回合）：
+    // 高鐵先把風車島那條支線鋪過去載電工（燈泡 Lv7 劇本裡長出來），遊樂場島的支線照舊等代幣 Lv7
+    else if (lv.bulb >= 7) v['token.spur.windmill'] = spur('windmill');
     // 離島接駁車走遊樂場島的支線（at 在支線起點：從那裡閃白出現）
     if (n >= 8) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 1.2, footprint: false }; }
     const bullet = n >= 6;
@@ -325,8 +328,9 @@ export const script = {
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   支線 0.8 秒長完（每秒 3 公尺多），比車速 2.5 快，列車追不上還沒長好的那一段
+    // 風車島的支線若已經被燈泡 Lv7 鋪好（view 的 lv.bulb ≥ 7），只長還沒有的那條
     7(e, s, ctx) {
-      const { B } = ctx, keys = SPURS.map(k => `token.spur.${k}`);
+      const { B } = ctx, prev = s.prev ?? { lv: { ...s.lv, token: 6 }, flags: s.flags }, had = view(prev.lv, prev.flags), keys = SPURS.map(k => `token.spur.${k}`).filter(k => !had[k]);
       return [
         B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: keys, blink: false }),

@@ -11,7 +11,7 @@ import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
 import { BLINK } from '../show/blink.js';
 import { STATION_A, SPUR_BRAKE } from '../show/beats.js';
-import { DECK_AT } from './token.js';
+import { DECK_AT, view as tokenView } from './token.js';
 import { C, offset } from './palette.js';
 
 export const id = 'bulb';
@@ -200,6 +200,13 @@ function rotationFrom(p) {
   const k0 = p ? LAMP_STOPS.reduce((b, _, k) => (near(k) < near(b) ? k : b), 0) : 0;
   return LAMP_STOPS.map((_, i) => (k0 + i) % n);
 }
+// 走路最近的那一站（照走路格的路線長，不是直線距離）：直線最近的那站常常隔著建築要繞一大圈
+// （選擇帶動升級：燈泡放下當回合就長，電工剛出門在燈泡格邊上，直線 1.5 的第 8 站要繞 6.6，第 0 站走 2.7）
+function nearestByRoute(p, nav) {
+  if (!p || !nav?.route || !nav.routeLength) return rotationFrom(p)[0];
+  const len = k => nav.routeLength(nav.route(p, lampApproach(LAMP_STOPS[k][0])));
+  return LAMP_STOPS.map((_, k) => [k, len(k)]).reduce((b, x) => (x[1] < b[1] ? x : b))[0];
+}
 // 離夜市最近的兩個看得見的島民（每段劇本自己記一組）
 // 離夜市最近的兩個看得見、在日常裡的人：島民或站務員（夜市在捷運站旁；人數預算裁決 R16 之後代幣／珍奶格不住島民，只找島民要從別格走來）
 const nearestPair = () => once(c => ['landmarks.islanders', 'token.staff'].flatMap(k => c.roster.members(k)).filter(m => !m.hidden && m.mode === 'home').sort((a, b) => dist(a.pos, MARKET) - dist(b.pos, MARKET)).slice(0, 2));
@@ -316,10 +323,10 @@ export const script = {
         B.levelUp('bulb'),
       ];
     },
-    // 霓虹、傍晚：電工快走到離他最近的那一站路燈下 → 敲一下 → 全島燈頭一站站閃白換成霓虹（粉藍交錯）→ 天色淡入傍晚。
+    // 霓虹、傍晚：電工快走到離他（走路）最近的那一站路燈下 → 敲一下 → 全島燈頭一站站閃白換成霓虹（粉藍交錯）→ 天色淡入傍晚。
     // 物品 v2 §6（一級 3–5 秒）：不再走到夜市前（從主路另一頭走過去要 3 秒多）；鏡頭對著那一站的格子，LEVEL UP 時轉回中心格
     3(e, s, ctx) {
-      const { B } = ctx, m = el(ctx), k0 = once(c => rotationFrom(c.roster.members('bulb.electrician')[0]?.pos)[0]), cell = c => stopCell(k0(c));
+      const { B } = ctx, m = el(ctx), k0 = once(c => nearestByRoute(c.roster.members('bulb.electrician')[0]?.pos, c.nav)), cell = c => stopCell(k0(c));
       return [
         B.focus(cell), B.walk(m, c => lampApproach(LAMP_STOPS[k0(c)][0]), { speed: LIGHTING_SPEED }), B.gesture(m, 'knock', 0.8),
         B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
@@ -334,10 +341,11 @@ export const script = {
         B.home([islander(0), islander(1)]), levelUpAtHome(B),
       ];
     },
-    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ → 閃白全島 LED、101 燈光秀 → 入夜
+    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ 的同時閃白全島 LED、101 燈光秀 → 入夜
+    // （選擇帶動升級：燈泡放下當回合就長，他巡路剛開始、常在主島另一頭，走到 101 腳下要 2.7 s——！ 跟閃白一起冒，一級才收在 4.5 s 內）
     5(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
-      return [B.walk(m, FOOT), B.bubble(m, '！', 0.8), B.apply(e), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
+      return [B.walk(m, FOOT), B.together([B.bubble(m, '！', 0.6), B.apply(e)]), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
     },
     // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）、♪（嗡嗡響）
     6(e, s, ctx) {
@@ -349,14 +357,19 @@ export const script = {
         B.together([B.apply(e), B.bubble(m, '♪', 0.6)]), B.home(m), B.levelUp('bulb'),
       ];
     },
-    // ★◆ 離岸風電啟動（代幣 ≥7：支線通到風車島）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
+    // ★◆ 離岸風電啟動（高鐵載電工去：代幣 ≥6）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
     //   列車沿環開到支線、開進島上 → 他跳到開關箱前按下開關 → 風車閃白開始轉 → 回全景、燈塔與光束閃白、守塔人出來（列車倒回環上）→ LEVEL UP。
-    //   他就留在風車島上（家換成島上的小圈），不再回主島巡路
+    //   他就留在風車島上（家換成島上的小圈），不再回主島巡路。
+    //   代幣還沒到 7（支線還沒通，選擇帶動升級之後賽博正解就是這樣）：鏡頭飛去風車島的同時風車島那條支線從環上長出去
+    //   （0.8 s，跟代幣 Lv7 一樣；列車從站前開到支線口比它慢，追不上還沒長好的那一段）
     7(e, s, ctx) {
-      const { B } = ctx, m = el(ctx);
+      const { B } = ctx, m = el(ctx), SPUR = 'token.spur.windmill',
+        prev = s.prev ?? { lv: { ...s.lv, bulb: 6 }, flags: s.flags };   // 劇本單獨建拍（測試）沒有 prev：當作從 Lv6 長上來
+      const lay = tokenView(prev.lv, prev.flags)[SPUR] ? [] : [B.apply(e, { only: [SPUR], blink: false }), B.scaleIn(SPUR, { axis: 'z', dur: 0.8 })];
       return [
         B.together([B.focus(TOKEN_CELL), board(B, m)]),   // 鏡頭飛去站前的同時他就出發、列車同時趕來
-        B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ride(B, m, [
+        ...lay.slice(0, 1),
+        B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ...lay.slice(1), ride(B, m, [
           // 按下開關 → 風車閃白開始轉 → 回全景（裁決 R17 ◆ ≤ 8 s：不再停 1 秒等鏡頭，燈塔在鏡頭飛往全景時亮）
           B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }), applyN(B, e, ['sat.windmill'], 1),
           B.focus('home'),

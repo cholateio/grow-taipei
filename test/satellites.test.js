@@ -143,7 +143,7 @@ test('the keeper appears on the same frame as the lighthouse light during bulb L
 
 // 物品 v2 任務 11：衛星島的門檻跟著新的階梯與離島鏈——沒有留下舊門檻（燈塔看燈泡 ≥2、小孩看鮮奶 ≥2、分店看珍奶 ≥4）。
 // 小孩坐接駁車來：遊樂場島有小孩的每一個等級，代幣的支線與接駁車都在（代幣 Lv7 支線、Lv8 接駁車），也有小學（鮮奶 ≥3）；
-// 燈塔亮、守塔人、風車轉（沒颱風）都在燈泡 ≥7，而引擎保證燈泡到 7 時代幣已 ≥7（電工搭支線過去）；石堆綠光圈只在外星
+// 燈塔亮、守塔人、風車轉（沒颱風）都在燈泡 ≥7，而引擎保證燈泡到 7 時代幣已 ≥6（高鐵；支線沒通的話燈泡 Lv7 自己鋪）；石堆綠光圈只在外星
 test('satellite gates follow the island chain: kids ride the shuttle, the light needs the spur, the ring is alien-only', async () => {
   const token = await import('../src/actors/token.js');
   for (let t = 0; t <= 10; t++) for (let m = 0; m <= 10; m++) {
@@ -155,7 +155,13 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
     const v = sat.view(lv({ bulb: b }), {}), on = b >= 7;
     assert.deepEqual([!!v['sat.lighthouse'], !!v['sat.beam'], !!v['sat.keeper'], v['sat.windmill'].speed > 0], [on, on, on, on], `bulb ${b}`);
   }
-  assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 7] }, 'the electrician rides the spur');
+  // 選擇帶動升級：燈泡 up[7] 代幣 7 → 6（高鐵載電工去）——代幣還沒通車到離島時，風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）
+  assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 6] }, 'the HSR carries the electrician');
+  for (const t of [6, 7]) for (const b of [6, 7]) {
+    const tv = token.view(lv({ token: t, bulb: b }), {}, {});
+    assert.equal(!!tv['token.spur.windmill'], t >= 7 || b >= 7, `token ${t} bulb ${b}: the windmill spur stands once the electrician rides it`);
+    assert.equal(!!tv['token.spur.playground'], t >= 7, `token ${t} bulb ${b}: the playground spur waits for token 7`);
+  }
   assert.ok(Object.keys(spec.ITEMS.bulb.jump ?? {}).every(n => +n < 7), 'no jump lands on bulb 7 or later');
   for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forestShop'], b >= 5, `boba ${b}`); }
   for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);

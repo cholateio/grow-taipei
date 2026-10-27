@@ -176,7 +176,7 @@ export const script = {
         B.apply(e), B.levelUp('typhoon'),
       ];
     },
-    // 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園與堤防一起閃白 → 小人一起 ♪ → 屋頂換色 → LEVEL UP
+    // 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園與堤防一起閃白 → 主島的小人一起 ♪ → 屋頂換色 → LEVEL UP
     // （躲著的人在回合開始時已經從門口出來、走回家了：show.turn 的 showAll({ walk: true })）
     3(e, s, ctx) {
       const { B } = ctx;
@@ -184,7 +184,8 @@ export const script = {
         B.focus('home'), B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
         B.apply(e, { only: ['typhoon.rainbow'], blink: false }), B.scaleIn('typhoon.rainbow', { dur: 1.2 }),
         B.apply(e, { only: ['typhoon.park', 'typhoon.levee'] }),
-        crowd(B, c => everyone(c).map(m => B.bubble(m, '♪', 0.9))), B.home(everyone),
+        // ♪ 只給主島上的人：衛星島最外圈（遊樂場島、森林島）的人在全景邊上、常常一半在畫面外（選擇帶動升級：最後一輪照一般回合演，泡泡不再被蒙太奇濾掉）
+        crowd(B, c => everyone(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '♪', 0.9))), B.home(everyone),
         B.apply(e), B.levelUp('typhoon'),
       ];
     },

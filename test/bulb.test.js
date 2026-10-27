@@ -222,10 +222,12 @@ async function firstStopRun({ stub }) {
   // 整回合 live 演（珍奶放置、鮮奶、晶片的劇本都在燈泡前面），電工在那段時間照常巡路
   // （stub：名冊焦點關掉——§13.4 焦點格外的人會站著，這裡要的是「他在別的劇本演的時候走開了」）
   if (stub) show.roster.setFocus = () => {};
-  let atBuild = null, atWalk = null;
+  // 選擇帶動升級：燈泡放下當回合就 Lv2——建拍時電工還沒來（放置劇本才把他叫出來），atBuild 改記「放置劇本演完、下一個事件開演」那一刻
+  let atBuild = null, atWalk = null, afterPlaced = false;
   const scripted = bulb.script.grow[2];
   bulb.script.grow[2] = (e, s2, ctx) => {
-    atBuild = { ...ctx.roster.members('bulb.electrician')[0].pos };
+    const el = ctx.roster.members('bulb.electrician')[0];
+    if (el) atBuild = { ...el.pos };
     const beats = scripted(e, s2, ctx), w = beats[0], start = w.start;
     w.start = c => { atWalk = { ...c.roster.members('bulb.electrician')[0].pos }; return start(c); };
     return beats;
@@ -234,7 +236,12 @@ async function firstStopRun({ stub }) {
     const update = show.update, first = [];
     show.update = (dt, t) => { update(dt, t); for (let i = 0; i < N_STOPS; i++) if (!first.includes(i) && show.stage.partObject(`bulb.lamps.${i}`)?.visible) first.push(i); };
     assert.ok(evs.indexOf(evs.find(isBulb(2))) > 0, 'bulb grows after other events in the turn');
-    await run([...evs, { kind: 'settle' }]);
+    const onMark = e => {
+      if (afterPlaced && !atBuild) atBuild = { ...show.roster.members('bulb.electrician')[0].pos };
+      afterPlaced = e.kind === 'placed' && e.item === 'bulb';
+    };
+    await run([...evs, { kind: 'settle' }], { onMark });
+    assert.ok(atBuild && atWalk, 'electrician seen before and at the walk');
     const nearest = p => bulb.LAMP_STOPS.reduce((b, gg, k) => (Math.hypot(bulb.lampApproach(gg[0]).x - p.x, bulb.lampApproach(gg[0]).z - p.z) < Math.hypot(bulb.lampApproach(bulb.LAMP_STOPS[b][0]).x - p.x, bulb.lampApproach(bulb.LAMP_STOPS[b][0]).z - p.z) ? k : b), 0);
     if (stub) assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1, 'electrician patrolled during the wait');
     assert.equal(first[0], nearest(atWalk), `first stop ${first[0]} vs nearest at walk ${nearest(atWalk)} / at build ${nearest(atBuild)}`);

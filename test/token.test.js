@@ -354,15 +354,18 @@ test('Lv10 live: the three speeders fly a lap round 101 and land on the station 
   }
 });
 // 兩個事件以上的回合整段 live 演：Lv4 環狀線的列車從站後面 0.6 rad 駛出
+// 選擇帶動升級：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級（第二級只演 apply + LEVEL UP），Lv4 劇本在真的局裡演不到（同裁決 R4 的死碼）。
+// 照正解演到跳級那回合，把 Lv4 拿掉 jump 當一般事件，整回合 live 演（別的劇本在前面，列車的位置跟著時鐘走）
 test('grow 4 in a full live turn: the ring line rises and the train departs from behind the station', async () => {
-  const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
+  const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0], is4 = e => e.kind === 'grow' && e.item === 'token' && e.to === 4;
   let st = engine.createState(spec), evs = null;
   for (const id of order) {
     const r = engine.place(st, id, spec); st = r.state;
-    if (r.events.some(e => e.kind === 'grow' && e.item === 'token' && e.to === 4)) { evs = r.events; break; }
+    if (r.events.some(is4)) { evs = r.events.map(e => (is4(e) ? solo(e) : e)); break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
   assert.ok(evs, 'grow 4 happens in a placement turn');
+  assert.ok(evs.findIndex(is4) > 1, 'other scripts play before it');
   const scripted = token.script.grow[4]; let angle = null;
   token.script.grow[4] = (e, s2, ctx) => {
     const beats = scripted(e, s2, ctx), dep = flat(beats).find(b => b.kind === 'trainDepart'), start = dep.start;

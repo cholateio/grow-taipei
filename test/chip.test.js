@@ -215,7 +215,8 @@ test('the ◆ Lv9 standby is a key node (R11) and holds on the overview before t
 // 物品 v2 的兩條正解晶片 Lv3 時老鼠都還沒生窩：老鼠先放、晶片第二個放（老鼠 Lv3 時晶片升到 3）
 test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n } = await liveAt(h, ['rat', 'chip', 'milk', 'bulb', 'token', 'typhoon', 'boba', 'baseball'], isChip(3));
+  // 選擇帶動升級：晶片 up[3] 要燈泡 ≥6，老鼠放下當回合就 Lv2——晶片在老鼠那回合長到 3 的放法
+  const { n } = await liveAt(h, ['milk', 'chip', 'bulb', 'token', 'baseball', 'rat', 'boba', 'typhoon'], isChip(3));
   assert.ok(show.stage.lv.rat >= 2);
   const [d] = show.roster.members('chip.detective'); assert.equal(d?.walker.accessory, 'glass');
   assert.equal(show.roster.members('chip.engineers').length, 3);

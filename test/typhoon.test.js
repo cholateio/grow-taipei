@@ -225,16 +225,26 @@ test('landing with all five reactions (crafted state) live as one turn: the land
   const gate = offset(anchorWorld('baseball'), 0, 1.1);
   assert.ok(h.show.roster.members('rat.pack').every(m => Math.hypot(m.pos.x - gate.x, m.pos.z - gate.z) < 1.5), 'rats by the dome gate');
 });
-test('Lv3: the sky clears, nobody is hidden, and the rainbow is standing', async () => {
-  const h = await headlessShow(), { show, run, worldLog } = h, order = SOLUTIONS[0];
-  const evs = await turnWith(run, order, e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 3);
-  const w0 = worldLog.length; await run(evs);
-  const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
-  assert.ok(live.some(w => w.storm === 0 && w.rain === 0), JSON.stringify(live));
-  assert.ok(live.every(w => !('peopleVisible' in w) || w.peopleVisible), 'no people switch in the script');
-  assert.ok(people(show).every(m => !m.hidden));
-  assert.equal(show.stage.partObject('typhoon.main'), null);
-  assert.equal(show.stage.partObject('typhoon.rainbow').scale.y, 1);
+// 選擇帶動升級（計畫 5b 任務 3）：♪ 只給主島上的人——兩條正解的最後一輪都真的有人冒 ♪（不是篩完空了）
+const isT3 = e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 3;
+test('Lv3: the sky clears, nobody is hidden, the rainbow is standing, and the main-island crowd sings ♪ (both solutions)', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show, run, worldLog, bubblesLog } = h, what = order.join('>');
+    const evs = await turnWith(run, order, isT3);
+    const w0 = worldLog.length, notes = [];
+    let from = null;
+    await run(evs, { onMark: e => { if (from !== null) { notes.push(...bubblesLog.slice(from)); from = null; } if (isT3(e)) from = bubblesLog.length; } });
+    if (from !== null) notes.push(...bubblesLog.slice(from));
+    const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
+    assert.ok(live.some(w => w.storm === 0 && w.rain === 0), JSON.stringify(live));
+    assert.ok(live.every(w => !('peopleVisible' in w) || w.peopleVisible), 'no people switch in the script');
+    assert.ok(people(show).every(m => !m.hidden));
+    assert.equal(show.stage.partObject('typhoon.main'), null);
+    assert.equal(show.stage.partObject('typhoon.rainbow').scale.y, 1);
+    const sing = notes.filter(b => b.kind === '♪');
+    assert.ok(sing.length >= 3, `${what}: ${sing.length} ♪ in the Lv3 crowd`);
+    assert.ok(sing.every(b => cellAt(b.at.x, b.at.z)), `${what}: ♪ only over the main island`);
+  }
 });
 // 颱風賴在巨蛋（spec.js 颱風 delay[3]）：引擎在多等的那一回合記一個 stall 事件；整回合 live：
 // 雲停在巨蛋上空，「……」冒在雲上

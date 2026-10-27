@@ -56,7 +56,7 @@ function fake({ pos = c([0, 0]), changed = [], parts = [] } = {}) {
     focus: (p, opts) => rig.calls.push(['focus', p, opts]),
   };
   const rail = { offset: 0 }, worlds = [];
-  const ctx = { stage, roster, nav, bubbles, blink, rig, rail, world: (e, instant) => worlds.push([e, instant]), montage: false, instant: false, now: 0, B, worlds };
+  const ctx = { stage, roster, nav, bubbles, blink, rig, rail, world: (e, instant) => worlds.push([e, instant]), instant: false, now: 0, B, worlds };
   const inner = createTimeline(), tl = Object.create(inner);
   tl.update = dt => { blink.update(dt); inner.update(dt); };
   return { ctx, tl, member, stage, blink, rail, roster, bubbles, rig, objects };
@@ -80,11 +80,11 @@ test('walk, gesture, bubble and jump skip a hidden member: no time, not claimed,
   assert.equal(tl.busy, false, 'nothing to play');
   assert.equal(roster.claimed.length, 0); assert.deepEqual(member.pos, at); assert.equal(bubbles.shown.length, 0);
 });
-// 裁決 R15：蒙太奇的兩倍速由時間軸統一換算（ctx.speed 2）——走路自己不再加倍，estimate 是演出時間、真實秒數減半
-test('walk at double speed in montage (timeline ctx.speed 2); an empty route takes no time', () => {
+// 裁決 R15：倍速由時間軸統一換算（ctx.speed 2；選擇帶動升級之後演出恆為 1，換算留著）——走路自己不加倍，estimate 是演出時間、真實秒數減半
+test('walk at double speed (timeline ctx.speed 2); an empty route takes no time', () => {
   const { ctx, tl, member, roster } = fake({ pos: c([-1, 1]) }); const to = c([-1, 0]);
   const len = ctx.nav.routeLength(ctx.nav.route(c([-1, 1]), to));
-  ctx.montage = true; ctx.speed = 2; const w = B.walk(() => member, () => to);
+  ctx.speed = 2; const w = B.walk(() => member, () => to);
   assert.ok(Math.abs(w.estimate(ctx) - len / 1.6) < 1e-6, 'estimate in show time'); assert.equal(roster.claimed.length, 0, 'estimate leaves the member alone');
   tl.play([w], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - len / 3.2) < 1e-6, 'half the real seconds'); assert.equal(member.mode, 'script');
   const p0 = { ...member.pos }; tl.update(0.1); assert.ok(Math.abs(Math.hypot(member.pos.x - p0.x, member.pos.z - p0.z) - 0.1 * 3.2) < 0.05, 'covers 3.2 per real second');
@@ -142,7 +142,7 @@ test('parts at the island centre are committed in turn like any other', () => {
   tl.play([B.apply(ev)], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - 0.3) < 1e-9);
   tl.update(0.15); assert.deepEqual(stage.committed, ['token.track', 'sat.boats']);
 });
-// 蒙太奇估長度：閃白的 apply 至少一個零件
+// 估長度（estimateTurn、trainStop 的 during）：閃白的 apply 至少一個零件
 test('apply estimates one blink when blinking and nothing without', () => {
   const { ctx } = fake();
   assert.equal(B.apply(ev).estimate(ctx), BLINK); assert.equal(B.apply(ev, { blink: false }).estimate(ctx), 0);
@@ -360,7 +360,7 @@ test('a walk whose route is cut by a new footprint replans around it and still e
   assert.ok(Math.abs(t - dur) <= 1 / 30 + 1e-6, `ends on time (${t.toFixed(2)} vs ${dur.toFixed(2)})`);
   assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6, 'arrives');
 });
-// 裁決 R15：蒙太奇倍速（ctx.speed 2）——交給真實時間在跑的東西自己換算：泡泡、LEVEL UP、鏡頭飛行縮短；列車照計畫的曲線快兩倍、停站時不動
+// 裁決 R15：倍速（ctx.speed 2；演出現在恆為 1，換算留著）——交給真實時間在跑的東西自己換算：泡泡、LEVEL UP、鏡頭飛行縮短；列車照計畫的曲線快兩倍、停站時不動
 test('ctx.speed 2: bubble, LEVEL UP and camera flight are handed real-time lengths; trainStop keeps the train still while held', () => {
   const { ctx, tl, bubbles, rig, rail } = fake({ parts: ['token.train'] }); ctx.speed = 2;
   tl.play([B.bubble('milk', '！', 1.2), B.levelUp('milk'), B.focus([1, 0])], ctx); tl.update(0);

@@ -198,7 +198,7 @@ const engineersLook = (B, p, dur = 1.0) => B.together([0, 1, 2, 3].map(i => B.ge
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
 // （老鼠那邊的劇本在老鼠 Lv2 成立時也補這一拍，哪邊先成立哪邊演）
 const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(c => c.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
-// 零件自己演的動畫用 beats.js 的 B.replay（套用零件、同一拍歸零重演、end 跳到演完；keep：蒙太奇裡也演）
+// 零件自己演的動畫用 beats.js 的 B.replay（套用零件、同一拍歸零重演、end 跳到演完）
 // 電纜通電：光從風車島那頭跑到變電站（零件的 userData.progress）
 const surge = (B, e, dur) => B.replay(e, 'chip.cable', dur, {
   begin: o => { if (!o.userData.progress) return false; o.userData.progress(0); return true; },
@@ -272,7 +272,7 @@ export const script = {
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];
     },
-    // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面（keep：蒙太奇裡照樣閃）、全島的人轉頭看 101（看完就放回日常）→ LEVEL UP
+    // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面、全島的人轉頭看 101（看完就放回日常）→ LEVEL UP
     8(e, s, ctx) {
       const { B } = ctx, up = lookUp(B, TOWER, 1.2);
       return [B.focus('home'), B.together([shieldTest(B, e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];

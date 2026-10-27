@@ -91,6 +91,14 @@ test('warning live: the flare blinks in, visible islanders look at FLARE_AT and 
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
   assert.ok(show.elapsed <= 3, `≤ 3 s real (${show.elapsed.toFixed(2)})`);
 });
+// 跳過（instant，reduced motion／玩家按跳過）：警告照樣把旗標、紅光套上，沒有人留在劇本手上
+test('warning skipped (instant): alarm 1, the flare is there, nobody left in script mode', async () => {
+  const { show, run } = await placedShow();
+  await run([WARNING], { finale: true, instant: true });
+  assert.equal(show.stage.flags.alarm, 1);
+  assert.ok(show.stage.partKeys().includes('finale.flare'), 'the flare is there');
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'nobody in script mode');
+});
 
 test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×844 portrait overview (lit-stage skyline)', () => {
   const lv = { milk: 10, baseball: 8, token: 10, rat: 5, boba: 7, typhoon: 3, chip: 9, bulb: 9 };

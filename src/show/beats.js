@@ -234,11 +234,11 @@ export function focus(target, { zoom = 0.6, final = false, hold = 0, skyline } =
 // 零件自己演的動畫（矽盾測試、電纜通電、飛彈）：套用一個零件（不閃白）並在同一拍裡把它的動畫歸零重演——
 // 建好的零件是演完的樣子（電纜整條亮、測試罩收好、飛彈飛完），套用和歸零在同一個 start 裡，中間沒有畫面；
 // begin(o, ctx) 回 false 這拍跳過；step(o, k) 逐幀（可省）；end 一律 finish(o, ctx) 跳到演完（跳過、reduced-motion 也一樣；
-// 拍演完之後零件還要自己接著演的——飛彈撞上罩子才放煙火——看 ctx.instant 決定要不要跳）。keep：蒙太奇裡也演
+// 拍演完之後零件還要自己接著演的——飛彈撞上罩子才放煙火——看 ctx.instant 決定要不要跳）
 export function replay(e, key, dur, { begin, step, finish }) {
   let o = null;
   return {
-    kind: 'replay', dur, keep: true,
+    kind: 'replay', dur,
     start(ctx) {
       if (ctx.stage.apply(e, { only: [key] }).changed.length) ctx.nav.setFootprints(ctx.stage.footprints());
       o = ctx.stage.partObject(key); if (!o || !begin(o, ctx)) { o = null; return false; }

@@ -497,24 +497,24 @@ test('Lv3 train live: the camera goes to the nest, then home', async () => {
   await liveAt(h, SOLUTIONS[0], isRat(3));
   assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('rat')), 'home']);
 });
-// 外星那條：老鼠 Lv5（颱風 ≥2）在倒數回合；整回合照蒙太奇 live 演，關鍵節點照樣演完——UFO 從天上降下、變異鼠戴王冠、石堆島綠光圈
-test('alien solution: rat Lv5 in its countdown turn (montage, typhoon ≥ 2) still plays the UFO coming down, the crown and the ring', async () => {
+// 外星那條：老鼠 Lv5（颱風 ≥2）在最後一輪（選擇帶動升級：照一般回合演）；整回合 live 演，◆ 關鍵級演完——UFO 從天上降下、變異鼠戴王冠、石堆島綠光圈
+test('alien solution: rat Lv5 in the last round (typhoon ≥ 2) still plays the UFO coming down, the crown and the ring', async () => {
   const h = await headlessShow(), { show, run } = h;
   let s = engine.createState(spec), evs = null;
   const steps = [...ALIEN.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
-    if (r.events.some(isRat(5))) { evs = [...r.events, { kind: 'settle' }]; assert.ok(i >= ALIEN.length, 'a countdown turn'); break; }
-    await run([...r.events, { kind: 'settle' }], { instant: true, montage: i >= ALIEN.length });
+    if (r.events.some(isRat(5))) { evs = [...r.events, { kind: 'settle' }]; assert.ok(i >= ALIEN.length, 'the last round'); break; }
+    await run([...r.events, { kind: 'settle' }], { instant: true });
   }
   assert.ok(evs && s.lv.typhoon >= 2);
   const update = show.update; let high = 0;
   show.update = (dt, t) => { update(dt, t); const u = show.stage.partObject('rat.ufo'); if (u) high = Math.max(high, u.userData.showOffset?.dy ?? 0); };
-  try { await run(evs, { montage: true }); } finally { show.update = update; }
+  try { await run(evs); } finally { show.update = update; }
   assert.ok(high > 2, `the UFO came down from the sky (max dy ${high.toFixed(2)})`);
   assert.ok(show.roster.members('rat.pack')[0].dress.crown, 'crowned'); assert.ok(show.stage.partObject('sat.rocksRing'), 'ring on the rocks');
 });
-// 審稿（裁決 R15）：Lv3 在兩條正解整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——外星是第 8 回合搭捷運，賽博落在倒數蒙太奇
+// 審稿（裁決 R15）：Lv3 在兩條正解整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——選擇帶動升級之後兩條正解都在第 8 回合颱風登陸之後（只演套用＋LEVEL UP），量的是那個情況
 test('live play, both solutions: rat Lv3 script ≤ 4.5 s in the real turn', async () => {
   const { playLive, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {

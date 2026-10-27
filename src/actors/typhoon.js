@@ -164,11 +164,10 @@ export const script = {
   grow: {
     // 登陸：雲鼓脹 → 閃白變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
     // 船消失、風車被吹得搖、外送機車出來（剩下的零件一次閃白）→ LEVEL UP。
-    // 躲進門的那段走路標 keep：倒數蒙太奇也要演（之後同一回合的事件只演 apply + LEVEL UP，大家都在屋裡）
+    // 之後同一回合的事件只演 apply + LEVEL UP（大家都在屋裡，turn.js 的 indoors）
     2(e, s, ctx) {
       const { B } = ctx, cast = once(c => everyone(c));
       const shelter = crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m)));   // 衛星島上的人不走（走路格只有主島）
-      shelter.keep = true;
       return [
         B.focus('home'), B.gesture('typhoon.main', 'puff'),
         B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
@@ -185,7 +184,7 @@ export const script = {
         B.focus('home'), B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
         B.apply(e, { only: ['typhoon.rainbow'], blink: false }), B.scaleIn('typhoon.rainbow', { dur: 1.2 }),
         B.apply(e, { only: ['typhoon.park', 'typhoon.levee'] }),
-        // ♪ 只給主島上的人：衛星島最外圈（遊樂場島、森林島）的人在全景邊上、常常一半在畫面外（選擇帶動升級：最後一輪照一般回合演，泡泡不再被蒙太奇濾掉）
+        // ♪ 只給主島上的人：衛星島最外圈（遊樂場島、森林島）的人在全景邊上、常常一半在畫面外（選擇帶動升級：最後一輪照一般回合演，每個泡泡都演得到）
         crowd(B, c => everyone(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '♪', 0.9))), B.home(everyone),
         B.apply(e), B.levelUp('typhoon'),
       ];
@@ -193,11 +192,9 @@ export const script = {
   },
   // 賴在巨蛋（spec.js 颱風 delay[3]：棒球 ≥3、矽盾還沒測試）多等一回合：引擎記一個 stall 事件。
   // 雲已經照 view 的 lingers 停在巨蛋上空（這回合第一次套用時閃白換過去）：鏡頭對著它 → 雲鼓一下 → ……
-  // （「……」標 keep：倒數蒙太奇也看得到颱風為什麼還不走）
   stall(e, s, ctx) {
-    const { B } = ctx, dots = B.bubble(cloudHead(ctx), '……', 1.2);
-    dots.keep = true;
-    return [cloudFocus(B, DOME), B.apply(e, { only: ['typhoon.main'] }), B.gesture('typhoon.main', 'puff'), dots];
+    const { B } = ctx;
+    return [cloudFocus(B, DOME), B.apply(e, { only: ['typhoon.main'] }), B.gesture('typhoon.main', 'puff'), B.bubble(cloudHead(ctx), '……', 1.2)];
   },
   rep: () => null,   // 颱風沒有等待
 };

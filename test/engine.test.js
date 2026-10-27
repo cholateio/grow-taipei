@@ -434,7 +434,7 @@ test('a default jump across a level with onLevel fires that reaction (rat Lv3 �
   const rat = { ...s0, lv: { ...s0.lv, rat: 3, chip: 8, token: 7 }, age: { ...s0.age, rat: 3, chip: 8, token: 8 }, held: { ...s0.held, rat: 1, chip: 1, token: 1 }, locked: { chip: true, token: true }, turn: 9 };
   const plain = advance(rat, real);
   assert.deepEqual(grows(plain).filter(g => g.startsWith('r')), ['rat3>4']); assert.equal(plain.state.flags.ratBranch, 'cyber');
-  // 旗標已經在（例：上一局留下的 alien、颱風來過）：3 → 4 → 5 一回合，跨過第 4 級重新分岔（晶片 8 → cyber）
+  // 人工造的狀態（照規則玩不會出現：旗標只在老鼠 Lv4 設）——旗標已經是 alien、颱風 2：3 → 4 → 5 一回合，跨過第 4 級重新分岔（晶片 8 → cyber）
   const hop5 = advance({ ...rat, lv: { ...rat.lv, typhoon: 2 }, flags: { ratBranch: 'alien' } }, real);
   assert.deepEqual(grows(hop5).filter(g => g.startsWith('r')), ['rat3>4', 'rat4>5J']);
   assert.equal(hop5.state.flags.ratBranch, 'cyber');
@@ -455,7 +455,9 @@ test('the +2 per turn cap still includes deltas', () => {
   assert.equal(r.state.lv.x, 4); assert.deepEqual(grows(r), ['x3>4']);
   // 沒有 delta：2 → 4 跳級（+2）是上限
   r = advance(s, push); assert.deepEqual(grows(r), ['x2>3', 'x3>4J']);
-  // 放下當回合被 delta 推：回合開始 0 → 最多到 2
-  const pre = place(createState(push), 'q', push).state;
-  const t = place(pre, 'x', push); assert.equal(t.state.lv.x, 2);
+  // 放下當回合被 delta 推（自己的 fx +5 推自己）：回合開始 0 → 最多到 2（delta 壓成 1 → 2），之後這回合也不再長
+  const al = { always: true }, self = { ORDER: ['y'], ITEMS: { y: { name: 'Y', max: 9, up: { 2: al, 3: al, 4: al }, fx: [{ delta: { target: 'y', by: 5 }, story: 'y推自己' }] } },
+    AFTER_TURN: [], STORIES: { placed: { y: '' }, grow: { y: {} } } };
+  const t = place(createState(self), 'y', self), d = t.events.find(e => e.delta);
+  assert.deepEqual(d.delta, { target: 'y', from: 1, to: 2 }); assert.equal(t.state.lv.y, 2); assert.deepEqual(grows(t), []);
 });

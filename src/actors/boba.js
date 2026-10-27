@@ -246,7 +246,7 @@ function sail() {
     for (let i = 0; i < 2; i++) { const m = passenger(i)(c); if (m && m.mode === 'script') c.roster.setPose(m, { ...seatAt(k, i), walking: false }); }
   };
   return {
-    kind: 'sail', dur: SAIL, keep: true,   // 倒數蒙太奇也留著（不然觀光客會留在碼頭的海上）
+    kind: 'sail', dur: SAIL,
     start(c) { obj = c.stage.partObject('boba.ferry'); if (!obj) return false; put(c, 0); c.blink.part(obj); },
     step(k, dt, c) { put(c, k); },
     end(c) { if (!obj) return; put(c, 1); obj.position.set(DOCK.x, DOCK.y, DOCK.z); obj.rotation.y = 0; },
@@ -303,7 +303,7 @@ export const script = {
     //   閃白旗艦店、店屋頂兩台外送無人機 → 鏡頭跟 LEVEL UP 一起回珍奶格，無人機同時起飛繞店一圈
     6(e, s, ctx) {
       const { B } = ctx, sp = [0, 1].map(i => B.spawn('boba.tourists', () => seatAt(0, i)));
-      const hop = Object.assign(B.together([0, 1].map(i => Object.assign(B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5), { keep: true }))), { keep: true });
+      const hop = B.together([0, 1].map(i => B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5)));
       return [
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,

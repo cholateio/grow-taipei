@@ -164,7 +164,7 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 從 from 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，蒙太奇 2），land() 立刻停好（跳過）；
+  // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 從 from 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，現在恆為 1），land() 立刻停好（跳過）；
   // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。模型在 at 底下，位置相對 at
   function orbit(spec) {
     // ?quality=low（手機，裁決 R18 draw call ≤ 150）：飛天車、無人機不畫；fly／land 留著給劇本叫
@@ -222,7 +222,7 @@ export function createPartFactory(THREE, ctx) {
   // 單面（FrontSide）：從全景看得到靠鏡頭的那半面，罩裡的島透得出來；不寫深度、不投影，一個 draw call。
   // 演法照 shieldPose；縮放與藏起來動的是裡面的 mesh，劇本的 scaleIn／閃白照樣作用在外層。
   // test 建好時就是演完的樣子（收起來、藏著）：閃三下由劇本叫 object.userData.test({ speed }) 開演、finish() 跳到收好
-  //   （跳過、reduced-motion、舞台重建零件都不會重閃）；speed：演出倍速（蒙太奇 2，裁決 R15），閃三下跟著快
+  //   （跳過、reduced-motion、舞台重建零件都不會重閃）；speed：演出倍速（現在恆為 1；以前蒙太奇 2，裁決 R15），閃三下跟著快
   function shield(spec) {
     const geo = new THREE.SphereGeometry(spec.r, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), map = hexGrid(THREE).clone();
     map.repeat.set(24, 3.5); map.needsUpdate = true;

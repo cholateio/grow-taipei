@@ -234,7 +234,7 @@ function panAhead(B, who, to, cellFn, speed) {
     start(c) {
       inner = null; d = 0;
       const cell = cellFn(c), m = who(c); if (!cell || !m) return false;
-      // 演出時間：蒙太奇倍速由時間軸換算（step 的 dt 已經乘過），鏡頭飛行 FLIGHT 秒也跟著快
+      // 演出時間：倍速（ctx.speed，現在恆為 1）由時間軸換算（step 的 dt 已經乘過）
       left = Math.max(0, entryDistance(c.nav.route(m.pos, to(c)), cell) / speed - FLIGHT);
       inner = B.focus(cell); d = left + inner.dur;
       if (left <= 0) fire(c);
@@ -256,8 +256,9 @@ const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.s
 const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7;
 // 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
 const SEAT_CAR = 0, SEAT_OFF = -0.2;
-// 沒有列車在跑（沒車、淹水停駛）就演不了：照規則燈泡 Lv7 一定有代幣 ≥7 的列車；萬一沒有，直接報錯，不讓他從海上瞬移過去
-const needTrain = (B, c) => { if (!B.trainRuns(c)) throw new Error('bulb Lv7 needs a running train (token ≥ 7, not flooded)'); };
+// 沒有列車在跑（沒車、淹水停駛）就演不了：照規則燈泡 Lv7 一定有代幣 ≥6 的高鐵（spec 燈泡 up[7]，選擇帶動升級放寬）——任何在跑的列車都行；
+// 萬一沒有，直接報錯，不讓他從海上瞬移過去
+const needTrain = (B, c) => { if (!B.trainRuns(c)) throw new Error('bulb Lv7 needs a running train (token ≥ 6, not flooded)'); };
 // 走到站前 ‖ 列車進站：兩邊同時開始，列車停在站上等他走到（during 先等 wait 秒）再跳上車頂。
 // 拍開始時才知道他要走多久、列車多久到（trainRun 跟 trainStop 同一幀算，數字一樣），所以 together 在 start 才建
 function board(B, who) {

@@ -13,6 +13,8 @@
 //   颱風登陸時大停電 燈泡 ≤2 → ≤4、淹水 代幣 ≤2 → ≤4。
 // 條件數字和設計表不同的地方都是求解器逼出來的（見物品 v2 任務 1 報告）。
 // 珍奶的跳級從設計的 2→4 移到 1→3：一回合 +2 上限（裁決 R4）下，第 7 個放的珍奶在颱風登陸那回合正好在 2，跳級和外送 +1 不能疊。
+// 選擇帶動升級（2026-10-28）之後每級都有預設跳級 up[n−1] ∧ up[n]：燈泡 jump[5]、珍奶 jump[3] 這兩條寫明的跳級留著（spec 測試「六個跳級」照舊），
+// 但 8! 種順序裡都不再發生（預設跳級先跳過去、珍奶放下當回合就到 2）——5b 裁決 R4：留著不拆
 // 設計文件：docs/superpowers/specs/2026-10-28-choice-growth-design.md §3；2026-10-26-items-v2-design.md §3、§4；主規格 2026-10-24 §6
 
 export const ORDER = ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'];
@@ -52,7 +54,7 @@ export const ITEMS = {
     // → ★ 海底電纜要星群總部 → 全島賽博霓虹
     // 2026-10-28：up[7] 代幣 7 → 6、up[8] 晶片 5 → 4（求解器：不放寬就沒有賽博解——海底電纜早一回合，晶片才趕得上在老鼠分岔前到 8）
     up: { 2: auto, 3: auto, 4: auto, 5: min('baseball', 4), 6: or(min('chip', 3), min('token', 3)), 7: min('token', 6), 8: min('chip', 4), 9: min('token', 9) },
-    jump: { 5: min('token', 2) },
+    jump: { 5: min('token', 2) },   // 留著但不會發生：預設跳級 2 → 4 先跳過第 3 級（5b 裁決 R4）
   },
   token: {
     name: '代幣', max: 10,
@@ -98,7 +100,7 @@ export const ITEMS = {
     name: '珍奶', max: 7,
     // 攤車 →（鮮奶夠了直接跳：鮮奶珍奶）人龍 → 珍奶店 → 噴泉廣場要廠房的工程師 → 連鎖店 → ★ 燈塔島旗艦店 → 世界珍奶節
     up: { 2: auto, 3: auto, 4: min('chip', 2), 5: min('token', 4), 6: min('token', 7), 7: min('bulb', 5) },
-    jump: { 3: min('milk', 4) },
+    jump: { 3: min('milk', 4) },   // 留著但不會發生：放下當回合就到 2，預設跳級先接手（5b 裁決 R4）
     onLevel: {
       4: [{ when: max('milk', 2), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
     },

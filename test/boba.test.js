@@ -365,7 +365,9 @@ test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
 test('a rat knocks the cart: it tilts and the owner ！ over his head', async () => {
   // 選擇帶動升級：珍奶放下當回合就 Lv2，老鼠那回合珍奶若接著長就重建扶正——挑珍奶那回合不長的放法（燈泡、晶片在前面卡著它）
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n } = await liveAt(h, ['milk', 'bulb', 'boba', 'chip', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  const { n, events } = await liveAt(h, ['milk', 'bulb', 'boba', 'chip', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  // 這個放法的前提（審稿）：撞攤車那回合珍奶不長（長了就重建扶正，看不到歪）
+  assert.ok(!events.some(e => (e.kind === 'grow' && e.item === 'boba') || (e.kind === 'fx' && e.delta?.target === 'boba')), `boba does not grow in the knock turn: ${events.map(e => `${e.kind} ${e.item ?? e.delta?.target ?? ''}${e.to ?? e.delta?.to ?? ''}`).join(', ')}`);
   const o = show.roster.members('boba.owner')[0];
   assert.ok(o, 'owner exists');
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9);

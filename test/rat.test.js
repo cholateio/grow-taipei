@@ -321,7 +321,7 @@ test('scripts: every rat level in both solutions plays in range, ends with LEVEL
 });
 test('reset releases every rat model', async () => {
   const h = await headlessShow();
-  await liveAt(h, SOLUTIONS[1], isRat(5));
+  await liveAt(h, CYBER, isRat(5));   // 賽博 Lv5：十隻機器鼠軍團
   assert.equal(h.show.roster.members('rat.pack').length, 10);
   const holders = h.show.roster.members('rat.pack').map(m => m.holder);
   h.show.reset();
@@ -353,10 +353,12 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
 });
 // 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。
-// 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），珍奶 Lv1 → 2 攤車不重建、照樣歪著
+// 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），攤車撞歪。
+// 選擇帶動升級：珍奶放下當回合就 Lv2，下一回合常常接著長到 3（重建、扶正）——挑一個老鼠那回合珍奶不長的放法（燈泡、晶片在前面卡著它）
 test('the placement turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
-  const { events, secs, n } = await liveAt(h, ['milk', 'boba', 'rat', 'chip', 'token'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  const { events, secs, n } = await liveAt(h, ['milk', 'bulb', 'boba', 'chip', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  assert.ok(!events.some(e => e.kind === 'grow' && e.item === 'boba'), 'boba does not grow (rebuild) in this turn');
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');
   assert.ok(secs >= 8 && secs <= 40, `${secs.toFixed(1)} s`);   // 上限 30 → 40：這回合還有珍奶 Lv2 排隊、被咬的小學生跑回校舍（實測 32.5 s；回合門檻 50 由 pace 管）
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'cart knocked askew');
@@ -370,8 +372,8 @@ test('the placement turn with both reactions plays live: a rat goes to the crate
 test('a bite that costs milk a level: crate tips, kids ！ run to the school gate and vanish quietly, LEVEL DOWN', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let st = engine.createState(spec);
-  // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 3 再咬掉一級
-  for (const id of ['rat', 'typhoon', 'milk', 'chip', 'bulb']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 3 再咬掉一級（選擇帶動升級：鮮奶 up[3] 要有棒球）
+  for (const id of ['rat', 'milk', 'baseball']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
   assert.equal(show.stage.lv.milk, 3); assert.equal(show.roster.members('milk.kids').length, 3);
   const hidden = [], hide = show.roster.hide; show.roster.hide = m => { hidden.push(m.key); return hide(m); };
   const n = bubblesLog.length, crate = show.stage.partObject('milk.crate');

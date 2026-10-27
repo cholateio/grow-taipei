@@ -143,6 +143,9 @@ const JUMP = 0.5, FOLLOW = 0.15, DASH = 4.5;   // 跳一次的秒數、排隊跟
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
+// 搭車至少 CATCH_MIN 秒（含跳上車之後跟車走一小段）：選擇帶動升級之後老鼠放下當回合就 Lv2、下一回合 Lv3，
+// 五隻還在窩邊、離島緣很近，列車最快 1.0 s 就到——不墊這一下整級只有 2.9 s（一級 3–5 s）
+const CATCH_MIN = 2.1;
 // 分岔（spec.js 老鼠 onLevel 4 的 ratBranch：條件照規則資料編譯，跟引擎同一個判斷，不寫死門檻）。分岔旗標是 grow 之後的 fx 事件才帶來的，
 // grow 4 的劇本先用一個同值的 fx 事件套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
 const BRANCH = ITEMS.rat.onLevel[4].find(a => a.branch).branch, BRANCH_TEST = compile(BRANCH.when, {});
@@ -168,7 +171,7 @@ function catchTrain(B, ids, spots, ctx) {
     start(c) {
       const walks = ids.map(i => B.walk(rat(i), cc => spots(cc)[i])), wt = Math.max(0, ...walks.map(w => w.estimate(c))), within = Math.max(TRAIN_IN, wt);
       const pause = Math.max(0, wt - B.trainRun(c, NEST_A, { within, back: TRAIN_BACK }).arrive);
-      inner = B.together([B.bubble(rat(0), '！', 0.8), ...walks,
+      inner = B.together([B.bubble(rat(0), '！', 0.8), ...walks, B.wait(CATCH_MIN),
         B.trainStop({ at: NEST_A, arrive: within, back: TRAIN_BACK, stop: pause + HOLD, during: [B.wait(pause), B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] })]);
       inner.start(c);
     },

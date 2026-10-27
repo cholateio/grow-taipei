@@ -217,9 +217,10 @@ test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 
     assert.ok([1, 2, 3, 6, 7].every(l => seen.includes(l)), `boba events seen: ${seen}`);
   }
 });
-// 正解裡被颱風外送帶上去的那一級（賽博 Lv4、外星 Lv5）自己演一次：照 order 演到上一級，改成 grow 事件單獨演
-test('scripts: the levels the typhoon delivery skips (Lv4, Lv5) also play 3–5 s with their camera', async () => {
-  for (const [order, to] of [[SOLUTIONS.find(o => o.indexOf('boba') < o.indexOf('rat')), 5], [SOLUTIONS.find(o => o.indexOf('boba') > o.indexOf('rat')), 4]]) {
+// 正解裡不演自己劇本的兩級自己演一次：選擇帶動升級之後兩條正解都是 Lv4 跳級的第二級（只演 apply + LEVEL UP）、
+// Lv5 被颱風外送帶上去（fx 的 delta）。照 order 演到上一級，改成 grow 事件單獨演
+test('scripts: the levels a jump or the typhoon delivery skips (Lv4, Lv5) also play 3–5 s with their camera', async () => {
+  for (const [order, to] of SOLUTIONS.flatMap(o => [[o, 4], [o, 5]])) {
     const h = await headlessShow();
     let s = engine.createState(spec), done = false;
     const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
@@ -229,7 +230,7 @@ test('scripts: the levels the typhoon delivery skips (Lv4, Lv5) also play 3–5 
       if (i >= 0) {
         await h.run(r.events.slice(0, i), { instant: true });
         const r0 = h.rig.log.length, secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
-        assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `lv${to} took ${secs.toFixed(2)} s`);
+        assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} lv${to} took ${secs.toFixed(2)} s`);
         if (to === 5) {
           const f = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(f.q, f.r), trail = focusTrail(h.rig.log, r0).map(String);
           assert.deepEqual(trail.slice(-3), [String(worldToAxial(c.x, c.z)), String(CELL), 'home'], 'forest island, back to boba for LEVEL UP, then home');
@@ -239,7 +240,7 @@ test('scripts: the levels the typhoon delivery skips (Lv4, Lv5) also play 3–5 
       }
       s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true });
     }
-    assert.ok(done, `lv${to} reached`);
+    assert.ok(done, `${order.join('>')} lv${to} reached`);
   }
 });
 test('◆ Lv7 is the only key node; it puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
@@ -362,8 +363,9 @@ test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
 });
 // 老鼠撞珍奶（§8.6）：攤車歪了、老闆 ！
 test('a rat knocks the cart: it tilts and the owner ！ over his head', async () => {
+  // 選擇帶動升級：珍奶放下當回合就 Lv2，老鼠那回合珍奶若接著長就重建扶正——挑珍奶那回合不長的放法（燈泡、晶片在前面卡著它）
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n } = await liveAt(h, ['boba', 'rat', 'milk', 'chip', 'token'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  const { n } = await liveAt(h, ['milk', 'bulb', 'boba', 'chip', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   const o = show.roster.members('boba.owner')[0];
   assert.ok(o, 'owner exists');
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9);

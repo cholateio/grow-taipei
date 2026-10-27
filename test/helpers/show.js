@@ -84,7 +84,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
 }
 
 // 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），
-// 單獨測那一級自己的劇本要當一般事件。燈泡 Lv5、晶片 Lv5、珍奶 Lv3、棒球 Lv5 在兩條正解裡都是跳級的第二級，正式演出時不演劇本；
+// 單獨測那一級自己的劇本要當一般事件。計畫 5b 之後跳級很多（例：燈泡 4／6／8、晶片 4、珍奶 4、棒球 7 在兩條正解裡都是跳級的第二級），正式演出時不演劇本；
 // 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測
 export const solo = ({ jump, ...e }) => e;
 

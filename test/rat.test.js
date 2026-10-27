@@ -352,15 +352,6 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
 });
-// 審稿：蒙太奇走路兩倍速，泡溫泉的快跑不再加倍（每幀位移 ≤ 4.5 × dt）
-test('Lv3 spring in a montage: the dash is capped (never faster than 4.5 per second)', async () => {
-  const h = await headlessShow(), { show, run } = h;
-  await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
-  const setPose = show.roster.setPose, last = new Map(); let fastest = 0;
-  show.roster.setPose = (m, p) => { if (m.key === 'rat.pack' && p.walking) { const q = last.get(m); if (q) fastest = Math.max(fastest, Math.hypot(p.x - q.x, p.z - q.z) * 30); last.set(m, { x: p.x, z: p.z }); } return setPose(m, p); };
-  try { await run([{ kind: 'grow', item: 'rat', from: 2, to: 3 }], { montage: true }); } finally { show.roster.setPose = setPose; }
-  assert.ok(fastest > 2 && fastest <= 4.5 + 0.05, `fastest ${fastest.toFixed(2)} / s`);
-});
 // 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。
 // 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），珍奶 Lv1 → 2 攤車不重建、照樣歪著
 test('the placement turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
@@ -526,6 +517,6 @@ test('live play, both solutions: rat Lv3 script ≤ 4.5 s in the real turn', asy
   const { playLive, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {
     const ev = (await playLive(order)).find(x => x.e.kind === 'grow' && x.e.item === 'rat' && x.e.to === 3);
-    assert.ok(ev && ev.script <= SCRIPT_MAX, `${order.join('>')} turn ${ev?.turn}${ev?.montage ? ' (montage)' : ''}: ${ev?.script.toFixed(2)} s`);
+    assert.ok(ev && ev.script <= SCRIPT_MAX, `${order.join('>')} turn ${ev?.turn}${ev?.closing ? ' (last round)' : ''}: ${ev?.script.toFixed(2)} s`);
   }
 });

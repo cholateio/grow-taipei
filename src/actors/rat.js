@@ -243,8 +243,8 @@ export const script = {
       if (mode === 'spring') {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
-          // 蒙太奇走路兩倍速：快跑不再加倍
-          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: ctx.montage ? DASH / 2 : DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
+          // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）
+          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
           B.home(RATS), B.levelUp('rat'),
         ];
       }
@@ -308,5 +308,5 @@ export const script = {
   },
   rep: (s, ctx) => ctx.roster.members(KEY).find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
-// ◆ 關鍵節點（裁決 R11）：分岔與最終型態——跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+// ◆ 關鍵節點（裁決 R11）：分岔與最終型態——跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[4].key = script.grow[5].key = true;

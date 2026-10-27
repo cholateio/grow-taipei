@@ -3,7 +3,7 @@
 // 拍 = { kind, dur, start?(ctx), step?(k, dt, ctx), end?(ctx), estimate? }；dur 是數字或 ctx => 數字，start 之後才算。
 // start 回 false 或 dur ≤ 0 → 這拍沒東西演，直接 end、不佔時間，同一幀接著處理下一拍。
 // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）；reduced-motion 時 play 整串都這樣同步跑完。
-// 演出速度（裁決 R15）：ctx.speed（預設 1；倒數蒙太奇 2，turn.js 設）——時間軸用「演出時間」推進拍：每幀 dt × speed 給拍的 t 與 step，
+// 演出速度（裁決 R15）：ctx.speed（turn.js 設；選擇帶動升級拿掉蒙太奇之後恆為 1）——時間軸用「演出時間」推進拍：每幀 dt × speed 給拍的 t 與 step，
 // 所以拍的 dur、等待、泡泡、小動作、走路（走路的 step 用 dt 推進位置）一律跟著快；elapsed、currentDur 是真實秒數。
 // 跟真實時鐘綁的拍（列車 trainStop 改 rail.offset、零件自己演的動畫）自己讀 ctx.speed 換算。
 // 中止（RESET）：正在演的拍 end，剩下的丟掉。不管哪種結束，play 的 Promise 一定有結果，不留懸掛：

@@ -639,7 +639,7 @@ async function playBoth() {
     for (const [i, [kind, id]] of steps.entries()) {
       const r = kind === 'place' ? engine.place(s, id, spec) : engine.advance(s, spec); s = r.state;
       label = `${order.join('>')} turn ${i + 1}`; closing = kind === 'advance' && s.flags?.ratBranch === 'alien';
-      await run([...r.events, { kind: 'settle' }], { montage: kind === 'advance' });
+      await run([...r.events, { kind: 'settle' }]);
       const walking = () => [...since.keys()].filter(m => m.arriving && !m.gone);
       for (let f = 0; f < ARRIVE_MAX / DT && walking().length; f++) show.update(DT, 1000 + t);
       for (const m of walking()) stuck.push(`${label} ${m.key}#${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);

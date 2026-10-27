@@ -301,9 +301,5 @@ export const script = {
   fx: () => null,   // 鮮奶自己沒有 onLevel
   rep: (s, ctx) => ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[10].key = true;
-
-// 趕工（最終章設計 §5）：倒數回合裡非關鍵的升級，最近的島民走到這裡的鏡頭側（frontOf 半徑 r）揮鋤頭蓋出來。
-// 每一級都蓋在校舍／大學（錨點）；◆ 鮮奶節（Lv10，關鍵級、照演完整劇本，用不到）寫牛奶車旁小孩聚集的地方
-export const rushSite = n => (n >= 2 && n <= 9 ? { ...AT, r: 1.0 } : n === 10 ? { ...offset(TRUCK, 0.8, 0.1), r: 1.0 } : null);

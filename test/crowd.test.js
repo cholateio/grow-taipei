@@ -7,7 +7,8 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { cellAt, SATELLITES, axialToWorld, TOP } from '../src/scene/hex.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { headlessShow, turnSteps } from './helpers/show.js';
-const { islanders, heroNear, lookUp, crowd } = await import('../src/show/crowd.js');
+const crowdModule = await import('../src/show/crowd.js');
+const { islanders, lookUp, crowd } = crowdModule;
 const { B } = await import('../src/show/beats.js');
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
@@ -25,7 +26,8 @@ async function placedShow() {
   return h;
 }
 
-test('islanders excludes hidden, arriving, riding, model members and anyone off the main island; heroNear returns the nearest one', async () => {
+test('islanders excludes hidden, arriving, riding, model members and anyone off the main island; heroNear (rush) is gone', async () => {
+  assert.equal('heroNear' in crowdModule, false, 'heroNear went with the rush builds (選擇帶動升級 §4)');
   const { show } = await placedShow(), c = { roster: show.roster };
   const all = everyone(show);
   assert.ok(all.some(m => !m.walker), 'the cast includes models (rats)');
@@ -44,18 +46,7 @@ test('islanders excludes hidden, arriving, riding, model members and anyone off 
   assert.equal(left.length, list.length - 5);
   // 坐車頂的（老鼠的 ride）不算：它們是模型
   for (const m of all.filter(m => m.mode === 'home' && !m.walker)) assert.ok(!left.includes(m));
-  // heroNear：名單裡離 p 最近的（平面距離）
-  for (const p of ['chip', 'milk', 'bulb', 'baseball'].map(anchorWorld)) {
-    const hero = heroNear(c, p), best = Math.min(...left.map(m => dist(m.pos, p)));
-    assert.ok(left.includes(hero)); assert.equal(dist(hero.pos, p), best);
-  }
-  // max：cost 超過的不算；cost：自己量「近」（趕工量走路秒數）
-  const p0 = anchorWorld('chip'), h0 = heroNear(c, p0), d0 = dist(h0.pos, p0);
-  assert.equal(heroNear(c, p0, { max: d0 }), h0); assert.notEqual(heroNear(c, p0, { max: d0 - 1e-6 }), h0);
-  const far = left.reduce((x, y) => (dist(y.pos, p0) > dist(x.pos, p0) ? y : x));
-  assert.equal(heroNear(c, p0, { cost: m => -dist(m.pos, p0) }), far, 'cost decides who is nearest');
   a.hidden = false; b.arriving = false; d.mode = 'home'; e.walker = walker; Object.assign(f.pos, pos);
-  assert.equal(heroNear({ roster: { keys: () => [], members: () => [] } }, anchorWorld('chip')), null, 'nobody → null');
 });
 
 test('lookUp turns at most 24 islanders toward the point and release sends them home', async () => {

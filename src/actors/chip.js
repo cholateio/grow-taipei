@@ -286,10 +286,5 @@ export const script = {
   fx: () => null,   // 晶片自己沒有 onLevel
   rep: (s, ctx) => ctx.roster.members('chip.engineers').find(m => !m.hidden) ?? ctx.roster.members('chip.worker').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這級，也演完整劇本（turn.js）
 script.grow[9].key = true;
-
-// 趕工（最終章設計 §5）：Lv2 廠房（園區錨點，同 Lv2 劇本）、Lv3 園區玻璃盒、Lv4 星群總部、Lv5 變電站——站位半徑 FRONT_R；
-// Lv6 起電纜在海裡、天線在 101、矽盾測試與待命自己有劇本（keep／關鍵）→ 不趕工
-const RUSH_SITES = { 2: AT, 3: offset(AT, 0.6, 0), 4: offset(AT, HQ.x, HQ.z), 5: offset(AT, SUB.x, SUB.z) };
-export const rushSite = n => (RUSH_SITES[n] ? { ...RUSH_SITES[n], r: FRONT_R } : null);

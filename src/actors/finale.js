@@ -1,9 +1,9 @@
-// 最終章（計畫 5，設計 §3、§9）：飛彈倒數的宣告與數字、飛彈、真結局尾聲——都不是物品，是遊戲層合成的事件。
-// 遊戲層（game.js）在每個倒數回合最前面插 countdown 事件（n = 3、2、1，flag alarm = n），第 8 個放完、倒數演完之後
-// 演一個終局回合：missile 事件（flag missile = shield／deflect／hit），真結局再接 epilogue（flag epilogue = 結局 id）。
+// 最終章（計畫 5，設計 §3、§9；選擇帶動升級 2026-10-28 §4 改版）：飛彈警告、飛彈、真結局尾聲——都不是物品，是遊戲層合成的事件。
+// 遊戲層（game.js）在第 8 個放完、最後一輪（一般回合）演完之後演一個終局回合：最前面 warning 事件（game.js WARNING，flag alarm = 1），
+// 接 missile 事件（flag missile = shield／deflect／hit），真結局再接 epilogue（flag epilogue = 結局 id）。
 // 旗標只折進舞台（stage.flags，foldEvent 照 e.flag 折），引擎狀態不碰。turn.js 把這三種事件的劇本交給這個模組（script[e.kind]）。
-// 任務 3：宣告（設計 §4）——倒數 3 的回合一開頭，鏡頭對面遠方的海平面亮起紅光（finale.flare），全島抬頭看、冒「！」，
-// 101 頭上冒「3」；紅光整個倒數期間都在、越閃越快，飛彈發射時熄掉（flags.missile 一設就不畫）。
+// 警告（選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）——終局回合一開頭，鏡頭對面遠方的海平面亮起紅光（finale.flare），
+// 全島抬頭看、冒「！」；紅光以固定 FLARE_HZ 脈動，飛彈發射時熄掉（flags.missile 一設就不畫）。
 // 任務 5：飛彈（設計 §6）——紅光熄掉、飛彈從紅光的位置沿拋物線飛向 101（零件自己演：userData.launch），三種結果：
 //   shield 罩子全亮、飛彈碎成一發煙火、全島跳＋♥；deflect 飛到 101 旁被風吹歪、邊轉邊掉、機頭朝下插進北投溫泉、水花、全島？再♪；
 //   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
@@ -25,9 +25,7 @@ import { C } from './palette.js';
 
 export const id = 'finale';
 
-// 數字泡泡的真實秒數（設計 §4 第 3 步：「3」「2」「1」各 1.2 秒，取代以前每回合連冒 3、2、1 各 0.6 秒）
-export const DIGIT = 1.2;
-// 宣告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒（真實秒數；倒數回合是蒙太奇 2 倍速，劇本乘回 ctx.speed）
+// 警告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒（真實秒數；終局回合 1 倍速）
 export const LOOK = 1.2, SHOUT = 0.8;
 
 // 紅光的位置：鏡頭對面（全景沿 −z 看過去）主島西北方、背景環山山腳前的海面上。
@@ -37,9 +35,8 @@ export const LOOK = 1.2, SHOUT = 0.8;
 // 沿視線到鏡頭都不被地形擋（帶 app.js 的雜訊取樣）
 export const FLARE_AT = { x: -12, y: 2.5, z: -23 };
 export const FLARE_COLOR = 0xff5a3c, FLARE_R = 0.9, COLUMN_H = 6;
-// 脈動頻率：倒數 3／2／1 → 1／2／3 Hz（越來越急）。4 − n 跟數字泡泡 '3'、'2'、'1' 一樣假設倒數三回合（spec.CLOSING_TURNS = 3，
-// game.js countdownEvent 守著 n ∈ 1..3）；沒有 alarm（零件剛好在旗標之外被建）當倒數 3
-export const flareHz = n => 4 - (n ?? 3);
+// 脈動頻率（選擇帶動升級 §4：固定 2 Hz；以前倒數 3／2／1 越閃越快）
+export const FLARE_HZ = 2;
 
 // ── 飛彈（設計 §6）──
 // 真實秒數：拋物線飛 FLIGHT 秒；deflect 的第二段（被風吹歪、邊轉邊掉進溫泉）DEFLECT 秒；結果演完回全景停 HOLD_END 秒
@@ -110,8 +107,7 @@ const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
 
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
-  // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 3、2、1
-  // spec 不帶 hz（最終審稿）：倒數 3、2、1 是同一個零件，不換、不閃白；脈動頻率由零件每幀讀舞台旗標（builders.flare）
+  // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 1（警告）。脈動頻率固定 FLARE_HZ（builders.flare）
   if (flags.alarm && !flags.missile) v['finale.flare'] = { kind: 'flare', at: FLARE_AT, shadow: false, footprint: false };
   const o = flags.missile;
   if (o) {
@@ -211,9 +207,8 @@ export const builders = {
     beam.position.y = bottom + COLUMN_H / 2;
     orb.name = 'orb'; beam.name = 'beam';
     for (const m of [orb, beam]) { m.castShadow = m.receiveShadow = false; object.add(m); }
-    // 頻率每幀照舞台旗標的 alarm 算（ctx.flags：stage.js 交給零件工廠的 getter）：spec 不帶 hz，倒數 2、1 才不會換零件再閃白一次
     const pose = t => {
-      const hz = flareHz(ctx.flags?.().alarm), k = (1 + Math.sin(t * Math.PI * 2 * hz)) / 2;
+      const k = (1 + Math.sin(t * Math.PI * 2 * FLARE_HZ)) / 2;
       orbMat.emissiveIntensity = (1.2 + ctx.glow.intensity) * (0.35 + 0.65 * k);
       beamMat.opacity = 0.15 + 0.3 * k;
     };
@@ -274,17 +269,14 @@ const later = (delay, dur, beat) => {
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
 
 export const script = {
-  // 倒數 3（設計 §4）：紅光閃白出現 → 全島（最多 24 人）轉頭看紅光、頭上一起冒「！」→ 101 頭上「3」→ 放回日常。
-  // 倒數 2、1：只有數字（紅光早就在了，脈動頻率跟著 alarm 換）。
-  // 倒數回合是蒙太奇 2 倍速（ctx.speed）——看與字是給玩家讀的，演出時間乘回倍速，真實秒數照舊。
+  // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）：紅光閃白出現 → 全島（最多 24 人）轉頭看紅光、
+  // 頭上一起冒「！」→ 放回日常。終局回合 1 倍速，秒數就是真實秒數。
   // together 裡「！」排在抬頭前面：together 依序 start，抬頭會把人 claim 走（mode 不再是 home），排後面的 islanders 就點不到他們了；
   // 「！」點的是 islanders 的前 24 個——跟 lookUp 同一刻、同一個順序點名，所以是同一批人
-  countdown(e, s, ctx) {
-    const { B } = ctx, digit = B.bubble('tower', String(e.n), DIGIT * ctx.speed);
-    if (e.n !== 3) return [digit];
-    const up = lookUp(B, FLARE_AT, LOOK * ctx.speed);
-    const shout = crowd(B, c => islanders(c).slice(0, up.look.length).map(m => B.bubble(m, '！', SHOUT * ctx.speed)));
-    return [B.apply(e, { only: ['finale.flare'] }), B.together([shout, ...up.look]), up.release, digit];
+  warning(e, s, ctx) {
+    const { B } = ctx, up = lookUp(B, FLARE_AT, LOOK);
+    const shout = crowd(B, c => islanders(c).slice(0, up.look.length).map(m => B.bubble(m, '！', SHOUT)));
+    return [B.apply(e, { only: ['finale.flare'] }), B.together([shout, ...up.look]), up.release];
   },
   // 飛彈（設計 §6，真實秒數，終局回合 1 倍速）：回全景停 0.8 → 紅光熄掉 → 飛彈從紅光的位置發射（replay：套用零件、launch 重飛），
   //   飛到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→ 結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END。

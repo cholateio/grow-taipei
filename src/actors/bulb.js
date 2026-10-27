@@ -392,15 +392,5 @@ export const script = {
   // 等待圖框的代表：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（鏡頭不在那裡），改用離燈泡最近的島民
   rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? null,
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[9].key = true;
-
-// 趕工（最終章設計 §5）：Lv2–3 路燈（錨點）、Lv4 夜市、Lv5 101（全島 LED 燈光秀）、Lv6 變電所（站位同劇本的 SUBSTATION_FRONT）；
-// Lv7 起風車島、Lv8 海底電纜、Lv9 霓虹（關鍵）→ 不趕工
-export function rushSite(n) {
-  if (n === 2 || n === 3) return { ...AT, r: 0.8 };
-  if (n === 4) return { ...MARKET, r: 1.0 };
-  if (n === 5) return { ...TOWER, r: 1.1 };
-  if (n === 6) return { ...SUBSTATION, r: SUBSTATION_FRONT.z - SUBSTATION.z };
-  return null;
-}

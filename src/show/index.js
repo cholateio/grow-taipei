@@ -35,7 +35,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     get grabbed() { return !!rig.grabbed; },
     release() { rig.release?.(); },
   };
-  const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
+  const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, instant: false, speed: 1, now: 0, B };
   const timeline = createTimeline({ reducedMotion });
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
   let holding = null;   // 標題卡前的停格（hold）中：skip() 不作用。每個 hold 一個記號：中止過的舊 hold 晚一步收尾時不清掉新的
@@ -54,13 +54,13 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
   }
 
-  function turn(events, { montage = false, finale = false, onMark } = {}) {
+  function turn(events, { finale = false, onMark } = {}) {
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
     camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
     roster.showAll({ walk: true });   // 上一回合躲進門裡的人（颱風登陸）從門口出來、走回家（不閃）
     refresh();
-    const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage, finale }, ctx);
+    const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, finale }, ctx);
     const me = playing = {};
     const done = timeline.play(beats, ctx);
     const end = () => {

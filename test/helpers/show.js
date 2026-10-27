@@ -9,7 +9,6 @@ import { createPeople } from '../../src/scene/people.js';
 import { mulberry32 } from '../../src/scene/random.js';
 import { createCameraRig, OVERVIEW_DIR } from '../../src/scene/camera.js';
 import { cellAt } from '../../src/scene/hex.js';
-import { countdownEvent } from '../../src/game.js';
 
 installFakeDom();
 const { createShow } = await import('../../src/show/index.js');
@@ -60,14 +59,14 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   // scriptElapsed()：這回合到目前為止的劇本秒數（onMark 裡量某一段用）
   let cam = 0;   // 這回合花在 focus 拍的秒數：每幀的 dt 算給這一幀開頭正在演的拍（回合第一幀算給剛拉進來的那拍）
   const scriptElapsed = () => show.elapsed - cam;
-  async function run(events, { montage = false, finale = false, instant = false, onMark } = {}) {
+  async function run(events, { finale = false, instant = false, onMark } = {}) {
     cam = 0;
     if (instant) {
       show.setReducedMotion(true);
-      try { await show.turn(events, { montage, finale, onMark }); } finally { show.setReducedMotion(false); }
+      try { await show.turn(events, { finale, onMark }); } finally { show.setReducedMotion(false); }
       return 0;
     }
-    const p = show.turn(events, { montage, finale, onMark });
+    const p = show.turn(events, { finale, onMark });
     let t = 0, done = false, err = null;
     p.then(() => { done = true; }, e => { done = true; err = e; });
     while (!done) {
@@ -89,7 +88,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
 // 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測
 export const solo = ({ jump, ...e }) => e;
 
-// 照 order 放完一局、再長 CLOSING_TURNS 回合（物品 v2：很多級落在倒數回合）：itemId 的 placed／grow 事件單獨 live 演並呼叫
+// 照 order 放完一局、再長 CLOSING_TURNS 回合（最後一輪）：itemId 的 placed／grow 事件單獨 live 演並呼叫
 // check(e, secs)，其他事件 instant；每回合最後 settle instant（單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）。
 // 單獨演的跳級第二級拿掉 jump（solo）照一般事件演；跳級連著演的樣子由 turn／show 測試驗
 export async function playItem(show, run, order, itemId, check) {
@@ -105,9 +104,8 @@ export async function playItem(show, run, order, itemId, check) {
   }
 }
 
-// 倒數回合 i（0 起算）演的事件：最前面是遊戲層插的倒數字（countdownEvent(3 − i)，101 頭上 3、2、1），最後補 settle——同 game.js 的 pick()
-export const closingEvents = (i, events) => [countdownEvent(3 - i), ...events, { kind: 'settle' }];
-// 一局的每一回合：照 order 放完、再 CLOSING_TURNS 個倒數回合（step(s) → { state, events }）
+// 一局的每一回合：照 order 放完、再 CLOSING_TURNS 個最後一輪（step(s) → { state, events }）。
+// 最後一輪照一般回合演（選擇帶動升級 §4）：事件後面補 settle，跟放置回合一樣
 export const turnSteps = order => [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
 // 101 的階段在這一局哪一回合跨過（物品 v2 任務 10）：totals[i] = 第 i+1 回合結算後的總等級；at[stage] = 第一次到那個階段的回合（1 起算，含倒數回合）
 export function towerCrossings(order) {
@@ -120,7 +118,7 @@ export function towerCrossings(order) {
   return { totals, at };
 }
 
-// 兩條正解（放置 + 倒數三回合）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）
+// 兩條正解（放置 + 最後一輪）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）
 export async function entriesThroughSolutions(mod, orders) {
   const { entryProblems } = await import('./actors.js');
   const { show, run } = await headlessShow(), bad = [];
@@ -218,18 +216,18 @@ export function gameInvariants(show, { cam = null } = {}) {
   };
 }
 
-// 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, montage, e, key, secs, live, script }——
+// 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, closing, e, key, secs, live, script }（closing：最後一輪）——
 // secs：事件秒數（含平移、空拍）；live：扣掉物品之間的空拍；script：不含 focus 拍、扣掉空拍（各物品測試的劇本秒數）
 export async function playLive(order, { seed = 21 } = {}) {
   const { show, run, scriptElapsed } = await headlessShow({ seed }), out = [];
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
     const r = step(s); s = r.state;
-    const montage = i >= order.length, marks = [];
-    await run(montage ? closingEvents(i - order.length, r.events) : [...r.events, { kind: 'settle' }], { montage, onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
+    const closing = i >= order.length, marks = [];
+    await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
     marks.forEach(([e, at, sc, info], j) => {
       const next = marks[j + 1], secs = (next?.[1] ?? show.elapsed) - at, gap = info?.gap ?? 0;
-      out.push({ turn: i + 1, montage, e, key: !!info?.key, secs, live: secs - gap, script: (next?.[2] ?? scriptElapsed()) - sc - gap });
+      out.push({ turn: i + 1, closing, e, key: !!info?.key, secs, live: secs - gap, script: (next?.[2] ?? scriptElapsed()) - sc - gap });
     });
   }
   return out;

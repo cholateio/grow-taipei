@@ -24,7 +24,7 @@ export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause 
 
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
-  // flags：零件每幀讀目前的舞台旗標（getter，不是快照）——finale.flare 照倒數 alarm 變快，不必把頻率放進 spec 換零件（最終審稿）
+  // flags：零件可以每幀讀目前的舞台旗標（getter，不是快照）。以前 finale.flare 照倒數 alarm 變快；選擇帶動升級之後紅光固定 2 Hz，目前沒有零件讀它
   const factory = createPartFactory(THREE, { ...ctx, builders, THREE, flags: () => flags });
   const root = new THREE.Group(), partsGroup = new THREE.Group();
   root.name = 'stage'; partsGroup.name = 'stage:parts';

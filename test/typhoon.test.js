@@ -235,15 +235,15 @@ test('Lv3: the sky clears, nobody is hidden, and the rainbow is standing', async
   assert.equal(show.stage.partObject('typhoon.main'), null);
   assert.equal(show.stage.partObject('typhoon.rainbow').scale.y, 1);
 });
-// 颱風賴在巨蛋（spec.js 颱風 delay[3]）：引擎在多等的那一回合記一個 stall 事件；整回合 live（一般回合與倒數蒙太奇）：
+// 颱風賴在巨蛋（spec.js 颱風 delay[3]）：引擎在多等的那一回合記一個 stall 事件；整回合 live：
 // 雲停在巨蛋上空，「……」冒在雲上
 const STALL_ORDER = ['milk', 'chip', 'bulb', 'token', 'baseball', 'typhoon', 'rat', 'boba'];
-for (const montage of [false, true]) {
-  test(`stall${montage ? ' (montage)' : ''}: on the delayed turn the cloud sits over the dome and says ……`, async () => {
+{
+  test(`stall: on the delayed turn the cloud sits over the dome and says ……`, async () => {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
     const evs = await turnWith(run, STALL_ORDER, e => e.kind === 'stall' && e.item === 'typhoon');
     const n = bubblesLog.length, marks = [];
-    await run(evs, { montage, onMark: e => marks.push([e, show.elapsed]) });
+    await run(evs, { onMark: e => marks.push([e, show.elapsed]) });
     const k = marks.findIndex(([e]) => e.kind === 'stall'), secs = (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1];
     assert.ok(secs >= 1 && secs <= 5, `stall took ${secs.toFixed(1)}s`);
     assert.equal(show.stage.lv.typhoon, 2);

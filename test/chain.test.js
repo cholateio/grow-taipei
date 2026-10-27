@@ -8,7 +8,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { missile, resolve } from '../src/rules/endings.js';
-import { headlessShow, turnSteps, closingEvents, overviewRig, gameInvariants } from './helpers/show.js';
+import { headlessShow, turnSteps, overviewRig, gameInvariants } from './helpers/show.js';
 import { finaleStep } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
@@ -42,8 +42,7 @@ async function playChain(order) {
     const turn = `${order.join('>')} turn ${i + 1}`;
     inv.label(turn);
     grows.push(...r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`));
-    const montage = i >= order.length;
-    await run(montage ? closingEvents(i - order.length, r.events) : [...r.events, { kind: 'settle' }], { montage, onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); if (e.kind === 'countdown') countdowns.push(e.n); } });
+    await run([...r.events, { kind: 'settle' }], { onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); if (e.kind === 'countdown') countdowns.push(e.n); } });
     done(); inv.turnEnd();
     const z0 = blades(); for (let f = 0; f < 6; f++) show.update(1 / 30, 2000 + f / 30);
     const shield = show.stage.partObject('tower.shield')?.children[0];

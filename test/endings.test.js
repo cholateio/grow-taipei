@@ -99,12 +99,17 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
 });
 
-// 最終章（計畫 5 任務 8）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
-// 照順序放完、再倒數 CLOSING_TURNS 回合，終局回合只有飛彈（壞結局沒有尾聲）
-test('EXAMPLE.hit / EXAMPLE.deflect orders resolve to missile hit / deflect (pinned from the solver enumeration)', async () => {
+// 最終章（計畫 5 任務 8；選擇帶動升級重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
+// 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋飛彈（壞結局沒有尾聲）
+test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned literals)', async () => {
   const { enumerate } = await import('../src/solver/run.js'), { advance } = await import('../src/rules/engine.js');
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js'), { finaleEvents } = await import('../src/game.js');
   const all = enumerate(spec);
+  // 字面值釘死（規則改了這裡跟 helpers/endings.js 一起換）
+  assert.deepEqual(EXAMPLE, {
+    hit: ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'],
+    deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
+  });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);
     assert.deepEqual(EXAMPLE[outcome], first.order, `${outcome}: the first ${outcome} order in the enumeration`);
@@ -114,7 +119,7 @@ test('EXAMPLE.hit / EXAMPLE.deflect orders resolve to missile hit / deflect (pin
     const { events, ending } = finaleStep(s);
     assert.equal(ending.missile, outcome); assert.deepEqual(ending, resolve(s, spec));
     assert.deepEqual(events, finaleEvents(ending));
-    assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['missile', outcome]], `${outcome}: a bad ending has no epilogue`);
+    assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['warning', undefined], ['missile', outcome]], `${outcome}: warning, then the missile; a bad ending has no epilogue`);
   }
 });
 // npm run shot 的 hit／deflect 截圖就是這兩局（package.json 的 shot 清單）

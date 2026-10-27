@@ -269,17 +269,16 @@ test('settle hero: the worker if visible, else the nearest visible islander to t
   assert.equal(hero({}), undefined, 'nobody around → the beats skip');
 });
 
-// 照正解演到第 n 回合（放置回合之後接倒數回合）：只有第 n 回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
-// montage：最後一回合要不要當蒙太奇演（預設：倒數回合才是）
-async function liveTurn(h, order, n, { montage: lastMontage } = {}) {
+// 照正解演到第 n 回合（放置回合之後接最後一輪）：只有第 n 回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
+async function liveTurn(h, order, n) {
   let s = engine.createState(spec);
   const turns = turnSteps(order).slice(0, n);
   for (let i = 0; i < turns.length; i++) {
-    const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }], montage = i + 1 === turns.length && lastMontage !== undefined ? lastMontage : i >= order.length;
-    if (i + 1 < turns.length) { await h.run(events, { instant: true, montage }); continue; }
+    const r = turns[i](s); s = r.state; const events = [...r.events, { kind: 'settle' }];
+    if (i + 1 < turns.length) { await h.run(events, { instant: true }); continue; }
     const n0 = h.bubblesLog.length; let mark = null;
     // 劇本秒數（不含鏡頭 focus 拍）：settle 那一段 = 回合結束 − settle 開始
-    const secs = await h.run(events, { montage, onMark: e => { if (e.kind === 'settle') mark = h.scriptElapsed(); } });
+    const secs = await h.run(events, { onMark: e => { if (e.kind === 'settle') mark = h.scriptElapsed(); } });
     return { settleSecs: secs - mark, bubbles: h.bubblesLog.slice(n0) };
   }
 }
@@ -298,10 +297,10 @@ test('headless: the turn crossing into 蓋一半 ends with the「101 蓋一半�
   allHome(h.show); assert.equal(h.show.stage.meta.total, totals[at.half - 1]);
 });
 
-// 點燈落在倒數回合（蒙太奇）：照樣看得到階段名
-test('headless: a montage turn crossing into 點燈 still shows the label', async () => {
+// 跨進點燈的那一回合（從總等級曲線找；放置回合或最後一輪都一樣演）：看得到階段名
+test('headless: the turn crossing into 點燈 shows the label', async () => {
   const order = SOLUTIONS[0], { at } = towerCrossings(order);
-  assert.ok(at.lit > order.length, `點燈 in a countdown turn (${at.lit})`);
+  assert.ok(at.lit >= 1, `點燈 is reached (turn ${at.lit})`);
   const h = await headlessShow(), t = await liveTurn(h, order, at.lit);
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });

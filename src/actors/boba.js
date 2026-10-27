@@ -332,8 +332,5 @@ export const script = {
   },
   rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這一級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
+// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這一級，也演完整劇本（turn.js）
 script.grow[7].key = true;
-
-// 趕工（最終章設計 §5）：Lv2–4 攤車／店／噴泉廣場（錨點）；Lv5 森林島分店、Lv6 燈塔島旗艦店、Lv7（關鍵）→ 不趕工
-export const rushSite = n => (n >= 2 && n <= 4 ? { ...AT, r: 0.9 } : null);

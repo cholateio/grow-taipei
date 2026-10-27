@@ -140,7 +140,8 @@ test('montage turns no longer prepend 3-2-1; a countdown event plays the finale 
   const placed = { kind: 'placed', item: 'milk', to: 1 };
   // 沒有 countdown 事件：蒙太奇回合開頭沒有任何泡泡
   assert.ok(!kindsOf(buildTurn([placed], { ...base(), montage: true }, fakeCtx())).includes('bubble'));
-  const cd = countdownEvent(3);
+  // 倒數 2、1 只有數字（倒數 3 另外有宣告：紅光、全島抬頭——finale.test）
+  const cd = countdownEvent(2);
   const beats = buildTurn([cd, placed], { ...base([tower, finale]), montage: true }, ctx), kinds = kindsOf(beats);
   // countdown：先 mark、劇本一個數字泡泡（蒙太奇過濾不拿掉）、補的 apply；不補鏡頭平移
   assert.equal(beats[0].kind, 'mark');
@@ -151,7 +152,7 @@ test('montage turns no longer prepend 3-2-1; a countdown event plays the finale 
   assert.equal(estimateTurn([digit], ctx), 1.2);
   let shown = null;
   digit.start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });
-  assert.equal(shown.kind, '3'); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 }, 'over the tower');
+  assert.equal(shown.kind, '2'); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 }, 'over the tower');
   assert.equal(shown.dur, 1.2, 'bubbles get real seconds');
   // 鮮奶的事件照常平移（countdown 不算「上一個物品」：不空拍）
   assert.deepEqual(kinds.slice(2, 4), ['focus', 'apply']);
@@ -160,6 +161,10 @@ test('montage turns no longer prepend 3-2-1; a countdown event plays the finale 
   const spy = { id: 'finale', view() { return {}; }, script: { countdown: (e, s) => { seen.push(s.flags.alarm); return []; } } };
   buildTurn([countdownEvent(2)], { ...base([tower, spy]), montage: true }, fakeCtx());
   assert.deepEqual(seen, [2]);
+  // 倒數 3：紅光（只套 finale.flare）→ 抬頭＋「！」→ 放回日常 → 數字「3」，每一拍標 keep（蒙太奇不過濾）
+  const three = noMarks(buildTurn([countdownEvent(3)], { ...base([tower, finale]), montage: true }, fakeCtx()));
+  assert.deepEqual(three.slice(0, 4).map(b => b.kind), ['apply', 'together', 'home', 'bubble']);
+  assert.deepEqual(three[0].only, ['finale.flare']); assert.ok(three.slice(0, 4).every(b => b.keep));
   // 沒有 finale 模組：只有 apply
   assert.deepEqual(kindsOf(buildTurn([cd], { ...base(), montage: true }, fakeCtx())), ['apply', 'apply', 'home', 'world', 'focus']);
 });

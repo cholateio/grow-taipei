@@ -9,9 +9,10 @@
 //   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑霓虹亮 → 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
 //   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
-// 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 回全景：石堆島綠光圈閃白變降落場（satellites.js）→
+// 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
+//   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
-//   101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
+//   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOf, body as towerBody, bendPoint } from './tower.js';
@@ -327,8 +328,8 @@ export const script = {
 };
 
 // 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
-//   回全景停 0.8 → 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
-//   外星生物閃白 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
+//   鏡頭推到石堆島（裁決 R5；focus 的點用 worldToAxial 反算格子，衛星島也算得出格子，點直接交給 rig.focus）→ 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
+//   外星生物閃白 → 回全景停 0.8 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
 //   老鼠的家搬上碟頂（apply）、閃白放上去（roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常 → 剩下的套用（小 UFO 拿掉）→
 //   「♥」→ 全景停 1.5 秒
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
@@ -336,9 +337,9 @@ function alien(e, ctx) {
   const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), kings = c => [king(c)].filter(Boolean);
   return [
     B.focus(SPRING), B.together([B.gesture(king, 'wave', WAVE), B.bubble(king, '！', SHOUT)]),
-    B.focus('home', { hold: ALIEN_HOLD }), B.apply(e, { only: ['sat.rocksRing', 'sat.rocks'] }),
+    B.focus(ROCKS), B.apply(e, { only: ['sat.rocksRing', 'sat.rocks'] }),
     B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL }),
-    B.apply(e, { only: ['finale.aliens'] }),
+    B.apply(e, { only: ['finale.aliens'] }), B.focus('home', { hold: ALIEN_HOLD }),
     B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'alien' }),
     B.apply(e, { only: ['rat.pack'] }), roof(kings, () => SHIP_SPOT), B.home(kings),
     B.apply(e), B.bubble(king, '♥', LOVE), B.focus('home', { hold: END_HOLD }),

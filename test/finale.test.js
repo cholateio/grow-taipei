@@ -558,8 +558,13 @@ test('alien epilogue live: mutant waves + ！, pad blinks in, UFOs descend 2 s, 
   assert.ok(dist3(mutant.pos, SHIP_SPOT) < 1e-6 && mutant.mode === 'home', 'the king sits on the ship top');
   assert.equal(worldLog.at(-1)[0].mood, 'alien', 'third eyes to the end');
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
-  const cam = rig.log.slice(r0);
-  assert.ok(cam.some(([k]) => k === 'focus') && cam.at(-1)[0] === 'home', `starts at the spring, ends on the overview (${cam.map(c => c[0]).join(' ')})`);
+  // 鏡頭（裁決 R5）：溫泉 → 石堆島（降落場、UFO、外星生物都在那裡演）→ 全景（母艦、王冠鼠）
+  const cam = rig.log.slice(r0), foci = cam.filter(([k]) => k === 'focus').map(([, p]) => p), rocks = island('rocks');
+  assert.equal(foci.length, 2, `two focus moves (${cam.map(c => c[0]).join(' ')})`);
+  assert.ok(Math.hypot(foci[0].x - spring.x, foci[0].z - spring.z) < 1e-6, 'first the spring');
+  assert.ok(Math.hypot(foci[1].x - rocks.x, foci[1].z - rocks.z) < 1e-6, 'then the rocks islet');
+  const homeAt = cam.findIndex(([k]) => k === 'home');
+  assert.ok(homeAt > cam.findIndex(c => c[1] === foci[1]) && cam.at(-1)[0] === 'home', 'then the overview, to the end');
   // 跳過：終態一樣
   const skip = await alienFinale();
   await skip.run([skip.epilogueEvent], { finale: true, instant: true });
@@ -576,4 +581,33 @@ test('alien epilogue on low quality draws ufos as one mesh', async () => {
   assert.equal(meshes(show.stage.partObject('finale.ufos')).length, 1, 'one draw call');
   assert.equal(meshes(show.stage.partObject('finale.aliens')).length, 1, 'the aliens too');
   assert.equal(meshes(show.stage.partObject('tower.main')).length, 1, 'the mothership too');
+});
+
+// 裁決 R5：真的鏡頭——推到石堆島飛完之後（外星生物出現那一刻），島心、外星生物、三台 UFO 都投影在 NDC ±0.9 裡；
+// 母艦換上的時候鏡頭已經在回全景
+test('alien epilogue camera (real rig): the rocks islet, the UFOs and the aliens are on screen while focused', async () => {
+  const portrait = () => {
+    const camera = new THREE.PerspectiveCamera(32, 390 / 844, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
+    const rig = createCameraRig({ THREE, camera, controls }); rig.fit(390 / 844);
+    return { rig, camera, controls };
+  };
+  for (const [aspect, r] of [['16:9', overviewRig()], ['390×844', portrait()]]) {
+    const { show, run, epilogueEvent } = await alienFinale({ rig: r.rig });
+    const rocks = island('rocks'), v = finale.view(LIT, { missile: 'shield', epilogue: 'alien' }, LIT_META), u = v['finale.ufos'];
+    const points = [['islet', rocks], ['aliens', v['finale.aliens'].at], ...[1, 4, 7].map(i => [`ufo ${i}`, { x: u.at.x + u.parts[i].pos[0], y: u.at.y + u.parts[i].pos[1], z: u.at.z + u.parts[i].pos[2] }])];
+    let seen = null;
+    const update = show.update.bind(show);
+    show.update = (d, t) => {
+      update(d, t);
+      if (seen === null && show.stage.partObject('finale.aliens')) {
+        r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
+        seen = points.map(([name, p]) => [name, new THREE.Vector3(p.x, p.y, p.z).project(r.camera)]);
+      }
+    };
+    await run([epilogueEvent], { finale: true });
+    show.update = update;
+    assert.ok(seen, 'the aliens appeared');
+    console.log(`alien camera ${aspect}: ${seen.map(([n, p]) => `${n} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join(', ')}`);
+    for (const [name, p] of seen) assert.ok(Math.abs(p.x) <= 0.9 && Math.abs(p.y) <= 0.9 && p.z < 1, `${aspect} ${name}: NDC (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
+  }
 });

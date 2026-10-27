@@ -66,19 +66,21 @@ function keepOnly(beats, keep) {
   return out;
 }
 
-// 預設劇本（§6.6）
+// 預設劇本（§6.6）。大停電（颱風登陸的反應）：電一斷整區同時暗——零件一起閃，不一盞一盞錯開
+//   （選擇帶動升級：燈泡 ≤4 也會停電，Lv4 有九盞路燈，錯開要 2.3 s）
+const applyOf = e => B.apply(e, e.flag?.name === 'blackout' ? { stagger: 0 } : {});
 function defaults(e) {
   if (e.kind === 'placed') return [B.apply(e)];
   if (e.kind === 'grow') return [B.apply(e), B.levelUp(e.item)];
-  if (e.delta && e.delta.to > e.delta.from) return [B.apply(e), B.levelUp(e.delta.target)];
-  if (e.delta && e.delta.to < e.delta.from) return [B.apply(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })];
+  if (e.delta && e.delta.to > e.delta.from) return [applyOf(e), B.levelUp(e.delta.target)];
+  if (e.delta && e.delta.to < e.delta.from) return [applyOf(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })];
   return [B.apply(e, { blink: false })];
 }
 
 // 登陸之後的事件（indoors）：升級 → [apply, LEVEL UP]；改級的反應 → [apply, LEVEL UP／DOWN]；其他 → 閃白套用
 function indoors(e) {
   if (e.kind === 'grow') return [B.apply(e), B.levelUp(e.item)];
-  return e.delta && e.delta.to !== e.delta.from ? defaults(e) : [B.apply(e)];
+  return e.delta && e.delta.to !== e.delta.from ? defaults(e) : [applyOf(e)];
 }
 // 登陸回合的 settle（101 跳階）：只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）——不走路、不先飛去 101
 const indoorSettle = b => b.kind === 'apply' || b.kind === 'levelUp' || (b.kind === 'focus' && b.target === 'home');

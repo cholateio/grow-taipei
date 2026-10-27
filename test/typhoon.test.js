@@ -145,7 +145,7 @@ test('scripts: typhoon placed / Lv2 / Lv3 in both solutions play within budget, 
 });
 
 // 照 order 放（再長 CLOSING_TURNS 回合）到 pred 命中的那一回合為止（之前的回合瞬間演），回傳那一回合的事件（含 settle）。
-// 物品 v2：正解颱風最後放，登陸、放晴都在倒數回合
+// 選擇帶動升級：正解颱風最後放，放下當回合就登陸（裁決 R3），放晴在最後一輪
 async function turnWith(run, order, pred) {
   let s = engine.createState(spec);
   const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
@@ -196,8 +196,9 @@ async function playLanding(h, evs, opts = {}) {
   assert.equal(show.stage.lv.typhoon, 2);
   return { reacts, secs, seg, after };
 }
-// 引擎裡能讓登陸回合觸發最多反應的兩種放法（大停電與淹水不會同一回合：燈泡、代幣都 ≤2 時只有剛放的那個）
-const BLACKOUT = ['rat', 'milk', 'baseball', 'boba', 'typhoon', 'bulb'], FLOOD = ['rat', 'milk', 'baseball', 'boba', 'typhoon', 'token'];
+// 引擎裡能讓登陸回合觸發最多反應的兩種放法（大停電與淹水不會同一回合：燈泡、代幣都 ≤4 時只有剛放的那個）。
+// 裁決 R3：颱風放下當回合就登陸，所以燈泡／代幣放在颱風前一個（放下當回合到 Lv2，登陸時 ≤4）
+const BLACKOUT = ['rat', 'milk', 'baseball', 'boba', 'bulb', 'typhoon'], FLOOD = ['rat', 'milk', 'baseball', 'boba', 'token', 'typhoon'];
 for (const [name, order, react] of [['blackout', BLACKOUT, 'blackout'], ['flood', FLOOD, 'flooded']]) {
   test(`landing turn with reactions (${name}, real engine) live as one turn: people hide only at the doors, the reactions land as apply + LEVEL UP`, async () => {
     const h = await headlessShow();
@@ -237,19 +238,20 @@ test('Lv3: the sky clears, nobody is hidden, and the rainbow is standing', async
 });
 // 颱風賴在巨蛋（spec.js 颱風 delay[3]）：引擎在多等的那一回合記一個 stall 事件；整回合 live：
 // 雲停在巨蛋上空，「……」冒在雲上
-const STALL_ORDER = ['milk', 'chip', 'bulb', 'token', 'baseball', 'typhoon', 'rat', 'boba'];
+const STALL_ORDER = ['milk', 'bulb', 'token', 'baseball', 'chip', 'typhoon', 'rat', 'boba'];   // 第 6 回合登陸、第 7 回合賴著（晶片還 ≤7）
 {
   test(`stall: on the delayed turn the cloud sits over the dome and says ……`, async () => {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
     const evs = await turnWith(run, STALL_ORDER, e => e.kind === 'stall' && e.item === 'typhoon');
-    const n = bubblesLog.length, marks = [];
-    await run(evs, { onMark: e => marks.push([e, show.elapsed]) });
+    const marks = [];
+    await run(evs, { onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
     const k = marks.findIndex(([e]) => e.kind === 'stall'), secs = (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1];
     assert.ok(secs >= 1 && secs <= 5, `stall took ${secs.toFixed(1)}s`);
     assert.equal(show.stage.lv.typhoon, 2);
     const o = show.stage.partObject('typhoon.main').position, dome = anchorWorld('baseball');
     assert.ok(Math.hypot(o.x - dome.x, o.z - dome.z) < 1e-6, 'cloud over the dome');
-    const dots = bubblesLog.slice(n).find(b => b.kind === '……');
+    // 從 stall 那一拍之後找（同回合別的物品也可能冒「……」：鮮奶等棒球的提示）
+    const dots = bubblesLog.slice(marks[k][2], marks[k + 1]?.[2]).find(b => b.kind === '……');
     assert.ok(dots && Math.hypot(dots.at.x - dome.x, dots.at.z - dome.z) < 0.5 && dots.at.y > 3, '…… on the cloud over the dome');
   });
 }

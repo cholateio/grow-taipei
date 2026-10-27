@@ -162,13 +162,14 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 // 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
 // commit 由舞台自己閃白 BLINK 秒（移除的閃完才拿掉），拍長 BLINK + 0.15·(n−1)。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
-export function apply(e, { blink = true, only, hold } = {}) {
+// stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻閃（大停電：電一斷整區一起暗，拍長 BLINK）
+export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
   let keys = [], fired = 0, t = 0;
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
   const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: blink }; };
   return {
     kind: 'apply', only, blink,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）；blink 給 turn.js 判斷有沒有東西演
-    dur: () => (keys.length ? BLINK + STAGGER * (keys.length - 1) : 0),
+    dur: () => (keys.length ? BLINK + stagger * (keys.length - 1) : 0),
     estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
       const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;
@@ -180,7 +181,7 @@ export function apply(e, { blink = true, only, hold } = {}) {
     },
     step(k, dt, ctx) {
       t += dt;
-      while (fired < keys.length && t >= STAGGER * fired - 1e-9) ctx.stage.commit(keys[fired++]);
+      while (fired < keys.length && t >= stagger * fired - 1e-9) ctx.stage.commit(keys[fired++]);
     },
     end(ctx) { ctx.stage.commitAll(); ctx.nav.setFootprints(ctx.stage.footprints()); },
   };

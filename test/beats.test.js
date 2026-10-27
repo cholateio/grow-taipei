@@ -113,6 +113,16 @@ test('apply defers the stage change and commits each key 0.15 s apart; it lasts 
   tl.update(0.16); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);
   const one = fake({ changed: ['a'] }); one.tl.play([B.apply(ev)], one.ctx); one.tl.update(0); assert.equal(one.tl.currentDur, BLINK);
 });
+// 大停電（選擇帶動升級）：stagger 0 → 全部同一刻 commit，拍長 BLINK；turn.js 的停電反應用它
+test('apply { stagger: 0 } commits every key at once and lasts BLINK; the blackout reaction uses it', async () => {
+  const { ctx, tl, stage } = fake({ changed: ['a', 'b', 'c'] });
+  tl.play([B.apply(ev, { stagger: 0 })], ctx); tl.update(0);
+  assert.equal(tl.currentDur, BLINK); assert.deepEqual(stage.committed, ['a', 'b', 'c']);
+  const { buildTurn } = await import('../src/show/turn.js');
+  const beats = buildTurn([{ kind: 'fx', item: 'milk', cause: 'typhoon', flag: { name: 'blackout', value: true }, delta: { target: 'milk', from: 5, to: 4 } }], { modules: [], spec: {}, lv: {}, flags: {}, meta: {} }, {});
+  const f = fake({ changed: ['a', 'b', 'c'] }), ap = beats.find(b => b.kind === 'apply');
+  f.tl.play([ap], f.ctx); f.tl.update(0); assert.equal(f.tl.currentDur, BLINK, 'the blackout blinks out all at once');
+});
 test('apply, skipped, commits everything at once', () => {
   const { ctx, tl, stage } = fake({ changed: ['a', 'b'] });
   tl.play([B.apply(ev)], ctx); tl.skip(); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);

@@ -32,7 +32,7 @@ export function stageOf(total) { return total >= 54 ? 'lit' : total >= 26 ? 'ful
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
 // bent（最終章 §6，飛彈命中）：塔身一半高度（BEND_Y）以上的零件——上面四節、它們的白邊、頂帽、尖塔——繞 z 轉 π/2 往 +x 倒，
 //   像吸管折成 L。終局時 101 一定完工或點燈（設計 §6：40320 種順序枚舉過，命中時總等級都 ≥ 26），工地／蓋一半照完工的樣子彎（不丟錯）。
-//   回傳的 top 是倒下那段的頂面（頭上的字、泡泡放這裡）
+//   回傳的 top 是倒下那段的頂面（view 的 labelY 不用它：頭頂照沒彎的塔，天際線不變）
 export function body(stage, { bent = false } = {}) {
   if (bent && (stage === 'site' || stage === 'half')) stage = 'full';
   const lit = stage === 'lit', trim = lit ? { color: ICE, glow: ICE } : { color: CREAM };
@@ -72,7 +72,10 @@ export function view(lv, flags = {}, meta = {}) {
   const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0);
   // 最終章 §6：命中 → 塔身彎 L、天線燈光秀罩子都拿掉（工地／蓋一半照完工的彎法，吊車也不畫）；矽盾擋下 → 罩子全亮
   const hit = flags.missile === 'hit', stage = stageOf(total);
-  const { parts, top } = body(stage, { bent: hit }), v = { 'tower.main': { kind: 'compound', at, labelY: top + LABEL_UP, parts } };
+  // 彎過的塔頭頂（labelY）照沒彎的完工／點燈塔算：命中之後塔上不再冒字，天際線降低反而讓回合收尾的 focus('home', { final, skyline })
+  // 在全景裡 setSkyline 瞬間跳鏡頭（審稿第 1 輪）
+  const { parts, top } = body(stage, { bent: hit }), head = hit ? body(stage === 'lit' ? 'lit' : 'full').top : top;
+  const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
   // 彎過的塔倒下那段伸出底座外（自動 footprint 的包圍盒會變寬、超過 WIDE 就整個不算）：站位照底座 1.6 見方，走路格跟沒彎一樣
   if (hit) { v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 }; return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）

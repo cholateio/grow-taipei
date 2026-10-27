@@ -97,16 +97,33 @@ test('view with missile hit: body is bent at full and lit — the upper tiers ro
       assert.ok(near(Math.abs(q.rot[2] - rot[2]), Math.PI / 2) && q.rot[0] === rot[0] && q.rot[1] === rot[1], `part ${i} turned by π/2 about z`);
     });
     assert.ok(moved >= 2 * 4 + 2, `4 upper tiers + trims + cap + spire (${moved})`);
-    assert.ok(v['tower.main'].labelY < plain['tower.main'].labelY, 'the head drops to the bent top');
+    assert.equal(v['tower.main'].labelY, plain['tower.main'].labelY, 'the head (skyline) stays where it was: no jump cut before the title card');
     assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 }, 'stands on the same base');
   }
   for (const total of [0, 10]) {
     let v; assert.doesNotThrow(() => { v = tower.view(lvOf(total, { chip: 7 }), { missile: 'hit' }, { total }); });
     assert.deepEqual(v['tower.main'].parts, tower.body('full', { bent: true }).parts, `total ${total}: the full shape, bent`);
     assert.equal(v['tower.crane'], undefined); assert.equal(v['tower.antenna'], undefined);
+    assert.equal(v['tower.main'].labelY, tower.view(lvOf(27), {}, { total: 27 })['tower.main'].labelY, `total ${total}: head of the full tower`);
     assert.deepEqual(tower.bendPoint(tower.stageOf(total)), tower.bendPoint('full'));
   }
   assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');
+});
+// 審稿第 1 輪：101 頭頂（天際線）不因彎 L 而降低——回合收尾的 focus('home', { final, skyline }) 在全景時 setSkyline 會瞬間跳鏡頭
+test('headless: stage headOf(tower).y is unchanged by the missile hit (same levels, same skyline)', async () => {
+  const { finaleEvents } = await import('../src/game.js'), { resolve, missile } = await import('../src/rules/endings.js');
+  const { show, run } = await headlessShow(), order = [...spec.ORDER];
+  let s = engine.createState(spec);
+  for (const step of turnSteps(order)) {
+    const r = step(s); s = r.state;
+    await run([...r.events, { kind: 'settle' }], { instant: true });
+  }
+  assert.equal(missile(s, spec), 'hit');
+  const y0 = show.stage.headOf('tower').y;
+  await run([finaleEvents(resolve(s, spec))[0]], { finale: true, instant: true });
+  assert.equal(show.stage.flags.missile, 'hit');
+  assert.ok(show.stage.partObject('tower.main'), 'bent tower in place');
+  assert.equal(show.stage.headOf('tower').y, y0);
 });
 test('view with missile shield: tower.shield state full', () => {
   const lv = { ...zero, chip: 9 }, v = tower.view(lv, { missile: 'shield' });

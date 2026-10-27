@@ -191,7 +191,7 @@ export function createPartFactory(THREE, ctx) {
 
   // 煙火：60 顆小球一發，從中心炸開、重力下落、淡出，每 1.2 秒一發；不投影
   // once（最終章 §6：飛彈撞上矽盾碎成一發煙火）：只放一發——用自己的時鐘（累加 dt，不看全域 t），1.2 秒後整個藏起來、一直藏著；
-  //   object.userData.burst() 從頭再放一發（飛彈重新發射），finish() 直接藏好（建好即終態、跳過）。建好時從頭放一發
+  //   建好即終態（藏著、不自己放）：object.userData.burst() 從頭放一發（飛彈撞上罩子那一刻），finish() 直接藏好（跳過）
   function fireworks(spec) {
     const N = 60, BURST = 1.2, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
     const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }), N);
@@ -204,7 +204,7 @@ export function createPartFactory(THREE, ctx) {
       mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.material.opacity = fade;
     };
-    let own = 0;   // once 的時鐘
+    let own = Infinity;   // once 的時鐘（Infinity = 放完了、藏著）
     const put = () => { mesh.visible = own < BURST; if (mesh.visible) pose(own); };
     if (spec.once) {
       object.userData.burst = () => { own = 0; put(); };

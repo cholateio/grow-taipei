@@ -174,7 +174,7 @@ export const builders = {
     };
     object.userData.launch = ({ speed = 1 } = {}) => { t = 0; rate = speed; popped = false; fw?.object.userData.finish(); put(); };
     object.userData.finish = () => { t = Infinity; popped = true; fw?.object.userData.finish(); put(); };
-    fw?.object.userData.finish(); put();
+    put();   // 煙火建好就是藏著的（once 建好即終態）
     return {
       object,
       update(dt, now) { if (t !== Infinity) { t += dt * rate; put(); } fw?.update(dt * rate, now); },

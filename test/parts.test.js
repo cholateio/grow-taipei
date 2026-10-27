@@ -86,14 +86,15 @@ test('fireworks: one InstancedMesh of 60 sparks that bursts out from the centre 
   p.update(0, 0.5); mesh.getMatrixAt(0, m); assert.ok(v.setFromMatrixPosition(m).length() > r0, 'spreads out');
 });
 
-// 最終章（設計 §6）：矽盾擋下飛彈時碎成一發煙火——once 只放一發（1.2 s，自己的時鐘，不看全域 t）然後藏起來、一直藏著；
-// burst() 再放一發（飛彈重新發射）、finish() 直接藏好（建好即終態）
+// 最終章（設計 §6）：矽盾擋下飛彈時碎成一發煙火——once 建好即終態（藏著、不自己放）；burst() 放一發（1.2 s，自己的時鐘，不看全域 t）
+// 然後藏起來、一直藏著；再 burst() 再放一發（飛彈重新發射）、finish() 直接藏好
 test('fireworks once: bursts for 1.2 s then hides the mesh and stays hidden', () => {
   const { f } = setup();
   const p = f.build({ kind: 'fireworks', at, once: true, colors: [0xff3fa0, 0x3fe0ff] }), mesh = p.object.children[0];
   const m = new THREE.Matrix4(), v = new THREE.Vector3(), r = () => { mesh.getMatrixAt(0, m); return v.setFromMatrixPosition(m).length(); };
   const play = (secs, t0 = 100) => { for (let i = 0; i < Math.round(secs * 30); i++) p.update(1 / 30, t0 + i / 30); };
-  p.update(0.05, 100.05); assert.ok(mesh.visible, 'bursting'); const r0 = r();
+  assert.equal(mesh.visible, false, 'built finished: hidden'); play(2); assert.equal(mesh.visible, false, 'does not burst on its own');
+  p.object.userData.burst(); p.update(0.05, 100.05); assert.ok(mesh.visible, 'bursting'); const r0 = r();
   play(0.5); assert.ok(mesh.visible); assert.ok(r() > r0, 'spreads out on its own clock (global t ignored)');
   play(0.75); assert.equal(mesh.visible, false, 'hidden after 1.2 s');
   play(5); assert.equal(mesh.visible, false, 'stays hidden (no second burst)');

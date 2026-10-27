@@ -11,6 +11,8 @@ export const id = 'satellites';
 const TOP_SAT = TOP - 0.2, GOLD = 0xe8c547;
 export const island = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP_SAT, z: c.z }; };
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
+// 石堆島綠光圈的直徑（torus 單位半徑 0.5）；降落場的三盞燈從這個方位起等分（在三台 UFO 碟心之間的空檔：finale.js 的碟心在 HOME_A + π/3 起等分）
+const RING_D = 2.2, PAD_LIGHT_A = Math.atan2(-island('rocks').z, -island('rocks').x);
 const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 
 // 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
@@ -48,13 +50,22 @@ export function view(lv, flags) {
     ...[0, 1, 2].map(i => ({ kind: 'trunk', pos: [0.22 + Math.cos(i * 2.1) * 0.05, 0.03, Math.sin(i * 2.1) * 0.05], scale: [0.03, 0.06, 0.12], rot: [Math.PI / 2, i * 2.1, 0], color: C.wood })),
     { kind: 'sphere', pos: [0.22, 0.09, 0], scale: 0.09, color: C.coral, glow: C.coral },
   ] };
-  // 石堆上的老鼠；賽博最終型態（10 隻軍團）時不畫，守住骨架動畫 ≤ 12
-  if (lv.rat >= 3 && !(lv.rat >= 5 && flags.ratBranch === 'cyber')) v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
+  // 石堆上的老鼠；賽博最終型態（10 隻軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
+  if (lv.rat >= 3 && !(lv.rat >= 5 && flags.ratBranch === 'cyber') && flags.epilogue !== 'alien') v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
     spots: [{ ...at('rocks', -0.4, 0.3, 0.52), yaw: 0.6 }, { ...at('rocks', 0.5, -0.2, 0.44), yaw: -2.2 }] };
   // 外星 Lv5（變異鼠加冕）：石堆小島一圈綠光（外星結局的降落場前身，物品 v2 §8）
-  if (lv.rat >= 5 && flags.ratBranch === 'alien') v['sat.rocksRing'] = { kind: 'compound', at: island('rocks'), shadow: false, footprint: false, parts: [
-    { kind: 'torus', pos: [0, 0.06, 0], scale: [2.2, 2.2, 1], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
-  ] };
+  // 外星尾聲（最終章 §7）：綠光圈變降落場——圈更亮（管子粗 2.5 倍、內側再一圈）＋三盞落地燈（r 0.08）等分站在圈上；
+  // 同一個 C.alien 發光材質，draw call 不變
+  if (lv.rat >= 5 && flags.ratBranch === 'alien') {
+    const pad = flags.epilogue === 'alien';
+    v['sat.rocksRing'] = { kind: 'compound', at: island('rocks'), shadow: false, footprint: false, parts: [
+      { kind: 'torus', pos: [0, 0.06, 0], scale: [RING_D, RING_D, pad ? 2.5 : 1], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
+      ...(pad ? [
+        { kind: 'torus', pos: [0, 0.05, 0], scale: [RING_D * 0.8, RING_D * 0.8, 1.5], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
+        ...[0, 1, 2].map(i => { const a = PAD_LIGHT_A + i * Math.PI * 2 / 3; return { kind: 'sphere', pos: [Math.cos(a) * RING_D / 2, 0.14, Math.sin(a) * RING_D / 2], scale: 0.16, color: C.alien, glow: C.alien }; }),
+      ] : []),
+    ] };
+  }
   const open = allMax(lv);
   v['sat.chest'] = { kind: 'compound', at: at('chest'), open, parts: open ? [
     { kind: 'rbox', pos: [0.2, 0.52, -0.02], scale: [0.58, 0.08, 0.43], rot: [-1.2, 0, 0], color: GOLD },

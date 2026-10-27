@@ -3,6 +3,8 @@
 // Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋飛彈）；燈泡 Lv5 做燈光秀。
 // 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
 // （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
+// 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
+// 變異鼠王坐碟頂中心（shipTop），天線退到碟緣後側；燈光秀跟著抬高、矽盾照樣全亮。
 // 劇本（§8.9、§14.4）：回合最後的 settle 跨門檻時，鏡頭對著 101，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 回全景 → 閃白跳階 → 頭上寫階段名。
 import { anchorWorld, frontOf } from './anchors.js';
 import { offset, C } from './palette.js';
@@ -46,10 +48,14 @@ export function stageOf(total) { return total >= 54 ? 'lit' : total >= 26 ? 'ful
 // dark（最終章 §7 賽博）：玻璃、底座都是 DARK，白邊發霓虹藍；八節之上不放頂帽尖塔，改成平屋頂（'deck'）＋後緣的桅杆。
 //   回傳多帶 roof（屋頂面高度）與 mast（桅杆的水平位置），都相對 101 的 at。賽博尾聲時 101 一定點燈（全 MAX，總等級 61）；
 //   其他階段照點燈的樣子畫（不丟錯）。
-// ship（任務 7 外星母艦）：先收下、不理（畫平常的塔）
+// ship（最終章 §7 外星母艦）：點燈的塔拿掉頂帽與尖塔，其餘每個零件 y + SHIP_LIFT（底座懸浮離地 1.0）；底下 y 0.5 一片綠光盤
+//   （cylinder r 1.2，C.alien 發光）；八節之上一個倒扣的碟（dome 繞 x 翻 π：碗朝下壓在最上一節上）＋碟緣（扁 cylinder，碗口沒有蓋，
+//   從上面看得到的是碟緣的頂面）。回傳多帶 deck（碟頂面高度，變異鼠王坐的地方）、mast（天線在碟緣後側）、lift，都相對 101 的 at；
+//   top = deck（天線細桿立在碟頂高度）。外星尾聲時 101 一定點燈（全 MAX）；其他階段照點燈的樣子畫（不丟錯）
 export function body(stage, { bent = false, dark = false, ship = false } = {}) {
   if (bent && (stage === 'site' || stage === 'half')) stage = 'full';
   if (dark) return darkBody();
+  if (ship) return shipBody();
   const lit = stage === 'lit', trim = lit ? { color: ICE, glow: ICE } : { color: CREAM };
   const baseH = stage === 'site' ? 0.5 : 1.1, parts = [
     { kind: 'box', pos: [0, 0.15, 0], scale: [1.6, 0.3, 1.6], color: SAND },
@@ -88,6 +94,22 @@ function darkBody() {
   parts.push({ kind: 'cylinder', pos: [mast.x, roof + MAST_H / 2, mast.z], scale: [0.08, MAST_H, 0.08], ...trim });
   return { parts, top: roof + MAST_H, roof, mast };
 }
+// 母艦（外星尾聲）：抬 1.0、綠光盤 r 1.2 在 y 0.5；碗（dome 1.4 × 0.5 → 半徑 0.7、深 0.25）的碗口在最上一節頂面上 BOWL_UP，
+// 碗底壓進最上一節 0.03（不留縫）；碟緣 1.6 寬、厚 0.06，跟碗口同高。天線退到碟緣後側 SHIP_MAST_Z（碟頂中心留給變異鼠王）
+export const SHIP_LIFT = 1.0;
+const DISC_Y = 0.5, DISC_R = 1.2, BOWL = [1.4, 0.5, 1.4], BOWL_UP = BOWL[1] / 2 - 0.03, RIM = [1.6, 0.06, 1.6], SHIP_MAST_Z = -0.55;
+const SILVER = 0xc0c8d0, RIM_GREY = 0x9aa7b8;   // 同老鼠 Lv5 小 UFO 的碟身與碟緣（rat.js UFO_PARTS）
+function shipBody() {
+  const lit = body('lit'), tiersTop = lit.top - 1.5 + SHIP_LIFT;   // 點燈的塔：八節頂上 1.5 是頂帽＋尖塔
+  const parts = lit.parts.slice(0, -2).map(p => ({ ...p, pos: [p.pos[0], p.pos[1] + SHIP_LIFT, p.pos[2]] }));   // 最後兩件是頂帽與尖塔
+  const rimY = tiersTop + BOWL_UP, deck = rimY + RIM[1] / 2;
+  parts.push({ kind: 'cylinder', name: 'disc', pos: [0, DISC_Y, 0], scale: [2 * DISC_R, 0.06, 2 * DISC_R], color: C.alien, glow: C.alien });
+  parts.push({ kind: 'dome', name: 'saucer', pos: [0, rimY, 0], scale: BOWL, rot: [Math.PI, 0, 0], color: SILVER });
+  parts.push({ kind: 'cylinder', name: 'rim', pos: [0, rimY, 0], scale: RIM, color: RIM_GREY });
+  return { parts, top: deck, deck, mast: { x: 0, z: SHIP_MAST_Z }, lift: SHIP_LIFT };
+}
+// 碟頂的世界 y（變異鼠王坐的高度，rat.js SHIP_SPOT）
+export const shipTop = () => AT.y + shipBody().deck;
 // 螢幕的中心（相對 101 的 at）：桅杆尖上 SCREEN_UP 是底邊
 export function screenAt() {
   const b = darkBody();
@@ -112,9 +134,12 @@ export function view(lv, flags = {}, meta = {}) {
   // 彎過的塔頭頂（labelY）照沒彎的完工／點燈塔算：命中之後塔上不再冒字，天際線降低反而讓回合收尾的 focus('home', { final, skyline })
   // 在全景裡 setSkyline 瞬間跳鏡頭（審稿第 1 輪）
   // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
-  const dark = flags.epilogue === 'cyber' && !hit;
-  const { parts, top, mast } = body(stage, { bent: hit, dark }), head = hit || dark ? body(stage === 'lit' || dark ? 'lit' : 'full').top : top;
+  // 外星尾聲（§7）：母艦；頭頂一樣照點燈的塔（碟頂比尖塔低，坐上去的王冠鼠也在頭頂下；天際線不變、收尾不跳鏡頭）
+  const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien' && !hit;
+  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = hit || dark || ship ? body(stage === 'lit' || dark || ship ? 'lit' : 'full').top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
+  // 母艦底下的綠光盤比底座寬：站位照底座 1.6 見方（同彎 L 的塔）
+  if (ship) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };
   if (dark) {
     // 螢幕：墨黑外框＋朝鏡頭那面霓虹藍發光板＋底下一條霓虹粉跑馬燈條；at 就是螢幕中心（泡泡掛在零件位置上，tower.screen 的泡泡就在螢幕上）
     const c = screenAt(), [w, hh, d] = SCREEN;
@@ -138,7 +163,7 @@ export function view(lv, flags = {}, meta = {}) {
   else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
   if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, low: false, parts: Array.from({ length: 8 }, (_, i) => {
-    const a = i / 8 * Math.PI * 2, y = 1.0 + (i % 4) * (top - 1.2) / 4;
+    const a = i / 8 * Math.PI * 2, y = lift + 1.0 + (i % 4) * (top - lift - 1.2) / 4;   // 母艦整座抬高 lift
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相
   }) };
   return v;

@@ -6,6 +6,8 @@
 // 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）。
 // 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 10 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，兩排各 5 隻面向鏡頭），
 // 王冠鼠照舊坐站頂。屋頂在 101 的 footprint 裡、走不上去：finale.js 的尾聲劇本把牠們閃白放上去（不是走上去）。
+// 最終章 §7 外星尾聲（flags.epilogue 'alien'）：變異鼠王的站位搬到 101 母艦的碟頂中心（SHIP_SPOT，面向鏡頭），頭上的小 UFO 不畫
+// （三台大 UFO 取代它，finale.js）；碟頂走不上去，finale.js 的尾聲劇本把牠閃白放上去。
 // 劇本（物品 v2 §6）：一級 3–5 秒；◆ Lv4、Lv5 6–10 秒（Lv5 回全景定格）。
 import { anchorWorld, cellOf, landmarkWorld } from './anchors.js';
 import { ENGINEER_ROUTE } from './chip.js';
@@ -15,7 +17,7 @@ import { ITEMS } from '../rules/spec.js';
 import { compile } from '../rules/conditions.js';
 import { trainCars, ROOF_Y } from './token.js';
 import { modelExtras } from '../show/roster.js';
-import { body as towerBody } from './tower.js';
+import { body as towerBody, shipTop } from './tower.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
@@ -33,6 +35,14 @@ export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.48, -0.32
 // 前排 z +0.1、後排 z −0.26（離後緣的桅杆 0.36）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）
 const ROOF = towerBody('lit', { dark: true }).roof;
 export const ROOF_SPOTS = [0.1, -0.26].flatMap(z => [-0.52, -0.26, 0, 0.26, 0.52].map(x => ({ ...offset(TOWER, x, z, ROOF), yaw: 0 })));
+
+// 母艦碟頂中心（世界座標，tower.js shipTop）
+export const SHIP_SPOT = { x: TOWER.x, y: shipTop(), z: TOWER.z, yaw: 0 };
+// 小 UFO 的零件（相對碟心）：銀色碟身＋碟緣＋綠色底光。finale.js 外星尾聲的三台大 UFO 照這個放大 2 倍
+export const UFO_PARTS = [
+  { kind: 'dome', pos: [0, 0, 0], scale: [0.9, 0.3, 0.9], color: 0xc0c8d0 }, { kind: 'cylinder', pos: [0, 0, 0], scale: [1.0, 0.04, 1.0], color: 0x9aa7b8 },
+  { kind: 'sphere', pos: [0, -0.06, 0], scale: [0.35, 0.12, 0.35], color: C.alien, glow: C.alien },
+];
 
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
 export function ratMode(lv, flags) {
@@ -71,8 +81,10 @@ export function view(lv, flags) {
     case 'alien': {
       // Lv5 變異鼠加冕（戴王冠）、頭上盤旋一艘小 UFO（鋪外星結局）；石堆島的綠光圈在 satellites.js
       const crown = lv.rat >= 5 ? { crown: true } : {};
-      const v = { 'rat.pack': pack(MUTANT, 1, { kind: 'stand', spots: [{ ...MUTANT, yaw: 0 }] }, { h: 0.5, tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true, ...crown }) };
-      if (lv.rat >= 5) v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
+      // 外星尾聲：站位搬上母艦碟頂、小 UFO 不畫（同一隻、同一個模型）
+      const ship = lv.rat >= 5 && flags.epilogue === 'alien';
+      const v = { 'rat.pack': pack(MUTANT, 1, { kind: 'stand', spots: [ship ? SHIP_SPOT : { ...MUTANT, yaw: 0 }] }, { h: 0.5, tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true, ...crown }) };
+      if (lv.rat >= 5 && !ship) v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
       return v;
     }
     case 'dome': return { 'rat.pack': pack(GATE, 5, wander(GATE, 0.9)) };
@@ -82,10 +94,7 @@ export function view(lv, flags) {
 export const builders = {
   // 小 UFO：銀色碟 + 綠色底光，在原地小圓盤旋、上下飄
   ufo(THREE, spec, ctx) {
-    const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [
-      { kind: 'dome', pos: [0, 0, 0], scale: [0.9, 0.3, 0.9], color: 0xc0c8d0 }, { kind: 'cylinder', pos: [0, 0, 0], scale: [1.0, 0.04, 1.0], color: 0x9aa7b8 },
-      { kind: 'sphere', pos: [0, -0.06, 0], scale: [0.35, 0.12, 0.35], color: C.alien, glow: C.alien },
-    ] }), object = new THREE.Group(); object.add(part.object);
+    const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: UFO_PARTS }), object = new THREE.Group(); object.add(part.object);
     return { object, update(dt, t) { part.object.position.set(Math.cos(t * 0.8) * 0.3, Math.sin(t * 1.7) * 0.08, Math.sin(t * 0.8) * 0.3); part.object.rotation.y += dt * 2; }, dispose: part.dispose };
   },
   // 王冠鼠：一隻機器鼠（Idle）坐在站頂，天線＋王冠和名冊的模型配件同一套（roster.js modelExtras）

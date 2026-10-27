@@ -167,7 +167,42 @@ test('view with epilogue cyber: body colours are ink, trims neon blue, tower.scr
   assert.ok(v['tower.show']);
   // 沒有尾聲（或外星尾聲）就是平常的塔，沒有螢幕；ship 選項先收下不理（任務 7）
   assert.equal(plain['tower.screen'], undefined);
-  assert.deepEqual(tower.body('lit', { ship: true }), tower.body('lit'));
+});
+// 最終章 §7 外星：101 閃白變母艦——整座塔身抬離地面 1.0（底座懸浮），底下一片綠光盤（C.alien 發光、y 0.5），
+// 頂帽尖塔換成倒扣的碟（dome 繞 x 翻 π）＋碟緣，變異鼠王坐在碟頂中心（shipTop）；天線退到碟緣後側、跟著抬高，罩子照樣全亮、燈光秀照樣
+test('view with epilogue alien: base lifted by 1.0 with a green glow disc beneath, top is an inverted dome; antenna kept', () => {
+  const lv = lvOf(61), flags = { missile: 'shield', epilogue: 'alien' }, v = tower.view(lv, flags, { total: 61 }), plain = tower.view(lv, { missile: 'shield' }, { total: 61 });
+  const at = anchorWorld('tower'), lit = tower.body('lit'), b = tower.body('lit', { ship: true });
+  assert.deepEqual(v['tower.main'].parts, b.parts);
+  // 塔身：點燈的塔拿掉頂帽與尖塔，其餘每個零件 y + 1.0
+  const kept = lit.parts.slice(0, -2);
+  for (const p of kept) assert.ok(b.parts.some(q => q.kind === p.kind && q.pos[0] === p.pos[0] && Math.abs(q.pos[1] - p.pos[1] - 1.0) < 1e-9 && q.pos[2] === p.pos[2]), `${p.kind} at ${p.pos[1]} lifted by 1.0`);
+  const base = b.parts.find(p => p.kind === 'box' && p.scale[0] === 1.6);
+  assert.ok(Math.abs(base.pos[1] - base.scale[1] / 2 - 1.0) < 1e-9, 'the base floats 1.0 off the ground');
+  const disc = b.parts.find(p => p.name === 'disc');
+  assert.ok(disc && disc.kind === 'cylinder' && Math.abs(disc.pos[1] - 0.5) < 1e-9 && Math.abs(disc.scale[0] / 2 - 1.2) < 1e-9 && disc.scale[1] <= 0.1, 'green disc r 1.2 at y 0.5');
+  assert.equal(disc.color, C.alien); assert.equal(disc.glow, C.alien);
+  const saucer = b.parts.find(p => p.kind === 'dome');
+  assert.ok(saucer && Math.abs(saucer.rot[0] - Math.PI) < 1e-9, 'an inverted dome on top');
+  const tiersTop = 0.3 + 1.1 + 8 * 0.45 + 1.0;
+  assert.ok(saucer.pos[1] > tiersTop, 'the bowl rim is above the top tier');
+  assert.ok(!b.parts.some(p => p.kind === 'cylinder' && p.scale[0] === 0.08), 'no spire');
+  assert.ok(Math.abs(at.y + b.deck - tower.shipTop()) < 1e-9 && b.deck >= saucer.pos[1], 'shipTop = world y of the saucer top');
+  // dome 的單位幾何是上半球（y 0 … 0.5）：翻過來的碗從 pos 往下 scale·0.5；其他零件以 pos 為中心
+  assert.ok(b.parts.every(p => (p.kind === 'dome' ? p.pos[1] : p.pos[1] + (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2) <= b.deck + 1e-9), 'nothing pokes above the saucer deck');
+  assert.ok(saucer.pos[1] - saucer.scale[1] / 2 < tiersTop, 'the bowl bottom dips into the top tier (no gap)');
+  // 頭頂（天際線）照點燈的塔：收尾的 focus home 不跳鏡頭；王冠鼠坐在碟頂也在頭頂下
+  assert.equal(v['tower.main'].labelY, plain['tower.main'].labelY);
+  assert.ok(v['tower.main'].labelY >= b.deck + 0.6, 'the head is over the saucer top (room for the crowned mutant)');
+  assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 }, 'stands on the same base (the disc is wider)');
+  // 天線照舊（脈動），細桿立在碟緣後側、碟頂高度；罩子全亮；燈光秀跟著抬高
+  assert.equal(v['tower.antenna'].pulse, true);
+  assert.deepEqual(v['tower.antenna'].models[0].pos, [b.mast.x, b.top, b.mast.z]);
+  assert.ok(Math.abs(b.top - b.deck) < 1e-9 && b.mast.z < -0.4, 'antenna on the back of the saucer');
+  assert.deepEqual(v['tower.shield'], tower.shieldSpec('full'));
+  assert.ok(v['tower.show'] && v['tower.show'].parts.every(p => p.pos[1] >= 1.0 + 1.0 - 1e-9), 'the lightshow lifted with the body');
+  assert.equal(v['tower.screen'], undefined);
+  assert.deepEqual(tower.body('lit', { ship: false }), lit);
 });
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');

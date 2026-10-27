@@ -9,11 +9,14 @@
 //   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑霓虹亮 → 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
 //   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
-//   外星尾聲還只套用事件（任務 7）。
+// 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 回全景：石堆島綠光圈閃白變降落場（satellites.js）→
+//   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
+//   101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOf, body as towerBody, bendPoint } from './tower.js';
-import { ROOF_SPOTS } from './rat.js';
+import { ROOF_SPOTS, SHIP_SPOT, UFO_PARTS } from './rat.js';
+import { island } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
@@ -74,6 +77,35 @@ export const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
 // 跑馬燈：起飛後 MARQUEE_AT 秒冒、停 MARQUEE_DUR 秒（跟飛行後半重疊，剛好在車停好時收掉）；最後全景停 END_HOLD 秒
 const MARQUEE_AT = 1.5, MARQUEE_DUR = 3.0, END_HOLD = 1.5;
 
+// ── 外星尾聲（設計 §7、§8）──
+// 三台 UFO：老鼠 Lv5 小 UFO 的零件（rat.js UFO_PARTS）放大 2 倍（碟半徑 1.0），碟心在石堆島中心外 UFO_R、等分三個方位；
+// 朝主島那個方位（HOME_A）留空給外星生物，碟心在 HOME_A ± π/3 與對面。UFO_R 1.2：三個碟心彼此 2.08（碟寬 2.0，不重疊）。
+// 石堆的四顆石頭擠在島心 0.7 以內、最高 0.56：碟懸停在島面上 UFO_Y，底光（碟心下 0.24）離最高的石頭還有 0.05（設計寫「降到降落場」，
+// 0.35 會讓石頭穿過碟身）。三個碟是一個 compound：手機畫質（quality low）發光併進黏土，一個 mesh
+export const UFO_N = 3, UFO_R = 1.2, UFO_Y = 0.85, UFO_DROP = 7, UFO_FALL = 2.0;
+const ROCKS = island('rocks'), HOME_A = Math.atan2(-ROCKS.z, -ROCKS.x);
+const big = p => ({ ...p, pos: p.pos.map(x => x * 2), scale: p.scale.map(x => x * 2) });
+export const UFO_PARTS_BIG = UFO_PARTS.map(big);
+const ufoParts = () => Array.from({ length: UFO_N }, (_, i) => {
+  const a = HOME_A + Math.PI / 3 + i * 2 * Math.PI / UFO_N, cx = Math.cos(a) * UFO_R, cz = Math.sin(a) * UFO_R;
+  return UFO_PARTS_BIG.map(p => ({ ...p, pos: [p.pos[0] + cx, p.pos[1] + UFO_Y, p.pos[2] + cz] }));
+}).flat();
+// 外星生物：三個並排（間距 ALIEN_GAP）站在島上朝主島那側、離島心 ALIEN_R（兩台碟之間的空檔），面向主島；離地漂浮、一起上下晃 ±BOB。
+// 一個生物：綠色發光的圓柱身（r 0.12、高 0.3，底離地 0.2）＋綠色發光的頭（r 0.18）＋臉上三顆墨色眼睛（r 0.03，品字形，朝 +z）
+export const ALIEN_R = 1.9, ALIEN_GAP = 0.4, BOB = 0.08;
+const ALIEN_AT = { x: ROCKS.x + Math.cos(HOME_A) * ALIEN_R, y: ROCKS.y, z: ROCKS.z + Math.sin(HOME_A) * ALIEN_R };
+const ALIEN_YAW = Math.atan2(-ALIEN_AT.x, -ALIEN_AT.z);   // 局部 +z 朝主島中心
+export const alienParts = () => [-1, 0, 1].flatMap(k => {
+  const x = k * ALIEN_GAP, body = 0.2 + 0.15, head = 0.2 + 0.3 + 0.16, face = 0.17;
+  return [
+    { kind: 'cylinder', pos: [x, body, 0], scale: [0.24, 0.3, 0.24], color: C.alien, glow: C.alien },
+    { kind: 'sphere', pos: [x, head, 0], scale: 0.36, color: C.alien, glow: C.alien },
+    ...[[-0.065, 0.02], [0.065, 0.02], [0, 0.085]].map(([ex, ey]) => ({ kind: 'sphere', pos: [x + ex, head + ey, face - Math.abs(ex) * 0.4], scale: 0.06, color: C.ink })),
+  ];
+});
+// 外星尾聲的真實秒數：揮手 1.0、「！」0.8、回全景停 0.8、「♥」0.9、最後全景停 END_HOLD
+const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
+
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
   // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 3、2、1
@@ -91,6 +123,10 @@ export function view(lv, flags = {}, meta = {}) {
     }
   }
   if (flags.epilogue === 'cyber') v['finale.car'] = carSpec();
+  if (flags.epilogue === 'alien') {
+    v['finale.ufos'] = { kind: 'compound', at: ROCKS, parts: ufoParts(), footprint: false };
+    v['finale.aliens'] = { kind: 'aliens', at: ALIEN_AT, yaw: ALIEN_YAW, footprint: false, shadow: false };
+  }
   return v;
 }
 
@@ -152,6 +188,12 @@ const MISSILE_PARTS = [
 ];
 
 export const builders = {
+  // 外星生物：三個一個 compound（不投影），整群面向主島、一起上下漂 ±BOB（每 π 秒一個來回）
+  aliens(THREE, spec, ctx) {
+    const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: alienParts(), shadow: false }), object = new THREE.Group();
+    object.add(part.object); object.rotation.y = spec.yaw ?? 0;
+    return { object, materials: part.materials, update(dt, t) { part.object.position.y = BOB * Math.sin(t * 2); }, dispose: part.dispose };
+  },
   // 紅光：發光的球（r 0.9）＋一道從海面往上的淡淡光柱（高 6、半透明、不寫深度）。不投影、不收影（遠方的光，不是實體）。
   // 自己建材質（不走 compound 的 glow 分組）：手機畫質（quality low）compound 會把發光併進 clay，紅光就不亮了。
   // 強度照 tower.js 矽盾天線的作法：底強度 1.2 不跟夜晚歸零（白天也看得到）＋ ctx.glow.intensity，再乘脈動。
@@ -266,6 +308,7 @@ export const script = {
   //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲：任務 7
   epilogue(e, s, ctx) {
     const { B } = ctx;
+    if (e.ending === 'alien') return alien(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -277,20 +320,40 @@ export const script = {
       B.world({ time: TIMES.night, glowScale: NEON_BOOST }),
       B.apply(e, { only: ['tower.main', 'tower.show', 'tower.antenna', 'tower.screen'] }),
       B.together([fly, marquee]),
-      B.apply(e, { only: ['rat.pack', 'rat.king'] }), roof(rats), B.home(rats),
+      B.apply(e, { only: ['rat.pack', 'rat.king'] }), roof(rats, m => ROOF_SPOTS[m.i % ROOF_SPOTS.length]), B.home(rats),
       B.apply(e), B.focus('home', { hold: END_HOLD }),
     ];
   },
 };
 
-// 機器鼠閃白站上屋頂（BLINK 秒）：先拿到劇本手上（日常的「不瞬移」不算這一下）、放到 ROOF_SPOTS[i]、閃白；之後 B.home 放回日常（stand 已在站位上，站定）
-function roof(who) {
+// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
+//   回全景停 0.8 → 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
+//   外星生物閃白 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
+//   老鼠的家搬上碟頂（apply）、閃白放上去（roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常 → 剩下的套用（小 UFO 拿掉）→
+//   「♥」→ 全景停 1.5 秒
+const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+function alien(e, ctx) {
+  const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), kings = c => [king(c)].filter(Boolean);
+  return [
+    B.focus(SPRING), B.together([B.gesture(king, 'wave', WAVE), B.bubble(king, '！', SHOUT)]),
+    B.focus('home', { hold: ALIEN_HOLD }), B.apply(e, { only: ['sat.rocksRing', 'sat.rocks'] }),
+    B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL }),
+    B.apply(e, { only: ['finale.aliens'] }),
+    B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'alien' }),
+    B.apply(e, { only: ['rat.pack'] }), roof(kings, () => SHIP_SPOT), B.home(kings),
+    B.apply(e), B.bubble(king, '♥', LOVE), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+
+// 閃白站上 101 頂（BLINK 秒）：先拿到劇本手上（日常的「不瞬移」不算這一下）、放到 spot(m)（賽博：屋頂 ROOF_SPOTS[i]；外星：碟頂 SHIP_SPOT）、閃白；
+// 之後 B.home 放回日常（stand 已在站位上，站定）
+function roof(who, spot) {
   return {
     kind: 'roof', dur: BLINK,
     start(c) {
       const list = who(c); if (!list.length) return false;
       for (const m of list) {
-        c.roster.claim(m); c.roster.setPose(m, { ...ROOF_SPOTS[m.i % ROOF_SPOTS.length], walking: false });
+        c.roster.claim(m); c.roster.setPose(m, { ...spot(m), walking: false });
         if (m.holder) c.blink.part(m.holder); else if (m.walker) c.blink.walker(m.walker);
       }
     },

@@ -447,3 +447,133 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
   const o = skip.show.stage.partObject('finale.car'), p = o.children[0].position;
   assert.ok(dist3({ x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }, park) < 1e-6, 'skip: the car parked');
 });
+
+// ── 外星尾聲（設計 §7，任務 7）──
+import { UFO_N, UFO_PARTS_BIG } from '../src/actors/finale.js';
+import { SHIP_SPOT, UFO_PARTS } from '../src/actors/rat.js';
+import { island } from '../src/actors/satellites.js';
+import { shipTop } from '../src/actors/tower.js';
+import { C } from '../src/actors/palette.js';
+const ALIEN_ORDER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;
+const meshes = o => { const out = []; o.traverse(x => { if (x.isMesh) out.push(x); }); return out; };
+
+test('view: epilogue alien draws finale.ufos (one compound, three saucers over the rocks island) and finale.aliens (three, bobbing, C.alien glow)', () => {
+  const v = finale.view(LIT, { missile: 'shield', epilogue: 'alien' }, LIT_META), u = v['finale.ufos'], a = v['finale.aliens'], rocks = island('rocks');
+  assert.ok(u && a, 'ufos and aliens');
+  assert.equal(v['finale.car'], undefined);
+  assert.equal(u.kind, 'compound'); assert.equal(u.footprint, false);
+  assert.ok(dist3(u.at, rocks) < 1e-9, 'at the rocks islet centre');
+  // 三個碟：rat.js 小 UFO 的零件放大 2 倍（碟身、碟緣、綠色底光），各三件
+  assert.equal(UFO_N, 3); assert.equal(u.parts.length, 3 * UFO_PARTS.length);
+  assert.deepEqual(UFO_PARTS_BIG.map(p => p.kind), UFO_PARTS.map(p => p.kind));
+  UFO_PARTS_BIG.forEach((p, i) => assert.deepEqual(p.scale, UFO_PARTS[i].scale.map(x => x * 2), `${p.kind} ×2`));
+  const centres = [0, 1, 2].map(i => u.parts[i * UFO_PARTS.length + 1].pos);   // 碟緣（cylinder）的中心 = 碟心
+  for (const [x, y, z] of centres) {
+    assert.ok(Math.abs(Math.hypot(x, z) - 1.2) < 1e-9, `radius 1.2 round the pad (${Math.hypot(x, z).toFixed(2)})`);
+    assert.ok(y >= 0.35 && y <= 1.0, `hovers just over the islet (${y})`);
+  }
+  for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.ok(Math.hypot(centres[i][0] - centres[j][0], centres[i][2] - centres[j][2]) >= 2.0, 'saucers do not overlap');
+  assert.ok(u.parts.filter(p => p.glow != null).every(p => p.glow === C.alien) && u.parts.filter(p => p.glow != null).length === 3, 'three green bulbs');
+  // 外星生物：aliens builder，三個、不踩走路格、不投影；在島上、在 UFO 和主島之間
+  assert.equal(a.kind, 'aliens'); assert.equal(a.footprint, false); assert.equal(a.shadow, false);
+  assert.ok(dist3(a.at, rocks) < 2.2, 'on the islet');
+  assert.ok(Math.hypot(a.at.x, a.at.z) < Math.hypot(rocks.x, rocks.z), 'on the main-island side');
+  for (const flags of [{ missile: 'shield' }, { missile: 'shield', epilogue: 'cyber' }]) { const w = finale.view(LIT, flags, LIT_META); assert.equal(w['finale.ufos'], undefined); assert.equal(w['finale.aliens'], undefined); }
+  // 零件：三個生物（綠色發光的頭 r 0.18、身體 r 0.12 高 0.3、三顆墨色眼睛 r 0.03 朝主島），update 上下漂 ±0.08
+  const glow = createGlowRegistry();
+  const f = createPartFactory(THREE, { glow, people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders });
+  const part = f.build(a), ms = meshes(part.object);
+  assert.ok(ms.length <= 2, `two materials at most (${ms.length})`);
+  const lit = ms.find(m => m.material.emissive?.getHex() === C.alien);
+  assert.ok(lit, 'C.alien glow');
+  part.object.updateMatrixWorld(true);
+  const ys = new Set();
+  for (let i = 0; i < 30; i++) { part.update(0.1, i * 0.1); part.object.updateMatrixWorld(true); ys.add(new THREE.Box3().setFromObject(part.object).min.y.toFixed(3)); }
+  const yv = [...ys].map(Number);
+  assert.ok(Math.max(...yv) - Math.min(...yv) > 0.1 && Math.max(...yv) - Math.min(...yv) <= 0.16 + 1e-6, `bobs ±0.08 (${(Math.max(...yv) - Math.min(...yv)).toFixed(3)})`);
+  assert.equal(finale.alienParts().filter(p => p.color === C.ink).length, 9, 'three eyes each');
+  assert.equal(finale.alienParts().filter(p => p.kind === 'sphere' && Math.abs(p.scale - 0.36) < 1e-9).length, 3, 'three heads r 0.18');
+  part.object.traverse(o => { if (o.isMesh) assert.ok(!o.castShadow, 'no shadow'); });
+  part.dispose();
+});
+
+// 外星正解整局瞬間演完、飛彈瞬間演完，尾聲 live（終局回合 1 倍速）
+async function alienFinale(opts = {}) {
+  const h = await headlessShow(opts);
+  let s = createState(spec);
+  for (const [i, st] of turnSteps(ALIEN_ORDER).entries()) {
+    const r = st(s); s = r.state;
+    await h.run(i >= ALIEN_ORDER.length ? closingEvents(i - ALIEN_ORDER.length, r.events) : [...r.events, { kind: 'settle' }], { instant: true });
+  }
+  const [missileEvent, epilogueEvent] = finaleEvents(resolve(s, spec));
+  assert.equal(epilogueEvent?.ending, 'alien');
+  await h.run([missileEvent], { finale: true, instant: true });
+  return { ...h, epilogueEvent };
+}
+
+test('alien epilogue live: mutant waves + ！, pad blinks in, UFOs descend 2 s, aliens blink in, mothership blinks in, mood alien, king on top + ♥, ends on the overview; ≤ 12 s real', async () => {
+  const { show, run, bubblesLog, worldLog, rig, epilogueEvent } = await alienFinale();
+  const w0 = worldLog.length, n0 = bubblesLog.length, r0 = rig.log.length, main0 = show.stage.partObject('tower.main'), pad0 = show.stage.partObject('sat.rocksRing');
+  assert.ok(pad0, 'the green ring is there before');
+  const mutant = show.roster.members('rat.pack')[0];
+  const t = {}, mark = (k, cond, now) => { if (t[k] === undefined && cond) t[k] = now; };
+  let waving = 0, ufoY = [], seen = n0;
+  const said = [];
+  const update = show.update.bind(show);
+  show.update = (d, tt) => {
+    update(d, tt);
+    const now = show.elapsed;
+    while (seen < bubblesLog.length) said.push({ ...bubblesLog[seen++], t: now });
+    if (mutant.waving) waving += d;
+    mark('pad', show.stage.partObject('sat.rocksRing') !== pad0, now);
+    const u = show.stage.partObject('finale.ufos');
+    mark('ufos', !!u, now);
+    if (u) ufoY.push([now, u.userData.showOffset?.dy ?? 0]);
+    mark('aliens', !!show.stage.partObject('finale.aliens'), now);
+    mark('ship', show.stage.partObject('tower.main') !== main0, now);
+    mark('mood', worldLog.slice(w0).some(([w]) => w.mood === 'alien'), now);
+    mark('top', dist3(mutant.pos, SHIP_SPOT) < 1e-6, now);
+  };
+  await run([epilogueEvent], { finale: true });
+  show.update = update;
+  const secs = show.elapsed;
+  console.log(`alien epilogue: ${secs.toFixed(2)} s real (${Object.entries(t).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ')})`);
+  assert.ok(secs <= 12, `≤ 12 s real (${secs.toFixed(2)})`);
+  const bang = said.filter(b => b.kind === '！'), heart = said.filter(b => b.kind === '♥');
+  assert.equal(bang.length, 1, 'the mutant ！');
+  const spring = landmarkWorld('spring');
+  assert.ok(Math.hypot(bang[0].at.x - spring.x, bang[0].at.z - spring.z) < 1.5, '！ over the mutant by the spring');
+  assert.ok(bang[0].t < t.pad, '！ before the pad');
+  assert.ok(waving >= 0.9, `the mutant waves (${waving.toFixed(2)})`);
+  assert.ok(t.pad < t.ufos && t.ufos < t.aliens && t.aliens < t.ship && t.ship <= t.mood && t.mood <= t.top, 'pad → ufos → aliens → mothership → mood → king');
+  // UFO 從 7 高降下來，2 秒
+  const high = ufoY.find(([, dy]) => dy > 6.5), low = ufoY.find(([, dy]) => dy === 0);
+  assert.ok(high && low, 'descends from dy 7 to 0');
+  assert.ok(Math.abs(low[0] - high[0] - 2.0) < 0.15, `in 2 s (${(low[0] - high[0]).toFixed(2)})`);
+  assert.equal(heart.length, 1, '♥');
+  assert.ok(heart[0].t >= t.top && heart[0].at.y > shipTop(), '♥ over the king on the ship top');
+  assert.ok(show.stage.partKeys().includes('finale.ufos') && show.stage.partKeys().includes('finale.aliens'));
+  assert.ok(!show.stage.partKeys().includes('rat.ufo'), 'the small UFO is gone');
+  assert.ok(!show.stage.partKeys().includes('sat.rocks'), 'the stone rats are gone');
+  assert.ok(dist3(mutant.pos, SHIP_SPOT) < 1e-6 && mutant.mode === 'home', 'the king sits on the ship top');
+  assert.equal(worldLog.at(-1)[0].mood, 'alien', 'third eyes to the end');
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+  const cam = rig.log.slice(r0);
+  assert.ok(cam.some(([k]) => k === 'focus') && cam.at(-1)[0] === 'home', `starts at the spring, ends on the overview (${cam.map(c => c[0]).join(' ')})`);
+  // 跳過：終態一樣
+  const skip = await alienFinale();
+  await skip.run([skip.epilogueEvent], { finale: true, instant: true });
+  assert.deepEqual(skip.show.stage.partKeys().sort(), show.stage.partKeys().sort());
+  assert.ok(dist3(skip.show.roster.members('rat.pack')[0].pos, SHIP_SPOT) < 1e-6, 'skip: the king on the ship top');
+  assert.equal(skip.worldLog.at(-1)[0].mood, 'alien');
+  const so = skip.show.stage.partObject('finale.ufos'), lo = show.stage.partObject('finale.ufos');
+  assert.ok(dist3(so.position, lo.position) < 1e-9, 'skip: the UFOs landed');
+});
+
+test('alien epilogue on low quality draws ufos as one mesh', async () => {
+  const { show, run, epilogueEvent } = await alienFinale({ quality: 'low' });
+  await run([epilogueEvent], { finale: true, instant: true });
+  assert.equal(meshes(show.stage.partObject('finale.ufos')).length, 1, 'one draw call');
+  assert.equal(meshes(show.stage.partObject('finale.aliens')).length, 1, 'the aliens too');
+  assert.equal(meshes(show.stage.partObject('tower.main')).length, 1, 'the mothership too');
+});

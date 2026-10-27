@@ -578,7 +578,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
         if (m.mode === 'home' && !m.hidden) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
-          m.holder.rotation.z = spec.model?.wave ? Math.sin(t * 3) * 0.15 : 0;
+          // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）
+          m.holder.rotation.z = spec.model?.wave ? (m.waving ? Math.sin(t * 10) * 0.4 : Math.sin(t * 3) * 0.15) : 0;
         }
       }
     }

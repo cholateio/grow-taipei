@@ -160,3 +160,25 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
   for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forestShop'], b >= 5, `boba ${b}`); }
   for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
 });
+
+// 最終章 §7 外星尾聲：石堆島的綠光圈變降落場——圈更亮（更粗、多一圈內環）＋三盞落地燈（sphere r 0.08、C.alien 發光）圍在圈上；
+// 石堆上的兩隻老鼠不畫（三台大 UFO 停在這裡）
+test('epilogue alien: sat.rocksRing becomes the landing pad (brighter ring + 3 lights), sat.rocks rats gone', () => {
+  const L = lv({ rat: 5 }), base = sat.view(L, { ratBranch: 'alien', missile: 'shield' }), v = sat.view(L, { ratBranch: 'alien', missile: 'shield', epilogue: 'alien' });
+  const ring0 = base['sat.rocksRing'], pad = v['sat.rocksRing'], rocks = sat.island('rocks');
+  assert.ok(pad && Math.hypot(pad.at.x - rocks.x, pad.at.z - rocks.z) < 1e-9, 'on the rocks islet');
+  assert.equal(pad.footprint, false); assert.equal(pad.shadow, false);
+  const tori = pad.parts.filter(p => p.kind === 'torus'), lights = pad.parts.filter(p => p.kind === 'sphere');
+  const vol = p => p.scale[0] * p.scale[1] * p.scale[2];
+  assert.ok(tori.length > ring0.parts.length || tori.some(p => vol(p) > vol(ring0.parts[0])), 'a brighter (bigger) ring');
+  assert.ok(tori.every(p => p.glow === 0x5fcf7a));
+  assert.equal(lights.length, 3, 'three landing lights');
+  const R = ring0.parts[0].scale[0] / 2;
+  for (const l of lights) {
+    assert.ok(Math.abs(l.scale - 0.16) < 1e-9 || (Array.isArray(l.scale) && Math.abs(l.scale[0] - 0.16) < 1e-9), 'r 0.08');
+    assert.equal(l.glow, 0x5fcf7a); assert.equal(l.color, 0x5fcf7a);
+    assert.ok(Math.abs(Math.hypot(l.pos[0], l.pos[2]) - R) < 0.15, `on the ring (${Math.hypot(l.pos[0], l.pos[2]).toFixed(2)})`);
+  }
+  assert.ok(base['sat.rocks'], 'the stone rats stay before the epilogue');
+  assert.equal(v['sat.rocks'], undefined, 'the stone rats are gone');
+});

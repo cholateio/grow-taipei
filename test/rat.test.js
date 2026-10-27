@@ -164,6 +164,23 @@ test('the crown rat sits clear of the three parked speeders on the cyber roof (�
   assert.ok(Math.abs(k.x - st.x) <= 0.5 && Math.abs(k.z - st.z) <= 0.36, 'on the roof (1.1 × 0.82)');
   assert.ok(Math.hypot(k.x - (st.x + 0.42), k.z - (st.z - 0.3)) >= 0.2, 'clear of the roof antenna');
 });
+// 最終章 §7 外星尾聲：變異鼠王（戴王冠、揮手）的站位搬到 101 母艦的碟頂中心（tower.shipTop），頭上的小 UFO 不畫（三台大 UFO 取代它）
+test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower top), rat.ufo not drawn', async () => {
+  const tower = await import('../src/actors/tower.js');
+  const L = lv({ rat: 5 }), plain = rat.view(L, { ratBranch: 'alien' }), v = rat.view(L, { ratBranch: 'alien', missile: 'shield', epilogue: 'alien' });
+  const pack = v['rat.pack'];
+  assert.equal(pack.n, 1); assert.deepEqual(pack.model, plain['rat.pack'].model, 'the same crowned waving mutant');
+  assert.ok(pack.model.crown && pack.model.wave);
+  assert.equal(pack.home.kind, 'stand'); assert.equal(pack.home.spots.length, 1);
+  const spot = pack.home.spots[0];
+  assert.deepEqual(spot, { x: TOWER.x, y: tower.shipTop(), z: TOWER.z, yaw: 0 });
+  assert.deepEqual(rat.SHIP_SPOT, spot);
+  assert.ok(spot.y >= TOWER.y + tower.body('lit', { ship: true }).deck - 1e-9, 'on the saucer top');
+  assert.equal(v['rat.ufo'], undefined, 'no small UFO');
+  assert.ok(plain['rat.ufo'], 'the small UFO stays before the epilogue');
+  // 賽博尾聲旗標不影響外星鼠；外星尾聲旗標不影響 Lv4
+  assert.deepEqual(rat.view(L, { ratBranch: 'alien', epilogue: 'cyber' }), plain);
+});
 test('alien Lv5: the mutant wears a crown, a small UFO hovers over it, a green glow ring circles the rocks islet', () => {
   const v = rat.view(lv({ rat: 5 }), { ratBranch: 'alien' });
   assert.ok(v['rat.pack'].model.crown && v['rat.pack'].model.eye, 'crowned mutant');

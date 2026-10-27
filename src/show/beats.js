@@ -125,7 +125,8 @@ export function bubble(who, kind, dur = 1.2) {
 }
 
 // 小動作。people：交給小人的 gesture（look、build 另外帶 { at } 決定轉向，演完就一直朝那邊；build 揮鋤頭的節奏要秒數，dur 一起帶）；
-// 模型：sniff 左右轉頭、jump 原地拋物線；零件鍵 + puff：零件鼓起來再縮回去
+// 模型：sniff 左右轉頭、jump 原地拋物線、wave 在 m.waving 的期間名冊把揮手的搖擺加大加快（roster.js；model wave 的模型才搖）；
+// 零件鍵 + puff：零件鼓起來再縮回去
 export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   if (typeof dur === 'object') { at = dur.at; dur = GESTURE_DUR[kind]; }   // gesture(m, 'look', { at })
   let m = null, obj = null, base = null, yaw;
@@ -135,6 +136,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; base = obj.scale.clone(); return; }
       m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; }
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
+      if (kind === 'wave' && m.holder) m.waving = true;
       yaw = (kind === 'look' || kind === 'build') && at ? Math.atan2(at.x - m.pos.x, at.z - m.pos.z) : undefined;
     },
     step(k) {
@@ -149,6 +151,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
       if (obj) { obj.scale.copy(base); return; }
       if (!m) return;
       if (m.walker) m.walker.gesture = null;
+      m.waving = false;
       if (m.holder) { m.holder.rotation.y = m.yaw; m.holder.position.y = m.pos.y; }
       if (yaw !== undefined) ctx.roster.setPose(m, { ...m.pos, yaw, walking: false });
     },

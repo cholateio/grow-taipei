@@ -190,20 +190,30 @@ export function createPartFactory(THREE, ctx) {
   }
 
   // 煙火：60 顆小球一發，從中心炸開、重力下落、淡出，每 1.2 秒一發；不投影
+  // once（最終章 §6：飛彈撞上矽盾碎成一發煙火）：只放一發——用自己的時鐘（累加 dt，不看全域 t），1.2 秒後整個藏起來、一直藏著；
+  //   object.userData.burst() 從頭再放一發（飛彈重新發射），finish() 直接藏好（建好即終態、跳過）。建好時從頭放一發
   function fireworks(spec) {
-    const N = 60, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
+    const N = 60, BURST = 1.2, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
     const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }), N);
     mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
     const dirs = Array.from({ length: N }, (_, i) => { const y = 1 - 2 * (i + 0.5) / N, r = Math.sqrt(1 - y * y), a = i * 2.39996; return new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r); });
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3(), col = new THREE.Color();
+    const pose = t => {
+      const k = (t % BURST) / BURST, burst = Math.floor(t / BURST), s = 1.4 * Math.sqrt(k), fade = 1 - k;
+      dirs.forEach((d, i) => { mesh.setMatrixAt(i, m4.compose(p.copy(d).multiplyScalar(s).add(sc.set(0, -1.2 * k * k, 0)), q, sc.setScalar(fade + 0.05))); mesh.setColorAt(i, col.setHex(colors[(burst + i) % colors.length])); });
+      mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.material.opacity = fade;
+    };
+    let own = 0;   // once 的時鐘
+    const put = () => { mesh.visible = own < BURST; if (mesh.visible) pose(own); };
+    if (spec.once) {
+      object.userData.burst = () => { own = 0; put(); };
+      object.userData.finish = () => { own = Infinity; put(); };
+      put();
+    }
     return {
       object,
-      update(dt, t) {
-        const k = (t % 1.2) / 1.2, burst = Math.floor(t / 1.2), s = 1.4 * Math.sqrt(k), fade = 1 - k;
-        dirs.forEach((d, i) => { mesh.setMatrixAt(i, m4.compose(p.copy(d).multiplyScalar(s).add(sc.set(0, -1.2 * k * k, 0)), q, sc.setScalar(fade + 0.05))); mesh.setColorAt(i, col.setHex(colors[(burst + i) % colors.length])); });
-        mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        mesh.material.opacity = fade;
-      },
+      update(dt, t) { if (!spec.once) { pose(t); return; } if (own < BURST) { own += dt; put(); } },
       dispose() { mesh.geometry.dispose(); mesh.material.dispose(); },
     };
   }

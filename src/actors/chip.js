@@ -194,27 +194,14 @@ const engineersLook = (B, p, dur = 1.0) => B.together([0, 1, 2, 3].map(i => B.ge
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
 // （老鼠那邊的劇本在老鼠 Lv2 成立時也補這一拍，哪邊先成立哪邊演）
 const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(c => c.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
-// 套用一個零件（不閃白）並在同一拍裡把它的動畫歸零重演：建好的零件是演完的樣子（電纜整條亮、測試罩收好），
-// 套用和歸零在同一個 start 裡，中間沒有畫面；end 跳到演完（跳過、reduced-motion 也一樣）。keep：蒙太奇裡也演
-const replay = (e, key, dur, { begin, step, finish }) => {
-  let o = null;
-  return {
-    kind: 'replay', dur, keep: true,
-    start(c) {
-      if (c.stage.apply(e, { only: [key] }).changed.length) c.nav.setFootprints(c.stage.footprints());
-      o = c.stage.partObject(key); if (!o || !begin(o, c)) return false;
-    },
-    step(k) { step?.(o, k); },
-    end() { if (o) finish(o); },
-  };
-};
+// 零件自己演的動畫用 beats.js 的 B.replay（套用零件、同一拍歸零重演、end 跳到演完；keep：蒙太奇裡也演）
 // 電纜通電：光從風車島那頭跑到變電站（零件的 userData.progress）
-const surge = (e, dur) => replay(e, 'chip.cable', dur, {
+const surge = (B, e, dur) => B.replay(e, 'chip.cable', dur, {
   begin: o => { if (!o.userData.progress) return false; o.userData.progress(0); return true; },
   step: (o, k) => o.userData.progress(k), finish: o => o.userData.progress?.(1),
 });
 // 矽盾測試：罩子閃三下又收起（零件的 userData.test／finish）
-const shieldTest = e => replay(e, 'tower.shield', SHIELD_TEST_DUR, {
+const shieldTest = (B, e) => B.replay(e, 'tower.shield', SHIELD_TEST_DUR, {
   begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
 });
 // 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 24 個
@@ -263,7 +250,7 @@ export const script = {
         // surge 1.5 s：roster 的 live 不變式（偵防師與散步客不相碰、下車的老鼠不進建築）對整局的時間很敏感，審稿第 1、2 輪都是調時間才翻出來的；
         //   偵防師改成老鼠坐車時在站旁等之後 1.5、1.6 都過。任務 8 改了時間要再驗（見任務 6 報告）
         // 裁決 R17（颱風回合 ≤ 50 s）：光跑 1.5 → 1.2、♪ 與轉頭 0.9 → 0.7
-        B.focus('home'), surge(e, 1.2),
+        B.focus('home'), surge(B, e, 1.2),
         B.focus(CHIP), B.apply(e), B.together([B.bubble(eng(0), '♪', 0.7), engineersLook(B, offset(AT, FACTORY.pos[0], FACTORY.pos[2]), 0.7)]),
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
@@ -283,7 +270,7 @@ export const script = {
     // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面（keep：蒙太奇裡照樣閃）、全島的人轉頭看 101（看完就放回日常）→ LEVEL UP
     8(e, s, ctx) {
       const { B } = ctx, up = lookUp(B, TOWER, 1.2);
-      return [B.focus('home'), B.together([shieldTest(e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];
+      return [B.focus('home'), B.together([shieldTest(B, e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];
     },
     // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）
     //   → 全景定格（看一次 101 閃光）→ LEVEL UP

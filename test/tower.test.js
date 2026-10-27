@@ -72,6 +72,49 @@ test('the shield is a hemisphere centred on the 101 base that covers every corne
   assert.ok(s.r >= 7 && s.r <= 8, `r ${s.r}`);
   for (const cell of MAIN_CELLS) { const c = axialToWorld(...cell); for (const p of hexCorners(c.x, c.z, R)) assert.ok(Math.hypot(p.x - a.x, p.z - a.z) < s.r, `corner of ${cell} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`); }
 });
+// 最終章 §6：飛彈命中 → 101 從中段像吸管一樣彎成 L（一半以上的塔身繞 z 轉 π/2、往 +x 倒），天線、燈光秀、罩子拿掉。
+// 終局時 101 一定完工或點燈；工地／蓋一半照完工的樣子彎（不丟錯，審稿重點 3）。站位不變：彎過的塔 footprint 照底座
+test('view with missile hit: body is bent at full and lit — the upper tiers rotated about z by π/2, no antenna/lightshow/shield parts; site/half do not throw (review focus 3)', () => {
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  for (const total of [27, 55]) {
+    const lv = lvOf(total, { chip: 8, bulb: 5 }), plain = tower.view(lv, {}, { total }), v = tower.view(lv, { missile: 'hit' }, { total });
+    assert.ok(plain['tower.antenna'] && plain['tower.show'] && plain['tower.shield'], 'normally drawn');
+    for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane']) assert.equal(v[k], undefined, `${total}: no ${k}`);
+    const stage = tower.stageOf(total), bend = tower.bendPoint(stage), by = bend.y - anchorWorld('tower').y;
+    assert.deepEqual({ x: bend.x, z: bend.z }, { x: anchorWorld('tower').x, z: anchorWorld('tower').z }, 'bend point on the tower axis');
+    assert.ok(near(by, 0.3 + 1.1 + 4 * 0.45), `bend at half the tiers (${by})`);
+    const a = plain['tower.main'].parts, b = v['tower.main'].parts;
+    assert.deepEqual(b, tower.body(stage, { bent: true }).parts);
+    assert.equal(b.length, a.length);
+    let moved = 0;
+    a.forEach((p, i) => {
+      const q = b[i], [x, y, z] = p.pos, rot = p.rot ?? [0, 0, 0];
+      if (y <= by) { assert.deepEqual(q, p, `part ${i} below the bend stays`); return; }
+      moved++;
+      // 繞 (0, by) 轉 −π/2：(x, y − by) → (y − by, −x)
+      assert.ok(near(q.pos[0], y - by) && near(q.pos[1], by - x) && q.pos[2] === z, `part ${i} rotated about the bend`);
+      assert.ok(q.pos[0] > 0, 'laid toward +x');
+      assert.ok(near(Math.abs(q.rot[2] - rot[2]), Math.PI / 2) && q.rot[0] === rot[0] && q.rot[1] === rot[1], `part ${i} turned by π/2 about z`);
+    });
+    assert.ok(moved >= 2 * 4 + 2, `4 upper tiers + trims + cap + spire (${moved})`);
+    assert.ok(v['tower.main'].labelY < plain['tower.main'].labelY, 'the head drops to the bent top');
+    assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 }, 'stands on the same base');
+  }
+  for (const total of [0, 10]) {
+    let v; assert.doesNotThrow(() => { v = tower.view(lvOf(total, { chip: 7 }), { missile: 'hit' }, { total }); });
+    assert.deepEqual(v['tower.main'].parts, tower.body('full', { bent: true }).parts, `total ${total}: the full shape, bent`);
+    assert.equal(v['tower.crane'], undefined); assert.equal(v['tower.antenna'], undefined);
+    assert.deepEqual(tower.bendPoint(tower.stageOf(total)), tower.bendPoint('full'));
+  }
+  assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');
+});
+test('view with missile shield: tower.shield state full', () => {
+  const lv = { ...zero, chip: 9 }, v = tower.view(lv, { missile: 'shield' });
+  assert.deepEqual(v['tower.shield'], tower.shieldSpec('full'));
+  assert.equal(v['tower.antenna'].pulse, true, 'the antenna keeps pulsing');
+  assert.deepEqual(v['tower.main'], tower.view(lv, {})['tower.main'], 'the tower is not bent');
+  for (const missile of ['deflect', 'hit']) assert.notEqual(tower.view(lv, { missile })['tower.shield']?.state, 'full');
+});
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');
   for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);

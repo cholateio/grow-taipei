@@ -563,8 +563,9 @@ test('turn(events, { finale: true }) runs at speed 1 and ends on the overview wi
   const { finaleEvents } = await import('../src/game.js');
   const endings = await import('../src/rules/endings.js');
   const speeds = [];
-  // 假 finale 劇本：missile 等 1 秒（演出時間）——1 倍速就是真實 1 秒
-  const fin = { id: 'finale', view: () => ({}), script: { missile: (e, s, c) => { speeds.push(c.speed); return [c.B.wait(1)]; } } };
+  // 假 finale 劇本：missile 等 1 秒（演出時間）——1 倍速就是真實 1 秒。
+  // 等完不閃白地套上事件：101 照 flags.missile 換零件（矽盾擋下 → 罩子 full，任務 5），回合補的 apply 才不會再閃白多佔時間
+  const fin = { id: 'finale', view: () => ({}), script: { missile: (e, s, c) => { speeds.push(c.speed); return [c.B.wait(1), c.B.apply(e, { blink: false })]; } } };
   const modules = [...ALL.filter(m => m.id !== 'finale'), fin];
   assert.ok(ALL.some(m => m.id === 'finale'), 'the helper loads the finale module');
   const { show, run, rig } = await headlessShow({ modules });

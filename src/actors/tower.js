@@ -30,7 +30,11 @@ export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '1
 export function stageOf(total) { return total >= 54 ? 'lit' : total >= 26 ? 'full' : total >= 9 ? 'half' : 'site'; }
 
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
-function body(stage) {
+// bent（最終章 §6，飛彈命中）：塔身一半高度（BEND_Y）以上的零件——上面四節、它們的白邊、頂帽、尖塔——繞 z 轉 π/2 往 +x 倒，
+//   像吸管折成 L。終局時 101 一定完工或點燈（設計 §6：40320 種順序枚舉過，命中時總等級都 ≥ 26），工地／蓋一半照完工的樣子彎（不丟錯）。
+//   回傳的 top 是倒下那段的頂面（頭上的字、泡泡放這裡）
+export function body(stage, { bent = false } = {}) {
+  if (bent && (stage === 'site' || stage === 'half')) stage = 'full';
   const lit = stage === 'lit', trim = lit ? { color: ICE, glow: ICE } : { color: CREAM };
   const baseH = stage === 'site' ? 0.5 : 1.1, parts = [
     { kind: 'box', pos: [0, 0.15, 0], scale: [1.6, 0.3, 1.6], color: SAND },
@@ -49,13 +53,28 @@ function body(stage) {
     y += 1.5;
   }
   if (stage === 'site') for (const [x, z] of [[-0.6, 0.7], [0.1, 0.72], [-0.7, 0.15]]) parts.push({ kind: 'cone', pos: [x, 0.39, z], scale: [0.14, 0.18, 0.14], color: CORAL });
-  return { parts, top: y };
+  if (!bent) return { parts, top: y };
+  return { parts: parts.map(p => (p.pos[1] > BEND_Y ? bendPart(p) : p)), top: BEND_Y + BENT_HALF };
 }
+// 彎角：底座＋座身（0.3 + 1.1）再加 8 節的一半（相對 101 的 at）；倒下那段是方錐台寬 1.16 的一半高
+const BEND_Y = 0.3 + 1.1 + 4 * TIER_H, BENT_HALF = 0.6;
+// 繞 (0, BEND_Y) 轉 −π/2（往 +x 倒）：(x, y − BEND_Y) → (y − BEND_Y, −x)。
+// 零件的 rot（Euler XYZ）只有 [0, 0, 0] 或 [π, 0, 0]（倒放的方錐台）：Rz(−π/2)·Rx(rx) = Rx(rx)·Rz(∓π/2)，rx = π 時 z 角變號
+const bendPart = p => {
+  const [x, y, z] = p.pos, [rx, ry, rz] = p.rot ?? [0, 0, 0];
+  return { ...p, pos: [y - BEND_Y, BEND_Y - x, z], rot: [rx, ry, rz + (Math.cos(rx) > 0 ? -1 : 1) * Math.PI / 2] };
+};
+// 彎角的世界座標（飛彈命中的點，finale.js 用）：每個階段都照完工／點燈的彎法，所以都一樣
+export const bendPoint = () => ({ x: AT.x, y: AT.y + BEND_Y, z: AT.z });
 
 // meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6）
-export function view(lv, flags, meta = {}) {
-  const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0), stage = stageOf(total);
-  const { parts, top } = body(stage), v = { 'tower.main': { kind: 'compound', at, labelY: top + LABEL_UP, parts } };
+export function view(lv, flags = {}, meta = {}) {
+  const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0);
+  // 最終章 §6：命中 → 塔身彎 L、天線燈光秀罩子都拿掉（工地／蓋一半照完工的彎法，吊車也不畫）；矽盾擋下 → 罩子全亮
+  const hit = flags.missile === 'hit', stage = stageOf(total);
+  const { parts, top } = body(stage, { bent: hit }), v = { 'tower.main': { kind: 'compound', at, labelY: top + LABEL_UP, parts } };
+  // 彎過的塔倒下那段伸出底座外（自動 footprint 的包圍盒會變寬、超過 WIDE 就整個不算）：站位照底座 1.6 見方，走路格跟沒彎一樣
+  if (hit) { v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 }; return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
   if (lv.chip >= 7) {
     // 矽盾天線：塔頂的環＋天線 glb；待命（Lv9）時環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
@@ -64,7 +83,8 @@ export function view(lv, flags, meta = {}) {
     if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
     v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top), parts, pulse, footprint: false };
   }
-  if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
+  if (flags.missile === 'shield') v['tower.shield'] = shieldSpec('full');
+  else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
   if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, low: false, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = 1.0 + (i % 4) * (top - 1.2) / 4;

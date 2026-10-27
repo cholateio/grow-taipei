@@ -1,6 +1,8 @@
 // 演出層入口：把走路格、閃白、泡泡、名冊、舞台、時間軸接起來，給遊戲一個 show.turn(events) 演一整回合。
 // 每幀 update(dt, t) 推進；跳過、reduced-motion、RESET 一律立刻到最終狀態（§4.3）：
 //   舞台全部 commit、名冊每個人瞬間到家、閃白與泡泡收掉、鏡頭回全景、名冊全部恢復日常、全島效果貼齊。
+// 最終章（計畫 5，設計 §7、§9）：turn(events, { finale: true }) 演終局回合（turn.js 終局模式）；hold(s) 標題卡前停 s 秒——
+//   播一個 wait 拍，期間 skip() 不作用（點畫面跳不過），reduced-motion 0 秒，abort／reset（RESET）照樣中止；停著的時候 busy 仍是 true。
 import { createNav } from './nav.js';
 import { createBlink } from './blink.js';
 import { createBubbles } from './bubbles.js';
@@ -36,6 +38,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
   const timeline = createTimeline({ reducedMotion });
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
+  let holding = false;   // 標題卡前的停格（hold）中：skip() 不作用
 
   function refresh() { nav.setFootprints(stage.footprints()); }
   // 全景跟舞台上 101 現在的頭頂走（§14.4）：開局、跳過／中止／RESET 回全景之前（回合最後那拍自己更新）
@@ -51,13 +54,13 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
   }
 
-  function turn(events, { montage = false, onMark } = {}) {
+  function turn(events, { montage = false, finale = false, onMark } = {}) {
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.onMark = onMark ?? null; panned = false;
     camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
     roster.showAll({ walk: true });   // 上一回合躲進門裡的人（颱風登陸）從門口出來、走回家（不閃）
     refresh();
-    const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage }, ctx);
+    const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, montage, finale }, ctx);
     const me = playing = {};
     const done = timeline.play(beats, ctx);
     const end = () => {
@@ -70,8 +73,19 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     return done.then(end, err => { end(); throw err; });
   }
 
+  // 停 s 秒（1 倍速的演出時間 = 真實秒數）；不碰舞台、名冊、鏡頭——畫面照終局回合留下的樣子。
+  // reduced-motion：時間軸 play 當場跑完（0 秒）；停到一半打開 reduced-motion 也由時間軸的 setReducedMotion 收掉
+  function hold(s) {
+    if (timeline.busy) throw new Error('show busy');
+    ctx.instant = reduced; ctx.speed = 1; ctx.onMark = null;
+    holding = true;
+    const done = timeline.play([B.wait(reduced ? 0 : s)], ctx);
+    const end = () => { holding = false; };
+    return done.then(end, err => { end(); throw err; });
+  }
+
   function skip() {
-    if (!timeline.busy) return;
+    if (!timeline.busy || holding) return;
     ctx.instant = true;   // 鏡頭、全島效果的拍讀它：剩下的拍 start → end 都瞬間
     playing = null;
     // 某一拍的 end 丟錯也要收到最終狀態（錯照樣往外丟，回合的 Promise 也會 reject）
@@ -79,12 +93,12 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   }
   function abort() {
     const was = timeline.busy;
-    playing = null;
+    playing = null; holding = false;
     try { timeline.abort(); } finally { if (was) snap(); }
   }
 
   return {
-    turn, skip, abort,
+    turn, hold, skip, abort,
     reset() {
       try { abort(); } finally {
         stage.reset();   // 舞台 reset 也清掉名冊（連焦點一起）

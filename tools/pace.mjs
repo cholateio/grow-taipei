@@ -9,7 +9,7 @@
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
+import { headlessShow, closingEvents, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45／20 → 50／22；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）、
 // 倒數 22 → 30（蒙太奇整串 2 倍速）；放置回合的非關鍵劇本 ≤ 4.5 s
@@ -18,7 +18,7 @@ const args = new Set(process.argv.slice(2));
 const verbose = args.has('--verbose'), check = args.has('--check');
 const name = id => spec.ITEMS[id].name;
 const s1 = x => x.toFixed(1);
-const label = e => `${e.kind}${e.item ? ` ${e.item}` : ''}${(e.to ?? e.delta?.to) != null ? `→${e.to ?? e.delta.to}` : ''}`;
+const label = e => e.kind === 'countdown' ? `倒數字 ${e.n}` : `${e.kind}${e.item ? ` ${e.item}` : ''}${(e.to ?? e.delta?.to) != null ? `→${e.to ?? e.delta.to}` : ''}`;
 
 const { show, run, scriptElapsed } = await headlessShow();
 const failures = [], warnings = [];
@@ -31,7 +31,8 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
   let total = 0;
   for (const [i, [kind, id]] of steps.entries()) {
     const r = kind === 'place' ? place(state, id, spec) : advance(state, spec); state = r.state;
-    const events = [...r.events, { kind: 'settle' }];
+    // 倒數回合最前面是遊戲層插的倒數字（countdown，101 頭上 3、2、1——跟 game.js 一樣算進秒數）
+    const events = kind === 'place' ? [...r.events, { kind: 'settle' }] : closingEvents(i - order.length, r.events);
     const marks = [];   // [事件, 開演那一刻的 elapsed, 那一刻的劇本秒數, mark 的 info]
     await run(events, { montage: kind === 'advance', onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
     const secs = show.elapsed, scripted = scriptElapsed();   // 整回合（含鏡頭平移、空拍、回全景）；不含 focus 拍的
@@ -55,10 +56,9 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
       if (info?.key && live > KEY_MAX + WARN_OVER) warnings.push(`${ending.title} 第 ${i + 1} 回合 ◆${label(e)} ${s1(live)} s（> ${KEY_MAX}）`);
     });
     if (verbose) {
-      // 每個事件的秒數 = 下一個 mark（最後一個用回合結束）減自己的 mark；第一個 mark 之前是蒙太奇的 3-2-1
+      // 每個事件的秒數 = 下一個 mark（最後一個用回合結束）減自己的 mark；倒數回合的第一個事件是倒數字
       // 「事件秒數（劇本秒數）」，◆ 標關鍵劇本
       const parts = marks.map(([e, , , info], j) => { const [t, sc] = span(j); return `${info?.key ? '◆' : ''}${label(e)} ${s1(t)}${Math.abs(t - sc) > 0.05 ? `（${s1(sc)}）` : ''}`; });
-      if (kind === 'advance' && marks.length) parts.unshift(`3-2-1 ${s1(marks[0][1])}`);
       details.push(`  ${head}：${parts.join('、')}`);
     }
   }

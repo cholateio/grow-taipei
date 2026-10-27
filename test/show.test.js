@@ -524,3 +524,61 @@ test('alien landing turn live: the ◆ rat Lv4 branch and ◆ bulb Lv9 still pla
   }
   assert.fail('no landing turn');
 });
+
+// ── 最終章（計畫 5 任務 1，設計 §7、§9）──
+test('hold(s) plays s seconds, ignores skip, ends on abort; reduced-motion resolves at once', async () => {
+  const { show } = await headlessShow();
+  const frames = (secs, t0 = 0) => { for (let t = 0; t < secs - 1e-9; t += 1 / 30) show.update(1 / 30, t0 + t); };
+  // 照常：2 秒；中間點畫面（skip）不作用
+  let done = false;
+  const p = show.hold(2); p.then(() => { done = true; });
+  assert.equal(show.busy, true, 'busy during the hold');
+  frames(0.5); show.skip(); await Promise.resolve();
+  assert.equal(done, false, 'skip does not end the hold'); assert.equal(show.busy, true);
+  frames(1.4); await Promise.resolve(); assert.equal(done, false, 'still holding at 1.9 s');
+  frames(0.2); await p;
+  assert.ok(Math.abs(show.elapsed - 2) < 0.05, `held ${show.elapsed.toFixed(2)} s`); assert.equal(show.busy, false);
+  // 終局回合結束之後才 hold：turn 照常可以再演，skip 回到正常
+  // 中止（RESET）：立刻結束
+  done = false;
+  const q = show.hold(2); q.then(() => { done = true; });
+  frames(0.3); show.abort(); await q;
+  assert.equal(done, true); assert.equal(show.busy, false);
+  done = false; const r = show.hold(2); r.then(() => { done = true; });
+  frames(0.3); show.reset(); await r; assert.equal(done, true, 'reset ends it too');
+  // hold 之後 skip 照常能跳過回合
+  const turn = show.turn([{ kind: 'settle' }]); show.skip(); await turn; assert.equal(show.busy, false);
+  // reduced-motion：0 秒
+  const reduced = await headlessShow({ reducedMotion: true });
+  let fast = false; const z = reduced.show.hold(2); z.then(() => { fast = true; });
+  await Promise.resolve(); await Promise.resolve();
+  assert.equal(fast, true, 'resolves at once'); assert.equal(reduced.show.busy, false);
+  // 演到一半打開 reduced-motion：也立刻結束
+  const mid = await headlessShow(); const m = mid.show.hold(2);
+  for (let t = 0; t < 0.3; t += 1 / 30) mid.show.update(1 / 30, t);
+  mid.show.setReducedMotion(true); await m; assert.equal(mid.show.busy, false);
+});
+
+test('turn(events, { finale: true }) runs at speed 1 and ends on the overview with everyone home', async () => {
+  const { finaleEvents } = await import('../src/game.js');
+  const endings = await import('../src/rules/endings.js');
+  const speeds = [];
+  // 假 finale 劇本：missile 等 1 秒（演出時間）——1 倍速就是真實 1 秒
+  const fin = { id: 'finale', view: () => ({}), script: { missile: (e, s, c) => { speeds.push(c.speed); return [c.B.wait(1)]; } } };
+  const modules = [...ALL.filter(m => m.id !== 'finale'), fin];
+  assert.ok(ALL.some(m => m.id === 'finale'), 'the helper loads the finale module');
+  const { show, run, rig } = await headlessShow({ modules });
+  let s = engine.createState(spec);
+  for (const step of turnSteps(SOLUTIONS[0])) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const events = finaleEvents(endings.resolve(s, spec));
+  assert.deepEqual(events.map(e => e.kind), ['missile', 'epilogue']);
+  rig.log.length = 0;
+  await run(events, { finale: true });
+  assert.deepEqual(speeds, [1]);
+  assert.ok(Math.abs(show.elapsed - 1) < 0.1, `finale turn took ${show.elapsed.toFixed(2)} s at speed 1`);
+  assert.equal(show.stage.flags.missile, 'shield'); assert.equal(show.stage.flags.epilogue, endings.resolve(s, spec).id);
+  assert.deepEqual(show.stage.lv, s.lv, 'the engine levels are untouched'); assert.equal(s.flags.missile, undefined, 'the engine state carries no finale flag');
+  allHome(show); assert.equal(show.busy, false);
+  assert.ok(!rig.log.some(l => l[0] === 'focus'), 'no lead focus in finale mode');
+  assert.equal(rig.log.at(-1)[0], 'home', 'ends on the overview');
+});

@@ -9,10 +9,11 @@ import { createPeople } from '../../src/scene/people.js';
 import { mulberry32 } from '../../src/scene/random.js';
 import { createCameraRig, OVERVIEW_DIR } from '../../src/scene/camera.js';
 import { cellAt } from '../../src/scene/hex.js';
+import { countdownEvent } from '../../src/game.js';
 
 installFakeDom();
 const { createShow } = await import('../../src/show/index.js');
-const IDS = ['landmarks', 'tower', 'milk', 'baseball', 'chip', 'rat', 'bulb', 'token', 'boba', 'typhoon', 'satellites'];
+const IDS = ['landmarks', 'tower', 'milk', 'baseball', 'chip', 'rat', 'bulb', 'token', 'boba', 'typhoon', 'satellites', 'finale'];
 export const ALL = await Promise.all(IDS.map(id => import(`../../src/actors/${id}.js`)));
 
 const DT = 1 / 30, LIMIT = 120;
@@ -58,14 +59,14 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   // scriptElapsed()：這回合到目前為止的劇本秒數（onMark 裡量某一段用）
   let cam = 0;   // 這回合花在 focus 拍的秒數：每幀的 dt 算給這一幀開頭正在演的拍（回合第一幀算給剛拉進來的那拍）
   const scriptElapsed = () => show.elapsed - cam;
-  async function run(events, { montage = false, instant = false, onMark } = {}) {
+  async function run(events, { montage = false, finale = false, instant = false, onMark } = {}) {
     cam = 0;
     if (instant) {
       show.setReducedMotion(true);
-      try { await show.turn(events, { montage, onMark }); } finally { show.setReducedMotion(false); }
+      try { await show.turn(events, { montage, finale, onMark }); } finally { show.setReducedMotion(false); }
       return 0;
     }
-    const p = show.turn(events, { montage, onMark });
+    const p = show.turn(events, { montage, finale, onMark });
     let t = 0, done = false, err = null;
     p.then(() => { done = true; }, e => { done = true; err = e; });
     while (!done) {
@@ -103,6 +104,8 @@ export async function playItem(show, run, order, itemId, check) {
   }
 }
 
+// 倒數回合 i（0 起算）演的事件：最前面是遊戲層插的倒數字（countdownEvent(3 − i)，101 頭上 3、2、1），最後補 settle——同 game.js 的 pick()
+export const closingEvents = (i, events) => [countdownEvent(3 - i), ...events, { kind: 'settle' }];
 // 一局的每一回合：照 order 放完、再 CLOSING_TURNS 個倒數回合（step(s) → { state, events }）
 export const turnSteps = order => [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
 // 101 的階段在這一局哪一回合跨過（物品 v2 任務 10）：totals[i] = 第 i+1 回合結算後的總等級；at[stage] = 第一次到那個階段的回合（1 起算，含倒數回合）
@@ -222,7 +225,7 @@ export async function playLive(order, { seed = 21 } = {}) {
   for (const [i, step] of turnSteps(order).entries()) {
     const r = step(s); s = r.state;
     const montage = i >= order.length, marks = [];
-    await run([...r.events, { kind: 'settle' }], { montage, onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
+    await run(montage ? closingEvents(i - order.length, r.events) : [...r.events, { kind: 'settle' }], { montage, onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
     marks.forEach(([e, at, sc, info], j) => {
       const next = marks[j + 1], secs = (next?.[1] ?? show.elapsed) - at, gap = info?.gap ?? 0;
       out.push({ turn: i + 1, montage, e, key: !!info?.key, secs, live: secs - gap, script: (next?.[2] ?? scriptElapsed()) - sc - gap });

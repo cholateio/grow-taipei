@@ -7,9 +7,13 @@
 // 鏡頭跟主線（§13.1）：有東西演的事件，劇本前面先 focus 到事件的格子（同一格連續不重複），不同物品之間先空 GAP 秒；
 //   劇本第一拍自己就是 focus（或 together 裡有 focus）的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
-// 蒙太奇（飛彈倒數三回合，§4.4）：開頭 101 頭上 3、2、1，每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉；
+// 蒙太奇（飛彈倒數三回合，§4.4）：每個劇本只留走路／套用／LEVEL UP／出場／回家／鏡頭，太長連走路也拿掉；
 //   整串拍用 MONTAGE_SPEED 倍速演（裁決 R15：ctx.speed，時間軸統一換算——等待、泡泡、停格、小動作、走路、關鍵劇本一起快）。
-//   例外：開頭的 3、2、1 與等待圖框是給玩家讀的字，長度乘回 MONTAGE_SPEED（真實秒數照舊 0.6／1.2 s）。
+//   例外：等待圖框是給玩家讀的字，長度乘回 MONTAGE_SPEED（真實秒數照舊 1.2 s）。
+// 最終章（計畫 5，設計 §9）：遊戲層合成的事件——倒數字 countdown（每個倒數回合最前面，101 頭上 3／2／1，取代以前蒙太奇自己冒的 3、2、1）、
+//   飛彈 missile、尾聲 epilogue——劇本查 finale 模組的 script[e.kind]，沒有就 [apply]。這三種的劇本自己管鏡頭：不補 focus、不空拍、
+//   不算「上一個物品」；每一拍標 keep（蒙太奇不過濾：倒數字要留著；字的長度由劇本乘回倍速）。
+//   終局回合（finale: true，飛彈＋尾聲）：1 倍速、不扶正零件、整回合不補 focus／GAP；收尾照舊（回日常、全島效果、回全景）。
 //   MONTAGE_CAP（20）比的是真實秒數：estimateTurn 已經除以倍速，所以超過 20 秒真實時間才拿掉走路。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
@@ -29,7 +33,9 @@ import { BLINK } from './blink.js';
 
 export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'], MONTAGE_SPEED = 2;
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
-const COUNTDOWN = ['3', '2', '1'], COUNTDOWN_DUR = 0.6, HINT_DUR = 1.2;
+const HINT_DUR = 1.2;
+// 遊戲層合成的事件（最終章）：劇本在 finale 模組
+const FINALE_KINDS = new Set(['countdown', 'missile', 'epilogue']);
 
 const sum = lv => Object.values(lv).reduce((a, b) => a + b, 0);
 
@@ -111,16 +117,16 @@ function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
 }
 
-export function buildTurn(events, { modules, spec, lv, flags, meta, montage = false }, ctx) {
+export function buildTurn(events, { modules, spec, lv, flags, meta, montage = false, finale = false }, ctx) {
   const mod = id => modules.find(m => m.id === id);
+  if (finale) montage = false;   // 終局回合 1 倍速、不過濾
   ctx.montage = montage; ctx.speed = montage ? MONTAGE_SPEED : 1;
   const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
   let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
-  const out = [...(ctx.stage?.tilted ?? [])].map(upright);
-  if (montage) out.push(...COUNTDOWN.map(n => B.bubble('tower', n, COUNTDOWN_DUR * ctx.speed)));   // 倍速除回來：真實 0.6 s 一個字
+  const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
 
   events.forEach((e, i) => {
     const prev = view; view = foldEvent(view, e);
@@ -131,6 +137,15 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
     const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
+    // 合成事件（倒數字、飛彈、尾聲）：finale 劇本整串照演，鏡頭由劇本自己管（不補平移、不空拍、不算上一個物品）
+    if (FINALE_KINDS.has(e.kind)) {
+      const beats = markKeep(mod('finale')?.script?.[e.kind]?.(e, s, ctx) ?? [B.apply(e)]);
+      if (some(beats, b => b.kind === 'focus')) lastCell = null;
+      const last = focusesOf(beats).at(-1);
+      if (last) away = last.target !== 'home';
+      out.push(mark(e), ...beats, B.apply(e));
+      return;
+    }
     if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') {
       out.push(mark(e), ...(away ? [B.focus('home')] : []), ...indoors(e), B.apply(e)); away = false;
       return;
@@ -164,7 +179,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     // 鏡頭：等待事件不補平移（演圖框的那個自己平移到代表角色）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
-    if (e.kind !== 'wait' && (!landed || key) && shows(beats)) {
+    if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
       if (cell) {
         if (!montage && lastItem && item !== lastItem) lead.push(B.wait(GAP));

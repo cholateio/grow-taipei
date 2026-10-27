@@ -33,6 +33,7 @@ import * as token from './actors/token.js';
 import * as boba from './actors/boba.js';
 import * as typhoon from './actors/typhoon.js';
 import * as satellites from './actors/satellites.js';
+import * as finale from './actors/finale.js';
 import { worldEffects, stepWorld } from './actors/world.js';
 import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
@@ -96,7 +97,7 @@ export async function start({ params, loading }) {
   let world = { ...worldEffects(zeroLevels(), {}), time: TIMES[params.get('time')] ?? TIMES.day }, worldTarget = world;
   const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || instantAuto()) { world = w; showWorld(w); } };
   const show = createShow(THREE, {
-    scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites],
+    scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites, finale],
     ctx: { people, assets, glow: view.glow, weather, rail, quality }, rig,
     world: (effects, instant) => aimWorld({ ...worldTarget, ...effects }, instant),
     reducedMotion: motion.matches || instantAuto(),
@@ -110,8 +111,8 @@ export async function start({ params, loading }) {
     spec, engine, endings, show,
     ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
+    // 標題卡（設計 §7）：不再硬切夜晚——畫面照終局回合演完留下的狀態（遊戲層已經停過 TITLE_HOLD 秒）
     onFinished: (ending, state) => {
-      aimWorld({ ...worldTarget, time: TIMES.night });
       showEndCard(uiRoot, { title: ending.title, line: endings.ENDINGS[ending.id].line, onRestart: restart });
     },
   });

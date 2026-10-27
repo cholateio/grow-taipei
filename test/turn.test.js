@@ -7,6 +7,8 @@ installFakeDom();
 const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP, MONTAGE_SPEED, GAP } = await import('../src/show/turn.js');
 const { B } = await import('../src/show/beats.js');
 const { cellOf } = await import('../src/actors/anchors.js');
+const finale = await import('../src/actors/finale.js');
+const { countdownEvent, finaleEvents } = await import('../src/game.js');
 
 const zero = Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 const fakeCtx = (extra = {}) => ({
@@ -110,7 +112,7 @@ test('a module script replaces the default and still gets a trailing apply', () 
   assert.equal(settled.total, 2); assert.equal(settled.prevTotal, 1);
 });
 
-test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bubbles, and drops walks when over 20 s', () => {
+test('montage keeps only walk/apply/levelUp/spawn/home/focus and drops walks when over 20 s', () => {
   assert.equal(MONTAGE_CAP, 20); assert.deepEqual(MONTAGE_KEEP, ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus']);
   const script = len => ({ placed: (e, s, ctx) => [ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.bubble(walker, '！'), ctx.B.gesture(walker, 'wave'), ctx.B.together([ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.wait(2)]), ctx.B.together([ctx.B.wait(1)]), ctx.B.levelUp('milk')] });
   const milk = len => ({ id: 'milk', view() {}, script: script(len) });
@@ -120,21 +122,72 @@ test('montage keeps only walk/apply/levelUp/spawn/home/focus, prefixes 3-2-1 bub
   const beats = buildTurn([e], { ...base([tower, milk(2)]), montage: true }, short);
   assert.equal(short.montage, true); assert.equal(MONTAGE_SPEED, 2); assert.equal(short.speed, MONTAGE_SPEED, 'R15: the montage plays at ×2');
   const kinds = kindsOf(beats);
-  assert.deepEqual(kinds.slice(0, 3), ['bubble', 'bubble', 'bubble']);
-  // 3、2、1 是給玩家讀的字：倍速除回來，真實秒數照舊 0.6（演出時間 0.6 × MONTAGE_SPEED）
-  assert.deepEqual(beats.slice(0, 3).map(b => b.dur / MONTAGE_SPEED), [0.6, 0.6, 0.6]);
-  assert.deepEqual(kinds.slice(3), ['focus', 'walk', 'together', 'levelUp', 'apply', 'home', 'world', 'focus']);
-  assert.deepEqual(kindsOf(noMarks(beats)[5].beats), ['walk']);
+  // 最終章（計畫 5）：蒙太奇不再自己在開頭冒 3、2、1——數字是遊戲層插的 countdown 事件（下一個測試）
+  assert.deepEqual(kinds, ['focus', 'walk', 'together', 'levelUp', 'apply', 'home', 'world', 'focus']);
+  assert.deepEqual(kindsOf(noMarks(beats)[2].beats), ['walk']);
   assert.ok(estimateTurn(beats, short) <= MONTAGE_CAP);
-  // 3-2-1 掛在 101 頭上
-  let shown = [];
-  for (const b of beats.slice(0, 3)) b.start({ ...short, bubbles: { show: (head, kind) => { shown.push([head(), kind]); return { cancel() {} }; } } });
-  assert.deepEqual(shown.map(s => s[1]), ['3', '2', '1']);
   // 長路程（每段 30 單位，蒙太奇走路兩倍速 → 15 s × 2 > 20 s）：連 walk 也拿掉
   const far = fakeCtx({ nav: navOf(30) });
   const long = buildTurn([e], { ...base([tower, milk(30)]), montage: true }, far);
-  assert.deepEqual(kindsOf(long).slice(3), ['focus', 'levelUp', 'apply', 'home', 'world', 'focus']);
+  assert.deepEqual(kindsOf(long), ['focus', 'levelUp', 'apply', 'home', 'world', 'focus']);
   assert.ok(estimateTurn(long, far) <= MONTAGE_CAP);
+});
+
+test('montage turns no longer prepend 3-2-1; a countdown event plays the finale module script (one digit, 1.2 s real)', () => {
+  const ctx = fakeCtx();
+  const placed = { kind: 'placed', item: 'milk', to: 1 };
+  // 沒有 countdown 事件：蒙太奇回合開頭沒有任何泡泡
+  assert.ok(!kindsOf(buildTurn([placed], { ...base(), montage: true }, fakeCtx())).includes('bubble'));
+  const cd = countdownEvent(3);
+  const beats = buildTurn([cd, placed], { ...base([tower, finale]), montage: true }, ctx), kinds = kindsOf(beats);
+  // countdown：先 mark、劇本一個數字泡泡（蒙太奇過濾不拿掉）、補的 apply；不補鏡頭平移
+  assert.equal(beats[0].kind, 'mark');
+  assert.deepEqual(kinds.slice(0, 2), ['bubble', 'apply']);
+  assert.equal(kinds.filter(k => k === 'bubble').length, 1, 'one digit');
+  const digit = noMarks(beats)[0];
+  assert.equal(digit.dur / MONTAGE_SPEED, 1.2, 'the digit reads 1.2 s real at ×2');
+  assert.equal(estimateTurn([digit], ctx), 1.2);
+  let shown = null;
+  digit.start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });
+  assert.equal(shown.kind, '3'); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 }, 'over the tower');
+  assert.equal(shown.dur, 1.2, 'bubbles get real seconds');
+  // 鮮奶的事件照常平移（countdown 不算「上一個物品」：不空拍）
+  assert.deepEqual(kinds.slice(2, 4), ['focus', 'apply']);
+  // 舞台旗標：foldEvent 折進 e.flag（alarm = n）
+  const seen = [];
+  const spy = { id: 'finale', view() { return {}; }, script: { countdown: (e, s) => { seen.push(s.flags.alarm); return []; } } };
+  buildTurn([countdownEvent(2)], { ...base([tower, spy]), montage: true }, fakeCtx());
+  assert.deepEqual(seen, [2]);
+  // 沒有 finale 模組：只有 apply
+  assert.deepEqual(kindsOf(buildTurn([cd], { ...base(), montage: true }, fakeCtx())), ['apply', 'apply', 'home', 'world', 'focus']);
+});
+
+test('missile / epilogue events look up finale.script[kind]; finale mode adds no lead focus, no GAP, no upright', () => {
+  const calls = [];
+  const fin = { id: 'finale', view() { return {}; }, script: {
+    missile: (e, s, c) => { calls.push(['missile', e.outcome, s.flags.missile, c.speed, c.montage]); return [c.B.wait(1)]; },
+    epilogue: (e, s, c) => { calls.push(['epilogue', e.ending, s.flags.epilogue]); return [c.B.wait(2)]; },
+  } };
+  const events = finaleEvents({ id: 'cyber', missile: 'shield' });
+  const tilted = () => ({ stage: { headOf: () => ({ x: 0, y: 1, z: 0 }), lv: {}, flags: {}, meta: {}, tilted: new Set(['milk.cart']) } });
+  const ctx = fakeCtx(tilted());
+  const beats = buildTurn(events, { ...base([tower, fin]), finale: true }, ctx);
+  assert.equal(ctx.speed, 1); assert.equal(ctx.montage, false);
+  assert.deepEqual(calls, [['missile', 'shield', 'shield', 1, false], ['epilogue', 'cyber', 'cyber']]);
+  // 不扶正（第一拍就是 mark）、不補 focus、不空拍；收尾照舊
+  assert.equal(beats[0].kind, 'mark');
+  assert.deepEqual(kindsOf(beats), ['wait', 'apply', 'wait', 'apply', 'home', 'world', 'focus']);
+  assert.equal(noMarks(beats).at(-1).final, true);
+  assert.equal(estimateTurn(beats.filter(b => b.kind === 'wait'), ctx), 3, 'speed 1: show seconds are real seconds');
+  // 終局模式即使有人說 montage 也是 1 倍速
+  const both = fakeCtx(); buildTurn(events, { ...base([tower, fin]), finale: true, montage: true }, both);
+  assert.equal(both.speed, 1); assert.equal(both.montage, false);
+  // 沒有劇本：[apply]（加補的 apply）
+  assert.deepEqual(kindsOf(buildTurn(events, { ...base(), finale: true }, fakeCtx())), ['apply', 'apply', 'apply', 'apply', 'home', 'world', 'focus']);
+  // 對照：一般回合會先扶正被撞歪的零件
+  assert.equal(buildTurn([{ kind: 'placed', item: 'milk', to: 1 }], base(), fakeCtx(tilted()))[0].kind, 'apply');
+  // 一般模式下的 missile 事件也查 finale 劇本、不補平移（劇本自己管鏡頭）
+  assert.deepEqual(kindsOf(buildTurn([events[0]], base([tower, fin]), fakeCtx())), ['wait', 'apply', 'home', 'world', 'focus']);
 });
 
 test('estimateTurn returns real seconds: show-time beat lengths divided by ctx.speed', () => {

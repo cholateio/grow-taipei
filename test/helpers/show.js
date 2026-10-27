@@ -1,5 +1,5 @@
 // 無頭演出層：fakedom、真 THREE、真 people、假 assets（spawn → Group 帶 userData.mixer stub、release 記錄）、真 glow、
-// 假 rig（記錄 panTo／focus／home）、world 記錄。測試與 tools/pace.mjs 都用它在 Node 裡把回合一幀一幀演完。
+// 假 rig（記錄 panTo／focus／home）、world 記錄（心情照 app 交給 people.setMood）。測試與 tools/pace.mjs 都用它在 Node 裡把回合一幀一幀演完。
 import * as THREE from '../../vendor/three/three.module.js';
 import * as spec from '../../src/rules/spec.js';
 import * as engine from '../../src/rules/engine.js';
@@ -47,7 +47,8 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   const scene = new THREE.Scene(); scene.add(people.group);
   const show = createShow(THREE, {
     scene, spec, modules, ctx: { people, assets, glow: createGlowRegistry(), weather: { rain: 0 }, rail, quality },
-    rig, world: (effects, instant) => worldLog.push([effects, instant]), reducedMotion, rnd: mulberry32(seed),
+    // world 跟 app 的 showWorld 一樣把心情交給 people.setMood（命中躺平時名冊讀 people.mood 停住日常，測試才看得到）
+    rig, world: (effects, instant) => { worldLog.push([effects, instant]); if (effects.mood) people.setMood(effects.mood); }, reducedMotion, rnd: mulberry32(seed),
   });
   // 每次 bubbles.show／levelUp 記下 { kind | text, at }（at = 出現那一刻頭上的位置）
   const { show: showBubble, levelUp } = show.bubbles;

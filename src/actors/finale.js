@@ -37,8 +37,9 @@ export const LOOK = 1.2, SHOUT = 0.8;
 // 沿視線到鏡頭都不被地形擋（帶 app.js 的雜訊取樣）
 export const FLARE_AT = { x: -12, y: 2.5, z: -23 };
 export const FLARE_COLOR = 0xff5a3c, FLARE_R = 0.9, COLUMN_H = 6;
-// 脈動頻率：倒數 3／2／1 → 1／2／3 Hz（越來越急）
-export const flareHz = n => 4 - n;
+// 脈動頻率：倒數 3／2／1 → 1／2／3 Hz（越來越急）。4 − n 跟數字泡泡 '3'、'2'、'1' 一樣假設倒數三回合（spec.CLOSING_TURNS = 3，
+// game.js countdownEvent 守著 n ∈ 1..3）；沒有 alarm（零件剛好在旗標之外被建）當倒數 3
+export const flareHz = n => 4 - (n ?? 3);
 
 // ── 飛彈（設計 §6）──
 // 真實秒數：拋物線飛 FLIGHT 秒；deflect 的第二段（被風吹歪、邊轉邊掉進溫泉）DEFLECT 秒；結果演完回全景停 HOLD_END 秒
@@ -110,7 +111,8 @@ const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
   // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 3、2、1
-  if (flags.alarm && !flags.missile) v['finale.flare'] = { kind: 'flare', at: FLARE_AT, hz: flareHz(flags.alarm), shadow: false, footprint: false };
+  // spec 不帶 hz（最終審稿）：倒數 3、2、1 是同一個零件，不換、不閃白；脈動頻率由零件每幀讀舞台旗標（builders.flare）
+  if (flags.alarm && !flags.missile) v['finale.flare'] = { kind: 'flare', at: FLARE_AT, shadow: false, footprint: false };
   const o = flags.missile;
   if (o) {
     // 101 的階段照 tower.js 的算法（stageOfView：meta.total，沒給才自己加總）：deflect 的塔頂跟著塔身；
@@ -209,9 +211,9 @@ export const builders = {
     beam.position.y = bottom + COLUMN_H / 2;
     orb.name = 'orb'; beam.name = 'beam';
     for (const m of [orb, beam]) { m.castShadow = m.receiveShadow = false; object.add(m); }
-    const hz = spec.hz ?? 1;
+    // 頻率每幀照舞台旗標的 alarm 算（ctx.flags：stage.js 交給零件工廠的 getter）：spec 不帶 hz，倒數 2、1 才不會換零件再閃白一次
     const pose = t => {
-      const k = (1 + Math.sin(t * Math.PI * 2 * hz)) / 2;
+      const hz = flareHz(ctx.flags?.().alarm), k = (1 + Math.sin(t * Math.PI * 2 * hz)) / 2;
       orbMat.emissiveIntensity = (1.2 + ctx.glow.intensity) * (0.35 + 0.65 * k);
       beamMat.opacity = 0.15 + 0.3 * k;
     };
@@ -304,7 +306,7 @@ export const script = {
     const tail = [B.apply(e), B.home(() => list ?? []), B.focus('home', { hold: HOLD_END })];
     if (o === 'shield') return [...lead, B.apply(e, { only: ['tower.shield'] }), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
-    return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'lie' }), ...tail];
+    return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）
   },
   // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
@@ -344,7 +346,7 @@ function alien(e, ctx) {
     B.focus(ROCKS), B.apply(e, { only: ['sat.rocksRing', 'sat.rocks'] }),
     B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL }),
     B.apply(e, { only: ['finale.aliens'] }), B.focus('home', { hold: ALIEN_HOLD }),
-    B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'alien' }),
+    B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(),
     B.apply(e, { only: ['rat.pack'] }), roof(kings, () => SHIP_SPOT), B.home(kings),
     B.apply(e), B.bubble(king, '♥', LOVE), B.focus('home', { hold: END_HOLD }),
   ];

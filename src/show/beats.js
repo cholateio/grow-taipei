@@ -9,6 +9,7 @@ import { trainPose, trainCars, spurTrip, SPUR_SPEED } from '../actors/token.js';
 import { anchorWorld, cellOf, cellCentre } from '../actors/anchors.js';
 import { worldToAxial } from '../scene/hex.js';
 import { createPathCursor } from '../scene/path.js';
+import { worldEffects } from '../actors/world.js';
 
 export { together };
 export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6 };
@@ -250,6 +251,12 @@ export function world(effects) {
   return { kind: 'world', dur: 0, effects, start(ctx) { ctx.world(effects, !!ctx.instant); } };
 }
 
+// 全島效果照舞台現在的狀態重算（lv、flags、meta → worldEffects）：劇本改了旗標要立刻反映（命中躺平、外星三眼）時用，
+// 跟 turn.js 收尾那拍同一個來源，劇本裡不另外寫心情規則（最終審稿）
+export function worldNow() {
+  return { kind: 'world', dur: 0, start(ctx) { ctx.world(worldEffects(ctx.stage.lv, ctx.stage.flags, ctx.stage.meta), !!ctx.instant); } };
+}
+
 export function wait(s) { return { kind: 'wait', dur: s }; }
 
 // who：一個或一串目標；也可以是 ctx => 目標（或一串），演到這拍才算（turn.js 收尾：所有 script 成員）
@@ -440,6 +447,6 @@ export function jump(who, target, dur = 0.5) {
 }
 
 export const B = {
-  spawn, walk, bubble, gesture, apply, levelUp, focus, world, wait, home, together, move, scaleIn, replay,
+  spawn, walk, bubble, gesture, apply, levelUp, focus, world, worldNow, wait, home, together, move, scaleIn, replay,
   hideParts, showParts, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
 };

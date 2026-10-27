@@ -8,7 +8,11 @@
 import { ENDINGS } from './rules/endings.js';
 
 // 倒數字事件（n = 3、2、1）：舞台旗標 alarm = n（紅光的脈動、宣告看它）
-export const countdownEvent = n => ({ kind: 'countdown', n, flag: { name: 'alarm', value: n } });
+export const countdownEvent = n => {
+  // 倒數數字泡泡 '3'、'2'、'1' 與紅光頻率（finale.js flareHz：4 − n）都假設 spec.CLOSING_TURNS = 3；改倒數回合數要一起改（最終審稿）
+  if (!(n >= 1 && n <= 3)) throw new Error(`countdownEvent: n ${n} 不在 1..3（spec.CLOSING_TURNS 改了要一起改倒數數字與紅光頻率）`);
+  return { kind: 'countdown', n, flag: { name: 'alarm', value: n } };
+};
 // 終局回合的事件：飛彈（outcome = shield／deflect／hit），真結局（8 個全 MAX）再接尾聲（ending = cyber／alien）
 export function finaleEvents(ending) {
   const out = [{ kind: 'missile', outcome: ending.missile, flag: { name: 'missile', value: ending.missile } }];

@@ -18,9 +18,9 @@ import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45／20 → 50／22；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）、
 // 倒數 22 → 30（蒙太奇整串 2 倍速）；放置回合的非關鍵劇本 ≤ 4.5 s
-const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30, WARN_OVER = 0.3;
+const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 // 終局回合（設計 §10）：真結局（飛彈＋尾聲）≤ 22 s、壞結局（只有飛彈）≤ 10 s；FINAL_BEFORE：改版前的倒數三回合合計（兩條正解，對照用）
-const FINALE_MAX = 22, BAD_FINALE_MAX = 10, FINAL_BEFORE = '51.0／52.6';   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
+const FINALE_MAX = 22, BAD_FINALE_MAX = 10, FINAL_BEFORE = '51.0／52.6';
 const args = new Set(process.argv.slice(2));
 const verbose = args.has('--verbose'), check = args.has('--check');
 const name = id => spec.ITEMS[id].name;

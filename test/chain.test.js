@@ -56,8 +56,8 @@ async function playChain(order) {
   }
   const { events: fin, ending } = finaleStep(s), label = `${order.join('>')} finale`;
   inv.label(label);
-  cam.rig.cancel();
-  await run(fin, { finale: true, onMark: e => inv.label(`${label} [${e.kind}]`) });
+  // 拖鏡頭放在終局回合演到一半（尾聲開演那一刻）：回合開頭的 release 已經過了，才真的測到「拖過之後 focus 跳過、收尾照回全景」（最終審稿）
+  await run(fin, { finale: true, onMark: e => { inv.label(`${label} [${e.kind}]`); if (e.kind === 'epilogue') cam.rig.cancel(); } });
   inv.turnEnd();
   const finale = {
     ending, events: fin, countdowns, secs: show.elapsed, flags: { ...show.stage.flags }, keys: new Set(show.stage.partKeys()), busy: show.busy,

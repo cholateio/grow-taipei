@@ -569,13 +569,19 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       for (const g of groups.values()) for (const m of g.members) if (m.trip && m.mode === 'home') replan(m);
       for (const m of exits) if (m.trip) replan(m);
     }
+    // 躺平（最終章 §6：飛彈命中全島躺平比讚，「姿勢持續到標題卡」；最終審稿）：people.mood 是 'lie' 時日常走動的 people 小人
+    // （home 模式、不是 ride、還有正要走回入口的人）整個停在原地——不散步、不走趟、不被推、不被錯開；名冊每個 people 成員都是
+    // controlled（位置由這裡 setPose），people.js 自己不推路徑也擋不住，所以在這裡停。ride（跟著車走）、模型、藏起來的照舊；
+    // 劇本手上的照拍演（命中劇本的群眾拍在換心情之前就演完了）。這裡每幀讀 people.mood、不存狀態：
+    // 心情回 normal（RESET 經 app 的 showWorld、演出層 reset 的 world 拍）下一幀就接著走，roster.reset 也不用另外清
+    const lying = people.mood === 'lie', frozen = (m, spec) => lying && !!m.walker && spec?.home?.kind !== 'ride';
     const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
     // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）
     const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, m.cursor && m.offPath ? !nav.passable(m.pos.x, m.pos.z) : !!(m.cursor || m.trip?.offgrid) || !nav.walkable(m.pos.x, m.pos.z)]); };
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home' && !m.hidden) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
+        if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）
@@ -584,7 +590,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       }
     }
     // 走出去的人：走到入口就拿掉
-    exits = exits.filter(m => { keep(m, null); if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
+    exits = exits.filter(m => { if (frozen(m, null)) return true; keep(m, null); if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
     nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
     nav.separateStanding(standing, WALK_SPEED.people * dt);
     // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。

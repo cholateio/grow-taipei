@@ -73,33 +73,42 @@ async function placedShow() {
   return h;
 }
 
-test('view: alarm 3/2/1 draws finale.flare with pulse 1/2/3 Hz; no alarm or missile set → no flare', () => {
+test('view: alarm 3/2/1 draws the same finale.flare (no replacement, no re-blink); the part pulses 1/2/3 Hz from the stage flags; no alarm or missile set → no flare', () => {
   const lv = {};
-  for (const [n, hz] of [[3, 1], [2, 2], [1, 3]]) {
+  for (const n of [3, 2, 1]) {
     const f = finale.view(lv, { alarm: n })['finale.flare'];
     assert.ok(f, `alarm ${n}`);
-    assert.equal(f.kind, 'flare'); assert.equal(f.hz, hz); assert.deepEqual(f.at, finale.FLARE_AT);
+    assert.equal(f.kind, 'flare'); assert.deepEqual(f.at, finale.FLARE_AT);
     assert.equal(f.shadow, false); assert.equal(f.footprint, false);
   }
+  // 最終審稿：spec 不帶 hz，倒數 2、1 不換零件（換了就是回合末的 apply 再閃白一次）
+  assert.deepEqual(finale.view(lv, { alarm: 2 }), finale.view(lv, { alarm: 3 }), 'alarm 2 = alarm 3');
+  assert.deepEqual(finale.view(lv, { alarm: 1 }), finale.view(lv, { alarm: 3 }), 'alarm 1 = alarm 3');
   assert.deepEqual(finale.view(lv, {}), {});
   for (const missile of ['shield', 'deflect', 'hit']) assert.ok(!finale.view(lv, { alarm: 1, missile })['finale.flare'], `missile ${missile} puts the flare out`);
-  // 零件：紅橘發光球 r 0.9＋半透明光柱高 6，都不投影；update 依 hz 脈動（週期 1/hz 回到同一個強度）
-  const glow = createGlowRegistry();
-  const f = createPartFactory(THREE, { glow, people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders });
+  // 零件：紅橘發光球 r 0.9＋半透明光柱高 6，都不投影；update 依舞台旗標（ctx.flags()，stage.js 交給零件工廠）的 alarm 脈動
+  // （週期 1/hz 回到同一個強度）——同一個零件，旗標從 3 換到 2、1 就跟著變快
+  const glow = createGlowRegistry(), flags = { alarm: 3 };
+  const f = createPartFactory(THREE, { glow, people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders, flags: () => flags });
+  const part = f.build(finale.view(lv, flags)['finale.flare']);
+  const orb = part.object.getObjectByName('orb'), beam = part.object.getObjectByName('beam');
+  orb.geometry.computeBoundingSphere(); assert.ok(Math.abs(orb.geometry.boundingSphere.radius - 0.9) < 0.02, 'orb r 0.9');
+  assert.equal(orb.material.color.getHex(), 0xff5a3c); assert.equal(orb.material.emissive.getHex(), 0xff5a3c);
+  beam.geometry.computeBoundingBox(); const bb = beam.geometry.boundingBox; assert.ok(Math.abs(bb.max.y - bb.min.y - 6) < 1e-6, 'column 6 high');
+  assert.ok(beam.material.transparent && beam.material.opacity < 1 && !beam.material.depthWrite);
+  part.object.traverse(o => { if (o.isMesh) assert.ok(!o.castShadow, 'no shadow'); });
+  const m = part.materials[0], at = t => { part.update(0.1, t); return m.emissiveIntensity; };
   for (const [n, hz] of [[3, 1], [2, 2], [1, 3]]) {
-    const part = f.build(finale.view(lv, { alarm: n })['finale.flare']);
-    const orb = part.object.getObjectByName('orb'), beam = part.object.getObjectByName('beam');
-    orb.geometry.computeBoundingSphere(); assert.ok(Math.abs(orb.geometry.boundingSphere.radius - 0.9) < 0.02, 'orb r 0.9');
-    assert.equal(orb.material.color.getHex(), 0xff5a3c); assert.equal(orb.material.emissive.getHex(), 0xff5a3c);
-    beam.geometry.computeBoundingBox(); const bb = beam.geometry.boundingBox; assert.ok(Math.abs(bb.max.y - bb.min.y - 6) < 1e-6, 'column 6 high');
-    assert.ok(beam.material.transparent && beam.material.opacity < 1 && !beam.material.depthWrite);
-    part.object.traverse(o => { if (o.isMesh) assert.ok(!o.castShadow, 'no shadow'); });
-    const m = part.materials[0], at = t => { part.update(0.1, t); return m.emissiveIntensity; };
+    flags.alarm = n;
+    assert.equal(finale.flareHz(n), hz);
     const a = at(0.1 / hz), b = at(0.6 / hz), c = at(1.1 / hz);
-    assert.ok(Math.abs(a - b) > 0.3, `pulses at ${hz} Hz`); assert.ok(Math.abs(a - c) < 1e-9, `period 1/${hz} s`);
+    assert.ok(Math.abs(a - b) > 0.3, `alarm ${n}: pulses at ${hz} Hz`); assert.ok(Math.abs(a - c) < 1e-9, `alarm ${n}: period 1/${hz} s`);
     assert.ok(Math.min(a, b) > 0, 'glows in daylight');
-    part.dispose();
   }
+  // 同一刻換旗標就換頻率（t = 0.25：1 Hz 在波峰，2 Hz 在中線）
+  flags.alarm = 3; const slow = at(0.25); flags.alarm = 2; const fast = at(0.25);
+  assert.ok(Math.abs(slow - fast) > 0.3, `the pulse speeds up on the same part (${slow.toFixed(2)} → ${fast.toFixed(2)})`);
+  part.dispose();
 });
 
 test('countdown n=3 live: flare blinks in, visible islanders look at FLARE_AT and say ！, the digit 3 shows on 101 for 1.2 s real, everyone released; ≤ 5 s real at montage speed', async () => {
@@ -147,7 +156,7 @@ test('countdown n=2 / n=1: only the digit (≤ 2 s real)', async () => {
   for (const n of [2, 1]) {
     const { show, run, bubblesLog } = await placedShow();
     await run([countdownEvent(3)], { instant: true });
-    const n0 = bubblesLog.length;
+    const n0 = bubblesLog.length, flare0 = show.stage.partObject('finale.flare');
     let lookers = 0;
     const update = show.update.bind(show);
     show.update = (dt, t) => { update(dt, t); lookers = Math.max(lookers, looking(show).length); };
@@ -157,6 +166,7 @@ test('countdown n=2 / n=1: only the digit (≤ 2 s real)', async () => {
     assert.equal(lookers, 0);
     assert.equal(show.stage.flags.alarm, n);
     assert.ok(show.stage.partKeys().includes('finale.flare'), 'the flare stays');
+    assert.equal(show.stage.partObject('finale.flare'), flare0, `n=${n}: the same flare, not replaced (no white re-blink)`);
     assert.ok(show.elapsed <= 2, `≤ 2 s real (${show.elapsed.toFixed(2)})`);
   }
 });
@@ -301,7 +311,7 @@ async function missileShow(outcome) {
 
 test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-flight, then ♥+jump (shield) / ？ then ♪ (deflect) / mood lie (hit); camera on the overview at the end', async () => {
   for (const outcome of ['shield', 'deflect', 'hit']) {
-    const { show, run, bubblesLog, worldLog, rig, e } = await missileShow(outcome);
+    const { show, run, bubblesLog, worldLog, rig, e, people } = await missileShow(outcome);
     const crowdSize = Math.min(24, islanders({ roster: show.roster }).length);
     assert.ok(crowdSize >= 6, `${outcome}: islanders (${crowdSize})`);
     const n0 = bubblesLog.length, w0 = worldLog.length, r0 = rig.log.length, said = [], main0 = show.stage.partObject('tower.main'), shield0 = show.stage.partObject('tower.shield');
@@ -351,6 +361,15 @@ test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-f
     assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${outcome}: everyone released`);
     const cam = rig.log.slice(r0);
     assert.ok(cam.length && cam.every(([k]) => k === 'home'), `${outcome}: the camera stays on the overview (${cam.map(c => c[0]).join(' ')})`);
+    if (outcome === 'hit') {
+      // 「姿勢持續到標題卡」（設計 §6，最終審稿）：無頭的 world 跟 app 的 showWorld 一樣把 mood 交給 people.setMood；
+      // 演完再走 3 秒（標題卡前的 hold、標題卡底下），日常的人一個都不在島上滑
+      assert.equal(people.mood, 'lie', 'the islanders lie down (world → people.setMood)');
+      const home = everyone(show).filter(m => m.walker && m.mode === 'home' && !m.hidden), p0 = home.map(m => ({ ...m.pos }));
+      for (let i = 0; i < 90; i++) show.update(1 / 30, 3000 + i / 30);
+      const slid = home.map((m, i) => Math.hypot(m.pos.x - p0[i].x, m.pos.z - p0[i].z)).filter(d => d > 0.01);
+      assert.equal(slid.length, 0, `nobody glides on their back after the hit (${slid.map(d => d.toFixed(2)).join(' ')})`);
+    }
   }
 });
 

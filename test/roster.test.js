@@ -819,3 +819,17 @@ test('walking past someone standing on the line keeps ≥ 0.23 from them, never 
   assert.ok(gap(ms[0].pos, R) < 0.1, 'arrived');
   assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`); assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
 });
+
+// 最終章 §6（最終審稿）：命中後全島躺平「姿勢持續到標題卡」——people.mood 是 'lie' 時名冊不推日常（不散步、不走趟、不被錯開），
+// 躺著的人不在島上滑；心情回 normal（RESET 經 app 的 showWorld、或 roster.reset 重來）就接著走
+test('people mood lie freezes every home-mode people walker (wander, stand); mood normal resumes the daily walk', () => {
+  const { roster, people } = setup();
+  roster.declare('k', kids(4)); roster.declare('q', queue(3)); run(roster, 30);
+  const ms = [...roster.members('k'), ...roster.members('q')], at = () => ms.map(m => ({ ...m.pos }));
+  people.setMood('lie');
+  const before = at(); run(roster, 90, 10);
+  ms.forEach((m, i) => assert.ok(gap(m.pos, before[i]) <= 0.01, `${m.key}#${m.i} lies still (moved ${gap(m.pos, before[i]).toFixed(3)})`));
+  people.setMood('normal');
+  const lying = at(); run(roster, 90, 20);
+  assert.ok(ms.some((m, i) => gap(m.pos, lying[i]) > 0.05), 'back on their feet, someone walks again');
+});

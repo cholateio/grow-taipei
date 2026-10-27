@@ -40,7 +40,7 @@ export function createGame({ spec, engine, endings, ui, show, onFinished, onLeve
     if (!current()) return false;
     if (engine.isComplete(state)) {
       // 飛彈倒數：第 8 個放完後全島再自己長幾回合（spec.CLOSING_TURNS），晚放的東西才來得及長大；演成蒙太奇（§4.4）。
-      // 每回合最前面 101 頭上冒倒數字 3、2、1（設計 §4）
+      // 每回合最前面 101 頭上冒一個倒數字（一回合一個：3 → 2 → 1，設計 §4）
       for (let i = 0; i < (spec.CLOSING_TURNS ?? 0); i++) {
         const c = engine.advance(state, spec); state = c.state; ui.setBusy(true);
         await play([countdownEvent(3 - i), ...c.events], { montage: true });

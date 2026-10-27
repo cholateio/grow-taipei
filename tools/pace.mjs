@@ -6,14 +6,21 @@
 // 放置回合上限（裁決 R17）：50 + 8 × max(0, ◆ 個數 − 1)——一回合三個 ◆ 最多 66 s；◆ 個數看 mark 的 info.key
 // 劇本秒數 = 不含鏡頭 focus 拍的秒數（跟各物品測試的 secs 同一把尺，helpers/show.js 的 scriptElapsed）再扣掉 turn.js 補的空拍（mark 的 info.gap）；
 // ◆ 關鍵劇本（info.key）與 101 跳階（settle）不受 4.5 s 限，只印出來
+// 最終章（計畫 5 任務 8，設計 §10）：倒數三回合之後多演終局回合（飛彈＋真結局尾聲，finale: true，1 倍速）一列「終局 x/22 s」，
+//   再印「最終章 x s」＝倒數三回合＋終局（給使用者對照改版前的 51.0／52.6，不設門檻）；合計含終局。
+//   主迴圈之後另跑兩局固定的壞結局（test/helpers/endings.js 的 EXAMPLE.hit／deflect：放置與倒數瞬間演完、終局 live）各一列「終局 x/10 s」。
+//   超過 22／10 都算失敗
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, closingEvents, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
+import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45／20 → 50／22；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）、
 // 倒數 22 → 30（蒙太奇整串 2 倍速）；放置回合的非關鍵劇本 ≤ 4.5 s
-const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
+const MIN = 4, MAX = 50, KEY_EXTRA = 8, CLOSING_MAX = 30, WARN_OVER = 0.3;
+// 終局回合（設計 §10）：真結局（飛彈＋尾聲）≤ 22 s、壞結局（只有飛彈）≤ 10 s；FINAL_BEFORE：改版前的倒數三回合合計（兩條正解，對照用）
+const FINALE_MAX = 22, BAD_FINALE_MAX = 10, FINAL_BEFORE = '51.0／52.6';   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 const args = new Set(process.argv.slice(2));
 const verbose = args.has('--verbose'), check = args.has('--check');
 const name = id => spec.ITEMS[id].name;
@@ -28,7 +35,7 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
   let state = createState(spec);
   const steps = [...order.map(id => ['place', id]), ...Array.from({ length: spec.CLOSING_TURNS }, () => ['advance'])];
   const cells = [], details = [];
-  let total = 0;
+  let total = 0, closing = 0;   // closing：倒數三回合＋終局（最終章）
   for (const [i, [kind, id]] of steps.entries()) {
     const r = kind === 'place' ? place(state, id, spec) : advance(state, spec); state = r.state;
     // 倒數回合最前面是遊戲層插的倒數字（countdown，101 頭上 3、2、1——跟 game.js 一樣算進秒數）
@@ -38,7 +45,7 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
     const secs = show.elapsed, scripted = scriptElapsed();   // 整回合（含鏡頭平移、空拍、回全景）；不含 focus 拍的
     // 第 j 個事件：[事件秒數, 劇本秒數]（最後一個量到回合結束）
     const span = j => [(marks[j + 1]?.[1] ?? secs) - marks[j][1], (marks[j + 1]?.[2] ?? scripted) - marks[j][2] - (marks[j][3]?.gap ?? 0)];
-    total += secs;
+    total += secs; if (kind === 'advance') closing += secs;
     const k = i - order.length + 1;   // 倒數第幾回合（放置回合 ≤ 0）
     const head = kind === 'place' ? `${i + 1} ${name(id)}` : `倒數 ${k}`;
     const keys = marks.filter(m => m[3]?.key).length, cap = kind === 'place' ? MAX + KEY_EXTRA * Math.max(0, keys - 1) : CLOSING_MAX;
@@ -62,8 +69,36 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
       details.push(`  ${head}：${parts.join('、')}`);
     }
   }
-  console.log(`${ending.title}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
+  // 終局回合（game.js：倒數演完 → show.turn(finaleEvents(resolve(state)), { finale: true })）
+  const fin = await finale(state);
+  total += fin.secs; closing += fin.secs;
+  cells.push(`終局 ${s1(fin.secs)}/${FINALE_MAX} s`);
+  if (fin.secs > FINALE_MAX) failures.push(`${ending.title} 終局 ${s1(fin.secs)} s（> ${FINALE_MAX}）`);
+  if (verbose) details.push(`  終局：${fin.parts.join('、')}`);
+  console.log(`${ending.title}  ${cells.join(' | ')} | 合計 ${s1(total)} s | 最終章 ${s1(closing)} s（倒數三回合＋終局；原本 ${FINAL_BEFORE}）`);
   for (const d of details) console.log(d);
+}
+
+// 兩局固定的壞結局：放置與倒數瞬間演完，終局（只有飛彈）live
+for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹歪']]) {
+  show.reset();
+  let state = createState(spec);
+  const order = EXAMPLE[outcome];
+  for (const id of order) { const r = place(state, id, spec); state = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = advance(state, spec); state = r.state; await run(closingEvents(i, r.events), { montage: true, instant: true }); }
+  const fin = await finale(state);
+  console.log(`${title}（${order.map(name).join('、')}）  終局 ${s1(fin.secs)}/${BAD_FINALE_MAX} s`);
+  if (verbose) console.log(`  終局：${fin.parts.join('、')}`);
+  if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的飛彈是 ${fin.ending.missile}`);
+  if (fin.secs > BAD_FINALE_MAX) failures.push(`${title} 終局 ${s1(fin.secs)} s（> ${BAD_FINALE_MAX}）`);
+}
+
+// 終局回合 live（finale: true）：回 { secs（整回合真實秒數）, parts（每個事件的秒數，--verbose 印）, ending }
+async function finale(state) {
+  const { events, ending } = finaleStep(state), marks = [];
+  await run(events, { finale: true, onMark: e => marks.push([e, show.elapsed]) });
+  const secs = show.elapsed;
+  return { secs, ending, parts: marks.map(([e, at], j) => `${e.kind}${e.outcome ? ` ${e.outcome}` : ''}${e.ending ? ` ${e.ending}` : ''} ${s1((marks[j + 1]?.[1] ?? secs) - at)}`) };
 }
 
 for (const w of warnings) console.log(`⚠ ${w}`);

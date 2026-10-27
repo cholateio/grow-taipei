@@ -8,7 +8,8 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { missile, resolve } from '../src/rules/endings.js';
-import { headlessShow, turnSteps, overviewRig, gameInvariants } from './helpers/show.js';
+import { headlessShow, turnSteps, closingEvents, overviewRig, gameInvariants } from './helpers/show.js';
+import { finaleStep } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const FLASH = 0.4;   // 測試閃光的峰值 0.55、谷底 0.04；待命的淡輪廓 0.08–0.2 不會越過
@@ -16,7 +17,10 @@ const CHAIN = [['token', 7], ['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7],
 
 // 一條正解 live 演完：每回合記下演完後的等級、零件鍵、風車轉不轉、電纜亮不亮、罩子露不露出來，和這回合罩子閃了幾下；
 // 每個事件演完（下一個事件的 mark 拍、或回合結束）再記一次零件鍵與電纜亮不亮（events：{ e: 'bulb8' 之類, keys, cableLit }）——
-// 同一回合裡先後發生的兩節（例如燈泡 Lv8 鋪電纜、晶片 Lv6 通電）也分得出是哪個事件帶出來的
+// 同一回合裡先後發生的兩節（例如燈泡 Lv8 鋪電纜、晶片 Lv6 通電）也分得出是哪個事件帶出來的。
+// 倒數回合照 game.js 演（closingEvents：最前面是倒數字 3、2、1）；倒數演完再演終局回合（飛彈＋尾聲，finale: true），
+// 終局之前玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：回合開頭會放開記號，終局照樣回全景）；不變式一路查到終局回合演完。
+// finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, countdowns（倒數回合演到的倒數字）, flags, keys, script（演完還在劇本手上的人數）}
 async function playChain(order) {
   const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), update = show.update;
   let flashes = 0, high = false;
@@ -30,6 +34,7 @@ async function playChain(order) {
   const turns = [], grows = [], events = [], cableLit = () => show.stage.partObject('chip.cable')?.children.length === 2;
   const tag = e => (e.kind === 'grow' ? `${e.item}${e.to}` : e.kind === 'placed' ? `${e.item}1` : e.kind);
   let prev = null;
+  const countdowns = [];
   const done = () => { if (prev) events.push({ e: tag(prev), keys: new Set(show.stage.partKeys()), cableLit: cableLit() }); prev = null; };
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
@@ -37,7 +42,8 @@ async function playChain(order) {
     const turn = `${order.join('>')} turn ${i + 1}`;
     inv.label(turn);
     grows.push(...r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`));
-    await run([...r.events, { kind: 'settle' }], { montage: i >= order.length, onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); } });
+    const montage = i >= order.length;
+    await run(montage ? closingEvents(i - order.length, r.events) : [...r.events, { kind: 'settle' }], { montage, onMark: e => { done(); prev = e; inv.label(`${turn} [${tag(e)}]`); if (e.kind === 'countdown') countdowns.push(e.n); } });
     done(); inv.turnEnd();
     const z0 = blades(); for (let f = 0; f < 6; f++) show.update(1 / 30, 2000 + f / 30);
     const shield = show.stage.partObject('tower.shield')?.children[0];
@@ -48,7 +54,16 @@ async function playChain(order) {
     });
     assert.deepEqual(show.stage.lv, s.lv, `turn ${i + 1}: stage levels equal the engine`);
   }
-  return { turns, grows, events, state: s, inv };
+  const { events: fin, ending } = finaleStep(s), label = `${order.join('>')} finale`;
+  inv.label(label);
+  cam.rig.cancel();
+  await run(fin, { finale: true, onMark: e => inv.label(`${label} [${e.kind}]`) });
+  inv.turnEnd();
+  const finale = {
+    ending, events: fin, countdowns, secs: show.elapsed, flags: { ...show.stage.flags }, keys: new Set(show.stage.partKeys()), busy: show.busy,
+    script: show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.mode === 'script').length,
+  };
+  return { turns, grows, events, state: s, inv, finale };
 }
 let played = null;
 const playBoth = () => (played ??= (async () => { const out = []; for (const order of SOLUTIONS) out.push(await playChain(order)); return out; })());
@@ -113,6 +128,22 @@ test('both solutions end on the shield: every item MAX, no disaster flag, cyber 
     assert.ok(end.keys.has('sat.chest')); assert.equal(end.keys.has('sat.rocksRing'), state.flags.ratBranch === 'alien', `${name}: rocks ring`);
   }
   assert.deepEqual(branches.sort(), ['alien', 'cyber']);
+});
+
+// 最終章（計畫 5 任務 8，設計 §10）：倒數三回合各演到一個倒數字（3、2、1），終局回合演矽盾擋下＋各自的尾聲，演完回全景（turnEnd 查）、
+// 劇本手上沒人；終局前拖過鏡頭也一樣（不丟錯）。不穿牆、不瞬移、字在畫面裡由下面兩個測試查（不變式掛到終局回合演完）
+test('both solutions live through the finale: countdown events, finale turn, game invariants clean, ends on the overview; a camera grab before the finale does not break it', async () => {
+  for (const [n, { finale, inv }] of (await playBoth()).entries()) {
+    const name = SOLUTIONS[n].join('>');
+    assert.deepEqual(finale.countdowns, [3, 2, 1], `${name}: one countdown digit per closing turn`);
+    assert.deepEqual(finale.events.map(e => e.kind), ['missile', 'epilogue'], `${name}: missile then epilogue`);
+    assert.equal(finale.flags.missile, 'shield'); assert.equal(finale.flags.epilogue, finale.ending.id);
+    assert.ok(finale.keys.has(finale.ending.id === 'cyber' ? 'finale.car' : 'finale.ufos'), `${name}: the ${finale.ending.id} epilogue parts`);
+    assert.ok(!finale.keys.has('finale.flare'), `${name}: the flare is out`);
+    assert.ok(finale.secs > 8 && finale.secs <= 22, `${name}: the finale turn played live (${finale.secs.toFixed(1)} s)`);
+    assert.equal(finale.busy, false); assert.equal(finale.script, 0, `${name}: everyone back to daily life`);
+    assert.deepEqual(inv.camera.filter(c => c.includes('finale')), [], `${name}: the finale ends on the overview`);
+  }
 });
 
 test('both solutions live: nobody stays inside a building > 1.5 s, no daily member teleports, every turn ends at the overview with the 101 top in frame', async () => {

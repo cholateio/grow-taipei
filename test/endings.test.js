@@ -94,3 +94,28 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.equal(missile(s, spec), 'hit');
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
 });
+
+// 最終章（計畫 5 任務 8）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
+// 照順序放完、再倒數 CLOSING_TURNS 回合，終局回合只有飛彈（壞結局沒有尾聲）
+test('EXAMPLE.hit / EXAMPLE.deflect orders resolve to missile hit / deflect (pinned from the solver enumeration)', async () => {
+  const { enumerate } = await import('../src/solver/run.js'), { advance } = await import('../src/rules/engine.js');
+  const { EXAMPLE, finaleStep } = await import('./helpers/endings.js'), { finaleEvents } = await import('../src/game.js');
+  const all = enumerate(spec);
+  for (const outcome of ['hit', 'deflect']) {
+    const first = all.find(r => !r.error && r.ending.missile === outcome);
+    assert.deepEqual(EXAMPLE[outcome], first.order, `${outcome}: the first ${outcome} order in the enumeration`);
+    let s = createState(spec);
+    for (const id of EXAMPLE[outcome]) s = place(s, id, spec).state;
+    for (let i = 0; i < spec.CLOSING_TURNS; i++) s = advance(s, spec).state;
+    const { events, ending } = finaleStep(s);
+    assert.equal(ending.missile, outcome); assert.deepEqual(ending, resolve(s, spec));
+    assert.deepEqual(events, finaleEvents(ending));
+    assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['missile', outcome]], `${outcome}: a bad ending has no epilogue`);
+  }
+});
+// npm run shot 的 hit／deflect 截圖就是這兩局（package.json 的 shot 清單）
+test('the hit / deflect screenshots play the EXAMPLE orders', async () => {
+  const { readFileSync } = await import('node:fs'), { EXAMPLE } = await import('./helpers/endings.js');
+  const shot = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts.shot.split(/\s+/);
+  for (const outcome of ['hit', 'deflect']) assert.ok(shot.includes(`${outcome}=auto=${EXAMPLE[outcome].join(',')}`), `${outcome}= in the shot list`);
+});

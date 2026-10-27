@@ -1,4 +1,4 @@
-// GROW 風格的頭頂泡泡（！ …… ♥ ♪ ？、圖框、倒數 3 2 1、跑馬燈文字）與「LEVEL UP」字樣，都是跟著頭走的 CSS2D 標籤。
+// GROW 風格的頭頂泡泡（！ …… ♥ ♪ ？、圖框、倒數字 3／2／1——一個倒數回合一個、跑馬燈文字）與「LEVEL UP」字樣，都是跟著頭走的 CSS2D 標籤。
 import { CSS2DObject } from '../../vendor/three/addons/renderers/CSS2DRenderer.js';
 import { ICONS, BUBBLE_ICONS } from '../ui/icons.js';
 

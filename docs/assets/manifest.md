@@ -71,6 +71,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 棒球 | 6 | `baseball.fireworks` | 程式（跨年煙火） | — | 現有 |
 | 棒球 | 7 | `baseball.main`、`baseball.deco`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（擴建：同一個底、高 1.2）＋程式 LED 帶（`rail` 一圈霓虹藍）、觀眾 5（裁決 R13） | CC0 | 換新 |
 | 棒球 | 8 ◆ | `baseball.platform`、`baseball.riders` | 程式（環狀線邊的高架月台、雨棚、站名牌、接到巨蛋門口的磚道；`Platform_4x1_Empty.glb` 沒用：月台要沿徑向斜放、一端接軌道一端上岸，程式畫比較好對齊）；坐新線來的觀眾 2（門口留 3，合計 5，裁決 R13）= 程式名冊 | — | 換新 |
+| 結局／最終章 | 賽博尾聲 | `finale.car` | `kenney/space/craft_speederA.glb`（第四台飛天車，同代幣 Lv10 的款式；tint 紅 `0xe8322e`，`metalRed` 塗紅；零件 kind `orbit`：從海上飛進來繞 101 一圈、停上黑塔屋頂前緣，沒有 rest；?quality=low 照 orbit 的規矩不畫）。最終章其他東西（紅光、飛彈、水花、UFO、外星生物、母艦、黑塔螢幕）全是程式幾何 | CC0 | 新增（計畫 5） |
 | 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭（沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

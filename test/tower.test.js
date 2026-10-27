@@ -249,12 +249,13 @@ const labelOf = beats => {
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 6→7 yields focus(tower) + walk + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 6→6 and 7→28 yield nothing', () => {
+test('settle crossing 6→7 yields [focus(tower) ‖ walk] + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 6→6 and 7→28 yield nothing', () => {
   const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
   const beats = tower.script.settle(e, { total: 7, prevTotal: 6 }, ctx);
-  assert.deepEqual(beats.map(b => b.kind), ['focus', 'walk', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
-  // 先對著 101 那一格；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
-  assert.equal(beats[0].target, 'tower'); assert.equal(beats[3].target, 'home'); assert.equal(beats[3].final, false); assert.equal(beats[3].dur, 0.8);
+  assert.deepEqual(beats.map(b => b.kind), ['together', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
+  // 先對著 101 那一格（鏡頭飛的同時他就走，計畫 5b 任務 4）；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
+  assert.deepEqual(beats[0].beats.map(b => b.kind), ['focus', 'walk']);
+  assert.equal(beats[0].beats[0].target, 'tower'); assert.equal(beats[2].target, 'home'); assert.equal(beats[2].final, false); assert.equal(beats[2].dur, 0.8);
   assert.equal(labelOf(beats), '101 蓋一半');
   assert.deepEqual(tower.script.settle(e, { total: 6, prevTotal: 6 }, ctx), []);
   assert.deepEqual(tower.script.settle(e, { total: 28, prevTotal: 7 }, ctx), []);

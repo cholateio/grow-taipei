@@ -315,14 +315,16 @@ export const script = {
     // 五節：站務員 ！ → 列車閃白加長成 5 節、從站後面駛出（揮手）→ 車頭 ♪ → LEVEL UP
     5(e, s, ctx) {
       const { B } = ctx, st = staffOf();
-      return [B.bubble(st, '！', 0.8), B.together([B.apply(e), B.trainDepart(), B.gesture(st, 'wave')]), B.bubble(B.trainHead(ctx), '♪', 0.9), B.levelUp('token'), B.home(st)];
+      // ！ 0.8 → 0.6、♪ 0.9 → 0.7（計畫 5b 任務 4，賽博第 6 回合 ≤ 50 s）
+      return [B.bubble(st, '！', 0.6), B.together([B.apply(e), B.trainDepart(), B.gesture(st, 'wave')]), B.bubble(B.trainHead(ctx), '♪', 0.7), B.levelUp('token'), B.home(st)];
     },
     // 高鐵：站務員 ！ → 列車閃白換成白底橘線的高鐵、從站後面駛出 → 車頭 ♪、站務員跳起來 → LEVEL UP
     6(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
-        B.bubble(st, '！', 1.0), B.together([B.apply(e), B.trainDepart()]),
-        B.together([B.bubble(B.trainHead(ctx), '♪', 1.2), B.gesture(st, 'jump')]), B.levelUp('token'), B.home(st),
+        // ！ 1.0 → 0.8、♪ 1.2 → 1.1（計畫 5b 任務 4，外星第 6 回合 ≤ 50 s；一級至少 3 秒）
+        B.bubble(st, '！', 0.8), B.together([B.apply(e), B.trainDepart()]),
+        B.together([B.bubble(B.trainHead(ctx), '♪', 1.1), B.gesture(st, 'jump')]), B.levelUp('token'), B.home(st),
       ];
     },
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、

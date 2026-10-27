@@ -231,7 +231,8 @@ export const script = {
     // 園區：工程師轉頭看廠房旁的空地 → 閃白三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）→ ♪
     3(e, s, ctx) {
       const { B } = ctx;
-      return [engineersLook(B, offset(AT, 0.6, 0)), B.apply(e), ...detective(ctx, s), B.bubble(eng(0), '♪', 0.9), B.home(ENGINEERS), B.levelUp('chip')];
+      // ♪ 0.9 → 0.7（計畫 5b 任務 4，第 6 回合 ≤ 50 s）
+      return [engineersLook(B, offset(AT, 0.6, 0)), B.apply(e), ...detective(ctx, s), B.bubble(eng(0), '♪', 0.7), B.home(ENGINEERS), B.levelUp('chip')];
     },
     // 星群總部（鮮奶 ≥4：喝鮮奶長大的人才）：工程師圖框「鮮奶」→ 閃白弧形玻璃總部 → 大家轉頭看、♥
     4(e, s, ctx) {

@@ -174,6 +174,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
 
   // A*：八方向，斜走要兩個正交鄰居都可走；啟發用 octile 距離（格數單位）。
   // 起點、終點各可以是幾個格點（[格點, 從點走到格點的距離（格數）]）：走到任何一個終點格點就停
+  let lastDone = null;
   function astar(starts, goals) {
     const g = new Float64Array(N * N).fill(Infinity), came = new Int32Array(N * N).fill(-1), done = new Uint8Array(N * N);
     const goal = new Set(goals.map(([k]) => k));
@@ -197,7 +198,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
         if (ng < g[nk]) { g[nk] = ng; came[nk] = k; heap.push(nk, ng + h(nk)); }
       }
     }
-    if (goalK < 0) return null;
+    if (goalK < 0) { lastDone = done; return null; }   // 找不到：記下從起點走得到的那一塊（route 的 slip 不再從那裡試）
     const cells = []; for (let k = goalK; k !== -1; k = came[k]) cells.push(k);
     return cells.reverse();
   }
@@ -234,11 +235,29 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     const rescued = !walkable(from.x, from.z), start = rescued ? escape(from) : from;
     if (rescued) head.push(start);
     const end = nearestWalkable(to);
-    const a = anchors(start), b = anchors(end), cells = a.length && b.length ? astar(a, b) : null;
+    const a = anchors(start), b = anchors(end);
+    let cells = a.length && b.length ? astar(a, b) : null, via = null;
+    if (!cells && b.length) ({ cells, via } = slip(start, a.length ? lastDone : new Uint8Array(N * N), b));
     if (!cells) return head;                                   // 被 footprint 隔斷、到不了：留在原地
     // 起點、終點的格點也排進去：拉直時從起點直接接第二格會擦過牆角的話，退回先走到起點的格點（那一段一定看得到）
-    const pulled = pull([start, ...cells.map(pointOf), end]).slice(1);
+    const pulled = pull([start, ...(via ? [via] : []), ...cells.map(pointOf), end]).slice(1);
     return densify([...head, ...pulled.map(p => ({ x: p.x, y: groundY(p.x, p.z), z: p.z }))]);
+  }
+
+  // 起點在格點連不出去的夾縫裡（電工沿手畫的主路走進兩個夜市攤位外擴 PAD 之間的窄縫：點本身可走，但 0.3 一格的格點過不去，
+  // A* 從那一塊出不去——計畫 5b 任務 4 量到燈泡 Lv7 上車前他走不到站前，0.45 秒跳 4.6 公尺上車）：
+  // 附近 ESCAPE_MAX 內一圈圈找一個直線走得到（不擦過外擴 footprint）、格點又連得到終點的點，先直線走過去再照常找路。
+  // dead：已經知道連不到終點的格點（A* 走過的那一塊），不重試
+  function slip(start, dead, goals) {
+    for (let rr = NEAR_STEP; rr <= ESCAPE_MAX + 1e-9; rr += NEAR_STEP) for (let k = 0; k < NEAR_DIRS; k++) {
+      const t = 2 * Math.PI * k / NEAR_DIRS, p = { x: start.x + Math.cos(t) * rr, z: start.z + Math.sin(t) * rr };
+      if (!walkable(p.x, p.z) || !clear(start, p)) continue;
+      const a = anchors(p).filter(([q]) => !dead[q]); if (!a.length) continue;
+      const cells = astar(a, goals);
+      if (cells) return { cells, via: { x: p.x, y: groundY(p.x, p.z), z: p.z } };
+      for (let q = 0; q < N * N; q++) if (lastDone[q]) dead[q] = 1;
+    }
+    return { cells: null, via: null };
   }
 
   // 拉直後一段路的地面不是直線（過拱橋、上下階梯）：每隔 DENSE 補一個貼地的點（xz 不變），游標的直線內插才不會陷進橋面。
@@ -318,16 +337,22 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   }
 
   // 走動中的兩人太近就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）；
-  // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）
+  // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）。
+  // 本來在外擴 footprint 外的人也不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：計畫 5b 任務 4 量到老鼠在窩邊）；
+  // 一邊推不動（貼著牆）就由另一邊讓開整段（同 separateStanding），兩個人才不會在窄道上疊在一起
   function separate(members, _dt) {
     const walkers = members.filter(m => m.walking === true);
-    // 本來在外擴 footprint 外的人不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：選擇帶動升級任務 4 量到老鼠在窩邊）
-    const nudge = (p, x, z) => { const on = walkable(x, z); if (on || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)))) { p.x = x; p.z = z; if (on) p.y = groundY(x, z); } };
+    const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
+    const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
       if (d >= SEPARATION) continue;
       const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (SEPARATION - d) / 2;
-      nudge(p, p.x - ux * push, p.z - uz * push); nudge(q, q.x + ux * push, q.z + uz * push);
+      const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
+      const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
+      if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
+      else if (okP) put(p, ...(can(p, ...at(p, -1, 2)) ? at(p, -1, 2) : at(p, -1, 1)));
+      else if (okQ) put(q, ...(can(q, ...at(q, 1, 2)) ? at(q, 1, 2) : at(q, 1, 1)));
     }
   }
 

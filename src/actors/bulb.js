@@ -26,7 +26,6 @@ const STATION = anchorWorld('token');
 const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市、捷運站
 const ISLAND_ZOOM = 0.8;   // 鏡頭到衛星島拉近 0.8（島和支線都要進畫面，同代幣 Lv7）
 const QUEUE_SPEED = 2.4;   // Lv4 島民快步去夜市排隊（一般走路 1.6；一級 3–5 秒）
-const FOOT = offset(TOWER, 0.95, 0.25);   // 101 腳下
 const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
 export const ISLAND_LV = 7;   // 離岸風電啟動那一級起，電工住在風車島上
 export const LIGHTING_SPEED = 2.8;   // 點燈這段電工快走（一般走路 1.6；2.4 → 2.8 是節奏驗收的裁定，見規格 §12）
@@ -341,11 +340,15 @@ export const script = {
         B.home([islander(0), islander(1)]), levelUpAtHome(B),
       ];
     },
-    // 全島 LED（棒球 ≥4）：電工走到 101 腳下 → ！ 的同時閃白全島 LED、101 燈光秀 → 入夜
-    // （選擇帶動升級：燈泡放下當回合就長，他巡路剛開始、常在主島另一頭，走到 101 腳下要 2.7 s——！ 跟閃白一起冒，一級才收在 4.5 s 內）
+    // 全島 LED（棒球 ≥4）：回全景 → 電工在原地轉頭看 101 → ！ 的同時閃白全島 LED、101 燈光秀 → 入夜 → LEVEL UP（全景裝得下整島與 101）。
+    // 計畫 5b 任務 4（節奏）：以前走去 101 腳下——放下當回合就長，他常在主島另一頭（外星第 6 回合他在西邊的死角，走最近一站也要 5 秒），
+    //   真的回合裡要 8–9 秒（外星第 6 回合 59 s > 50）；改成不走路，轉頭 1.4 s（一級至少 3 秒）
     5(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
-      return [B.walk(m, FOOT), B.together([B.bubble(m, '！', 0.6), B.apply(e)]), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb')];
+      return [
+        B.focus('home'), B.gesture(m, 'look', 1.4, { at: TOWER }),
+        B.together([B.bubble(m, '！', 0.6), B.apply(e)]), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb'),
+      ];
     },
     // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）、♪（嗡嗡響）
     6(e, s, ctx) {

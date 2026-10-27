@@ -224,8 +224,9 @@ export const script = {
     const { B } = ctx, hero = once(c => heroAt(c, FOOT)), front = c => frontOf(AT, FRONT_R, c.nav);
     // 換零件前回全景（§14.4）：停 0.8 s 等鏡頭飛到；天際線先用新階段的頭頂，換上去的塔頂與 LEVEL UP 才不出框
     const skyline = AT.y + body(stage).top + LABEL_UP;
+    // 鏡頭飛去 101 的同時他就出發（計畫 5b 任務 4：外星第 6 回合 ≤ 50 s——跨門檻那回合他常要走 2–3 秒，以前等鏡頭到了才走）
     return [
-      B.focus('tower'), B.walk(hero, front), B.gesture(hero, 'build', { at: AT }),
+      B.together([B.focus('tower'), B.walk(hero, front)]), B.gesture(hero, 'build', { at: AT }),
       B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero),
     ];
   },

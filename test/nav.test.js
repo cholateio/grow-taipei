@@ -284,3 +284,26 @@ test('yieldOffset: sidestep away from someone ahead within 0.5, to a lateral cle
   // 前方兩個人：照最近的那個讓
   assert.equal(yieldOffset(p, yaw, [{ x: 0.05, z: 0.4 }, { x: -0.02, z: 0.2 }]), side({ x: -0.02, z: 0.2 }));
 });
+
+// 計畫 5b 任務 4：夜市四攤（外擴 PAD 之後）跟格邊之間的夾縫——點走得進去（電工沿手畫的主路），0.3 一格的格點連不出去，
+// 以前 route 只回起點（燈泡 Lv7 他走不到站前，0.45 秒跳 4.6 公尺上車）。現在先直線走到附近連得通的點，再照常找路到終點
+test('route out of a pocket the grid cannot leave (night-market stalls): reaches the goal instead of staying put', () => {
+  const nav = createNav({ rnd: () => 0.5 }), X = 3.39023011444505;
+  nav.setFootprints([{ x: X, z: 3.24, w: 0.5, d: 0.4 }, { x: X + 0.5, z: 3.74, w: 0.5, d: 0.4 }, { x: X - 0.5, z: 3.74, w: 0.5, d: 0.4 }, { x: X, z: 4.24, w: 0.5, d: 0.4 }, { x: X, z: 3.74, w: 0.5, d: 0.6 }]);
+  const goal = { x: 0.6, z: -1.5 }, end = nav.nearestWalkable(goal);
+  for (const from of [{ x: 4.15, z: 3.12 }, { x: 4.15, z: 2.99 }]) {
+    const path = nav.route(from, goal), last = path.at(-1);
+    assert.ok(Math.hypot(last.x - end.x, last.z - end.z) < 1e-6, `from ${JSON.stringify(from)}: ends at the goal (${last.x.toFixed(2)}, ${last.z.toFixed(2)}), ${path.length} points`);
+    assert.ok(path.slice(2).every(p => !nav.inFootprint(p.x, p.z)), 'never through a padded footprint after leaving the wall');
+  }
+});
+// 計畫 5b 任務 4：走路互推時一邊貼著牆（推過去會進外擴 footprint）——另一邊讓開整段，不疊在一起；貼牆的人也不被推進 PAD
+test('separate: when one walker is against a wall the other takes the whole push; nobody is pushed into a padded footprint', () => {
+  const nav = createNav({ rnd: () => 0.5 });
+  nav.setFootprints([{ x: 0, z: 0, w: 1, d: 1 }]);   // 外擴後半寬 0.62
+  const a = { pos: { x: 0.63, y: TOP, z: 0 }, walking: true }, b = { pos: { x: 0.78, y: TOP, z: 0 }, walking: true };
+  assert.ok(!nav.inFootprint(a.pos.x, a.pos.z) && nav.inFootprint(a.pos.x - 0.05, a.pos.z), 'a is right against the padded wall');
+  nav.separate([a, b], 0.1);
+  assert.ok(!nav.inFootprint(a.pos.x, a.pos.z), `a stays outside the pad (${a.pos.x.toFixed(3)})`);
+  assert.ok(Math.hypot(b.pos.x - a.pos.x, b.pos.z - a.pos.z) >= SEPARATION - 1e-9, `apart ${Math.hypot(b.pos.x - a.pos.x, b.pos.z - a.pos.z).toFixed(3)}`);
+});

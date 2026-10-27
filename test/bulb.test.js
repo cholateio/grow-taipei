@@ -538,11 +538,14 @@ test('quality low: neon parts drop their strips and keep only the sign models', 
   }
   assert.ok(spawned.length >= 2, 'signs still load at low');
 });
-// 審稿（裁決 R17）：◆ Lv7 在兩條正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）
-test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s in the real turn', async () => {
-  const { playLive, KEY_MAX } = await import('./helpers/show.js');
+// 審稿（裁決 R17）：◆ Lv7 在兩條正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）。
+// 計畫 5b 任務 4（節奏）：Lv5 全島 LED 在真的回合裡也 ≤ 4.5 s——放下當回合就長，電工常在主島另一頭，以前走去 101 腳下要 9 秒（外星第 6 回合 59 s）
+test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (script) in the real turn', async () => {
+  const { playLive, KEY_MAX, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {
-    const ev = (await playLive(order)).find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === 7);
+    const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);
+    const ev = at(7), five = at(5);
     assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn}: ${ev?.live.toFixed(2)} s`);
+    assert.ok(five && !five.e.jump && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
   }
 });

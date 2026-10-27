@@ -67,3 +67,10 @@ test('rat Lv4 branches on chip >= 8; the bite is a placement reaction while milk
 test('every item has a placed story and a story per level', () => {
   for (const id of ORDER) { assert.ok(STORIES.placed[id]); for (let n = 2; n <= ITEMS[id].max; n++) assert.ok(STORIES.grow[id][n], `${id} story ${n}`); }
 });
+// 計畫 5b（設計 2026-10-28 §3）：最後只長一輪；鮮奶不連跳（使用者：學校一下升太多級很突兀）
+import { CLOSING_TURNS } from '../src/rules/spec.js';
+test('CLOSING_TURNS is 1 and milk is steady', () => {
+  assert.equal(CLOSING_TURNS, 1);
+  assert.equal(ITEMS.milk.steady, true);
+  assert.deepEqual(ORDER.filter(id => ITEMS[id].steady), ['milk']);
+});

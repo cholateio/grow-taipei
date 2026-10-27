@@ -1,6 +1,9 @@
 // 連鎖規則引擎：place(state, id) → { state, events }。不可變，Node 與瀏覽器共用。
-// 語意見設計文件 §6.2 與物品 v2 §3：放置 → 放置反應 → 反覆掃描升級到不動為止（每物品每回合一步：+1 或跳級 +2；連 delta 最多 +2）
+// 語意見設計文件 §6.2、物品 v2 §3、選擇帶動升級（2026-10-28）§3：放置 → 放置反應 → 反覆掃描升級到不動為止
+// （每物品每回合一步：+1 或跳級 +2；連 delta 最多比回合開始高 2 級；剛放下的物品也參加，回合開始它是 0 級所以最多到 Lv2）
 // → 被 delay 擋住的記 stall → 等待 → 回合結束反應。
+// 跳級：每個物品每一級 n ≥ 3 預設都有 jump[n] = up[n−1] ∧ up[n]（spec 寫的 jump[n] 是另一條，兩條其一成立就跳）；
+// steady 的物品（鮮奶）不加預設跳級，只用 spec 寫的。
 import * as defaultSpec from './spec.js';
 import { compile } from './conditions.js';
 
@@ -53,7 +56,13 @@ function rulesOf(spec) {
     const it = spec.ITEMS[id];
     const up = {}, deps = {}, jump = {}, jumpDeps = {}, delay = {};
     for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = helperDeps(it.up[n], id, spec); }
-    for (const n in it.jump || {}) { jump[n] = compile(it.jump[n], ctx); jumpDeps[n] = helperDeps(it.jump[n], id, spec); }
+    // 預設跳級（選擇帶動升級 §3）：在 n−2、第 n−1 與第 n 級的條件同時成立就一回合 +2；spec 寫的 jump[n] 是另一條（or）。
+    // jumpDeps 照編譯後的整條條件算（升級事件的 via）
+    for (let n = 3; n <= it.max; n++) {
+      const explicit = it.jump?.[n], auto = it.steady || !it.up[n - 1] || !it.up[n] ? null : { and: [it.up[n - 1], it.up[n]] };
+      const cond = explicit && auto ? { or: [explicit, auto] } : explicit || auto;
+      if (cond) { jump[n] = compile(cond, ctx); jumpDeps[n] = helperDeps(cond, id, spec); }
+    }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
@@ -135,7 +144,7 @@ export function place(state, id, spec = defaultSpec) {
   return turn(state, id, spec, rules);
 }
 
-// 沒有放置的回合（飛彈倒數：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合）
+// 沒有放置的回合（最後一輪成長：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合，才是飛彈警告）
 export function advance(state, spec = defaultSpec) { return turn(state, null, spec, rulesOf(spec)); }
 
 function turn(state, id, spec, rules) {
@@ -151,11 +160,12 @@ function turn(state, id, spec, rules) {
     for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
   }
 
-  // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5）：每回合每個物品只走一步——在 n−2 且 jump[n] 成立就跳（+2），
-  // 否則 up 成立就 +1；剛放下的物品當回合不長；連 delta 在內一回合最多比回合開始高 2 級。
+  // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5、選擇帶動升級 §3）：每回合每個物品只走一步——在 n−2 且 jump[n]
+  // 成立就跳（+2；每一級都有預設跳級 up[n−1] ∧ up[n]，steady 的除外），否則 up 成立就 +1；連 delta 在內一回合最多比回合開始高 2 級。
+  // 剛放下的物品當回合也參加掃描（使用者 2026-10-28：要看得出「因為我現在放了 X」）：回合開始它是 0 級，所以放下當回合最多到 Lv2。
   // 照 ORDER 反覆掃到不動為止（A 升了讓 B 升的連鎖還在），掃到誰就當場決定，不為了等跳級延後 +1。
   // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。
-  const stalled = new Set(), grown = new Set(id ? [id] : []), start = turnStart.get(s);
+  const stalled = new Set(), grown = new Set(), start = turnStart.get(s);
   const delayed = (k, n) => { const d = rules.items[k].delay[n]; return !!d && d(s) && s.held[k] < 2; };   // 第 n 級還要多等一回合
   let lastGrown = null;
   for (let scan = 0; ; scan++) {
@@ -188,16 +198,16 @@ function turn(state, id, spec, rules) {
   // 只差多等一回合的物品（+1 條件成立、delay[n] 擋著，颱風賴在巨蛋）：記一個 stall 事件（演出層演「……」）；不算在等誰
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k], n = lv + 1;
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k)) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || k === id) continue;
     if (delayed(k, n) && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
   }
 
   // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；
-  // 只被「要低於／不在」擋住的不算在等誰）
+  // 只被「要低於／不在」擋住的不算在等誰；剛放的照舊不算——它當回合也參加掃描，但「還沒開始等」）
   const waits = [];
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k];
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || it.up[lv + 1](s)) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || k === id || it.up[lv + 1](s)) continue;
     const missing = missingHelpers(it.raw[lv + 1], s, k);
     if (missing.size) waits.push({ item: k, for: spec.ORDER.filter(id => missing.has(id)) });
   }

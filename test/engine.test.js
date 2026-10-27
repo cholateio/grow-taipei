@@ -21,19 +21,20 @@ test('placing sets level 1, age 0, records order and a placed event', () => {
   assert.equal(state.lv.a, 1); assert.equal(state.age.a, 0); assert.deepEqual(state.order, ['a']); assert.equal(state.turn, 1);
   assert.deepEqual(events[0], { kind:'placed', item:'a', to:1, story:'放a' });
 });
-// GROW 的節奏：每回合每個物品最多升一級，剛放下的物品當回合不升（使用者 2026-10-25）
-test('ages advance each turn; an item grows at most one level per turn and never in the turn it is placed', () => {
+// GROW 的節奏：每回合每個物品只走一步（使用者 2026-10-25）；剛放下的物品當回合也長，但最多到 Lv2（選擇帶動升級 2026-10-28 §3）
+test('ages advance each turn; an item takes one step per turn and a placed item grows in its own turn up to Lv2', () => {
   let s = createState(mini);
-  s = place(s, 'a', mini).state;          // a1（剛放，不升）
+  s = place(s, 'a', mini).state;          // a1（age 0：up[2] 要 age 1，放下當回合不成立）
   assert.equal(s.lv.a, 1);
-  const t2 = place(s, 'c', mini);          // a2 (age1)；c 剛放：c1，不升
-  s = t2.state; assert.equal(s.lv.a, 2); assert.equal(s.lv.c, 1);
-  const t3 = place(s, 'b', mini);          // a3；c 被剛放下的 b 擋住；b 剛放：b1
-  s = t3.state; assert.equal(s.lv.a, 3); assert.equal(s.lv.c, 1); assert.equal(s.lv.b, 1);
-  assert.deepEqual(t3.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['a3']);
-  const t4 = place(s, 'd', mini);          // b 條件上可以連升到 3，但一回合只升一級 → b2；c 仍被 b 擋住
-  assert.equal(t4.state.lv.b, 2); assert.equal(t4.state.lv.c, 1);
-  assert.deepEqual(t4.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['b2']);
+  const t2 = place(s, 'b', mini);          // a2（age 1）；b 剛放，同回合跟著 a ≥ 2 長到 2（預設 jump[3] 也成立，但放下當回合最多 Lv2）
+  s = t2.state; assert.equal(s.lv.a, 2); assert.equal(s.lv.b, 2);
+  assert.deepEqual(t2.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['a2', 'b2']);
+  const t3 = place(s, 'c', mini);          // a3 → b3（b3 的反應想扣 c，c 已經 1 扣不動）；c 剛放就被 b 擋住
+  s = t3.state; assert.equal(s.lv.a, 3); assert.equal(s.lv.b, 3); assert.equal(s.lv.c, 1);
+  assert.deepEqual(t3.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['a3', 'b3']);
+  assert.ok(t3.events.some(e => e.kind === 'stall' && e.item === 'c'), 'the fresh c is stalled in its own turn');
+  const t4 = place(s, 'd', mini);          // 沒有人能動：c 仍被 b 擋住
+  assert.equal(t4.state.lv.c, 1); assert.deepEqual(t4.events.filter(e => e.kind === 'grow'), []);
 });
 test('a cascade within a turn still works: A growing lets B grow in the same scan pass', () => {
   const chain = { ORDER:['p','q','r'], ITEMS:{
@@ -45,10 +46,11 @@ test('a cascade within a turn still works: A growing lets B grow in the same sca
 });
 test('stall blocks growth and records one stall event per turn', () => {
   let s = createState(mini);
-  s = place(s, 'c', mini).state; s = place(s, 'b', mini).state;
-  const r = place(s, 'd', mini);          // c up always, but stalled by b present
-  assert.equal(r.state.lv.c, 1);
-  assert.equal(r.events.filter(e => e.kind === 'stall' && e.item === 'c').length, 1);
+  s = place(s, 'b', mini).state;          // b1（a 沒放，b 長不了）
+  let r = place(s, 'c', mini);            // c up always，但 b 在場 → 剛放下就擋住
+  assert.equal(r.state.lv.c, 1); assert.equal(r.events.filter(e => e.kind === 'stall' && e.item === 'c').length, 1);
+  r = place(r.state, 'd', mini);
+  assert.equal(r.state.lv.c, 1); assert.equal(r.events.filter(e => e.kind === 'stall' && e.item === 'c').length, 1);
 });
 test('locked item never grows', () => {
   let s = createState(mini); s = place(s, 'a', mini).state;
@@ -104,8 +106,9 @@ test('a delta↔onLevel cycle throws a named chain-limit error instead of a stac
            onLevel:{ 3:[{ delta:{target:'x', by:-1} }, { delta:{target:'x', by:1} }] } },
       y: { name:'Y', max:1, up:{} }, z: { name:'Z', max:1, up:{} } },
     AFTER_TURN: [], STORIES: { placed:{x:'',y:'',z:''}, grow:{ x:{2:'',3:''}, y:{}, z:{} } } };
-  let s = place(createState(sp), 'x', sp).state; s = place(s, 'y', sp).state;   // x → 2
-  assert.throws(() => place(s, 'z', sp), /chain limit .* x/);
+  const s = place(createState(sp), 'x', sp).state;   // x 放下當回合就到 2
+  assert.equal(s.lv.x, 2);
+  assert.throws(() => place(s, 'y', sp), /chain limit .* x/);
 });
 // 飛彈倒數：第 8 個物品放完後全島再長幾回合（spec.CLOSING_TURNS），沒有放置、其餘和一般回合一樣
 test('advance runs a growth turn without placing anything', () => {
@@ -211,9 +214,8 @@ const hop = {
 };
 const grows = r => r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.from}>${e.to}${e.jump ? 'J' : ''}`);
 test('jump: an item at n−2 whose jump[n] holds rises two levels in one turn with two grow events, the second marked jump', () => {
-  let s = place(createState(hop), 'a', hop).state;    // a1
-  s = place(s, 'b', hop).state;                        // a2；b 剛放
-  const r = place(s, 'd', hop);                        // b2 → a 在 2、jump[4]（b≥2）成立 → 2→3→4，不看 up[3]/up[4]
+  const s = place(createState(hop), 'a', hop).state;  // a 放下當回合 1 → 2
+  const r = place(s, 'b', hop);                        // b 先掃、放下就到 2 → a 在 2、jump[4]（b≥2）成立 → 2→3→4（預設那條 up[3] ∧ up[4] 不成立）
   assert.equal(r.state.lv.a, 4);
   assert.deepEqual(grows(r).filter(g => g.startsWith('a')), ['a2>3', 'a3>4J']);
   const [g1, g2] = r.events.filter(e => e.kind === 'grow' && e.item === 'a');
@@ -223,13 +225,13 @@ test('jump: an item at n−2 whose jump[n] holds rises two levels in one turn wi
 });
 // R2／R5：照 ORDER 掃，每個物品每次掃到就決定——跳級條件成立就跳，否則 +1；不為了等跳級而延後 +1
 test('an item whose jump never comes true still takes its +1 that turn', () => {
-  let s = place(createState(hop), 'a', hop).state; s = place(s, 'c', hop).state;   // a2（b 沒放，jump[4] 永遠不成立）
-  const r = place(s, 'd', hop);
+  const s = place(createState(hop), 'a', hop).state;   // a2（b 沒放，jump[4] 永遠不成立）
+  const r = place(s, 'c', hop);
   assert.deepEqual(grows(r).filter(g => g.startsWith('a')), ['a2>3']);
   // 掃到 a 時跳級還不成立、a 先 +1；之後同回合 b 才長上來也不會再跳
   const late = { ...hop, ORDER: ['a', 'b', 'c', 'd'] };
-  let t = place(createState(late), 'a', late).state; t = place(t, 'b', late).state;   // a2；b1
-  const r2 = place(t, 'd', late);
+  const t = place(createState(late), 'a', late).state;   // a2
+  const r2 = place(t, 'b', late);
   assert.equal(r2.state.lv.b, 2); assert.deepEqual(grows(r2).filter(g => g.startsWith('a')), ['a2>3']);
 });
 // 裁決 R4：每回合每物品最多 +2，連 delta 一起算（正向 delta 被壓到「回合開始的級數 +2」，壓到 0 就不發事件）
@@ -245,51 +247,56 @@ const push = {
   AFTER_TURN: [], STORIES: { placed: { x: '', p: '', q: '', z: '' }, grow: { x: { 2: '', 3: '', 4: '', 5: '', 6: '', 7: '', 8: '', 9: '' }, p: {}, q: {}, z: {} } },
 };
 test('R4: a positive delta never lifts an item past its turn-start level + 2, and growth respects the same cap', () => {
-  let s = place(createState(push), 'x', push).state;              // x1
-  const r = place(s, 'p', push);                                  // +5 → 壓成 +2（1 → 3），x 這回合不再長
-  assert.deepEqual(r.events.find(e => e.delta).delta, { target: 'x', from: 1, to: 3 }); assert.equal(r.state.lv.x, 3);
+  const s = place(createState(push), 'x', push).state;            // x 放下當回合就到 2
+  assert.equal(s.lv.x, 2);
+  const r = place(s, 'p', push);                                  // +5 → 壓成 +2（2 → 4），x 這回合不再長
+  assert.deepEqual(r.events.find(e => e.delta).delta, { target: 'x', from: 2, to: 4 }); assert.equal(r.state.lv.x, 4);
   assert.deepEqual(grows(r), []);
-  const q = place(s, 'q', push);                                  // +1（1 → 2），再 +1 → 3（剛好 +2）
-  assert.equal(q.state.lv.x, 3);
-  let t = place(createState(push), 'x', push).state; t = advance(t, push).state; t = advance(t, push).state;   // x3
-  const j = place(t, 'q', push);                                  // delta +1 → 4；jump[6] 成立但那是 +3 → 不跳，改 +1 → 5
-  assert.equal(j.state.lv.x, 5); assert.deepEqual(grows(j), ['x4>5']);
+  const q = place(s, 'q', push);                                  // +1（2 → 3），再 +1 → 4（剛好 +2；預設 jump[5] 是 +3 → 不跳）
+  assert.equal(q.state.lv.x, 4);
+  let t = place(createState(push), 'x', push).state; t = advance(t, push).state; t = advance(t, push).state;   // x 2 → 4 → 6（都是跳級）
+  assert.equal(t.lv.x, 6);
+  const j = place(t, 'q', push);                                  // delta +1 → 7；預設 jump[9] 是 +3 → 不跳，改 +1 → 8
+  assert.equal(j.state.lv.x, 8); assert.deepEqual(grows(j), ['x7>8']);
   const z = place(t, 'z', push);                                  // 三次 +1：第三次壓到 0 → 沒有那個事件
-  assert.equal(z.state.lv.x, 5); assert.deepEqual(z.events.filter(e => e.delta).map(e => e.story), ['z推x', 'z再推x']);
+  assert.equal(z.state.lv.x, 8); assert.deepEqual(z.events.filter(e => e.delta).map(e => e.story), ['z推x', 'z再推x']);
 });
 test('jump fires only from exactly n−2: one level short or past it, the item takes +1 or waits', () => {
-  let s = place(createState(hop), 'b', hop).state; s = place(s, 'a', hop).state;   // b2；a1
-  const r = place(s, 'c', hop);                                                    // a 在 1：jump[4] 不適用 → +1
-  assert.deepEqual(grows(r).filter(g => g.startsWith('a')), ['a1>2']);
+  // steady 的 a 只剩 spec 寫的 jump[4]（b ≥ 2，b 已經是 2）
+  const st = { ...hop, ITEMS: { ...hop.ITEMS, a: { ...hop.ITEMS.a, steady: true } } }, s0 = createState(st);
+  const at = n => advance({ ...s0, lv: { ...s0.lv, a: n, b: 2 }, age: { ...s0.age, a: 3, b: 3 }, held: { ...s0.held, a: 1, b: 1 }, turn: 4 }, st);
+  assert.deepEqual(grows(at(1)), ['a1>2'], 'one level short: +1');
+  assert.deepEqual(grows(at(2)), ['a2>3', 'a3>4J'], 'exactly n−2: jump');
+  assert.deepEqual(grows(at(3)), [], 'past it: up[4] (b ≥ 9) waits');
 });
 test('jump never crosses a locked item and never exceeds max (review focus 1)', () => {
-  let s = place(createState(hop), 'c', hop).state;                     // c1：jump[3] 永遠成立
+  const s0 = createState(hop), s = { ...s0, lv: { ...s0.lv, c: 1 }, age: { ...s0.age, c: 1 }, held: { ...s0.held, c: 1 }, turn: 1 };   // c1：jump[3] 永遠成立
   const locked = advance({ ...s, locked: { c: true } }, hop);
   assert.equal(locked.state.lv.c, 1, 'locked items never jump');
   const r = advance(s, hop);
   assert.equal(r.state.lv.c, 3); assert.deepEqual(grows(r), ['c1>2', 'c2>3J']);
   const big = { ...hop, ITEMS: { ...hop.ITEMS, c: { ...hop.ITEMS.c, jump: { 3: { always: true }, 4: { always: true } } } } };
-  let t = place(createState(big), 'c', big).state; t = advance(t, big).state;      // c3 = max
+  let t = place(createState(big), 'c', big).state; t = advance(t, big).state;      // c 2 → 3 = max
   assert.equal(t.lv.c, 3); assert.equal(advance(t, big).state.lv.c, 3, 'jump[max+1] is never taken');
   const two = { ...hop, ITEMS: { ...hop.ITEMS, c: { ...hop.ITEMS.c, max: 2, up: { 2: { always: true } } } } };
-  assert.equal(advance(place(createState(two), 'c', two).state, two).state.lv.c, 2, 'a jump to 3 is ignored when max is 2');
+  assert.equal(advance(s, two).state.lv.c, 2, 'a jump to 3 is ignored when max is 2');
 });
-test('placed items do not grow in their placement turn; at most +2 per item per turn', () => {
-  const r = place(createState(hop), 'c', hop);
-  assert.equal(r.state.lv.c, 1); assert.deepEqual(grows(r), []);
+test('placed items grow at most to Lv2 in their placement turn; at most +2 per item per turn', () => {
+  const r = place(createState(hop), 'c', hop);                 // c 的 jump[3] 永遠成立，但回合開始是 0 級 → 到 2 為止
+  assert.equal(r.state.lv.c, 2); assert.deepEqual(grows(r), ['c1>2']);
   let s = r.state;
   for (const id of ['a', 'b', 'd']) {
     const before = s.lv; const t = place(s, id, hop); s = t.state;
-    for (const k of hop.ORDER) assert.ok(s.lv[k] - before[k] <= 2 || before[k] === 0, `${k} grew more than 2`);
+    for (const k of hop.ORDER) assert.ok(s.lv[k] - before[k] <= 2, `${k} grew more than 2`);
     assert.ok(new Set(grows(t).map(g => g[0])).size === grows(t).filter(g => !g.endsWith('J')).length, 'one step (+1 or jump) per item per turn');
   }
 });
 test('delay[n]: while its condition holds the level waits one extra turn, otherwise it comes on time', () => {
-  let s = place(createState(hop), 'd', hop).state;      // d1
-  s = advance(s, hop).state; assert.equal(s.lv.d, 2);    // d2（b 沒放，delay 不成立）
+  const s = place(createState(hop), 'd', hop).state;    // d 放下當回合就到 2（b 沒放，delay 不成立）
+  assert.equal(s.lv.d, 2);
   assert.equal(advance(s, hop).state.lv.d, 3, 'no delay → Lv3 the next turn');
-  let w = place(createState(hop), 'b', hop).state; w = place(w, 'd', hop).state;   // b2；d1
-  w = advance(w, hop).state; assert.equal(w.lv.d, 2);
+  let w = place(createState(hop), 'b', hop).state; w = place(w, 'd', hop).state;   // b2；d2（剛長上來，held 0）
+  assert.equal(w.lv.d, 2);
   const late = advance(w, hop); assert.equal(late.state.lv.d, 2, 'b ≥ 2 → Lv3 waits one more turn');
   assert.equal(late.events.filter(e => e.kind === 'wait').length, 0, 'a delay is not waiting for a helper');
   assert.equal(advance(late.state, hop).state.lv.d, 3, 'and then comes');
@@ -304,13 +311,14 @@ const playReal = (order, closing = 0) => {
   return { s, lvs };
 };
 test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn instead of never coming', () => {
-  // 沒有棒球：第 5 回合放颱風 → 6 登陸 → 7 放晴
-  const free = playReal(['bulb', 'token', 'milk', 'chip', 'typhoon', 'rat', 'boba']).lvs.map(l => l.typhoon);
-  assert.deepEqual(free.slice(4), [1, 2, 3]);
-  // 棒球第 2 回合放、第 4 回合大巨蛋（≥3）：放晴晚一回合，但一定會來
-  const { lvs } = playReal(['bulb', 'baseball', 'milk', 'token', 'typhoon', 'rat', 'boba', 'chip']);
-  assert.ok(lvs[4].baseball >= 3);
-  assert.deepEqual(lvs.slice(4).map(l => l.typhoon), [1, 2, 2, 3]);
+  // 選擇帶動升級：颱風放下當回合就登陸。燈泡要到 6 才放得了晴，而燈泡 5 要棒球 ≥4，所以照常玩放晴時大巨蛋一定在：
+  // 晶片還沒測矽盾 → 放下（登陸）→ 賴在巨蛋一回合 → 放晴
+  const { lvs } = playReal(['chip', 'bulb', 'token', 'baseball', 'typhoon', 'milk', 'rat', 'boba']);
+  assert.ok(lvs[5].baseball >= 3 && lvs[5].chip <= 7);
+  assert.deepEqual(lvs.slice(4, 7).map(l => l.typhoon), [2, 2, 3]);
+  // 正解（賽博）：第 8 個放、晶片已經 8 → 罩子把颱風推走，最後一輪就放晴
+  const cyber = playReal(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon'], 1).lvs;
+  assert.deepEqual(cyber.slice(7).map(l => l.typhoon), [2, 3]); assert.equal(cyber[7].chip, 8);
   // 矽盾測試過（晶片 ≥8）：罩子把颱風推走，不多等
   const s0 = createState(real);
   const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 6, chip: 8 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, turn: 9 };   // 颱風上回合剛登陸
@@ -335,11 +343,12 @@ test('the typhoon delay records one stall event on the extra turn (up passes, de
   assert.ok(dark.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')));
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
-  let s = place(createState(real), 'milk', real).state; s = advance(s, real).state;    // 鮮奶 2（早餐店）
+  const s = place(createState(real), 'milk', real).state;    // 鮮奶放下當回合就到 2（早餐店）；沒有棒球就蓋不了小學
   const r = place(s, 'rat', real);
   const bite = r.events.find(e => e.kind === 'fx' && e.delta?.target === 'milk');
   assert.deepEqual(bite.delta, { target: 'milk', from: 2, to: 1 }); assert.equal(r.state.lv.milk, 2, 'bitten to 1, then grows back to 2 this turn');
-  let t = place(createState(real), 'milk', real).state; t = advance(t, real).state; t = advance(t, real).state;   // 鮮奶 3（小學）
+  assert.equal(r.state.lv.rat, 2, 'the rat itself grows in its placement turn');
+  let t = place(createState(real), 'milk', real).state; t = place(t, 'baseball', real).state;   // 鮮奶 3（小學，沙地球場當操場）
   const late = place(t, 'rat', real);
   assert.ok(!late.events.some(e => e.delta?.target === 'milk')); assert.equal(late.state.lv.milk, 4);
   assert.equal(late.events.filter(e => e.kind === 'fx' && e.cause === 'rat').length, 0, 'no boba to knock over either');
@@ -356,13 +365,97 @@ test('ratBranch at rat Lv4: chip ≥ 8 → cyber, else alien', () => {
   assert.equal(alien.state.lv.rat, 4); assert.equal(alien.state.flags.ratBranch, 'alien');
 });
 
-test('R4 invariant on the real spec: over all 8! orders (with closing turns) no item rises more than 2 in one turn', () => {
+test('R4 invariant on the real spec: over all 8! orders (with the closing turn) no item rises more than 2 in one turn, placed ones included', () => {
   let worst = 0, turns = 0;
-  const check = (before, after) => { turns++; for (const k of real.ORDER) if (before.lv[k] > 0) worst = Math.max(worst, after.lv[k] - before.lv[k]); };
+  const check = (before, after) => { turns++; for (const k of real.ORDER) worst = Math.max(worst, after.lv[k] - before.lv[k]); };   // 剛放下的也算（0 → ≤2）
   const walk = (s, left) => {
     if (!left.length) { let t = s; for (let i = 0; i < real.CLOSING_TURNS; i++) { const n = advance(t, real).state; check(t, n); t = n; } return; }
     for (const id of left) { const n = place(s, id, real).state; check(s, n); walk(n, left.filter(x => x !== id)); }
   };
   walk(createState(real), real.ORDER);
   assert.ok(turns > 100000); assert.ok(worst <= 2, `an item rose ${worst} in one turn`);
+});
+
+// 計畫 5b 選擇帶動升級（設計 2026-10-28 §3）：放下的物品當回合就長；每一級 n ≥ 3 預設都能跳（up[n−1] ∧ up[n]）；
+// steady 的物品不加預設跳級；一回合最多 +2（連 delta）不變
+const choice = {
+  ORDER: ['h', 'g', 'k', 'm', 'z'],   // h 先掃：h 這回合長上來，同一輪掃到 g 時 g 就能跳
+  ITEMS: {
+    g: { name: 'G', max: 5, up: { 2: { always: true }, 3: { always: true }, 4: { minLevel: ['h', 2] }, 5: { minLevel: ['h', 9] } },
+         jump: { 4: { present: 'k' } }, onLevel: { 3: [{ flag: { name: 'g3' } }] } },
+    h: { name: 'H', max: 2, up: { 2: { always: true } } },
+    k: { name: 'K', max: 1, up: {} },
+    m: { name: 'M', max: 5, steady: true, up: { 2: { always: true }, 3: { always: true }, 4: { always: true }, 5: { always: true } }, jump: { 5: { always: true } } },
+    z: { name: 'Z', max: 1, up: {} },
+  },
+  AFTER_TURN: [], STORIES: { placed: { g: '', h: '', k: '', m: '', z: '' }, grow: { g: { 2: 'g2', 3: 'g3', 4: 'g4', 5: 'g5' }, h: { 2: '' }, k: {}, m: { 2: '', 3: '', 4: '', 5: '' }, z: {} } },
+};
+test('a placed item joins the growth scan in its placement turn: up[2] holds → it ends the turn at Lv2 (never Lv3)', () => {
+  const r = place(createState(choice), 'g', choice);           // 0 → 1（放下）→ 2；預設 jump[3]（up2 ∧ up3）成立，但回合開始是 0 級，最多到 2
+  assert.equal(r.state.lv.g, 2); assert.deepEqual(grows(r), ['g1>2']);
+  assert.deepEqual(r.events.map(e => e.kind), ['placed', 'grow']);
+  assert.equal(r.state.held.g, 0); assert.equal(r.state.age.g, 0);
+  const stuck = place(createState(choice), 'k', choice);       // k 沒有 up[2]：停在 1，也不算在等誰
+  assert.equal(stuck.state.lv.k, 1); assert.ok(!stuck.events.some(e => e.kind === 'wait'));
+});
+test('default jump: at n−2 with up[n−1] and up[n] both true the item rises +2 in one turn; an explicit jump[n] is an alternative (either holds)', () => {
+  // 兩條都不成立（h 沒放、k 沒放）：up[3] 成立 → 只 +1
+  let s = place(createState(choice), 'g', choice).state;
+  assert.deepEqual(grows(place(s, 'z', choice)), ['g2>3']);
+  // 預設那條：h 先長到 2 → up[3] ∧ up[4] → 2 → 3 → 4 一回合，跳過的第 3 級照樣觸發 onLevel；via = 編譯後條件的幫手
+  s = place(createState(choice), 'h', choice).state; s = place(s, 'g', choice).state;   // h2、g2
+  let r = place(s, 'z', choice);
+  assert.deepEqual(grows(r), ['g2>3', 'g3>4J']); assert.equal(r.state.flags.g3, true);
+  assert.deepEqual(r.events.find(e => e.jump).via, ['h', 'k'], 'via = helpers of or(explicit, up[3] ∧ up[4])');
+  // spec 寫的那條：h 沒放、k 在場 → 一樣跳
+  s = place(createState(choice), 'g', choice).state;
+  r = place(s, 'k', choice);
+  assert.deepEqual(grows(r), ['g2>3', 'g3>4J']);
+  // 在 3：預設 jump[5] = up[4] ∧ up[5]（h ≥ 9 永遠不成立）→ 只 +1；下一級也一樣
+  s = place(createState(choice), 'g', choice).state; s = place(s, 'z', choice).state;   // g3
+  assert.deepEqual(grows(place(s, 'h', choice)).filter(x => x[0] === 'g'), ['g3>4']);
+});
+test('steady items get no default jumps: milk rises one level per turn except its explicit jump[7]', () => {
+  let s = place(createState(choice), 'm', choice).state; assert.equal(s.lv.m, 2);
+  s = advance(s, choice).state; assert.equal(s.lv.m, 3, 'no default jump[4] for a steady item');
+  const r = advance(s, choice); assert.deepEqual(grows(r), ['m3>4', 'm4>5J'], 'its explicit jump[5] still works');
+  const loose = { ...choice, ITEMS: { ...choice.ITEMS, m: { ...choice.ITEMS.m, steady: false } } };
+  assert.deepEqual(grows(advance(place(createState(loose), 'm', loose).state, loose)), ['m2>3', 'm3>4J'], 'the same item without steady jumps');
+  // 真的鮮奶（棒球第 2 個放，當操場、組少棒隊）：2 → 5 一回合一級（不 steady 就會 3 → 5），5 → 7 是 spec 寫的跳級（大巨蛋蓋好）
+  let t = place(createState(real), 'milk', real).state; const lvs = [t.lv.milk];
+  t = place(t, 'baseball', real).state; lvs.push(t.lv.milk);
+  for (let i = 0; i < 3; i++) { t = advance(t, real).state; lvs.push(t.lv.milk); }
+  assert.deepEqual(lvs, [2, 3, 4, 5, 7]); assert.ok(t.lv.baseball >= 3);
+  assert.deepEqual(real.ORDER.filter(id => real.ITEMS[id].steady), ['milk']);
+});
+test('a default jump across a level with onLevel fires that reaction (rat Lv3 → 5 crosses the Lv4 branch; typhoon 1 → 3 crosses the Lv2 check)', () => {
+  const s0 = createState(real);
+  // 老鼠 up[5] 看 ratBranch，旗標要到 Lv4 才設：照常玩老鼠在 3 時預設 jump[5] 不成立，只 +1
+  const rat = { ...s0, lv: { ...s0.lv, rat: 3, chip: 8, token: 7 }, age: { ...s0.age, rat: 3, chip: 8, token: 8 }, held: { ...s0.held, rat: 1, chip: 1, token: 1 }, locked: { chip: true, token: true }, turn: 9 };
+  const plain = advance(rat, real);
+  assert.deepEqual(grows(plain).filter(g => g.startsWith('r')), ['rat3>4']); assert.equal(plain.state.flags.ratBranch, 'cyber');
+  // 旗標已經在（例：上一局留下的 alien、颱風來過）：3 → 4 → 5 一回合，跨過第 4 級重新分岔（晶片 8 → cyber）
+  const hop5 = advance({ ...rat, lv: { ...rat.lv, typhoon: 2 }, flags: { ratBranch: 'alien' } }, real);
+  assert.deepEqual(grows(hop5).filter(g => g.startsWith('r')), ['rat3>4', 'rat4>5J']);
+  assert.equal(hop5.state.flags.ratBranch, 'cyber');
+  // 颱風在 1、燈泡 ≥ 6、沒有大巨蛋：1 → 2 → 3 一回合，跨過第 2 級照樣全島檢查（颱風假、珍奶外送）
+  const ty = { ...s0, lv: { ...s0.lv, typhoon: 1, bulb: 6, milk: 3, boba: 2 }, age: { ...s0.age, typhoon: 1, bulb: 6, milk: 3, boba: 3 }, held: { ...s0.held, typhoon: 1, bulb: 1, milk: 1, boba: 1 }, locked: { bulb: true, milk: true, boba: true }, turn: 9 };
+  const r = advance(ty, real);
+  assert.deepEqual(grows(r).filter(g => g.startsWith('t')), ['typhoon1>2', 'typhoon2>3J']);
+  assert.ok(r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.story === '颱風假！小朋友在家看電視'));
+  assert.ok(r.events.some(e => e.kind === 'fx' && e.delta?.target === 'boba'), 'the boba delivery delta still fires');
+});
+test('the +2 per turn cap still includes deltas', () => {
+  // x 放下就到 2；p 的 +5 只能推到 4（回合開始 2 + 2），之後 x 不能再長、預設跳級也不行
+  let s = place(createState(push), 'x', push).state; assert.equal(s.lv.x, 2);
+  let r = place(s, 'p', push);
+  assert.deepEqual(r.events.find(e => e.delta).delta, { target: 'x', from: 2, to: 4 }); assert.deepEqual(grows(r), []);
+  // q 推 +1 到 3：預設 jump[5] 會是 +3 → 不跳，改 +1 → 4
+  r = place(s, 'q', push);
+  assert.equal(r.state.lv.x, 4); assert.deepEqual(grows(r), ['x3>4']);
+  // 沒有 delta：2 → 4 跳級（+2）是上限
+  r = advance(s, push); assert.deepEqual(grows(r), ['x2>3', 'x3>4J']);
+  // 放下當回合被 delta 推：回合開始 0 → 最多到 2
+  const pre = place(createState(push), 'q', push).state;
+  const t = place(pre, 'x', push); assert.equal(t.state.lv.x, 2);
 });

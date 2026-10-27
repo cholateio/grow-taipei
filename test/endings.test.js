@@ -55,12 +55,16 @@ test('ENDINGS has ten entries with Chinese titles', () => {
   assert.equal(Object.keys(ENDINGS).length, 10);
   assert.equal(ENDINGS.shieldDown.title, '矽盾未就緒'); assert.equal(ENDINGS.cyber.kind, 'true');
 });
-test('typhoon placed 8th is still Lv1 at the end, so the missile is never deflected', () => {
-  const rest = ORDER.filter(id => id !== 'typhoon');
-  let s = createState(spec);
-  for (const id of [...rest, 'typhoon']) s = place(s, id, spec).state;
-  assert.equal(s.lv.typhoon, 1);
-  assert.notEqual(missile(s, spec), 'deflect');
+// 選擇帶動升級（2026-10-28 §3）：颱風放下當回合就登陸，第 8 個放也一樣；最後一輪放不放得了晴決定飛彈會不會被吹歪
+test('typhoon placed 8th lands in its own turn; the closing turn decides between the rainbow and a deflected missile', async () => {
+  const { advance } = await import('../src/rules/engine.js');
+  const playTo = order => { let s = createState(spec); for (const id of order) s = place(s, id, spec).state; return s; };
+  const late = playTo([...ORDER.filter(id => id !== 'typhoon'), 'typhoon']);
+  assert.equal(late.lv.typhoon, 2, 'landed in its placement turn');
+  const stuck = advance(late, spec).state;                       // 燈泡還沒到 6（還停電）：抽水站沒電，颱風不走
+  assert.equal(stuck.lv.typhoon, 2); assert.equal(missile(stuck, spec), 'deflect');
+  const cyber = advance(playTo(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon']), spec).state;
+  assert.equal(cyber.lv.typhoon, 3); assert.equal(missile(cyber, spec), 'shield');
 });
 
 // 物品 v2 §8（任務 11）：結局讀新的狀態——兩條正解（引擎演完放置 + 倒數三回合）都是晶片 9 矽盾擋下、全 MAX、沒有災難旗標，

@@ -47,18 +47,19 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
 });
 
 // 物品 v2（2026-10-26）：兩條正解快照、颱風第 8 個、晶片第 8 個的報告項
+// 選擇帶動升級（2026-10-28 §3）：9 回合下颱風一定第 8、老鼠一定第 7；兩條正解只差第 3、4 個先放燈泡（賽博）還是先放代幣（外星）
 import { chipEighth } from '../src/solver/run.js';
 const all = enumerate(spec), st = stats(all, spec);
-test('check passes on the shipped spec (exactly two full orders, one cyber one alien)', () => {
+test('check passes on the shipped spec: exactly two full orders, one cyber one alien (snapshot the two orders)', () => {
   const c = check(all, spec);
   assert.deepEqual(c.failures, []);
   assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]).sort(), [
-    ['bulb,token,milk,chip,baseball,boba,rat,typhoon', 'cyber'],
-    ['bulb,token,milk,chip,baseball,rat,boba,typhoon', 'alien'],
+    ['milk,baseball,bulb,token,chip,boba,rat,typhoon', 'cyber'],
+    ['milk,baseball,token,bulb,chip,boba,rat,typhoon', 'alien'],
   ]);
 });
-// 裁決 R3：最後一回合 4 個到 MAX 是 61 級的下限（鮮奶、晶片、棒球、第 7 個都零餘裕），颱風要在倒數第 2 回合放晴
-test('both full orders spread MAX over turns 9–11 with at most 4 in the last turn', () => {
+// 裁決 R3（PACING 照舊 ≤4／≥3）：9 回合裡 MAX 落在第 7、8、9 回合（棒球；鮮奶、燈泡、代幣；晶片、颱風、老鼠、珍奶），最後一輪剛好 4 個
+test('both full orders spread MAX over turns 7–9 with at most 4 in the last turn', () => {
   for (const r of st.full) { const p = pacing([r], spec); assert.ok(p.ok, p.failures.join('\n')); assert.equal(p.maxMaxesPerTurn, 4); assert.equal(p.maxTurns, 3); }
 });
 test('a typhoon-eighth order is among the full orders (review focus 3)', () => {

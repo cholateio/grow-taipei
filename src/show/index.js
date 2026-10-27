@@ -38,7 +38,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const ctx = { stage, roster, nav, bubbles, blink, rig: camRig, rail, world, spec, montage: false, instant: false, now: 0, B };
   const timeline = createTimeline({ reducedMotion });
   let reduced = reducedMotion, playing = null;   // playing：這回合的記號；跳過／中止／RESET 後設成 null，回合結束就不再補做
-  let holding = false;   // 標題卡前的停格（hold）中：skip() 不作用
+  let holding = null;   // 標題卡前的停格（hold）中：skip() 不作用。每個 hold 一個記號：中止過的舊 hold 晚一步收尾時不清掉新的
 
   function refresh() { nav.setFootprints(stage.footprints()); }
   // 全景跟舞台上 101 現在的頭頂走（§14.4）：開局、跳過／中止／RESET 回全景之前（回合最後那拍自己更新）
@@ -78,9 +78,9 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   function hold(s) {
     if (timeline.busy) throw new Error('show busy');
     ctx.instant = reduced; ctx.speed = 1; ctx.onMark = null;
-    holding = true;
+    const me = holding = {};
     const done = timeline.play([B.wait(reduced ? 0 : s)], ctx);
-    const end = () => { holding = false; };
+    const end = () => { if (holding === me) holding = null; };
     return done.then(end, err => { end(); throw err; });
   }
 
@@ -93,7 +93,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   }
   function abort() {
     const was = timeline.busy;
-    playing = null; holding = false;
+    playing = null; holding = null;
     try { timeline.abort(); } finally { if (was) snap(); }
   }
 

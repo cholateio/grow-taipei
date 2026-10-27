@@ -11,8 +11,11 @@ export const id = 'satellites';
 const TOP_SAT = TOP - 0.2, GOLD = 0xe8c547;
 export const island = kind => { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP_SAT, z: c.z }; };
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
-// 石堆島綠光圈的直徑（torus 單位半徑 0.5）；降落場的三盞燈從這個方位起等分（在三台 UFO 碟心之間的空檔：finale.js 的碟心在 HOME_A + π/3 起等分）
-const RING_D = 2.2, PAD_LIGHT_A = Math.atan2(-island('rocks').z, -island('rocks').x);
+// 石堆島朝主島中心的方位角（xz 平面，atan2(z, x)）：降落場的三盞燈從這個方位起等分；finale.js 的外星生物站在這個方位、
+// 三台 UFO 的碟心從它 + π/3 起等分（燈在碟心之間的空檔）——兩邊共用這一個值
+export const ROCKS_HOME_A = Math.atan2(-island('rocks').z, -island('rocks').x);
+// 石堆島綠光圈的直徑（torus 單位半徑 0.5）
+const RING_D = 2.2;
 const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 
 // 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
@@ -62,7 +65,7 @@ export function view(lv, flags) {
       { kind: 'torus', pos: [0, 0.06, 0], scale: [RING_D, RING_D, pad ? 2.5 : 1], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
       ...(pad ? [
         { kind: 'torus', pos: [0, 0.05, 0], scale: [RING_D * 0.8, RING_D * 0.8, 1.5], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
-        ...[0, 1, 2].map(i => { const a = PAD_LIGHT_A + i * Math.PI * 2 / 3; return { kind: 'sphere', pos: [Math.cos(a) * RING_D / 2, 0.14, Math.sin(a) * RING_D / 2], scale: 0.16, color: C.alien, glow: C.alien }; }),
+        ...[0, 1, 2].map(i => { const a = ROCKS_HOME_A + i * Math.PI * 2 / 3; return { kind: 'sphere', pos: [Math.cos(a) * RING_D / 2, 0.14, Math.sin(a) * RING_D / 2], scale: 0.16, color: C.alien, glow: C.alien }; }),
       ] : []),
     ] };
   }

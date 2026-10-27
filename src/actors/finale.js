@@ -7,7 +7,7 @@
 // 任務 5：飛彈（設計 §6）——紅光熄掉、飛彈從紅光的位置沿拋物線飛向 101（零件自己演：userData.launch），三種結果：
 //   shield 罩子全亮、飛彈碎成一發煙火、全島跳＋♥；deflect 飛到 101 旁被風吹歪、邊轉邊掉、機頭朝下插進北投溫泉、水花、全島？再♪；
 //   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
-// 任務 6：賽博尾聲（設計 §7）——天黑霓虹亮 → 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
+// 任務 6：賽博尾聲（設計 §7）——天黑、霓虹（燈泡 Lv9 早就開到 NEON_BOOST）→ 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
 //   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
 // 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
 //   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
@@ -15,9 +15,9 @@
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
-import { SHIELD_R, stageOf, body as towerBody, bendPoint } from './tower.js';
+import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
 import { ROOF_SPOTS, SHIP_SPOT, UFO_PARTS } from './rat.js';
-import { island } from './satellites.js';
+import { island, ROCKS_HOME_A as HOME_A } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
@@ -84,7 +84,7 @@ const MARQUEE_AT = 1.5, MARQUEE_DUR = 3.0, END_HOLD = 1.5;
 // 石堆的四顆石頭擠在島心 0.7 以內、最高 0.56：碟懸停在島面上 UFO_Y，底光（碟心下 0.24）離最高的石頭還有 0.05（設計寫「降到降落場」，
 // 0.35 會讓石頭穿過碟身）。三個碟是一個 compound：手機畫質（quality low）發光併進黏土，一個 mesh
 export const UFO_N = 3, UFO_R = 1.2, UFO_Y = 0.85, UFO_DROP = 7, UFO_FALL = 2.0;
-const ROCKS = island('rocks'), HOME_A = Math.atan2(-ROCKS.z, -ROCKS.x);
+const ROCKS = island('rocks');   // HOME_A：石堆島朝主島中心的方位（satellites.js ROCKS_HOME_A，降落場的燈也從它起算）
 const big = p => ({ ...p, pos: p.pos.map(x => x * 2), scale: p.scale.map(x => x * 2) });
 export const UFO_PARTS_BIG = UFO_PARTS.map(big);
 const ufoParts = () => Array.from({ length: UFO_N }, (_, i) => {
@@ -113,9 +113,10 @@ export function view(lv, flags = {}, meta = {}) {
   if (flags.alarm && !flags.missile) v['finale.flare'] = { kind: 'flare', at: FLARE_AT, hz: flareHz(flags.alarm), shadow: false, footprint: false };
   const o = flags.missile;
   if (o) {
-    // 101 的階段照 tower.js 的算法（meta.total；沒給才自己加總）：hit 的彎角、deflect 的塔頂都跟著塔身
-    const stage = stageOf(meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0));
-    const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint(stage) : POOL;
+    // 101 的階段照 tower.js 的算法（stageOfView：meta.total，沒給才自己加總）：deflect 的塔頂跟著塔身；
+    // hit 的彎角每個階段都一樣（tower.js 照完工／點燈的彎法），bendPoint 不吃階段
+    const stage = stageOfView(lv, meta);
+    const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint() : POOL;
     v['finale.missile'] = { kind: 'missile', at, from: FLARE_AT, outcome: o, footprint: false, shadow: false };
     if (o === 'deflect') {
       v['finale.missile'].via = { x: TOWER.x + toFlare.x * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toFlare.z * SIDESTEP };
@@ -232,6 +233,7 @@ export const builders = {
     if (fw) { fw.object.name = 'fireworks'; object.add(fw.object); }
     const Z = new THREE.Vector3(0, 0, 1), dir = new THREE.Vector3(), roll = new THREE.Quaternion();
     let t = Infinity, rate = 1, popped = true;
+    const end = FLIGHT + (spec.outcome === 'deflect' ? DEFLECT : 0);   // 軌跡演完（之後 path 回的都是終態）
     const put = () => {
       const p = path(t), o = body.object;
       o.visible = p.visible; o.position.set(p.x - at.x, p.y - at.y, p.z - at.z);
@@ -243,7 +245,8 @@ export const builders = {
     put();   // 煙火建好就是藏著的（once 建好即終態）
     return {
       object,
-      update(dt, now) { if (t !== Infinity) { t += dt * rate; put(); } fw?.update(dt * rate, now); },
+      // 演完最後擺一次終態就停（t 設回 Infinity，跟建好、finish 一樣）：不再每幀重擺
+      update(dt, now) { if (t !== Infinity) { t += dt * rate; put(); if (t >= end) t = Infinity; } fw?.update(dt * rate, now); },
       dispose() { body.dispose(); fw?.dispose(); },
     };
   },
@@ -303,10 +306,11 @@ export const script = {
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
     return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'lie' }), ...tail];
   },
-  // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；本來就是）→
+  // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；
+  //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
   //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
   //   同時起飛後 1.5 秒螢幕冒跑馬燈 3 秒 → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
-  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲：任務 7
+  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alien()
   epilogue(e, s, ctx) {
     const { B } = ctx;
     if (e.ending === 'alien') return alien(e, ctx);

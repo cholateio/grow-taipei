@@ -202,7 +202,7 @@ test('setMood lie: every walker matrix is rotated −90° about x (body lies fla
 });
 test('setMood alien: the eye3 instanced mesh is visible with one instance per walker on the forehead centre; normal hides it', () => {
   const people = createPeople(THREE, { max: 4 });
-  const w = people.spawn({ stand: { x: 1, y: 0.65, z: 2, yaw: 0 } });
+  people.spawn({ stand: { x: 1, y: 0.65, z: 2, yaw: 0 } });
   people.spawn({ path: ringPath({ x: 0, z: 0 }, 1.5, 0.65), speed: 0.4 });
   const eye3 = partMesh(people, 'eye3');
   people.update(0.1, 0.1, 20);
@@ -217,7 +217,6 @@ test('setMood alien: the eye3 instanced mesh is visible with one instance per wa
   assert.ok(Math.hypot(people.walkers[1].pos.x - before.x, people.walkers[1].pos.z - before.z) > 0.15, 'alien walkers keep walking');
   people.setMood('normal'); people.update(0.1, 0.8, 20);
   assert.equal(eye3.visible, false, 'normal hides it again');
-  assert.ok(w);
 });
 test('low quality keeps eye3 in alien mood (the normal eyes stay skipped)', () => {
   const people = createPeople(THREE, { max: 4, low: true });

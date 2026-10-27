@@ -14,6 +14,7 @@ export function heroNear(ctx, p, { cost = m => Math.hypot(m.pos.x - p.x, m.pos.z
   let best = null, d = max;
   for (const m of islanders(ctx)) {
     const dm = cost(m);
+    if (!Number.isFinite(dm)) continue;   // 到不了（趕工的 cost 回 Infinity）：就算沒有上限也不選
     if (dm <= d) { best = m; d = dm; }
   }
   return best;

@@ -24,11 +24,13 @@ export const SHIELD_R = 7.8;
 export const shieldSpec = state => ({ kind: 'shield', at: AT, r: SHIELD_R, state, footprint: false });
 // 天線（Quaternius Cyberpunk Kit）：Antenna_1 細桿立在尖塔頂、Antenna_2 碟子掛在尖塔側面朝鏡頭；pos 相對 101 的 at
 const ANTENNA_TINT = { '^MetalLight$': C.cream, '^LightGrey$': C.white, '^Grey$': C.curb, '^DarkGrey$': C.ink };
-// mast：尖塔（桅杆）在塔軸上的水平位置（黑塔的桅杆在屋頂後緣）
-const antennaModels = (top, mast = { x: 0, z: 0 }) => [
+// mast：尖塔（桅杆）在塔軸上的水平位置（黑塔的桅杆在屋頂後緣）；dishZ：碟子的 z（預設貼著桅杆）。
+// 母艦的天線細桿立在碟頂、碟子掛在 top − 0.6——那個高度是最上一節塔身（方錐台半寬 0.58）裡面，貼著桅杆會埋進去：往後推出塔身（DISH_OUT）
+const antennaModels = (top, mast = { x: 0, z: 0 }, dishZ = mast.z) => [
   { path: 'quat/cyberpunk/Antenna_1.glb', pos: [mast.x, top, mast.z], h: 0.55, tint: ANTENNA_TINT },
-  { path: 'quat/cyberpunk/Antenna_2.glb', pos: [mast.x + 0.14, top - 0.6, mast.z + 0.06], h: 0.3, ry: 0.4, tint: ANTENNA_TINT },
+  { path: 'quat/cyberpunk/Antenna_2.glb', pos: [mast.x + 0.14, top - 0.6, dishZ + 0.06], h: 0.3, ry: 0.4, tint: ANTENNA_TINT },
 ];
+export const DISH_OUT = 0.3;
 // 黑塔的平屋頂（相對 101 的 at）：1.6 見方（跟底座一樣寬，往外挑出塔身）、厚 0.08，外圈一條霓虹藍邊條；
 // 桅杆（尖塔）退到後緣 MAST_Z、高 MAST_H。屋頂面要站得下 10 隻機器鼠（兩排、間距 ≥ 0.25）和前緣一台停好的飛天跑車
 const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
@@ -40,6 +42,8 @@ export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '1
 // 物品 v2 的 61 級（任務 10）：門檻取在兩條正解總等級曲線的空檔中間（1 3 6 11 16 21 30／31 41 50 57 61），
 // 四個階段各在不同回合跨過、散在整局：第 4 回合（6 → 11）蓋一半、第 7 回合（21 → 30／31）完工、倒數第二回合（50 → 57）點燈
 export function stageOf(total) { return total >= 54 ? 'lit' : total >= 26 ? 'full' : total >= 9 ? 'half' : 'site'; }
+// view 的階段：照 meta.total（舞台只在回合最後的 settle 更新，101 才不會搭著別人的事件跳階，計畫 3.6）；沒給才自己加總。finale.js 的飛彈也用它
+export const stageOfView = (lv, meta = {}) => stageOf(meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0));
 
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
 // bent（最終章 §6，飛彈命中）：塔身一半高度（BEND_Y）以上的零件——上面四節、它們的白邊、頂帽、尖塔——繞 z 轉 π/2 往 +x 倒，
@@ -123,14 +127,14 @@ const bendPart = p => {
   const [x, y, z] = p.pos, [rx, ry, rz] = p.rot ?? [0, 0, 0];
   return { ...p, pos: [y - BEND_Y, BEND_Y - x, z], rot: [rx, ry, rz + (Math.cos(rx) > 0 ? -1 : 1) * Math.PI / 2] };
 };
-// 彎角的世界座標（飛彈命中的點，finale.js 用）：每個階段都照完工／點燈的彎法，所以都一樣
+// 彎角的世界座標（飛彈命中的點，finale.js 用）：每個階段都照完工／點燈的彎法，所以都一樣——不吃階段參數
 export const bendPoint = () => ({ x: AT.x, y: AT.y + BEND_Y, z: AT.z });
 
-// meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6）
+// meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6；stageOfView）
 export function view(lv, flags = {}, meta = {}) {
-  const at = anchorWorld('tower'), total = meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0);
+  const at = anchorWorld('tower');
   // 最終章 §6：命中 → 塔身彎 L、天線燈光秀罩子都拿掉（工地／蓋一半照完工的彎法，吊車也不畫）；矽盾擋下 → 罩子全亮
-  const hit = flags.missile === 'hit', stage = stageOf(total);
+  const hit = flags.missile === 'hit', stage = stageOfView(lv, meta);
   // 彎過的塔頭頂（labelY）照沒彎的完工／點燈塔算：命中之後塔上不再冒字，天際線降低反而讓回合收尾的 focus('home', { final, skyline })
   // 在全景裡 setSkyline 瞬間跳鏡頭（審稿第 1 輪）
   // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
@@ -138,8 +142,8 @@ export function view(lv, flags = {}, meta = {}) {
   const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien' && !hit;
   const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = hit || dark || ship ? body(stage === 'lit' || dark || ship ? 'lit' : 'full').top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
-  // 母艦底下的綠光盤比底座寬：站位照底座 1.6 見方（同彎 L 的塔）
-  if (ship) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };
+  // 母艦底下的綠光盤比底座寬、黑塔屋頂的霓虹邊條（1.64）比底座寬 0.04：站位照底座 1.6 見方（同彎 L 的塔、同點燈的塔自動算出來的）
+  if (ship || dark) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };
   if (dark) {
     // 螢幕：墨黑外框＋朝鏡頭那面霓虹藍發光板＋底下一條霓虹粉跑馬燈條；at 就是螢幕中心（泡泡掛在零件位置上，tower.screen 的泡泡就在螢幕上）
     const c = screenAt(), [w, hh, d] = SCREEN;
@@ -157,7 +161,7 @@ export function view(lv, flags = {}, meta = {}) {
     const pulse = lv.chip >= 9, glow = pulse ? { glow: NEON_BLUE } : {};
     const parts = [{ kind: 'torus', pos: [mast?.x ?? 0, top - 0.25, mast?.z ?? 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: pulse ? NEON_BLUE : CREAM, ...glow }];
     if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
-    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast), parts, pulse, footprint: false };
+    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast, ship ? mast.z - DISH_OUT : undefined), parts, pulse, footprint: false };
   }
   if (flags.missile === 'shield') v['tower.shield'] = shieldSpec('full');
   else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');

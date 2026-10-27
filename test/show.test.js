@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig } from './helpers/show.js';
+import { headlessShow, ALL, turnSteps, closingEvents, towerCrossings, overviewRig } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
 import { MONTAGE_SPEED } from '../src/show/turn.js';
@@ -35,7 +35,7 @@ test('both solutions play through headlessly: every turn ends with stage levels 
     }
     for (let i = 0; i < spec.CLOSING_TURNS; i++) {
       const r = engine.advance(s, spec); s = r.state;
-      await run([...r.events, { kind: 'settle' }], { montage: true });
+      await run(closingEvents(i, r.events), { montage: true });
       assert.deepEqual(show.stage.lv, s.lv); assert.equal(show.stage.pendingKeys().length, 0); allHome(show);
     }
     // 收尾的 world 拍照最後的舞台狀態瞄準全島效果
@@ -477,15 +477,17 @@ test('the landing turn plays live with a LEVEL UP for every grow after the landi
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
   const steps = [...SOLUTIONS[1].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  // 倒數回合照 game.js 演（closingEvents：最前面是倒數字）
+  const turnEvents = (i, events) => (i >= SOLUTIONS[1].length ? closingEvents(i - SOLUTIONS[1].length, events) : [...events, { kind: 'settle' }]);
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
-    if (!r.events.some(engine.landsTyphoon)) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+    if (!r.events.some(engine.landsTyphoon)) { await run(turnEvents(i, r.events), { instant: true, montage: i >= SOLUTIONS[1].length }); continue; }
     const n = bubblesLog.length, after = r.events.slice(r.events.findIndex(engine.landsTyphoon) + 1).filter(e => e.kind === 'grow').length;
-    await run([...r.events, { kind: 'settle' }], { montage: i >= SOLUTIONS[1].length });
+    await run(turnEvents(i, r.events), { montage: i >= SOLUTIONS[1].length });
     assert.ok(bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').length >= after + 1, 'LEVEL UP for the landing and every grow after it');
     const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
     assert.ok(hidden.length > 0, 'people indoors at the end of the landing turn');
-    const next = steps[i + 1](s), p = show.turn([...next.events, { kind: 'settle' }], { montage: true });
+    const next = steps[i + 1](s), p = show.turn(turnEvents(i + 1, next.events), { montage: i + 1 >= SOLUTIONS[1].length });
     let walked = false;
     for (let t = 0; t < 0.5; t += 1 / 30) { show.update(1 / 30, t); walked ||= hidden.some(m => m.walking); }
     assert.ok(hidden.every(m => !m.hidden), 'everyone out as the next turn starts');
@@ -502,14 +504,15 @@ test('alien landing turn live: the ◆ rat Lv4 branch and ◆ bulb Lv9 still pla
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
   const steps = [...alien.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  const turnEvents = (i, events) => (i >= alien.length ? closingEvents(i - alien.length, events) : [...events, { kind: 'settle' }]);   // 同 game.js
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
-    if (!r.events.some(engine.landsTyphoon)) { await run([...r.events, { kind: 'settle' }], { instant: true, montage: i >= alien.length }); continue; }
+    if (!r.events.some(engine.landsTyphoon)) { await run(turnEvents(i, r.events), { instant: true, montage: i >= alien.length }); continue; }
     const i0 = r.events.findIndex(engine.landsTyphoon), after = r.events.slice(i0 + 1);
     const rat4 = after.find(e => e.kind === 'grow' && e.item === 'rat' && e.to === 4), bulb9 = after.find(e => e.kind === 'grow' && e.item === 'bulb' && e.to === 9);
     assert.ok(rat4 && bulb9, 'rat 4 and bulb 9 come after the landing');
     const marks = [];
-    await run([...r.events, { kind: 'settle' }], { montage: true, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
+    await run(turnEvents(i, r.events), { montage: true, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
     const seg = e => { const k = marks.findIndex(([x]) => x === e); return { secs: (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1], bubbles: bubblesLog.slice(marks[k][2], marks[k + 1]?.[2]) }; };
     const r4 = seg(rat4), b9 = seg(bulb9);
     // 蒙太奇 MONTAGE_SPEED 倍速（裁決 R15）：劇本的真實秒數除以倍速
@@ -538,7 +541,6 @@ test('hold(s) plays s seconds, ignores skip, ends on abort; reduced-motion resol
   frames(1.4); await Promise.resolve(); assert.equal(done, false, 'still holding at 1.9 s');
   frames(0.2); await p;
   assert.ok(Math.abs(show.elapsed - 2) < 0.05, `held ${show.elapsed.toFixed(2)} s`); assert.equal(show.busy, false);
-  // 終局回合結束之後才 hold：turn 照常可以再演，skip 回到正常
   // 中止（RESET）：立刻結束
   done = false;
   const q = show.hold(2); q.then(() => { done = true; });
@@ -557,6 +559,17 @@ test('hold(s) plays s seconds, ignores skip, ends on abort; reduced-motion resol
   const mid = await headlessShow(); const m = mid.show.hold(2);
   for (let t = 0; t < 0.3; t += 1 / 30) mid.show.update(1 / 30, t);
   mid.show.setReducedMotion(true); await m; assert.equal(mid.show.busy, false);
+});
+
+// 審稿：中止過的舊 hold 收尾（Promise 的 then 晚一步才跑）不能清掉下一個 hold 的記號——不然新的 hold 被 skip 跳掉
+test('a stale aborted hold does not clear the next hold: skip still cannot end it', async () => {
+  const { show } = await headlessShow();
+  const first = show.hold(2); show.abort();
+  const second = show.hold(2); await first;
+  for (let t = 0; t < 0.3 - 1e-9; t += 1 / 30) show.update(1 / 30, t);
+  show.skip(); await Promise.resolve();
+  assert.equal(show.busy, true, 'the second hold ignores skip');
+  show.abort(); await second; assert.equal(show.busy, false);
 });
 
 test('turn(events, { finale: true }) runs at speed 1 and ends on the overview with everyone home', async () => {

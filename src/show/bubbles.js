@@ -13,7 +13,7 @@ function bubbleHtml(kind) {
     if (!BUBBLE_KINDS.includes(kind)) throw new Error(`bubble kind ${kind}`);
     return `<span>${kind}</span>`;
   }
-  if (kind && 'text' in kind) {
+  if (typeof kind === 'object' && kind !== null && 'text' in kind) {
     if (typeof kind.text !== 'string' || !kind.text) throw new Error(`bubble kind ${JSON.stringify(kind)}`);
     return `<span class="text">${escape(kind.text)}</span>`;
   }

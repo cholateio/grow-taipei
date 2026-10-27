@@ -244,5 +244,6 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
     kind: 'world', dur: 0,
     start(c) { c.world(worldEffects(c.stage.lv, c.stage.flags, c.stage.meta), !!c.instant); },
   }, B.focus('home', { final: true, skyline: c => c.stage.headOf('tower').y }));   // 回全景前全景跟 101 頭頂走（§14.4）
+  // 超過上限的估計用的是建拍那一刻的名冊（趕工的走路長度問 rushHero 時誰在哪，演到時可能已經換人走）——估計，不是實測
   return montage && estimateTurn(out, ctx) > MONTAGE_CAP ? keepOnly(out, b => b.keep || b.kind !== 'walk') : out;
 }

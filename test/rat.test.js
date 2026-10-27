@@ -16,10 +16,11 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, solo, SCRIPT_MAX, KEY_MAX, ALL } from './helpers/show.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
 const CYBER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;   // 賽博那條（老鼠在 Lv4 分岔成機器鼠）
 const ALIEN = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;   // 外星那條（變異鼠，Lv5 要颱風 ≥2）
+const MAXED = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));   // 全 MAX（尾聲）
 const RAT = 'quat/enemies/Rat.glb', AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
 const GATE = offset(anchorWorld('baseball'), 0, 1.1);
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
@@ -145,7 +146,15 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
     rows.add(s.z.toFixed(3));
   }
   assert.equal(rows.size, 2, 'two rows of five');
-  assert.ok(pack.n + 1 + 1 <= 12, 'skeletons: 10 + king + shiba ≤ 12');
+  // 骨架動畫（R18 ≤ 12）：尾聲的畫面（老鼠、衛星島、終局、101 的 view 合起來）裡帶 anim 的模型——名冊的 model.anim、
+  // 直接放的 anim（石堆老鼠）——每隻一副骨架；再加開場就在走的柴犬（app.js）一隻
+  for (const epilogue of ['cyber', 'alien']) {
+    const F = { ratBranch: epilogue, missile: 'shield', epilogue };
+    const views = Object.assign({}, ...ALL.filter(m => ['rat', 'satellites', 'finale', 'tower'].includes(m.id)).map(m => m.view(MAXED, F, { total: 61 })));
+    const animated = Object.values(views).reduce((n, sp) => n + (sp.model?.anim || sp.anim ? sp.n ?? 1 : 0), 0);
+    assert.ok(animated >= (epilogue === 'cyber' ? 11 : 1), `${epilogue}: the rats are counted (${animated})`);
+    assert.ok(animated + 1 <= 12, `${epilogue}: skeletons ${animated} + shiba ≤ 12`);
+  }
   assert.equal(sat.view(L, { ratBranch: 'cyber', epilogue: 'cyber' })['sat.rocks'], undefined, 'no rocks-islet rats');
   // 外星尾聲、沒有尾聲：照舊（繞 101）
   assert.deepEqual(rat.view(L, { ratBranch: 'cyber', epilogue: 'alien' })['rat.pack'], plain['rat.pack']);

@@ -165,8 +165,11 @@ test('view with epilogue cyber: body colours are ink, trims neon blue, tower.scr
   assert.deepEqual(v['tower.antenna'].models[0].pos, [b.mast.x, b.top, b.mast.z], 'the antenna rod on the mast tip');
   assert.deepEqual(v['tower.shield'], tower.shieldSpec('full'));
   assert.ok(v['tower.show']);
-  // 沒有尾聲（或外星尾聲）就是平常的塔，沒有螢幕；ship 選項先收下不理（任務 7）
+  // 屋頂的霓虹邊條（1.64）比底座寬：站位照底座 1.6 見方，跟點燈的塔一樣（走路格不變）
+  assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 }, 'stands on the same base as the lit tower');
+  // 沒有尾聲就是平常的塔，沒有螢幕（外星尾聲是母艦，下一個測試）
   assert.equal(plain['tower.screen'], undefined);
+  assert.equal(tower.view(lv, { missile: 'shield', epilogue: 'alien' }, { total: 61 })['tower.screen'], undefined);
 });
 // 最終章 §7 外星：101 閃白變母艦——整座塔身抬離地面 1.0（底座懸浮），底下一片綠光盤（C.alien 發光、y 0.5），
 // 頂帽尖塔換成倒扣的碟（dome 繞 x 翻 π）＋碟緣，變異鼠王坐在碟頂中心（shipTop）；天線退到碟緣後側、跟著抬高，罩子照樣全亮、燈光秀照樣
@@ -198,6 +201,10 @@ test('view with epilogue alien: base lifted by 1.0 with a green glow disc beneat
   // 天線照舊（脈動），細桿立在碟緣後側、碟頂高度；罩子全亮；燈光秀跟著抬高
   assert.equal(v['tower.antenna'].pulse, true);
   assert.deepEqual(v['tower.antenna'].models[0].pos, [b.mast.x, b.top, b.mast.z]);
+  // 碟子（Antenna_2，高 0.3）掛在碟頂下 0.6——最上一節塔身（方錐台寬 1.16，半寬 0.58）的高度：要在塔身外面，不埋進去
+  const dish = v['tower.antenna'].models[1], topTier = { from: tiersTop - 0.45, to: tiersTop };
+  assert.ok(dish.pos[1] > topTier.from && dish.pos[1] < topTier.to, `the dish hangs beside the top tier (y ${dish.pos[1].toFixed(2)})`);
+  assert.ok(Math.max(Math.abs(dish.pos[0]), Math.abs(dish.pos[2])) - dish.h / 2 > 1.16 / 2, `the dish is outside the top tier (${dish.pos[0]}, ${dish.pos[2].toFixed(2)})`);
   assert.ok(Math.abs(b.top - b.deck) < 1e-9 && b.mast.z < -0.4, 'antenna on the back of the saucer');
   assert.deepEqual(v['tower.shield'], tower.shieldSpec('full'));
   assert.ok(v['tower.show'] && v['tower.show'].parts.every(p => p.pos[1] >= 1.0 + 1.0 - 1e-9), 'the lightshow lifted with the body');

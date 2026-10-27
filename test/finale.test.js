@@ -12,17 +12,27 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { createCameraRig } from '../src/scene/camera.js';
 import { countdownEvent } from '../src/game.js';
 import { headlessShow, turnSteps, closingEvents, overviewRig, ALL } from './helpers/show.js';
+import { islanders } from '../src/show/crowd.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const RUSH = ['milk', 'chip', 'bulb', 'token', 'boba', 'baseball'];
 const FRONT_TOL = 0.6;
+// 兩條正解裡 rushSite 回了地點的每一級（「物品 級」；放置回合的 grow 也問，查的是地點本身）：寫死，少查一級、多查一級都要看到
+const RUSH_COMMON = ['milk 2', 'milk 3', 'milk 4', 'milk 5', 'milk 6', 'milk 7', 'milk 8', 'milk 9', 'milk 10', 'chip 2', 'chip 3', 'chip 4', 'chip 5',
+  'bulb 2', 'bulb 3', 'bulb 4', 'bulb 5', 'bulb 6', 'token 2', 'token 3', 'token 4', 'token 5', 'token 6', 'token 9', 'boba 2', 'boba 3',
+  'baseball 2', 'baseball 3', 'baseball 4', 'baseball 5', 'baseball 6', 'baseball 7'];
+const RUSH_SEEN = {
+  'bulb,token,milk,chip,baseball,rat,boba,typhoon': RUSH_COMMON,                  // 外星（這條沒有珍奶 grow 到 Lv4 的事件）
+  'bulb,token,milk,chip,baseball,boba,rat,typhoon': [...RUSH_COMMON, 'boba 4'],   // 賽博
+};
 
 // 趕工（設計 §5）：hero 走到 frontOf(site, r, nav)——請求的站位要在走路格上（nearestWalkable 拉回來不超過 0.6），site 本身在主島上。
 // 查的時機是演到那個 grow 之前（走路與揮鋤頭都在 apply 之前）：照兩條正解一回合一回合瞬間演，每個 grow 先查再演
 test('every rushSite point of both solutions lies on the main island and its frontOf(site, r, nav) is walkable (within 0.6 of the request)', async () => {
   for (const id of RUSH) assert.equal(typeof ALL.find(m => m.id === id).rushSite, 'function', `${id} has rushSite`);
-  const bad = [], seen = new Set();
+  const bad = [], seen = {};
   for (const order of SOLUTIONS) {
+    const mine = seen[order.join(',')] = new Set();
     const { show, run } = await headlessShow();
     let s = createState(spec);
     for (const [i, step] of turnSteps(order).entries()) {
@@ -33,7 +43,7 @@ test('every rushSite point of both solutions lies on the main island and its fro
         const site = mod?.rushSite?.(e.to, { lv: { ...show.stage.lv, [e.item]: e.to }, flags: show.stage.flags });
         if (site) {
           const what = `${order.join('>')} ${e.item} Lv${e.to}`, req = frontOf(site, site.r), got = show.nav.nearestWalkable(req), d = Math.hypot(got.x - req.x, got.z - req.z);
-          seen.add(`${e.item} ${e.to}`);
+          mine.add(`${e.item} ${e.to}`);
           if (!cellAt(site.x, site.z)) bad.push(`${what}: site (${site.x.toFixed(2)}, ${site.z.toFixed(2)}) off the main island`);
           if (!Number.isFinite(site.y) || !(site.r > 0)) bad.push(`${what}: site needs y and r > 0`);
           if (d > FRONT_TOL) bad.push(`${what}: frontOf pulled ${d.toFixed(2)} > ${FRONT_TOL}`);
@@ -43,7 +53,7 @@ test('every rushSite point of both solutions lies on the main island and its fro
     }
   }
   assert.deepEqual(bad, []);
-  assert.ok(seen.size >= 10, `rush sites checked: ${[...seen].join(', ')}`);
+  for (const order of SOLUTIONS) assert.deepEqual([...seen[order.join(',')]].sort(), RUSH_SEEN[order.join(',')].slice().sort(), `${order.join('>')}: rush sites checked`);
 });
 
 // ── 宣告（設計 §4，任務 3）──
@@ -94,13 +104,17 @@ test('view: alarm 3/2/1 draws finale.flare with pulse 1/2/3 Hz; no alarm or miss
 
 test('countdown n=3 live: flare blinks in, visible islanders look at FLARE_AT and say ！, the digit 3 shows on 101 for 1.2 s real, everyone released; ≤ 5 s real at montage speed', async () => {
   const { show, run, bubblesLog } = await placedShow();
-  const at = finale.FLARE_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, (await import('../src/show/crowd.js')).islanders({ roster: show.roster }).length);
+  const at = finale.FLARE_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, islanders({ roster: show.roster }).length);
   assert.ok(crowdSize >= 6, `islanders on the island (${crowdSize})`);
-  let lookers = 0, flareAt = null, digitAt = null;
+  let lookers = 0, flareAt = null, digitAt = null, lookFrom = null, lookTo = null;
+  // 泡泡交給 bubbles.show 的秒數就是真實秒數（beats.js 的 bubble 拍已經除掉倍速）
+  const durs = [], showBubble = show.bubbles.show;
+  show.bubbles.show = (head, kind, dur) => { durs.push([kind, dur]); return showBubble(head, kind, dur); };
   const update = show.update.bind(show);
   show.update = (dt, t) => {
     update(dt, t);
     const look = looking(show);
+    if (look.length) { lookFrom ??= show.elapsed - dt; lookTo = show.elapsed; }
     for (const m of look) assert.ok(Math.abs(m.walker.gesture.yaw - Math.atan2(at.x - m.pos.x, at.z - m.pos.z)) < 1e-9, 'faces the flare');
     lookers = Math.max(lookers, look.length);
     if (flareAt === null && show.stage.partKeys().includes('finale.flare')) flareAt = show.elapsed;
@@ -118,6 +132,13 @@ test('countdown n=3 live: flare blinks in, visible islanders look at FLARE_AT an
   assert.ok(Math.hypot(digits[0].at.x - head.x, digits[0].at.y - head.y, digits[0].at.z - head.z) < 1e-6, 'over 101');
   assert.ok(digitAt > flareAt, 'the digit comes after the flare');
   assert.ok(secs - digitAt >= 1.2 - 0.05, `the digit reads 1.2 s real (${(secs - digitAt).toFixed(2)})`);
+  // 看與「！」各自的真實秒數：抬頭 LOOK 1.2 s（被點名看紅光到放回日常）、「！」SHOUT 0.8 s、數字 DIGIT 1.2 s
+  assert.ok(Math.abs(lookTo - lookFrom - finale.LOOK) <= 2 / 30, `the look lasts ${finale.LOOK} s real (${(lookTo - lookFrom).toFixed(2)})`);
+  const shouts = durs.filter(([k]) => k === '！');
+  assert.equal(shouts.length, crowdSize);
+  for (const [, d] of shouts) assert.ok(Math.abs(d - finale.SHOUT) < 1e-9, `！ ${finale.SHOUT} s real (${d})`);
+  assert.deepEqual(durs.filter(([k]) => k === '3').map(([, d]) => Math.round(d * 1000) / 1000), [finale.DIGIT], `the digit ${finale.DIGIT} s real`);
+  assert.equal(finale.LOOK, 1.2); assert.equal(finale.SHOUT, 0.8); assert.equal(finale.DIGIT, 1.2);
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
   assert.ok(show.elapsed <= 5, `≤ 5 s real (${show.elapsed.toFixed(2)})`);
 });
@@ -163,7 +184,6 @@ test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×84
 import { finaleEvents } from '../src/game.js';
 import { resolve, missile as missileOf } from '../src/rules/endings.js';
 import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
-import { islanders } from '../src/show/crowd.js';
 import { SHIELD } from '../src/actors/parts.js';
 import { HOLD_END, FLIGHT, DEFLECT } from '../src/actors/finale.js';
 
@@ -360,14 +380,13 @@ test('missile script instant (skip): the final state matches the live one for al
 });
 
 // ── 賽博尾聲（設計 §7，任務 6）──
-import { CAR_FLIGHT } from '../src/actors/finale.js';
+import { CAR_FLIGHT, MARQUEE } from '../src/actors/finale.js';
 import { ROOF_SPOTS } from '../src/actors/rat.js';
 import { orbitPose } from '../src/actors/parts.js';
 import { TIMES } from '../src/scene/daynight.js';
 import { NEON_BOOST } from '../src/actors/world.js';
 import { body as towerBody } from '../src/actors/tower.js';
 const CYBER_ORDER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;
-const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
 
 test('view: epilogue cyber draws finale.car (orbit, red tint, from the sea, park on the 101 roof, no rest)', () => {
   const v = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META), car = v['finale.car'], dark = towerBody('lit', { dark: true });
@@ -426,7 +445,7 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
   assert.ok(parkedAt !== null && parkedAt - flyAt <= CAR_FLIGHT + 0.05 && CAR_FLIGHT < 4.6, `the car parks ${(parkedAt - flyAt).toFixed(2)} s after take-off`);
   assert.ok(dist3(carPos(), park) < 1e-6, 'the car ends parked on the roof');
   const marquee = bubblesLog.slice(n0).filter(b => b.kind?.text === MARQUEE);
-  assert.equal(marquee.length, 1, 'one marquee');
+  assert.equal(marquee.length, 1, 'one marquee'); assert.equal(MARQUEE, '飛天跑車今日抵台，先付清 755 萬', 'the design text (§7)');
   const sc = show.stage.partObject('tower.screen').position;
   assert.ok(dist3(marquee[0].at, sc) < 1e-6, 'on the screen');
   assert.ok(Math.abs(textSeen - 3) < 0.1, `marquee 3 s (${textSeen.toFixed(2)})`);
@@ -571,6 +590,8 @@ test('alien epilogue live: mutant waves + ！, pad blinks in, UFOs descend 2 s, 
   assert.deepEqual(skip.show.stage.partKeys().sort(), show.stage.partKeys().sort());
   assert.ok(dist3(skip.show.roster.members('rat.pack')[0].pos, SHIP_SPOT) < 1e-6, 'skip: the king on the ship top');
   assert.equal(skip.worldLog.at(-1)[0].mood, 'alien');
+  assert.equal(everyone(skip.show).filter(m => m.mode === 'script').length, 0, 'skip: everyone released');
+  assert.ok(!skip.show.roster.members('rat.pack')[0].waving, 'skip: the wave is cleared');
   const so = skip.show.stage.partObject('finale.ufos'), lo = show.stage.partObject('finale.ufos');
   assert.ok(dist3(so.position, lo.position) < 1e-9, 'skip: the UFOs landed');
 });
@@ -600,6 +621,7 @@ test('alien epilogue camera (real rig): the rocks islet, the UFOs and the aliens
     show.update = (d, t) => {
       update(d, t);
       if (seen === null && show.stage.partObject('finale.aliens')) {
+        assert.ok(!r.rig.flying, `${aspect}: the camera has settled on the islet when the aliens appear`);
         r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
         seen = points.map(([name, p]) => [name, new THREE.Vector3(p.x, p.y, p.z).project(r.camera)]);
       }

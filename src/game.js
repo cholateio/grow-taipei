@@ -12,7 +12,7 @@ export const countdownEvent = n => ({ kind: 'countdown', n, flag: { name: 'alarm
 // 終局回合的事件：飛彈（outcome = shield／deflect／hit），真結局（8 個全 MAX）再接尾聲（ending = cyber／alien）
 export function finaleEvents(ending) {
   const out = [{ kind: 'missile', outcome: ending.missile, flag: { name: 'missile', value: ending.missile } }];
-  if (ENDINGS[ending.id]?.kind === 'true') out.push({ kind: 'epilogue', ending: ending.id, flag: { name: 'epilogue', value: ending.id } });
+  if (ENDINGS[ending.id].kind === 'true') out.push({ kind: 'epilogue', ending: ending.id, flag: { name: 'epilogue', value: ending.id } });
   return out;
 }
 export const TITLE_HOLD = 2;   // 標題卡前停幾秒（設計 §7：不能跳過；reduced-motion 0 秒，show.hold 管）

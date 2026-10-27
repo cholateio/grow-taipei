@@ -35,5 +35,5 @@ test('{ text } bubble renders a span.text with the text; unknown shapes still th
   assert.equal(group.children[0].element._html, '<span class="text">飛天跑車今日抵台，先付清 755 萬</span>');
   bubbles.show(head, { text: '<b>&' }, 1);
   assert.equal(group.children[1].element._html, '<span class="text">&lt;b&gt;&amp;</span>');
-  for (const bad of [{ text: '' }, { text: 3 }, { foo: 'x' }, { icon: 'nope' }, null]) assert.throws(() => bubbles.show(head, bad, 1), /bubble kind/, JSON.stringify(bad));
+  for (const bad of [{ text: '' }, { text: 3 }, { foo: 'x' }, { icon: 'nope' }, null, 5, true]) assert.throws(() => bubbles.show(head, bad, 1), /bubble kind/, JSON.stringify(bad));
 });

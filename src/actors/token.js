@@ -55,7 +55,8 @@ export function spurPath(kind) {
 // 列車的支線行程：車頭在環上角 a（比徑向早 DELTA rad）沿切線轉出去（二次貝茲：切線 → 徑向），再沿徑向開到島那頭。
 // 回傳 { kind, a, path, lens, total }；trainStop({ spur }) 把列車開到 total 那頭停住再倒回環上
 const DELTA = 0.13;
-export const SPUR_SPEED = 2.5;   // 支線上的車速（每秒公尺），約跟環上一樣
+export const SPUR_SPEED = 2.5;
+export const SPUR_RUSH = 3.5;   // 代幣 Lv7 ◆ 那一趟的支線車速（計畫 5b 任務 4：◆ ≤ 8 s）   // 支線上的車速（每秒公尺），約跟環上一樣
 export function spurTrip(kind) {
   const L = spurLine(kind), b = Math.atan2(L.uz, L.ux), a = b - DELTA, r1 = L.from / Math.cos(DELTA);
   const p0 = { x: Math.cos(a) * L.from, z: Math.sin(a) * L.from }, p1 = { x: L.ux * r1, z: L.uz * r1 }, p2 = { x: L.ux * (r1 + 0.5), z: L.uz * (r1 + 0.5) };
@@ -329,7 +330,7 @@ export const script = {
     },
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
-    //   支線 0.8 秒長完（每秒 3 公尺多），比車速 2.5 快，列車追不上還沒長好的那一段
+    //   支線 0.8 秒長完（每秒約 3.7 公尺），比支線車速 SPUR_RUSH 3.5 快一點，列車追不上還沒長好的那一段
     // 風車島的支線若已經被燈泡 Lv7 鋪好（view 的 lv.bulb ≥ 7），只長還沒有的那條——鏡頭改到遊樂場島、列車開進遊樂場島的支線
     //   （選擇帶動升級裁決 R7：賽博正解燈泡 Lv7 先到，以前照樣飛去風車島，新長的遊樂場支線整段在畫面外）。
     // 兩條都要長（外星正解）：風車島那條跟著鏡頭先長；遊樂場島在風車島的對面、拉近時在畫面外，等鏡頭回到全景（遊樂場島在全景裡）才長出來——
@@ -344,7 +345,7 @@ export const script = {
         B.apply(e, { only: now, blink: false }),
         // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）；
         //   支線上每秒 3.5 公尺（平常 2.5；計畫 5b 任務 4：列車剛開過支線口時整級 8.4 s，支線來回省 0.7 s）
-        B.together([...now.map(grow), B.trainStop({ spur: dest, stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: 3.5, during: [
+        B.together([...now.map(grow), B.trainStop({ spur: dest, stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: SPUR_RUSH, during: [
           B.focus('home', { hold: 1.0 }), ...later.flatMap(k => [B.apply(e, { only: [k], blink: false }), grow(k)]),
         ] })]),
         B.apply(e), B.levelUp('token'),

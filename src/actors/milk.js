@@ -196,10 +196,15 @@ function spawnKid(ctx) {
 const gather = (ctx, centre, r, opts) => ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, r)[i], opts?.(i))));
 
 export const script = {
-  // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下、♥、揮手
+  // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下的同時 ♥、揮手
+  // （一級 3–4.5 s：最近的島民離箱子 0.5–1.6 s 不等，走路那段至少 0.6 s、♥ 跟閃白一起冒——
+  //   選擇帶動升級之後名冊的亂數序列變了，最遠那次整段 4.6 s）
   placed(e, s, ctx) {
     const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE));
-    return [B.walk(islander, offset(CRATE, 0.5, 0.1)), B.gesture(islander, 'look', { at: CRATE }), B.apply(e), B.bubble(islander, '♥'), B.gesture(islander, 'wave'), B.home(islander)];
+    return [
+      B.together([B.walk(islander, offset(CRATE, 0.5, 0.1)), B.wait(0.6)]), B.gesture(islander, 'look', { at: CRATE }),
+      B.together([B.apply(e), B.bubble(islander, '♥', 0.9)]), B.gesture(islander, 'wave'), B.home(islander),
+    ];
   },
   grow: {
     // 早餐店：送牛奶的島民走到店門口、揮鋤頭蓋 → 閃白店面與桌子 → LEVEL UP

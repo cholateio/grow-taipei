@@ -60,7 +60,7 @@ test('engineers: 2 in coats commute to 101 at Lv2, 4 on bikes from Lv3; rats ≥
   const e2 = chip.view(lv({ chip: 2 }), {})['chip.engineers'];
   assert.deepEqual([e2.kind, e2.n, e2.accessory], ['roster', 2, 'coat']); assert.deepEqual(e2.home, { kind: 'path', path: chip.ENGINEER_ROUTE, loop: false, speed: 0.45, entry: chip.ENGINEER_ENTRY });
   for (let n = 3; n <= 9; n++) {
-    const v = chip.view(lv({ chip: n }), {}), vr = chip.view(lv({ chip: n, rat: 2 }), {});
+    const v = chip.view(lv({ chip: n }), {}), vr = chip.view(lv({ chip: n, rat: 3 }), {});   // 老鼠 Lv3 泡溫泉（沒有列車）：跟著老鼠（鼠窩那級站在隔壁格盯著，見下一個測試）
     assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory, v['chip.engineers'].home.speed], [4, 'bike', 0.8], `lv${n}`);
     assert.equal(vr['chip.engineers'].n, 3); const d = vr['chip.detective'];
     assert.deepEqual([d.kind, d.n, d.accessory, d.from], ['roster', 1, 'glass', 'chip.engineers']); assert.deepEqual(d.home, { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: chip.ENGINEER_ENTRY[0] });
@@ -70,12 +70,16 @@ test('engineers: 2 in coats commute to 101 at Lv2, 4 on bikes from Lv3; rats ≥
   assert.deepEqual(chip.view(lv({ chip: 1 }), {})['chip.worker'].home, { kind: 'wander', at: AT, r: 0.9, entry: chip.WORKER_ENTRY });
 });
 // 審稿第 2 輪：老鼠坐在環狀線的車上時偵防師追不到（一直對著列車重新規劃只會在別人路上原地踏步）——在捷運站北側等，老鼠下車再跟
-test('detective: follows the rats, but waits by the station while they ride the train', () => {
+test('detective: follows the rats, but watches the nest from the next cell and waits by the station while they ride the train', () => {
   const ride = chip.view(lv({ chip: 5, rat: 3, token: 4 }), {})['chip.detective'];
   assert.equal(ride.home.kind, 'stand'); assert.equal(ride.home.spots.length, 1); assert.equal(ride.home.entry, chip.ENGINEER_ENTRY[0]);
   const w = ride.home.spots[0], st = anchorWorld('token'); assert.deepEqual(cellAt(w.x, w.z), cellOf('token'), 'in the station cell'); assert.ok(Math.hypot(w.x - st.x, w.z - st.z) < 1.5, 'by the station');
   assert.ok(Math.hypot(w.x - chip.ENGINEER_ENTRY[0].x, w.z - chip.ENGINEER_ENTRY[0].z) >= 1.5, 'entry ≥ 1.5 from the spot');
-  for (const [r, t, flags] of [[2, 4, {}], [3, 3, {}], [4, 7, { ratBranch: 'alien' }], [4, 7, { ratBranch: 'cyber' }]]) assert.equal(chip.view(lv({ chip: 5, rat: r, token: t }), flags)['chip.detective'].home.kind, 'follow', `rat ${r} token ${t}`);
+  for (const [r, t, flags] of [[3, 3, {}], [4, 7, { ratBranch: 'alien' }], [4, 7, { ratBranch: 'cyber' }]]) assert.equal(chip.view(lv({ chip: 5, rat: r, token: t }), flags)['chip.detective'].home.kind, 'follow', `rat ${r} token ${t}`);
+  // 鼠窩（老鼠 Lv2）在球場格裡：他站在隔壁格的邊上盯著窩（球場格的人數預算），面向窩
+  const nest = chip.view(lv({ chip: 5, rat: 2, token: 4 }), {})['chip.detective'].home, p = nest.spots[0], at = anchorWorld('rat');
+  assert.equal(nest.kind, 'stand'); assert.notDeepEqual(cellAt(p.x, p.z), cellAt(at.x, at.z), 'outside the nest cell');
+  assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 2, 'close to the nest'); assert.ok(Math.abs(Math.atan2(at.x - p.x, at.z - p.z) - p.yaw) < 1e-9, 'faces the nest');
 });
 test('ENGINEER_ROUTE starts in the chip cell and ends at the tower foot', () => {
   const r = chip.ENGINEER_ROUTE;

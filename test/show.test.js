@@ -607,3 +607,48 @@ test('turn(events, { finale: true }) runs at speed 1 and ends on the overview wi
   assert.ok(!rig.log.some(l => l[0] === 'focus'), 'no lead focus in finale mode');
   assert.equal(rig.log.at(-1)[0], 'home', 'ends on the overview');
 });
+
+// 選擇帶動升級 §4（計畫 5b 任務 3）：放下的物品當回合就長到 Lv2——一般回合裡先演 placed 劇本、再演它自己的 grow[2] 劇本（同一回合）。
+// 兩條正解的每一個放置回合都 live 演一次：placed 的 mark 在 grow 2 前面、grow[2] 劇本真的有建（不是預設的 apply + LEVEL UP）、
+// 演完沒有人留在劇本手上、舞台等級等於引擎；同一回合再演一次，演到 grow[2] 劇本中途按跳過：一樣沒人留在劇本手上，
+// 舞台的等級、零件鍵都跟整回合瞬間演完的一樣（跳過到得了引擎的狀態）
+test('placed + grow[2] in the same turn: the placed script then the grow script, roster members not left in script mode, skip reaches the engine state (each item, both solutions)', async () => {
+  const scripted = m => m.roster.keys().flatMap(k => m.roster.members(k).filter(x => x.mode === 'script').map(() => k));
+  for (const order of SOLUTIONS) for (let n = 0; n < order.length; n++) {
+    const id = order[n], what = `${order.join('>')} turn ${n + 1} (${id})`, steps = turnSteps(order).slice(0, n + 1);
+    const isPlaced = e => e.kind === 'placed' && e.item === id, isGrow2 = e => e.kind === 'grow' && e.item === id && e.to === 2;
+    // 照 order 瞬間演到第 n 回合之前，回傳這一回合的事件與引擎狀態
+    const upTo = async h => {
+      let s = engine.createState(spec), evs = null;
+      for (const [i, step] of steps.entries()) {
+        const r = step(s); s = r.state;
+        if (i === n) { evs = [...r.events, { kind: 'settle' }]; break; }
+        await h.run([...r.events, { kind: 'settle' }], { instant: true });
+      }
+      return { evs, s };
+    };
+    // 整回合 live：mark 的順序、grow[2] 劇本有沒有建
+    const h = await headlessShow(), { evs, s } = await upTo(h), mod = ALL.find(m => m.id === id), grow2 = mod.script.grow[2];
+    assert.ok(evs.some(isPlaced) && evs.some(isGrow2), `${what}: placed and grow 2 in the same turn`);
+    let built = 0; mod.script.grow[2] = (...a) => { built++; return grow2(...a); };
+    const marks = [];
+    try { await h.run(evs, { onMark: e => marks.push(e) }); } finally { mod.script.grow[2] = grow2; }
+    assert.ok(marks.findIndex(isPlaced) >= 0 && marks.findIndex(isPlaced) < marks.findIndex(isGrow2), `${what}: placed script before the grow 2 script`);
+    assert.equal(built, 1, `${what}: the grow[2] script itself plays`);
+    assert.deepEqual(scripted(h.show), [], `${what}: nobody left in script mode`);
+    assert.deepEqual(h.show.stage.lv, s.lv, `${what}: stage levels equal the engine`);
+    // 同一回合瞬間演完的樣子（跳過要到的狀態）
+    const ref = await headlessShow(); await upTo(ref); await ref.run(evs, { instant: true });
+    // 再演一次，grow[2] 劇本開演 0.5 s 後跳過
+    const k = await headlessShow(), again = await upTo(k);
+    let at = null, t = 0;
+    const p = k.show.turn(again.evs, { onMark: e => { if (isGrow2(e)) at = t; } });
+    while (at === null || t < at + 0.5) { k.show.update(1 / 30, t); t += 1 / 30; await Promise.resolve(); assert.ok(t < 120, `${what}: grow 2 reached`); }
+    assert.ok(k.show.busy, `${what}: still playing when skipped`);
+    k.show.skip(); await p;
+    assert.deepEqual(scripted(k.show), [], `${what}: skip leaves nobody in script mode`);
+    assert.deepEqual(k.show.stage.lv, again.s.lv, `${what}: skip reaches the engine levels`);
+    assert.deepEqual(new Set(k.show.stage.partKeys()), new Set(ref.show.stage.partKeys()), `${what}: skip reaches the same parts as an instant turn`);
+    assert.deepEqual(k.show.stage.flags, ref.show.stage.flags, `${what}: same flags`);
+  }
+});

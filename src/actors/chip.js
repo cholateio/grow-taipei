@@ -30,6 +30,9 @@ export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
 // 偵防師等老鼠下車的地方：捷運站北側（不在散步客繞的西橋頭、不在工程師通勤的園區南緣）——老鼠坐在環狀線的車上時追不到，站在這裡等
 const WATCH = { ...offset(anchorWorld('token'), 0.3, -1.0), yaw: 0 };
+// 偵防師盯鼠窩的地方：窩在球場格的東南角，他站在窩東邊、隔壁格的邊上看著窩（選擇帶動升級：老鼠放下當回合就生窩，
+// 常常碰上大巨蛋 Lv8 坐新線來的觀眾——球場格已經 8 個人，他再跟進去就 9 個，人數預算一格 ≤ 8）
+const NEST = anchorWorld('rat'), NEST_WATCH = { ...offset(NEST, 1.5, -0.5), yaw: Math.atan2(-1.5, 0.5) };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
 // 工程師上下班：廠門 → 沿園區南緣往西 → 橋 → 101 腳下（開放路徑，走到底折返）
 const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
@@ -172,9 +175,10 @@ export function view(lv, flags = {}) {
     v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: n >= 3 ? 'bike' : 'coat', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: n >= 3 ? 0.8 : 0.45, entry: ENGINEER_ENTRY } };
     // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
     // 老鼠坐車（rat 的 'train' 模式）時改成在捷運站北側等（審稿第 2 輪：一直對著飛快的列車重新規劃只會在站旁的橋頭原地踏步、擋住散步客）
-    const riding = ratMode(lv, flags) === 'train';
+    // 老鼠還在窩裡（'nest'）時站在隔壁格邊上盯著窩，不跟進球場格
+    const mode = ratMode(lv, flags), post = mode === 'train' ? WATCH : mode === 'nest' ? NEST_WATCH : null;
     if (detective) v['chip.detective'] = { kind: 'roster', at, n: 1, accessory: 'glass', from: 'chip.engineers',
-      home: riding ? { kind: 'stand', spots: [WATCH], rescue: true, entry: ENGINEER_ENTRY[0] } : { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: ENGINEER_ENTRY[0] } };
+      home: post ? { kind: 'stand', spots: [post], rescue: true, entry: ENGINEER_ENTRY[0] } : { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: ENGINEER_ENTRY[0] } };
   }
   return v;
 }

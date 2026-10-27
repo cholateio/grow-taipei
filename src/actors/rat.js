@@ -4,6 +4,8 @@
 // 颱風把老鼠沖進大巨蛋：5 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
 // 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）。
+// 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 10 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，兩排各 5 隻面向鏡頭），
+// 王冠鼠照舊坐站頂。屋頂在 101 的 footprint 裡、走不上去：finale.js 的尾聲劇本把牠們閃白放上去（不是走上去）。
 // 劇本（物品 v2 §6）：一級 3–5 秒；◆ Lv4、Lv5 6–10 秒（Lv5 回全景定格）。
 import { anchorWorld, cellOf, landmarkWorld } from './anchors.js';
 import { ENGINEER_ROUTE } from './chip.js';
@@ -13,6 +15,7 @@ import { ITEMS } from '../rules/spec.js';
 import { compile } from '../rules/conditions.js';
 import { trainCars, ROOF_Y } from './token.js';
 import { modelExtras } from '../show/roster.js';
+import { body as towerBody } from './tower.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
@@ -25,6 +28,11 @@ const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 
 // 面向站前廣場；天線在右後角）；之前是大車站圓頂外的簷角
 const STATION = anchorWorld('token'), CORNICE_Y = 0.605;
 export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.48, -0.32, ROOF_Y), yaw: 0.8 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
+
+// 黑塔屋頂上的站位（世界座標）：屋頂面高度、兩排各 5 隻（x 間距 0.26 ≥ 名冊的 0.25，不會被 separateStanding 推開），
+// 前排 z +0.1、後排 z −0.26（離後緣的桅杆 0.36）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）
+const ROOF = towerBody('lit', { dark: true }).roof;
+export const ROOF_SPOTS = [0.1, -0.26].flatMap(z => [-0.52, -0.26, 0, 0.26, 0.52].map(x => ({ ...offset(TOWER, x, z, ROOF), yaw: 0 })));
 
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
 export function ratMode(lv, flags) {
@@ -55,8 +63,9 @@ export function view(lv, flags) {
     case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
     case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
     // Lv5 最終型態：機器鼠軍團 10 隻繞 101＋站頂一隻戴王冠（骨架動畫上限 12：10 + 王冠鼠 + 柴犬；石堆小島的兩隻這時不畫）
+    // 賽博尾聲：軍團站上黑塔屋頂（同一個名冊、同一批老鼠，只是家搬了）
     case 'cyber': return lv.rat >= 5
-      ? { 'rat.pack': pack(TOWER, 10, { ...wander(TOWER, 1.3), entry: PARK }, { tint: GREY, antenna: true }),
+      ? { 'rat.pack': pack(TOWER, 10, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: PARK }, { tint: GREY, antenna: true }),
         'rat.king': { kind: 'king', at: kingSpot(lv.token), model: { path: RAT, h: 0.2, anim: 'Idle', tint: GREY, antenna: true, crown: true }, footprint: false } }
       : { 'rat.pack': pack(ENGINEER_ROUTE[0], 5, { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 }, { tint: GREY, antenna: true }) };
     case 'alien': {

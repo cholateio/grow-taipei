@@ -358,3 +358,92 @@ test('missile script instant (skip): the final state matches the live one for al
     assert.equal(a.body, outcome !== 'shield');
   }
 });
+
+// ── 賽博尾聲（設計 §7，任務 6）──
+import { CAR_FLIGHT } from '../src/actors/finale.js';
+import { ROOF_SPOTS } from '../src/actors/rat.js';
+import { orbitPose } from '../src/actors/parts.js';
+import { TIMES } from '../src/scene/daynight.js';
+import { NEON_BOOST } from '../src/actors/world.js';
+import { body as towerBody } from '../src/actors/tower.js';
+const CYBER_ORDER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;
+const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
+
+test('view: epilogue cyber draws finale.car (orbit, red tint, from the sea, park on the 101 roof, no rest)', () => {
+  const v = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META), car = v['finale.car'], dark = towerBody('lit', { dark: true });
+  assert.ok(car, 'finale.car');
+  assert.equal(car.kind, 'orbit'); assert.equal(car.path, 'kenney/space/craft_speederA.glb');
+  assert.equal(car.tint['^metalRed$'], 0xe8322e); assert.equal(car.footprint, false); assert.equal(car.rest, undefined, 'parks for good');
+  assert.deepEqual(car.from, { x: 10, y: 3.5, z: 9 }, 'flies in from the sea, camera-right-front');
+  assert.deepEqual(car.at, TOWER_AT); assert.equal(car.r, 1.4); assert.equal(car.speed, 2.5); assert.deepEqual(car.legs, [1.2, 0.8]);
+  assert.ok(Math.abs(car.h - (towerBody('lit').top + 0.6)) < 1e-9, 'circles just over the 101 top');
+  assert.ok(Math.abs(Math.sin(car.phase) - 1) < 1e-9, 'enters and leaves the lap on the camera side');
+  assert.ok(Math.abs(car.size - 0.3 * 0.8 / 2.0) < 1e-9 && car.ry === Math.PI);
+  assert.ok(Math.abs(car.park.y - (TOWER_AT.y + dark.roof)) < 1e-9 && Math.abs(car.park.x - TOWER_AT.x) < 1e-9 && car.park.z > TOWER_AT.z, 'parks on the front of the roof');
+  assert.ok(Math.abs(car.park.z - TOWER_AT.z) + 0.15 <= dark.parts.find(p => p.name === 'deck').scale[2] / 2, 'the whole car body on the roof');
+  assert.deepEqual(orbitPose(car, Infinity), { ...car.park, yaw: orbitPose(car, Infinity).yaw, done: true });
+  assert.ok(Math.abs(CAR_FLIGHT - (1.2 + 2 * Math.PI / 2.5 + 0.8)) < 1e-9);
+  for (const flags of [{ missile: 'shield' }, { missile: 'shield', epilogue: 'alien' }]) assert.equal(finale.view(LIT, flags, LIT_META)['finale.car'], undefined);
+});
+
+// 賽博正解整局瞬間演完（含倒數三回合）、飛彈瞬間演完，尾聲 live（終局回合 1 倍速）：量尾聲自己的秒數
+test('cyber epilogue live: night, black tower blinks in, the car flies in and parks within 4 s, the marquee text shows 3 s, the rats appear on the roof, ends on the overview; ≤ 12 s real', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog, worldLog, rig } = h;
+  let s = createState(spec);
+  for (const [i, st] of turnSteps(CYBER_ORDER).entries()) {
+    const r = st(s); s = r.state;
+    await run(i >= CYBER_ORDER.length ? closingEvents(i - CYBER_ORDER.length, r.events) : [...r.events, { kind: 'settle' }], { instant: true });
+  }
+  const [missileEvent, epilogueEvent] = finaleEvents(resolve(s, spec));
+  assert.equal(epilogueEvent?.ending, 'cyber');
+  await run([missileEvent], { finale: true, instant: true });
+  const w0 = worldLog.length, n0 = bubblesLog.length, r0 = rig.log.length, main0 = show.stage.partObject('tower.main');
+  const park = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META)['finale.car'].park;
+  let darkAt = null, flyAt = null, parkedAt = null, textAt = null, textSeen = 0, ratsAt = null, maxBubbles = 0;
+  const update = show.update.bind(show), dt = 1 / 30;
+  const carPos = () => { const o = show.stage.partObject('finale.car'); if (!o?.children[0]) return null; const p = o.children[0].position; return { x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }; };
+  const onRoof = () => show.roster.members('rat.pack').every(m => Math.abs(m.pos.y - ROOF_SPOTS[0].y) < 1e-6);
+  show.update = (d, t) => {
+    update(d, t);
+    const now = show.elapsed;
+    if (darkAt === null && show.stage.partObject('tower.main') !== main0) darkAt = now;
+    const c = carPos();
+    if (c && flyAt === null && dist3(c, park) > 1) flyAt = now;
+    if (c && flyAt !== null && parkedAt === null && dist3(c, park) < 1e-6) parkedAt = now;
+    if (textAt === null && bubblesLog.slice(n0).some(b => b.kind?.text === MARQUEE)) textAt = now;
+    if (textAt !== null && show.bubbles.count > 0) textSeen += d;
+    if (ratsAt === null && onRoof()) ratsAt = now;
+  };
+  await run([epilogueEvent], { finale: true });
+  show.update = update;
+  const secs = show.elapsed;
+  assert.ok(secs <= 12, `≤ 12 s real (${secs.toFixed(2)})`);
+  console.log(`cyber epilogue: ${secs.toFixed(2)} s real (dark ${darkAt?.toFixed(2)}, fly ${flyAt?.toFixed(2)}, parked ${parkedAt?.toFixed(2)}, marquee ${textAt?.toFixed(2)} for ${textSeen.toFixed(2)}, rats ${ratsAt?.toFixed(2)})`);
+  const w = worldLog.slice(w0).map(([x]) => x);
+  assert.ok(w.some(x => x.time === TIMES.night && x.glowScale === NEON_BOOST), 'night, neon up');
+  assert.ok(darkAt !== null && darkAt < flyAt, 'the black tower first');
+  assert.ok(show.stage.partKeys().includes('tower.screen'), 'the screen is up');
+  assert.ok(parkedAt !== null && parkedAt - flyAt <= CAR_FLIGHT + 0.05 && CAR_FLIGHT < 4.6, `the car parks ${(parkedAt - flyAt).toFixed(2)} s after take-off`);
+  assert.ok(dist3(carPos(), park) < 1e-6, 'the car ends parked on the roof');
+  const marquee = bubblesLog.slice(n0).filter(b => b.kind?.text === MARQUEE);
+  assert.equal(marquee.length, 1, 'one marquee');
+  const sc = show.stage.partObject('tower.screen').position;
+  assert.ok(dist3(marquee[0].at, sc) < 1e-6, 'on the screen');
+  assert.ok(Math.abs(textSeen - 3) < 0.1, `marquee 3 s (${textSeen.toFixed(2)})`);
+  assert.ok(ratsAt !== null && ratsAt >= textAt, 'the rats line up after the marquee starts');
+  const rats = show.roster.members('rat.pack');
+  assert.equal(rats.length, 10);
+  for (const m of rats) assert.ok(dist3(m.pos, ROOF_SPOTS[m.i]) < 1e-6 && m.mode === 'home', `rat ${m.i} on its roof spot`);
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+  const cam = rig.log.slice(r0);
+  assert.ok(cam.length && cam.every(([k]) => k === 'home'), `the camera stays on the overview (${cam.map(c => c[0]).join(' ')})`);
+  // 跳過：終態一樣（車停好、10 隻在屋頂、螢幕在）
+  const skip = await headlessShow();
+  let s2 = createState(spec);
+  for (const [i, st] of turnSteps(CYBER_ORDER).entries()) { const r = st(s2); s2 = r.state; await skip.run(i >= CYBER_ORDER.length ? closingEvents(i - CYBER_ORDER.length, r.events) : [...r.events, { kind: 'settle' }], { instant: true }); }
+  await skip.run(finaleEvents(resolve(s2, spec)), { finale: true, instant: true });
+  assert.deepEqual(skip.show.stage.partKeys().sort(), show.stage.partKeys().sort());
+  for (const m of skip.show.roster.members('rat.pack')) assert.ok(dist3(m.pos, ROOF_SPOTS[m.i]) < 1e-6, `skip: rat ${m.i} on the roof`);
+  const o = skip.show.stage.partObject('finale.car'), p = o.children[0].position;
+  assert.ok(dist3({ x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }, park) < 1e-6, 'skip: the car parked');
+});

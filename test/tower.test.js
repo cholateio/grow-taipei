@@ -132,6 +132,43 @@ test('view with missile shield: tower.shield state full', () => {
   assert.deepEqual(v['tower.main'], tower.view(lv, {})['tower.main'], 'the tower is not bent');
   for (const missile of ['deflect', 'hit']) assert.notEqual(tower.view(lv, { missile })['tower.shield']?.state, 'full');
 });
+// 最終章 §7 賽博：101 閃白換成黑色高塔——塔身黑（DARK）、白邊換霓虹藍發光；頂帽與尖塔換成一片平屋頂（停車、機器鼠排隊），
+// 天線桅杆退到屋頂後緣，桅杆頂上一面朝鏡頭（+z）的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）；天線照樣脈動、矽盾照樣全亮
+test('view with epilogue cyber: body colours are ink, trims neon blue, tower.screen is a glowing box above the spire facing +z', () => {
+  const lv = lvOf(61), flags = { missile: 'shield', epilogue: 'cyber' }, v = tower.view(lv, flags, { total: 61 }), plain = tower.view(lv, { missile: 'shield' }, { total: 61 });
+  const at = anchorWorld('tower'), b = tower.body('lit', { dark: true });
+  assert.deepEqual(v['tower.main'].parts, b.parts);
+  const glass = b.parts.filter(p => p.kind === 'frustum4');
+  assert.ok(glass.length >= 9 && glass.every(p => p.color === tower.DARK), 'the glass is ink-dark');
+  const trims = b.parts.filter(p => p.glow != null);
+  assert.ok(trims.length >= 8 && trims.every(p => p.glow === tower.NEON_BLUE && p.color === tower.NEON_BLUE), 'the trims glow neon blue');
+  assert.ok(b.parts.every(p => p.color === tower.DARK || p.color === tower.NEON_BLUE), 'nothing cream, sand or glass-green is left');
+  // 平屋頂：roof 是屋頂面高度（相對 at），寬 ≥ 1.4（10 隻機器鼠＋一台車站得下），桅杆在屋頂後緣、尖頂 = top
+  const deck = b.parts.find(p => p.name === 'deck');
+  assert.ok(deck && deck.scale[0] >= 1.4 && deck.scale[2] >= 1.4, 'a flat roof deck');
+  assert.ok(Math.abs(deck.pos[1] + deck.scale[1] / 2 - b.roof) < 1e-9, 'roof = the deck top face');
+  assert.ok(b.mast.z < -0.4 && b.mast.x === 0, `mast at the back of the roof (${b.mast.z})`);
+  assert.ok(b.top > b.roof + 0.5, 'the mast stands above the roof');
+  assert.equal(v['tower.main'].labelY, plain['tower.main'].labelY, 'the head (skyline) stays: no camera jump');
+  const sc = v['tower.screen'];
+  assert.ok(sc, 'tower.screen');
+  assert.equal(sc.kind, 'compound'); assert.equal(sc.footprint, false); assert.equal(sc.shadow, false);
+  assert.ok(Math.abs(sc.at.x - (at.x + b.mast.x)) < 1e-9 && Math.abs(sc.at.z - (at.z + b.mast.z)) < 1e-9, 'over the mast');
+  const frame = sc.parts[0], lowest = Math.min(...sc.parts.map(p => p.pos[1] - p.scale[1] / 2));
+  assert.ok(sc.at.y + lowest > at.y + b.top + 0.5, `above the mast tip and the antenna rod (${(sc.at.y + lowest - at.y - b.top).toFixed(2)})`);
+  assert.ok(Math.abs(frame.scale[0] - 1.1) < 1e-9 && Math.abs(frame.scale[1] - 0.6) < 1e-9 && frame.scale[2] <= 0.1, 'a 1.1 × 0.6 panel, thin along z');
+  const face = sc.parts.find(p => p.glow != null);
+  assert.ok(face && face.pos[2] > frame.pos[2], 'the glowing face is on the +z (camera) side');
+  assert.ok(sc.at.y + Math.max(...sc.parts.map(p => p.pos[1] + p.scale[1] / 2)) <= at.y + v['tower.main'].labelY + 0.15, 'inside the overview skyline');
+  // 天線照舊（脈動、在桅杆頂），罩子照舊全亮，燈光秀照舊
+  assert.equal(v['tower.antenna'].pulse, true);
+  assert.deepEqual(v['tower.antenna'].models[0].pos, [b.mast.x, b.top, b.mast.z], 'the antenna rod on the mast tip');
+  assert.deepEqual(v['tower.shield'], tower.shieldSpec('full'));
+  assert.ok(v['tower.show']);
+  // 沒有尾聲（或外星尾聲）就是平常的塔，沒有螢幕；ship 選項先收下不理（任務 7）
+  assert.equal(plain['tower.screen'], undefined);
+  assert.deepEqual(tower.body('lit', { ship: true }), tower.body('lit'));
+});
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');
   for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);

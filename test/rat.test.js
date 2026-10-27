@@ -122,6 +122,34 @@ test('cyber Lv5: ten robot rats round 101 and a crowned robot rat sitting on the
   }
   for (const [l, f] of [[{ rat: 4, chip: 8 }, { ratBranch: 'cyber' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 3 }, {}]]) assert.equal(rat.view(lv(l), f)['rat.king'], undefined);
 });
+// 最終章 §7 賽博：尾聲時同一批 10 隻機器鼠的家搬到黑塔的平屋頂，兩排各 5 隻面向鏡頭（+z）；王冠鼠照舊坐站頂。
+// 站位彼此 ≥ 0.25（名冊 separateStanding 不推開）、在屋頂面內、離後緣的天線桅杆與前緣停好的紅色飛天車 ≥ 0.2
+test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = tower top), the king stays crowned; skeleton count ≤ 12', async () => {
+  const tower = await import('../src/actors/tower.js'), finale = await import('../src/actors/finale.js'), { orbitPose } = await import('../src/actors/parts.js');
+  const L = lv({ rat: 5, chip: 9, token: 10, bulb: 9 }), plain = rat.view(L, { ratBranch: 'cyber' }), v = rat.view(L, { ratBranch: 'cyber', missile: 'shield', epilogue: 'cyber' });
+  const b = tower.body('lit', { dark: true }), deck = b.parts.find(p => p.name === 'deck'), pack = v['rat.pack'];
+  assert.equal(pack.n, 10); assert.deepEqual(pack.model, plain['rat.pack'].model, 'the same robot rats');
+  assert.equal(pack.home.kind, 'stand'); assert.equal(pack.home.spots.length, 10);
+  assert.deepEqual(v['rat.king'], plain['rat.king'], 'the king stays on the station roof');
+  const car = finale.view(L, { missile: 'shield', epilogue: 'cyber' })['finale.car'], { yaw } = orbitPose(car, Infinity);
+  const ux = Math.sin(yaw) * 0.15, uz = Math.cos(yaw) * 0.15;
+  const segDist = (p, a, c) => { const dx = c.x - a.x, dz = c.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  const rows = new Set();
+  for (const [i, s] of pack.home.spots.entries()) {
+    assert.ok(Math.abs(s.y - (TOWER.y + b.roof)) < 1e-9, `rat ${i} on the roof (y ${s.y})`);
+    assert.ok(Math.abs(s.x - TOWER.x) <= deck.scale[0] / 2 - 0.1 && Math.abs(s.z - TOWER.z) <= deck.scale[2] / 2 - 0.1, `rat ${i} inside the roof`);
+    assert.equal(s.yaw, 0, 'facing +z (the camera)');
+    assert.ok(Math.hypot(s.x - TOWER.x - b.mast.x, s.z - TOWER.z - b.mast.z) >= 0.2, `rat ${i} clear of the mast`);
+    assert.ok(segDist(s, { x: car.park.x - ux, z: car.park.z - uz }, { x: car.park.x + ux, z: car.park.z + uz }) >= 0.2, `rat ${i} clear of the parked car`);
+    for (const o of pack.home.spots.slice(i + 1)) assert.ok(Math.hypot(o.x - s.x, o.z - s.z) >= 0.25, 'spots ≥ 0.25 apart');
+    rows.add(s.z.toFixed(3));
+  }
+  assert.equal(rows.size, 2, 'two rows of five');
+  assert.ok(pack.n + 1 + 1 <= 12, 'skeletons: 10 + king + shiba ≤ 12');
+  assert.equal(sat.view(L, { ratBranch: 'cyber', epilogue: 'cyber' })['sat.rocks'], undefined, 'no rocks-islet rats');
+  // 外星尾聲、沒有尾聲：照舊（繞 101）
+  assert.deepEqual(rat.view(L, { ratBranch: 'cyber', epilogue: 'alien' })['rat.pack'], plain['rat.pack']);
+});
 // 審稿：王冠鼠不能坐在停好的飛天車上——代幣 Lv10 三台停在屋頂左中右（車身長 0.3，沿停好的方向）；
 // 王冠鼠離每一台車身（停車點 ± 0.15 沿車頭方向的線段）≥ 0.2，還在屋頂上、離天線 ≥ 0.2
 test('the crown rat sits clear of the three parked speeders on the cyber roof (≥ 0.2 from every car body) and on the roof', async () => {

@@ -1,13 +1,17 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級（物品 v2 共 61 級）0–8 工地（吊車會動）、9–25 半成品、26–53 完工、54+ 點燈。
 // 晶片（物品 v2 §4.3）Lv7 塔頂長出矽盾天線（Cyberpunk Kit 天線 glb＋環）、Lv8 矽盾測試（罩子閃三下又收起）、
 // Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋飛彈）；燈泡 Lv5 做燈光秀。
+// 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
+// （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 劇本（§8.9、§14.4）：回合最後的 settle 跨門檻時，鏡頭對著 101，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 回全景 → 閃白跳階 → 頭上寫階段名。
 import { anchorWorld, frontOf } from './anchors.js';
 import { offset, C } from './palette.js';
 
 export const id = 'tower';
 
-const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff, NEON_BLUE = 0x3fe0ff;
+const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff;
+// 黑塔（賽博尾聲）：墨黑偏紫一點（純 C.ink 在夜裡跟背景糊在一起），白邊與屋頂邊條發霓虹藍
+export const DARK = 0x2a2630, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45, LABEL_UP = 0.6;   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
 const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
 // 蓋東西站的鏡頭側距離（§14）：底座 1.6 見方外擴 PAD 後半寬 0.92，鏡頭方向（z 分量 0.96）1.1 才站得到底座外
@@ -18,10 +22,16 @@ export const SHIELD_R = 7.8;
 export const shieldSpec = state => ({ kind: 'shield', at: AT, r: SHIELD_R, state, footprint: false });
 // 天線（Quaternius Cyberpunk Kit）：Antenna_1 細桿立在尖塔頂、Antenna_2 碟子掛在尖塔側面朝鏡頭；pos 相對 101 的 at
 const ANTENNA_TINT = { '^MetalLight$': C.cream, '^LightGrey$': C.white, '^Grey$': C.curb, '^DarkGrey$': C.ink };
-const antennaModels = top => [
-  { path: 'quat/cyberpunk/Antenna_1.glb', pos: [0, top, 0], h: 0.55, tint: ANTENNA_TINT },
-  { path: 'quat/cyberpunk/Antenna_2.glb', pos: [0.14, top - 0.6, 0.06], h: 0.3, ry: 0.4, tint: ANTENNA_TINT },
+// mast：尖塔（桅杆）在塔軸上的水平位置（黑塔的桅杆在屋頂後緣）
+const antennaModels = (top, mast = { x: 0, z: 0 }) => [
+  { path: 'quat/cyberpunk/Antenna_1.glb', pos: [mast.x, top, mast.z], h: 0.55, tint: ANTENNA_TINT },
+  { path: 'quat/cyberpunk/Antenna_2.glb', pos: [mast.x + 0.14, top - 0.6, mast.z + 0.06], h: 0.3, ry: 0.4, tint: ANTENNA_TINT },
 ];
+// 黑塔的平屋頂（相對 101 的 at）：1.6 見方（跟底座一樣寬，往外挑出塔身）、厚 0.08，外圈一條霓虹藍邊條；
+// 桅杆（尖塔）退到後緣 MAST_Z、高 MAST_H。屋頂面要站得下 10 隻機器鼠（兩排、間距 ≥ 0.25）和前緣一台停好的飛天跑車
+const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
+// 螢幕：1.1 × 0.6、厚 0.08，朝 +z（鏡頭）；底邊在桅杆尖上 SCREEN_UP（天線細桿 0.55 高，留 0.05）
+const SCREEN = [1.1, 0.6, 0.08], SCREEN_UP = 0.6;
 
 export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
 
@@ -33,8 +43,13 @@ export function stageOf(total) { return total >= 54 ? 'lit' : total >= 26 ? 'ful
 // bent（最終章 §6，飛彈命中）：塔身一半高度（BEND_Y）以上的零件——上面四節、它們的白邊、頂帽、尖塔——繞 z 轉 π/2 往 +x 倒，
 //   像吸管折成 L。終局時 101 一定完工或點燈（設計 §6：40320 種順序枚舉過，命中時總等級都 ≥ 26），工地／蓋一半照完工的樣子彎（不丟錯）。
 //   回傳的 top 是倒下那段的頂面（view 的 labelY 不用它：頭頂照沒彎的塔，天際線不變）
-export function body(stage, { bent = false } = {}) {
+// dark（最終章 §7 賽博）：玻璃、底座都是 DARK，白邊發霓虹藍；八節之上不放頂帽尖塔，改成平屋頂（'deck'）＋後緣的桅杆。
+//   回傳多帶 roof（屋頂面高度）與 mast（桅杆的水平位置），都相對 101 的 at。賽博尾聲時 101 一定點燈（全 MAX，總等級 61）；
+//   其他階段照點燈的樣子畫（不丟錯）。
+// ship（任務 7 外星母艦）：先收下、不理（畫平常的塔）
+export function body(stage, { bent = false, dark = false, ship = false } = {}) {
   if (bent && (stage === 'site' || stage === 'half')) stage = 'full';
+  if (dark) return darkBody();
   const lit = stage === 'lit', trim = lit ? { color: ICE, glow: ICE } : { color: CREAM };
   const baseH = stage === 'site' ? 0.5 : 1.1, parts = [
     { kind: 'box', pos: [0, 0.15, 0], scale: [1.6, 0.3, 1.6], color: SAND },
@@ -56,6 +71,28 @@ export function body(stage, { bent = false } = {}) {
   if (!bent) return { parts, top: y };
   return { parts: parts.map(p => (p.pos[1] > BEND_Y ? bendPart(p) : p)), top: BEND_Y + BENT_HALF };
 }
+function darkBody() {
+  const trim = { color: NEON_BLUE, glow: NEON_BLUE }, parts = [
+    { kind: 'box', pos: [0, 0.15, 0], scale: [1.6, 0.3, 1.6], color: DARK },
+    { kind: 'frustum4', pos: [0, 0.3 + 1.1 / 2, 0], scale: [1.24, 1.1, 1.24], color: DARK },
+  ];
+  let y = 0.3 + 1.1;
+  for (let i = 0; i < 8; i++) {
+    parts.push({ kind: 'frustum4', pos: [0, y + 0.21, 0], scale: [1.16, 0.42, 1.16], rot: [Math.PI, 0, 0], color: DARK });
+    parts.push({ kind: 'box', pos: [0, y + 0.43, 0], scale: [0.84, 0.05, 0.84], ...trim });
+    y += TIER_H;
+  }
+  parts.push({ kind: 'box', name: 'deck', pos: [0, y + DECK_H / 2, 0], scale: [DECK_W, DECK_H, DECK_W], color: DARK });
+  parts.push({ kind: 'box', pos: [0, y + 0.02, 0], scale: [DECK_W + 0.04, 0.03, DECK_W + 0.04], ...trim });   // 屋頂邊條（從屋頂板四邊露出 0.02）
+  const roof = y + DECK_H, mast = { x: 0, z: MAST_Z };
+  parts.push({ kind: 'cylinder', pos: [mast.x, roof + MAST_H / 2, mast.z], scale: [0.08, MAST_H, 0.08], ...trim });
+  return { parts, top: roof + MAST_H, roof, mast };
+}
+// 螢幕的中心（相對 101 的 at）：桅杆尖上 SCREEN_UP 是底邊
+export function screenAt() {
+  const b = darkBody();
+  return { x: b.mast.x, y: b.top + SCREEN_UP + SCREEN[1] / 2, z: b.mast.z };
+}
 // 彎角：底座＋座身（0.3 + 1.1）再加 8 節的一半（相對 101 的 at）；倒下那段是方錐台寬 1.16 的一半高
 const BEND_Y = 0.3 + 1.1 + 4 * TIER_H, BENT_HALF = 0.6;
 // 繞 (0, BEND_Y) 轉 −π/2（往 +x 倒）：(x, y − BEND_Y) → (y − BEND_Y, −x)。
@@ -74,17 +111,28 @@ export function view(lv, flags = {}, meta = {}) {
   const hit = flags.missile === 'hit', stage = stageOf(total);
   // 彎過的塔頭頂（labelY）照沒彎的完工／點燈塔算：命中之後塔上不再冒字，天際線降低反而讓回合收尾的 focus('home', { final, skyline })
   // 在全景裡 setSkyline 瞬間跳鏡頭（審稿第 1 輪）
-  const { parts, top } = body(stage, { bent: hit }), head = hit ? body(stage === 'lit' ? 'lit' : 'full').top : top;
+  // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
+  const dark = flags.epilogue === 'cyber' && !hit;
+  const { parts, top, mast } = body(stage, { bent: hit, dark }), head = hit || dark ? body(stage === 'lit' || dark ? 'lit' : 'full').top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
+  if (dark) {
+    // 螢幕：墨黑外框＋朝鏡頭那面霓虹藍發光板＋底下一條霓虹粉跑馬燈條；at 就是螢幕中心（泡泡掛在零件位置上，tower.screen 的泡泡就在螢幕上）
+    const c = screenAt(), [w, hh, d] = SCREEN;
+    v['tower.screen'] = { kind: 'compound', at: { x: at.x + c.x, y: at.y + c.y, z: at.z + c.z }, labelY: 0, footprint: false, shadow: false, parts: [
+      { kind: 'box', pos: [0, 0, 0], scale: [w, hh, d], color: DARK },
+      { kind: 'box', pos: [0, 0.04, d / 2 + 0.005], scale: [w - 0.1, hh - 0.18, 0.01], color: NEON_BLUE, glow: NEON_BLUE },
+      { kind: 'box', pos: [0, -hh / 2 + 0.07, d / 2 + 0.005], scale: [w - 0.1, 0.06, 0.01], color: C.neonPink, glow: C.neonPink },
+    ] };
+  }
   // 彎過的塔倒下那段伸出底座外（自動 footprint 的包圍盒會變寬、超過 WIDE 就整個不算）：站位照底座 1.6 見方，走路格跟沒彎一樣
   if (hit) { v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 }; return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
   if (lv.chip >= 7) {
     // 矽盾天線：塔頂的環＋天線 glb；待命（Lv9）時環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
     const pulse = lv.chip >= 9, glow = pulse ? { glow: NEON_BLUE } : {};
-    const parts = [{ kind: 'torus', pos: [0, top - 0.25, 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: pulse ? NEON_BLUE : CREAM, ...glow }];
+    const parts = [{ kind: 'torus', pos: [mast?.x ?? 0, top - 0.25, mast?.z ?? 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: pulse ? NEON_BLUE : CREAM, ...glow }];
     if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
-    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top), parts, pulse, footprint: false };
+    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast), parts, pulse, footprint: false };
   }
   if (flags.missile === 'shield') v['tower.shield'] = shieldSpec('full');
   else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');

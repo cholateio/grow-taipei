@@ -7,10 +7,16 @@
 // 任務 5：飛彈（設計 §6）——紅光熄掉、飛彈從紅光的位置沿拋物線飛向 101（零件自己演：userData.launch），三種結果：
 //   shield 罩子全亮、飛彈碎成一發煙火、全島跳＋♥；deflect 飛到 101 旁被風吹歪、邊轉邊掉、機頭朝下插進北投溫泉、水花、全島？再♪；
 //   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
-// epilogue 還只套用事件（尾聲的零件在後面的任務）。
+// 任務 6：賽博尾聲（設計 §7）——天黑霓虹亮 → 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
+//   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
+//   外星尾聲還只套用事件（任務 7）。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOf, body as towerBody, bendPoint } from './tower.js';
+import { ROOF_SPOTS } from './rat.js';
+import { BLINK } from '../show/blink.js';
+import { TIMES } from '../scene/daynight.js';
+import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
 
 export const id = 'finale';
@@ -52,6 +58,22 @@ const TOWER_HALF = 0.58, BURY_TOWER = 0.3, BURY_POOL = 0.35, TILT = 30 * Math.PI
 // 煙火：霓虹粉、霓虹藍、黃、珊瑚
 const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 
+// ── 賽博尾聲（設計 §7）──
+// 紅色飛天跑車：代幣 Lv10 那三台的同款零件（parts.js orbit；?quality=low 不畫，裁決照舊），Kenney speederA 塗紅、寬 0.3（同代幣的比例）。
+// 從鏡頭右前方的海上（CAR_FROM）飛進來，在 101 頂上（點燈的塔頂 + 0.6）半徑 1.4 繞一圈，進出圈都在鏡頭那側（phase π/2，+z），
+// 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是兩排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）
+const CAR_FROM = { x: 10, y: 3.5, z: 9 }, CAR_ORBIT = { r: 1.4, speed: 2.5, legs: [1.2, 0.8] }, CAR_PARK_Z = 0.58, CAR_RED = 0xe8322e;
+export const CAR_FLIGHT = CAR_ORBIT.legs[0] + 2 * Math.PI / CAR_ORBIT.speed + CAR_ORBIT.legs[1];   // 一趟幾秒（≈ 4.5）
+const carSpec = () => ({
+  kind: 'orbit', path: 'kenney/space/craft_speederA.glb', size: 0.3 * 0.8 / 2.0, ry: Math.PI,
+  tint: { '^metalRed$': CAR_RED, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink },
+  at: TOWER, h: towerBody('lit').top + 0.6, phase: Math.PI / 2, ...CAR_ORBIT, from: CAR_FROM,
+  park: { x: TOWER.x, y: TOWER.y + towerBody('lit', { dark: true }).roof, z: TOWER.z + CAR_PARK_Z }, footprint: false,
+});
+export const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
+// 跑馬燈：起飛後 MARQUEE_AT 秒冒、停 MARQUEE_DUR 秒（跟飛行後半重疊，剛好在車停好時收掉）；最後全景停 END_HOLD 秒
+const MARQUEE_AT = 1.5, MARQUEE_DUR = 3.0, END_HOLD = 1.5;
+
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
   // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 3、2、1
@@ -68,6 +90,7 @@ export function view(lv, flags = {}, meta = {}) {
       v['finale.splash'] = { kind: 'smoke', at: POOL, n: 4, color: 0xffffff, size: 0.3, rise: 0.6, footprint: false };
     }
   }
+  if (flags.epilogue === 'cyber') v['finale.car'] = carSpec();
   return v;
 }
 
@@ -237,5 +260,39 @@ export const script = {
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
     return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.world({ mood: 'lie' }), ...tail];
   },
-  epilogue: (e, s, ctx) => [ctx.B.apply(e)],
+  // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；本來就是）→
+  //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
+  //   同時起飛後 1.5 秒螢幕冒跑馬燈 3 秒 → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
+  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲：任務 7
+  epilogue(e, s, ctx) {
+    const { B } = ctx;
+    if (e.ending !== 'cyber') return [B.apply(e)];
+    const rats = c => c.roster.members('rat.pack');
+    const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
+      begin: (o, c) => { if (!o.userData.fly) return false; o.userData.fly({ speed: c.speed ?? 1 }); return true; },
+      finish: o => o.userData.land(),
+    });
+    const marquee = later(MARQUEE_AT, MARQUEE_DUR, B.bubble('tower.screen', { text: MARQUEE }, MARQUEE_DUR));
+    return [
+      B.world({ time: TIMES.night, glowScale: NEON_BOOST }),
+      B.apply(e, { only: ['tower.main', 'tower.show', 'tower.antenna', 'tower.screen'] }),
+      B.together([fly, marquee]),
+      B.apply(e, { only: ['rat.pack', 'rat.king'] }), roof(rats), B.home(rats),
+      B.apply(e), B.focus('home', { hold: END_HOLD }),
+    ];
+  },
 };
+
+// 機器鼠閃白站上屋頂（BLINK 秒）：先拿到劇本手上（日常的「不瞬移」不算這一下）、放到 ROOF_SPOTS[i]、閃白；之後 B.home 放回日常（stand 已在站位上，站定）
+function roof(who) {
+  return {
+    kind: 'roof', dur: BLINK,
+    start(c) {
+      const list = who(c); if (!list.length) return false;
+      for (const m of list) {
+        c.roster.claim(m); c.roster.setPose(m, { ...ROOF_SPOTS[m.i % ROOF_SPOTS.length], walking: false });
+        if (m.holder) c.blink.part(m.holder); else if (m.walker) c.blink.walker(m.walker);
+      }
+    },
+  };
+}

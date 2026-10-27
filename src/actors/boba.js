@@ -118,7 +118,9 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
 
 // 遮雨棚、店前的磚地、立牌（Lv2 只有立牌：人龍排頭旁）。fresh（鮮奶 ≥4，跳級條件「鮮奶珍奶」）：立牌白底藍字，否則珊瑚底奶油字
 function yardParts(n, fresh) {
-  const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, board = [sx + 0.62, sz + 0.62];
+  // 立牌靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）；
+  // 噴泉（Lv4，SHOP + (0.73, −0.3)、r 0.3）南緣在 sz + 0.0，立牌離噴泉心 0.46
+  const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, board = [sx + 0.62, sz + 0.15];
   const sign = [
     { kind: 'box', pos: [board[0], 0.22, board[1]], scale: [0.2, 0.28, 0.04], rot: [-0.2, 0, 0], color: fresh ? C.white : C.coral, sign: true },
     { kind: 'box', pos: [board[0], 0.24, board[1] + 0.03], scale: [0.14, 0.05, 0.01], rot: [-0.2, 0, 0], color: fresh ? C.blue : C.cream },

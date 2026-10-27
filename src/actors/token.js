@@ -22,7 +22,7 @@ export const POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站�
 // 名冊入口（§13.2）：站體北側（背面），站務員與泳客都從這裡繞過站體走來。計畫給的 offset(AT, 1.6, 0.9) 離崗位只有 1.06；
 // 往外推到 ≥ 1.5 的點（+x、+z 那側）又會穿過珍奶攤車前的人龍。這一點離崗位 2.4、離泳客站位 ≥ 1.6，兩條正解每一刻都走得到，
 // 走到崗位的路線離 Lv1–2 每個排隊站位 ≥ 0.3、不經過攤車前方
-export const STAFF_ENTRY = offset(AT, -0.35, -1.65);
+export const STAFF_ENTRY = offset(AT, -0.35, -1.25);   // 錨點北退 0.4 之後入口跟著縮回來（原 −1.65 會落在格邊 MARGIN 之外）
 
 // 列車幾節：Lv4 環狀線 3 節、Lv5 起 5 節，之前沒有列車（老鼠搭車、車頂座位都看這個）
 export const trainCars = n => (n >= 5 ? 5 : n >= 4 ? 3 : 0);
@@ -206,7 +206,7 @@ export function view(lv, flags) {
     : { kind: 'compound', at, labelY: st.labelY, footprint: st.footprint, parts: st.parts };
   // 站務員（Lv2 起 1 人、Lv8 起 2 人）站在站門口、面向外；淹水時站務員原地換成泳客（from），泳客共 2 人（人數預算 ≤ 3）。
   // 站位落在站體（含 PAD）裡就站到最近的可走點（rescue）
-  if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.25, 0.1, -0.12), yaw: 0.5 }, { ...offset(at, 0.25, -0.15, -0.12), yaw: -2 }], rescue: true, entry: STAFF_ENTRY } };
+  if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.3, 0.3, -0.12), yaw: 0.5 }, { ...offset(at, 0.3, 0.15, -0.12), yaw: -2 }], rescue: true, entry: STAFF_ENTRY } };
   // 站務員一直只有一位：Lv8 原本多一位（站門另一側），人數預算（裁決 R16，全島 ≤ 30）拿掉——鮮奶節那一回合全島剛好多一個人
   else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
   if (n >= 9 && !flags.flooded) v['token.deck'] = { kind: 'deck', at: DECK_AT, models: DECK_MODELS, footprint: false };

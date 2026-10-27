@@ -166,3 +166,63 @@ test('low people skip the eyes and the shadow disc', () => {
   for (const n of ['eyeL', 'eyeR', 'shadow']) assert.equal(mesh(n).visible, false, n);
   assert.equal(mesh('body').visible, true);
 });
+// 最終章 §6、§8：全島心情。lie＝躺平（繞 x −90°、腳底為軸、抬高 0.1）右手比讚、不走路；alien＝額頭正中第三隻眼
+const partMesh = (people, name) => people.group.children.find(m => m.name === `people:${name}`);
+const matAt = (people, name, i) => { const m = new THREE.Matrix4(); partMesh(people, name).getMatrixAt(i, m); return m; };
+const decompose = m => { const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3(); m.decompose(p, q, s); return { p, q, s }; };
+test('setMood lie: every walker matrix is rotated −90° about x (body lies flat, y of head ≈ ground + 0.1) and the right arm points up; walking stops', () => {
+  const people = createPeople(THREE, { max: 4 });
+  const a = people.spawn({ path: ringPath({ x: 0, z: 0 }, 1.5, 0.65), speed: 0.4 });
+  const b = people.spawn({ stand: { x: 3, y: 0.65, z: 1, yaw: 0 } });
+  people.setMood('lie'); people.update(0.1, 0.1, 20);
+  const before = { ...a.pos };
+  people.update(0.5, 0.6, 20);
+  assert.ok(Math.hypot(a.pos.x - before.x, a.pos.z - before.z) < 1e-9, 'lying walkers do not advance along the path');
+  for (const [i, w] of [a, b].entries()) {
+    const head = decompose(matAt(people, 'head', i));
+    assert.ok(Math.abs(head.p.y - (w.pos.y + 0.1)) < 1e-6, `head lies at ground + 0.1 (got ${head.p.y - w.pos.y})`);
+    // 身體的局部 +y（頭頂方向）變成水平、局部 +z（臉）朝天：繞 x −90°
+    const bodyUp = new THREE.Vector3(0, 1, 0).applyQuaternion(decompose(matAt(people, 'body', i)).q);
+    const face = new THREE.Vector3(0, 0, 1).applyQuaternion(head.q);
+    assert.ok(Math.abs(bodyUp.y) < 1e-6, 'body axis is horizontal');
+    assert.ok(face.y > 0.999, 'face looks at the sky (lying on the back)');
+    // 右手：肩到手的方向往天上（比讚），左手平放
+    const arm = matAt(people, 'armR', i), sh = new THREE.Vector3(0, 0.04, 0).applyMatrix4(arm), hand = new THREE.Vector3(0, -0.04, 0).applyMatrix4(arm);
+    assert.ok(hand.y - sh.y > 0.03, 'right arm points up');
+    const armL = matAt(people, 'armL', i), lsh = new THREE.Vector3(0, 0.04, 0).applyMatrix4(armL), lhand = new THREE.Vector3(0, -0.04, 0).applyMatrix4(armL);
+    assert.ok(Math.abs(lhand.y - lsh.y) < 1e-6, 'left arm lies along the body');
+  }
+  // 腿不擺：兩次 update 腿的矩陣一樣
+  const leg1 = matAt(people, 'legL', 0); people.update(0.3, 0.9, 20);
+  assert.ok(leg1.equals(matAt(people, 'legL', 0)), 'legs are still');
+  people.setMood('normal'); people.update(0.1, 1, 20);
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(decompose(matAt(people, 'body', 1)).q);
+  assert.ok(up.y > 0.999, 'normal stands up again');
+  assert.throws(() => people.setMood('dance'), /mood/);
+});
+test('setMood alien: the eye3 instanced mesh is visible with one instance per walker on the forehead centre; normal hides it', () => {
+  const people = createPeople(THREE, { max: 4 });
+  const w = people.spawn({ stand: { x: 1, y: 0.65, z: 2, yaw: 0 } });
+  people.spawn({ path: ringPath({ x: 0, z: 0 }, 1.5, 0.65), speed: 0.4 });
+  const eye3 = partMesh(people, 'eye3');
+  people.update(0.1, 0.1, 20);
+  assert.equal(eye3.visible, false, 'normal: no third eye');
+  people.setMood('alien'); people.update(0.1, 0.2, 20);
+  assert.equal(eye3.visible, true); assert.equal(eye3.count, 2);
+  const p = decompose(matAt(people, 'eye3', 0)).p;
+  assert.ok(Math.abs(p.x - 1) < 1e-6 && Math.abs(p.y - (0.65 + 0.305)) < 1e-6 && Math.abs(p.z - (2 + 0.064)) < 1e-6, `forehead centre (got ${p.toArray()})`);
+  const eyeL = decompose(matAt(people, 'eyeL', 0)).p;
+  assert.ok(p.y > eyeL.y, 'above the two eyes');
+  const before = { ...people.walkers[1].pos }; people.update(0.5, 0.7, 20);
+  assert.ok(Math.hypot(people.walkers[1].pos.x - before.x, people.walkers[1].pos.z - before.z) > 0.15, 'alien walkers keep walking');
+  people.setMood('normal'); people.update(0.1, 0.8, 20);
+  assert.equal(eye3.visible, false, 'normal hides it again');
+  assert.ok(w);
+});
+test('low quality keeps eye3 in alien mood (the normal eyes stay skipped)', () => {
+  const people = createPeople(THREE, { max: 4, low: true });
+  people.spawn({ stand: { x: 0, y: 0.65, z: 0, yaw: 0 } });
+  people.setMood('alien'); people.update(0.1, 0.1, 20);
+  assert.equal(partMesh(people, 'eye3').visible, true);
+  assert.equal(partMesh(people, 'eyeL').visible, false); assert.equal(partMesh(people, 'eyeR').visible, false);
+});

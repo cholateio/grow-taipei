@@ -93,7 +93,7 @@ export async function start({ params, loading }) {
   const weather = { rain: 0 }, rail = { offset: 0 };   // 雨的濃度（typhoon.js 的 rain 讀它）；列車時鐘偏移（讓列車從站出發）
   // 全島效果：燈泡推動時間、颱風登陸小人躲進室內、大停電熄燈。演出層的 world 拍設目標，每幀約 1 秒淡過去；
   // 跳過、reduced-motion、截圖、RESET 直接貼齊
-  const showWorld = w => { setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); weather.rain = w.rain; };
+  const showWorld = w => { setTime(w.time); people.group.visible = w.peopleVisible; view.glow.setScale(w.glowScale); view.water.setStorm(w.storm); weather.rain = w.rain; people.setMood(w.mood); };
   let world = { ...worldEffects(zeroLevels(), {}), time: TIMES[params.get('time')] ?? TIMES.day }, worldTarget = world;
   const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || instantAuto()) { world = w; showWorld(w); } };
   const show = createShow(THREE, {

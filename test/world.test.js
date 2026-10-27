@@ -5,9 +5,9 @@ import { TIMES } from '../src/scene/daynight.js';
 import { lv } from './helpers/actors.js';
 
 test('worldEffects: lamps set the clock, blackout kills the glow at night', () => {
-  assert.deepEqual(worldEffects(lv({}), {}), { time: TIMES.day, peopleVisible: true, glowScale: 1, storm: 0, rain: 0 });
+  assert.deepEqual(worldEffects(lv({}), {}), { time: TIMES.day, peopleVisible: true, glowScale: 1, storm: 0, rain: 0, mood: 'normal' });
   assert.equal(worldEffects(lv({ bulb: 3 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 4 }), {}).time, TIMES.dusk); assert.equal(worldEffects(lv({ bulb: 5 }), {}).time, TIMES.night);
-  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0, storm: 0, rain: 0 });
+  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true }), { time: TIMES.night, peopleVisible: true, glowScale: 0, storm: 0, rain: 0, mood: 'normal' });
 });
 // 物品 v2 §4.4：燈泡 Lv3 霓虹／傍晚、Lv5 全島 LED／夜晚、Lv9 全島賽博霓虹（發光加強）
 test('worldEffects keys on the bulb ladder: dusk at 3, night at 5, the neon glow boost at 9', () => {
@@ -34,4 +34,18 @@ test('stepWorld eases toward the target: ~98% in one second, snaps when close, n
   for (let i = 0; i < 120; i++) w = stepWorld(w, to, 1 / 60);
   assert.deepEqual(w, to);
   assert.equal(stepWorld(to, to, 1 / 60), to, 'settled returns the same object');
+});
+// 最終章 §6、§8：命中全島躺平、外星尾聲第三隻眼——全島效果多一個 mood，stepWorld 不緩動它、原樣切過去
+test('worldEffects.mood: hit → lie, alien epilogue → alien, otherwise normal; stepWorld carries mood through unchanged', () => {
+  assert.equal(worldEffects(lv({}), {}).mood, 'normal');
+  assert.equal(worldEffects(lv({}), { missile: 'hit' }).mood, 'lie');
+  assert.equal(worldEffects(lv({}), { missile: 'shield' }).mood, 'normal');
+  assert.equal(worldEffects(lv({}), { missile: 'deflect' }).mood, 'normal');
+  assert.equal(worldEffects(lv({}), { missile: 'shield', epilogue: 'alien' }).mood, 'alien');
+  assert.equal(worldEffects(lv({}), { missile: 'shield', epilogue: 'cyber' }).mood, 'normal');
+  const from = worldEffects(lv({}), {}), to = worldEffects(lv({}), { missile: 'hit' });
+  const w = stepWorld(from, to, 1 / 60);
+  assert.notEqual(w, from, 'a mood-only change is not dropped as "same"');
+  assert.equal(w.mood, 'lie', 'mood switches at once');
+  assert.equal(stepWorld(to, to, 1 / 60), to);
 });

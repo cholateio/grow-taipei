@@ -11,14 +11,17 @@ export const NEON_BOOST = 1.25;
 export function worldEffects(lv, flags, meta = {}) {
   const time = flags.blackout || lv.bulb >= 5 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
   const landing = lv.typhoon === 2 && !!meta.landing, storm = lv.typhoon === 2 ? (landing ? 1 : LINGER) : 0;
-  return { time, peopleVisible: true, glowScale: flags.blackout ? 0 : lv.bulb >= 9 ? NEON_BOOST : 1, storm, rain: storm };
+  // 全島心情（最終章 §6、§8）：飛彈命中全島躺平比讚，外星尾聲全島長第三隻眼；app 交給 people.setMood
+  const mood = flags.missile === 'hit' ? 'lie' : flags.epilogue === 'alien' ? 'alien' : 'normal';
+  return { time, peopleVisible: true, glowScale: flags.blackout ? 0 : lv.bulb >= 9 ? NEON_BOOST : 1, storm, rain: storm, mood };
 }
 
-// 每幀把目前的全島效果往目標趨近（約 1 秒到 98%），接近就貼齊；小人躲／出來是事件當下的事，直接切。
+// 每幀把目前的全島效果往目標趨近（約 1 秒到 98%），接近就貼齊；小人躲／出來、心情（mood）是事件當下的事，直接切
+// （非數值欄位由 { ...target } 原樣帶過；same 也要比 mood，不然只換心情的那一幀會被當成沒變而丟掉）。
 const RATE = 4, SNAP = { time: 0.5, glowScale: 0.01, storm: 0.01, rain: 0.01 };
 export function stepWorld(cur, target, dt) {
   const k = 1 - Math.exp(-RATE * dt);
-  let same = cur.peopleVisible === target.peopleVisible;
+  let same = cur.peopleVisible === target.peopleVisible && cur.mood === target.mood;
   const next = { ...target };
   for (const f in SNAP) {
     const v = cur[f] + (target[f] - cur[f]) * k;

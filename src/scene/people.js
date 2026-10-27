@@ -22,6 +22,8 @@ function partDefs(THREE) {
     ['body', new THREE.CapsuleGeometry(0.05, 0.07, 4, 8)], ['head', new THREE.SphereGeometry(0.07, 14, 10)],
     ['hair', new THREE.SphereGeometry(0.075, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55)],
     ['eyeL', new THREE.SphereGeometry(0.01, 6, 4)], ['eyeR', new THREE.SphereGeometry(0.01, 6, 4)],
+    // 第三隻眼（最終章 §7、§8）：外星尾聲全島小人額頭正中多一隻，只有 alien 心情才畫
+    ['eye3', new THREE.SphereGeometry(0.01, 6, 4)],
     ['cap', new THREE.CylinderGeometry(0.078, 0.078, 0.022, 12)],
     // 配件決定身分（§7.3）：工程師識別證、觀光客行李箱、偵防師放大鏡、工人安全帽、YouBike
     ['badge', new THREE.BoxGeometry(0.02, 0.025, 0.005)],
@@ -36,7 +38,9 @@ function partDefs(THREE) {
   ];
 }
 
-// low（?quality=low，裁決 R18）：眼睛與腳下的影子圓片不畫（省三個 draw call）
+// low（?quality=low，裁決 R18）：眼睛與腳下的影子圓片不畫（省三個 draw call）；第三隻眼例外照畫（最終章 §8：
+// 外星結局的笑點就是它，多一個 draw call；手機上平常的兩眼不畫，於是只看得到額頭那一隻，這是接受的）。
+export const MOODS = ['normal', 'lie', 'alien'];
 export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   const rnd = mulberry32(seed), group = new THREE.Group(), meshes = {};
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.78, metalness: 0 });
@@ -50,6 +54,9 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   }
   const walkers = [];
   let nextId = 1;
+  // 全島心情（最終章 §6、§8，由 worldEffects.mood 經 app 的 showWorld 設）：一個全島狀態，不是一個個 gesture。
+  // lie：飛彈命中，全島躺平、右手比讚、不走路（姿勢持續到標題卡）；alien：外星尾聲，額頭長第三隻眼，走路與動作照舊。
+  let mood = 'normal';
   const color = new THREE.Color(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 
   // w.white：閃白中（show/blink.js）——整個實例塗白（影子照舊）；重排實例、換配件時也照這個塗
@@ -58,7 +65,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
       : (name, hex) => meshes[name].setColorAt(i, color.setHex(hex));
     const shirt = w.accessory === 'coat' ? 0xffffff : w.shirt;
     set('legL', w.pants); set('legR', w.pants); set('armL', shirt); set('armR', shirt); set('body', shirt);
-    set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
+    set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('eye3', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
     set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK); set('mortar', INK); set('tassel', 0xfcea8b);
     set('vest', 0xfcea8b); set('apron', 0xdb6a41);
     // 蓋東西（build）時 handle、case 借來當鋤頭的柄和刃（不多開 InstancedMesh，省 draw call）：換成木頭與鐵灰
@@ -108,13 +115,16 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
   const TURN = 0.2;   // look、build 轉向用 0.2 秒轉過去（k × dur；沒帶 dur 就直接轉好）
 
+  // 躺平：以腳底為軸繞 x 轉 −90°（頭往身後倒、臉朝天），整個抬高 0.1 讓身體貼地；頭髮、眼睛、配件都接在 W 後面，自然跟著躺
+  const LIE = tr(0, 0.1, 0).multiply(rx(-Math.PI / 2));
   const show = (on, name, i, ...ops) => { if (on) at(name, i, ...ops); else meshes[name].setMatrixAt(i, hidden); };
 
   function place(w, t, k = 1) {
-    const i = walkers.indexOf(w), p = locate(w), still = w.controlled ? !w.pose.walking : w.speed === 0, pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
+    const lie = mood === 'lie';
+    const i = walkers.indexOf(w), p = locate(w), still = lie || (w.controlled ? !w.pose.walking : w.speed === 0), pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）
-    const g = w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）；躺平時一律不做
+    const g = lie ? null : w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
     if (build !== !!w.hoe) { w.hoe = build; paint(i, w); }   // 拿起、放下鋤頭時重塗 handle、case 的顏色
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
@@ -122,11 +132,14 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     const yaw = turn ? p.yaw + turnBy(p.yaw, g.yaw) * turn : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
     w.pos = { x: p.x, y: p.y, z: p.z };
-    W.compose(new THREE.Vector3(p.x, p.y + (bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
+    W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
+    if (lie) W.multiply(LIE);
     show(!bike, 'legL', i, tr(-0.025, 0.09, 0), rx(pose.leg), tr(0, -0.045, 0));
     show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg), tr(0, -0.045, 0));
     at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
-    if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
+    // 比讚：右手固定 rx(−2.6)（跟揮手同一個舉手角度），躺下後手往天上斜舉
+    if (lie) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-2.6), tr(0, -0.04, 0));
+    else if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
     else if (build) {
       // 鋤頭整個動作剛好兩下：rx −0.9（身前地上）→ −2.7（舉過頭）→ −0.9，從低點開始、在低點結束，手臂不會在最後一幀彈回去
       const sw = rx(-1.8 + 0.9 * Math.cos(gk * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
@@ -137,6 +150,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     at('head', i, L, tr(0, 0.28 + lift, 0));
     show(acc !== 'helmet', 'hair', i, L, tr(0, 0.292 + lift, -0.006));
     at('eyeL', i, L, tr(-0.024, 0.285 + lift, 0.064)); at('eyeR', i, L, tr(0.024, 0.285 + lift, 0.064));
+    show(mood === 'alien', 'eye3', i, L, tr(0, 0.305 + lift, 0.064));
     // 戴在頭上、身上的配件跟著前傾，才不會在敲門時浮在半空
     show(acc === 'cap' || acc === 'uniform', 'cap', i, L, tr(0, 0.362, 0.004));
     show(acc === 'coat', 'badge', i, L, tr(0.03, 0.17, 0.052));
@@ -156,7 +170,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     const k = Math.min(1.45, Math.max(1, cameraDistance / 20));
     used.clear();
     for (const w of walkers) {
-      if (!w.controlled) {   // 受控小人的位置由 setPose 決定，不推進路徑
+      if (!w.controlled && mood !== 'lie') {   // 受控小人的位置由 setPose 決定，不推進路徑；躺平的人也不走
         w.s += w.speed * dt * w.dir;
         if (!w.loop) { const total = w.lens.at(-1); if (w.s >= total) { w.s = total; w.dir = -1; } else if (w.s <= 0) { w.s = 0; w.dir = 1; } }
       }
@@ -168,5 +182,8 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   // 閃白：on 整個實例塗白，off 重塗原色；已經移除的小人不動
   function flashInstance(w, on) { w.white = on; const i = walkers.indexOf(w); if (i >= 0) paint(i, w); }
 
-  return { group, spawn, update, flashInstance, get walkers() { return walkers; } };
+  // 換心情：下一次 update 起生效（app 每幀都 update；瞬間模式也一樣）
+  function setMood(m) { if (!MOODS.includes(m)) throw new Error(`people: unknown mood ${m}`); mood = m; }
+
+  return { group, spawn, update, flashInstance, setMood, get mood() { return mood; }, get walkers() { return walkers; } };
 }

@@ -14,7 +14,14 @@
 //   飛彈 missile、尾聲 epilogue——劇本查 finale 模組的 script[e.kind]，沒有就 [apply]。這三種的劇本自己管鏡頭：不補 focus、不空拍、
 //   不算「上一個物品」；每一拍標 keep（蒙太奇不過濾：倒數字要留著；字的長度由劇本乘回倍速）。
 //   終局回合（finale: true，飛彈＋尾聲）：1 倍速、不扶正零件、整回合不補 focus／GAP；收尾照舊（回日常、全島效果、回全景）。
-//   MONTAGE_CAP（20）比的是真實秒數：estimateTurn 已經除以倍速，所以超過 20 秒真實時間才拿掉走路。
+//   MONTAGE_CAP（26，設計 §5：20 → 26）比的是真實秒數：estimateTurn 已經除以倍速，所以超過 26 秒真實時間才拿掉走路。
+// 趕工（最終章設計 §5）：倒數回合裡的 grow 事件依序——◆ 關鍵級 → 完整劇本；e.jump → [apply, LEVEL UP]；
+//   劇本（蒙太奇過濾後）還有作者標 keep 的拍（颱風登陸躲雨、矽盾測試閃三下）→ 蒙太奇過濾；
+//   模組的 rushSite(n, s) 回地點 → 趕工：走到站位最快的島民（crowd.js heroNear 量 nav 路長，演到才找）走到地點的鏡頭側
+//   （frontOf(site, site.r)）、朝地點揮鋤頭 RUSH_BUILD 秒、閃白、LEVEL UP、回日常；其他 → 蒙太奇過濾。
+//   趕工的拍都標 rush（不標 keep）：超過 MONTAGE_CAP 時走路照樣拿掉，hero 在原地朝地點揮鋤頭（build 帶 at 會轉過去）。
+//   hero 只找走路 RUSH_WALK 秒以內到得了站位的；找不到時走路、揮鋤頭、回家都是 0 秒的空拍（start 回 false），演出來只剩 apply + LEVEL UP——
+//   建拍時不決定，因為名冊在建拍到演到這拍之間會變（前面的劇本拉人、有人走回家）。
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）；
@@ -26,14 +33,21 @@
 //   鏡頭：登陸自己回全景；◆ 關鍵劇本把鏡頭帶走之後（最後一個 focus 不是全景），下一個 indoors 事件前面補一拍 focus('home')，
 //   之後的 LEVEL UP 才在畫面裡（審稿：外星倒數 1 老鼠 Lv4 對著溫泉）；其他 indoors 事件照樣不平移。
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
-import { anchorWorld, cellOf } from '../actors/anchors.js';
+import { anchorWorld, cellOf, frontOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
+import { heroNear } from './crowd.js';
 import { BLINK } from './blink.js';
 
-export const MONTAGE_CAP = 20, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'], MONTAGE_SPEED = 2;
+export const MONTAGE_CAP = 26, MONTAGE_KEEP = ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus'], MONTAGE_SPEED = 2;
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
 const HINT_DUR = 1.2;
+export const RUSH_BUILD = 1.6;   // 趕工揮鋤頭幾秒（演出時間；蒙太奇 2 倍速下真實 0.8 s）
+// 趕工的 hero 只找走到站位 ≤ RUSH_WALK 秒真實時間的（設計 §5：走路 ≤ 1.5 s，一個趕工升級 ≤ 3 s）：量的是 nav 的路長，不是直線——
+// 直線 1.7 的人可能要繞 13 公尺（賽博倒數 2 鮮奶 Lv9：被校舍圍住的那一側）；颱風登陸的下一回合，附近的人都還在從門口走回家
+// （arriving，不算島民），最近的可能是隔兩格的工程師（外星倒數 2 鮮奶 Lv9：路長 9.8）。到不了的（route 停在原地）也不算。
+// 都太遠就當作找不到 hero：只演 apply + LEVEL UP
+export const RUSH_WALK = 1.5;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['countdown', 'missile', 'epilogue']);
 
@@ -112,6 +126,30 @@ const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, star
 // 演到才找、找到第一次就記住（等待圖框的平移和泡泡對著同一個人）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
+// 趕工（設計 §5）：最近的島民走到地點的鏡頭側、揮鋤頭、閃白、LEVEL UP、回日常；每一拍標 rush
+// hero 在第一個趕工拍開演時才點名、之後同一個人（走路被拿掉時由揮鋤頭那拍點名）；建拍時 estimateTurn 估走路長度也會問，
+// 那時只算不記——不然點到的是建拍那一刻的名冊（颱風登陸的下一回合，附近的人都還在走回家，會記住遠處的人）
+function rushHero(c, site) {
+  const front = frontOf(site, site.r, c.nav), rate = c.speed > 0 ? c.speed : 1;
+  return heroNear(c, site, { max: RUSH_WALK, cost: m => {
+    const v = (m.speed || 1) * rate;
+    if (Math.hypot(m.pos.x - front.x, m.pos.z - front.z) / v > RUSH_WALK) return Infinity;   // 直線就超過：不用找路
+    const r = c.nav.route(m.pos, front), end = r.at(-1);
+    return Math.hypot(end.x - front.x, end.z - front.z) > 0.05 ? Infinity : c.nav.routeLength(r) / v;
+  } });
+}
+function rush(e, site) {
+  let picked = false, hero = null;
+  const who = c => (picked ? hero : rushHero(c, site));
+  const beats = [B.walk(who, c => frontOf(site, site.r, c.nav)), B.gesture(who, 'build', RUSH_BUILD, { at: site }), B.apply(e), B.levelUp(e.item), B.home(who)];
+  for (const b of beats) {
+    const start = b.start;
+    b.rush = true;
+    b.start = c => { if (!picked) { hero = rushHero(c, site); picked = true; } return start.call(b, c); };
+  }
+  return beats;
+}
+
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
@@ -175,7 +213,12 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, montage = fa
       if (landed && e.kind === 'settle') beats = keepOnly(beats, indoorSettle);
     }
     if (key) markKeep(beats);
-    if (montage) beats = keepOnly(beats, b => b.keep || MONTAGE_KEEP.includes(b.kind));
+    if (montage) {
+      beats = keepOnly(beats, b => b.keep || MONTAGE_KEEP.includes(b.kind));
+      // 趕工：非關鍵的 grow、劇本裡沒有作者標 keep 的拍、模組給了地點
+      const site = e.kind === 'grow' && !key && !some(beats, b => b.keep) ? mod(e.item)?.rushSite?.(e.to, s) : null;
+      if (site) beats = rush(e, site);
+    }
     // 鏡頭：等待事件不補平移（演圖框的那個自己平移到代表角色）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];

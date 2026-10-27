@@ -4,9 +4,10 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import { installFakeDom } from './helpers/fakedom.js';
 installFakeDom();
-const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP, MONTAGE_SPEED, GAP } = await import('../src/show/turn.js');
+const { buildTurn, estimateTurn, MONTAGE_CAP, MONTAGE_KEEP, MONTAGE_SPEED, GAP, RUSH_BUILD, RUSH_WALK } = await import('../src/show/turn.js');
+const { cellAt } = await import('../src/scene/hex.js');
 const { B } = await import('../src/show/beats.js');
-const { cellOf } = await import('../src/actors/anchors.js');
+const { cellOf, anchorWorld, frontOf } = await import('../src/actors/anchors.js');
 const finale = await import('../src/actors/finale.js');
 const { countdownEvent, finaleEvents } = await import('../src/game.js');
 
@@ -112,8 +113,9 @@ test('a module script replaces the default and still gets a trailing apply', () 
   assert.equal(settled.total, 2); assert.equal(settled.prevTotal, 1);
 });
 
-test('montage keeps only walk/apply/levelUp/spawn/home/focus and drops walks when over 20 s', () => {
-  assert.equal(MONTAGE_CAP, 20); assert.deepEqual(MONTAGE_KEEP, ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus']);
+test('montage keeps only walk/apply/levelUp/spawn/home/focus and drops walks when over 26 s', () => {
+  // 最終章設計 §5：MONTAGE_CAP 20 → 26 秒真實時間（倒數 2 加上趕工會先撞到 20）
+  assert.equal(MONTAGE_CAP, 26); assert.deepEqual(MONTAGE_KEEP, ['walk', 'apply', 'levelUp', 'spawn', 'home', 'together', 'focus']);
   const script = len => ({ placed: (e, s, ctx) => [ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.bubble(walker, '！'), ctx.B.gesture(walker, 'wave'), ctx.B.together([ctx.B.walk(walker, { x: len, z: 0 }), ctx.B.wait(2)]), ctx.B.together([ctx.B.wait(1)]), ctx.B.levelUp('milk')] });
   const milk = len => ({ id: 'milk', view() {}, script: script(len) });
   const e = { kind: 'placed', item: 'milk', to: 1 };
@@ -126,7 +128,7 @@ test('montage keeps only walk/apply/levelUp/spawn/home/focus and drops walks whe
   assert.deepEqual(kinds, ['focus', 'walk', 'together', 'levelUp', 'apply', 'home', 'world', 'focus']);
   assert.deepEqual(kindsOf(noMarks(beats)[2].beats), ['walk']);
   assert.ok(estimateTurn(beats, short) <= MONTAGE_CAP);
-  // 長路程（每段 30 單位，蒙太奇走路兩倍速 → 15 s × 2 > 20 s）：連 walk 也拿掉
+  // 長路程（每段 30 單位，兩段 60 s 演出時間、蒙太奇兩倍速 → 30 s 真實 > 26 s）：連 walk 也拿掉
   const far = fakeCtx({ nav: navOf(30) });
   const long = buildTurn([e], { ...base([tower, milk(30)]), montage: true }, far);
   assert.deepEqual(kindsOf(long), ['focus', 'levelUp', 'apply', 'home', 'world', 'focus']);
@@ -334,4 +336,104 @@ test('R11: key nodes are flagged on token Lv7/Lv10 and milk Lv7/Lv10 only; token
   const ctx = fakeCtx({ roster: { members: () => [], nearest: () => null, keys: () => [] } });
   const beats = buildTurn([{ kind: 'grow', item: 'token', from: 9, to: 10 }], { ...base([quietTower, token]), lv: { ...zero, token: 9 }, montage: true }, ctx);
   assert.ok(beats.some(b => b.kind === 'fly'), 'fly beat kept in the montage');
+});
+
+// ── 最終章（計畫 5 任務 2，設計 §5）：倒數回合的趕工 ──
+// 假模組：grow[2] 普通劇本（rushSite 回點 → 趕工）、grow[3] ◆ 關鍵、grow[4] 劇本裡有作者標 keep 的拍、grow[5] 普通但 rushSite 回 null
+const SITE = { ...anchorWorld('chip'), r: 1.3 };
+const rushChip = () => {
+  const plain = (e, s, c) => [c.B.wait(1), c.B.bubble(walker, '！'), c.B.levelUp('chip')];
+  const key = (e, s, c) => [c.B.wait(2), { kind: 'fly', dur: 1 }, c.B.levelUp('chip')]; key.key = true;
+  const keep = (e, s, c) => [c.B.wait(1), Object.assign(c.B.bubble(walker, '……', 0.8), { keep: true }), c.B.levelUp('chip')];
+  return { id: 'chip', view() {}, script: { grow: { 2: plain, 3: key, 4: keep, 5: plain } }, rushSite: n => (n === 2 || n === 3 || n === 4 ? SITE : null) };
+};
+// 主島上的假島民（people walker、日常裡）；名冊只有一格 landmarks.islanders
+const islanderAt = (x, z, extra = {}) => ({ walker: {}, mode: 'home', hidden: false, arriving: false, pos: { x, y: SITE.y, z }, yaw: 0, speed: 1.6, head: () => ({ x, y: 1, z }), ...extra });
+const crowdCtx = (members, nav = { route: (a, b) => [{ ...a }, { ...b }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => p }) => fakeCtx({
+  nav, roster: { nearest: () => null, keys: () => ['landmarks.islanders'], members: () => members, claim() {}, home() {}, setPose(m, p) { Object.assign(m.pos, p); } },
+});
+const growChip = (from, to, extra = {}) => ({ kind: 'grow', item: 'chip', from, to, ...extra });
+const rushTurn = (e, ctx) => buildTurn([e], { ...base([quietTower, rushChip()]), lv: { ...zero, chip: e.from }, montage: true }, ctx);
+test('montage grow: key → full script; jump → apply+levelUp; keep beat in script → filtered script; rushSite point → walk+build+apply+levelUp+home; rushSite null → filtered script', () => {
+  const hero = islanderAt(SITE.x - 1, SITE.z + 0.5), ctx = () => crowdCtx([hero]);
+  // ◆ 關鍵級：整串照演（rushSite 回點也不趕工）
+  assert.deepEqual(between(rushTurn(growChip(2, 3), ctx()), 0).map(b => b.kind), ['focus', 'wait', 'fly', 'levelUp', 'apply']);
+  // 跳級的第二級：[apply, LEVEL UP]（不查劇本、不趕工）
+  assert.deepEqual(between(rushTurn(growChip(1, 2, { jump: true }), ctx()), 0).map(b => b.kind), ['apply', 'levelUp', 'apply']);
+  // 劇本裡有 keep 的拍：照今天的蒙太奇過濾（wait 拿掉，keep 的泡泡留著），rushSite 回點也不趕工
+  const kept = between(rushTurn(growChip(3, 4), ctx()), 0);
+  assert.deepEqual(kept.map(b => b.kind), ['focus', 'bubble', 'levelUp', 'apply']); assert.ok(kept[1].keep);
+  // rushSite 回點：趕工五拍（+ 每個事件補的 apply）；前面照常平移到晶片格
+  const rush = between(rushTurn(growChip(1, 2), ctx()), 0);
+  assert.deepEqual(rush.map(b => b.kind), ['focus', 'walk', 'gesture', 'apply', 'levelUp', 'home', 'apply']);
+  assert.equal(rush[2].dur, RUSH_BUILD); assert.equal(RUSH_BUILD, 1.6);
+  // rushSite 回 null：蒙太奇過濾（普通劇本的 wait、泡泡拿掉）
+  assert.deepEqual(between(rushTurn(growChip(4, 5), ctx()), 0).map(b => b.kind), ['focus', 'levelUp', 'apply']);
+  // 模組沒寫 rushSite：同上
+  const noSite = { ...rushChip(), rushSite: undefined };
+  assert.deepEqual(between(buildTurn([growChip(1, 2)], { ...base([quietTower, noSite]), montage: true }, ctx()), 0).map(b => b.kind), ['focus', 'levelUp', 'apply']);
+  // 不是蒙太奇：照演劇本（趕工只在倒數回合）
+  assert.deepEqual(between(buildTurn([growChip(1, 2)], base([quietTower, rushChip()]), ctx()), 0).map(b => b.kind), ['focus', 'wait', 'bubble', 'levelUp', 'apply']);
+  // 演起來：hero 是最近的島民，走到 frontOf(site, r) 的鏡頭側、朝 site 揮鋤頭
+  const c = ctx(), [walk, gesture] = rush.slice(1, 3);
+  c.speed = MONTAGE_SPEED;
+  walk.start(c); walk.step(1, 100, c); walk.end(c);
+  const front = frontOf(SITE, SITE.r);
+  assert.ok(Math.hypot(hero.pos.x - front.x, hero.pos.z - front.z) < 1e-6, 'hero stands in front of the site');
+});
+
+test('rush with no hero near (empty roster) → apply + levelUp only', () => {
+  // hero 演到才找（名冊在建拍與演出之間會變）：五拍照排，找不到人時走路、揮鋤頭、回家都是 0 秒的空拍（start 回 false），
+  // 演出來就只剩 apply + LEVEL UP
+  const ctx = crowdCtx([]), rush = between(rushTurn(growChip(1, 2), ctx), 0);
+  assert.deepEqual(rush.map(b => b.kind), ['focus', 'walk', 'gesture', 'apply', 'levelUp', 'home', 'apply']);
+  assert.equal(rush[1].start(ctx), false, 'walk skips'); assert.equal(rush[2].start(ctx), false, 'gesture skips');
+  assert.doesNotThrow(() => rush[5].start(ctx), 'home with nobody is a no-op');
+  assert.equal(rush[1].estimate(ctx), 0);
+  // 只有衛星島上、躲起來、走回家路上、劇本手上的人，或不是 people walker 的模型：一樣找不到
+  const nobody = crowdCtx([islanderAt(40, 40), islanderAt(SITE.x, SITE.z, { hidden: true }), islanderAt(SITE.x, SITE.z, { arriving: true }), islanderAt(SITE.x, SITE.z, { mode: 'script' }), islanderAt(SITE.x, SITE.z, { walker: null })]);
+  const r2 = between(rushTurn(growChip(1, 2), nobody), 0);
+  assert.equal(r2[1].start(nobody), false); assert.equal(r2[2].start(nobody), false);
+  // 主島上、日常裡，但走到站位要超過 RUSH_WALK 秒真實時間（速度 1.6、2 倍速）：一樣不叫——直線就太遠、直線近但路要繞、到不了
+  assert.equal(RUSH_WALK, 1.5);
+  const front = frontOf(SITE, SITE.r), far = islanderAt(front.x - 1.6 * 2 * RUSH_WALK - 0.3, front.z);
+  assert.ok(cellAt(far.pos.x, far.pos.z), 'the far islander is on the main island');
+  const farCtx = crowdCtx([far]), r3 = between(rushTurn(growChip(1, 2), farCtx), 0);
+  assert.equal(r3[1].start(farCtx), false); assert.equal(r3[2].start(farCtx), false);
+  const near = islanderAt(front.x - 1, front.z);
+  const detour = crowdCtx([near], { route: (a, b) => [{ ...a }, { x: a.x, z: a.z + 4 }, { ...b }], routeLength: r => r.slice(1).reduce((t, q, i) => t + Math.hypot(q.x - r[i].x, q.z - r[i].z), 0), nearestWalkable: p => p });
+  const r5 = between(rushTurn(growChip(1, 2), detour), 0);
+  assert.equal(r5[1].start(detour), false, 'a 1 m neighbour behind a 9 m detour is too far');
+  const walled = crowdCtx([near], { route: a => [{ ...a }], routeLength: () => 0, nearestWalkable: p => p });
+  const r6 = between(rushTurn(growChip(1, 2), walled), 0);
+  assert.equal(r6[2].start(walled), false, 'someone who cannot reach the site is not the hero');
+  // 點名在演到第一個趕工拍的那一刻：建拍時（estimateTurn 估走路）看到的人之後被劇本拉走了，換演出當下最近的人；之後的拍同一個人
+  const a = islanderAt(SITE.x - 1, SITE.z), b = islanderAt(SITE.x + 1.5, SITE.z + 0.5), members = [a], live = crowdCtx(members);
+  const r4 = between(rushTurn(growChip(1, 2), live), 0);
+  a.mode = 'script'; members.push(b);
+  r4[1].start(live); members.push(islanderAt(SITE.x, SITE.z + 0.1));   // 走路之後才出現、更近的人不換
+  r4[2].start(live); r4[2].step(0.5, 0.1, live);
+  assert.ok(b.walker.gesture?.kind === 'build', 'the hero picked at play time swings');
+});
+
+test('rush beats are tagged rush; over MONTAGE_CAP the rush walk is dropped but the build gesture stays', () => {
+  const hero = islanderAt(SITE.x - 1, SITE.z + 0.5), near = crowdCtx([hero]);
+  const rush = between(rushTurn(growChip(1, 2), near), 0).slice(1, 6);
+  assert.ok(rush.every(b => b.rush === true), 'every rush beat is tagged');
+  assert.ok(rush.every(b => !b.keep), 'rush beats are not keep (the over-cap strip may drop the walk)');
+  // 趕工自己的走路 ≤ RUSH_WALK，撞上限的是同一回合別的事件：前面放鮮奶的劇本走 100 單位（速度 1、2 倍速 → 50 s 真實 > 26）
+  // ——整回合拿掉走路，趕工的走路也拿掉；揮鋤頭、apply、LEVEL UP、回家留著
+  const walkMilk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.walk(walker, { x: 100, y: 0, z: 0 }), c.B.levelUp('milk')] } };
+  const ctx = crowdCtx([hero]);
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, growChip(1, 2)], { ...base([quietTower, walkMilk, rushChip()]), montage: true }, ctx);
+  assert.ok(!raw.some(b => b.kind === 'walk'), 'no walk over the cap');
+  const left = between(raw, 1);
+  assert.deepEqual(left.map(b => b.kind), ['focus', 'gesture', 'apply', 'levelUp', 'home', 'apply']);
+  // hero 站在原地朝 site 揮鋤頭（build 帶 at：轉向 site）
+  const g = left[1], c = { ...ctx, speed: MONTAGE_SPEED };
+  g.start(c); g.step(0.5, 0.1, c);
+  assert.equal(hero.walker.gesture.kind, 'build');
+  assert.ok(Math.abs(hero.walker.gesture.yaw - Math.atan2(SITE.x - hero.pos.x, SITE.z - hero.pos.z)) < 1e-9, 'turns toward the site');
+  g.end(c);
+  assert.ok(Math.hypot(hero.pos.x - (SITE.x - 1), hero.pos.z - (SITE.z + 0.5)) < 1e-9, 'swings where they stand');
 });

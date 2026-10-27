@@ -279,3 +279,6 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
 script.grow[3].key = script.grow[8].key = true;
+
+// 趕工（最終章設計 §5）：Lv2–7 球場／巨蛋（錨點，站位半徑同劇本的 FRONT_R）；Lv8（關鍵）→ 不趕工
+export const rushSite = n => (n >= 2 && n <= 7 ? { ...AT, r: FRONT_R } : null);

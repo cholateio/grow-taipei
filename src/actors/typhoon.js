@@ -9,6 +9,7 @@ import { R, TOP, MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, cellAt } from '..
 import { mulberry32 } from '../scene/random.js';
 import { C } from './palette.js';
 import { RAT_LANDING } from './rat.js';
+import { crowd } from '../show/crowd.js';   // 一群人同時演，名單演到才算
 import { ITEMS } from '../rules/spec.js';
 import { compile } from '../rules/conditions.js';
 
@@ -144,17 +145,6 @@ function nearestDoor(c, pos) {
   const f = fps.reduce((a, b) => (Math.hypot(b.x - pos.x, b.z - pos.z) < Math.hypot(a.x - pos.x, a.z - pos.z) ? b : a));
   const d = Math.hypot(pos.x - f.x, pos.z - f.z) || 1, k = ext(f) * 0.9 / d;
   return c.nav.nearestWalkable({ x: f.x + (pos.x - f.x) * k, z: f.z + (pos.z - f.z) * k });
-}
-// 一群人同時演，名單演到才算：together 要在建拍時給齊子拍，這裡在 start 才建（名單空的就跳過）
-function crowd(B, fn) {
-  let inner = null;
-  return {
-    kind: 'crowd',
-    dur: c => (inner ? inner.dur(c) : 0),
-    start(c) { const beats = fn(c); if (!beats.length) return false; inner = B.together(beats); inner.start(c); },
-    step(k, dt, c) { inner.step(k, dt, c); },
-    end(c) { inner?.end(c); inner = null; },
-  };
 }
 // 走到門口就躲進去（藏起來、不閃，整回合躲在門口；下一回合開始 show.turn 的 showAll({ walk: true }) 讓他從門口走回家，
 // 跳過時 snap 也會全部露出來）

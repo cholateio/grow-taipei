@@ -373,3 +373,6 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[10].key = true;
+
+// 趕工（最終章設計 §5）：Lv2–6、Lv9 都蓋在車站（錨點）；Lv7 支線（關鍵）、Lv8 接駁車、Lv10 飛天車（關鍵）→ 不趕工
+export const rushSite = n => ((n >= 2 && n <= 6) || n === 9 ? { ...AT, r: 1.2 } : null);

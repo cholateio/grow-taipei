@@ -8,11 +8,12 @@
 // 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」，跟著老鼠；老鼠坐上環狀線的車時在捷運站北側等牠們下車。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv9 6–10 秒、回全景定格。
 import { anchorWorld, routeBetween, frontOf } from './anchors.js';
-import { SATELLITES, axialToWorld, TOP, WATER_Y, cellAt } from '../scene/hex.js';
+import { SATELLITES, axialToWorld, TOP, WATER_Y } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
 import { builders as milkBuilders } from './milk.js';
 import { SHIELD_TEST_DUR } from './parts.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
+import { lookUp } from '../show/crowd.js';
 import { ratMode } from './rat.js';   // rat.js 也 import 這裡的 ENGINEER_ROUTE：兩邊都只在函式裡用到對方，循環 import 沒問題
 
 export const id = 'chip';
@@ -216,15 +217,8 @@ const surge = (e, dur) => replay(e, 'chip.cable', dur, {
 const shieldTest = e => replay(e, 'tower.shield', SHIELD_TEST_DUR, {
   begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
 });
-// 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 LOOKERS 個。
-// 這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）
-const LOOKERS = 24;
-const islanders = c => c.roster.keys().flatMap(k => c.roster.members(k)).filter(m => m.walker && !m.hidden && !m.arriving && m.mode === 'home' && cellAt(m.pos.x, m.pos.z));
-function everyoneLooksUp(B, dur) {
-  let list = null;
-  const who = i => c => (list ??= islanders(c))[i] ?? null;
-  return { look: Array.from({ length: LOOKERS }, (_, i) => B.gesture(who(i), 'look', dur, { at: TOWER })), release: B.home(() => list ?? []) };
-}
+// 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 24 個
+// （show/crowd.js 的 lookUp，最終章的宣告也用）。這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）
 
 export const script = {
   // 工地開工：閃白圍籬 → 工人從 101 工地走過來 → ♪ → 繞工地
@@ -288,7 +282,7 @@ export const script = {
     },
     // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面（keep：蒙太奇裡照樣閃）、全島的人轉頭看 101（看完就放回日常）→ LEVEL UP
     8(e, s, ctx) {
-      const { B } = ctx, up = everyoneLooksUp(B, 1.2);
+      const { B } = ctx, up = lookUp(B, TOWER, 1.2);
       return [B.focus('home'), B.together([shieldTest(e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];
     },
     // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）
@@ -307,3 +301,8 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這級、或在倒數蒙太奇裡，也演完整劇本（turn.js）
 script.grow[9].key = true;
+
+// 趕工（最終章設計 §5）：Lv2 廠房（園區錨點，同 Lv2 劇本）、Lv3 園區玻璃盒、Lv4 星群總部、Lv5 變電站——站位半徑 FRONT_R；
+// Lv6 起電纜在海裡、天線在 101、矽盾測試與待命自己有劇本（keep／關鍵）→ 不趕工
+const RUSH_SITES = { 2: AT, 3: offset(AT, 0.6, 0), 4: offset(AT, HQ.x, HQ.z), 5: offset(AT, SUB.x, SUB.z) };
+export const rushSite = n => (RUSH_SITES[n] ? { ...RUSH_SITES[n], r: FRONT_R } : null);

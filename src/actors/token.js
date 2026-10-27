@@ -328,14 +328,23 @@ export const script = {
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   支線 0.8 秒長完（每秒 3 公尺多），比車速 2.5 快，列車追不上還沒長好的那一段
-    // 風車島的支線若已經被燈泡 Lv7 鋪好（view 的 lv.bulb ≥ 7），只長還沒有的那條
+    // 風車島的支線若已經被燈泡 Lv7 鋪好（view 的 lv.bulb ≥ 7），只長還沒有的那條——鏡頭改到遊樂場島、列車開進遊樂場島的支線
+    //   （選擇帶動升級裁決 R7：賽博正解燈泡 Lv7 先到，以前照樣飛去風車島，新長的遊樂場支線整段在畫面外）。
+    // 兩條都要長（外星正解）：風車島那條跟著鏡頭先長；遊樂場島在風車島的對面、拉近時在畫面外，等鏡頭回到全景（遊樂場島在全景裡）才長出來——
+    //   排在列車島那頭停站的 during 裡，回全景 1.0 + 長 0.8 不比列車倒回環上久，整級不變長
     7(e, s, ctx) {
       const { B } = ctx, prev = s.prev ?? { lv: { ...s.lv, token: 6 }, flags: s.flags }, had = view(prev.lv, prev.flags), keys = SPURS.map(k => `token.spur.${k}`).filter(k => !had[k]);
+      const dest = had['token.spur.windmill'] ? 'playground' : 'windmill', far = 'token.spur.playground';
+      const later = dest === 'windmill' && keys.includes(far) ? [far] : [], now = keys.filter(k => !later.includes(k));
+      const grow = k => B.scaleIn(k, { axis: 'z', dur: 0.8 });
       return [
-        B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
-        B.apply(e, { only: keys, blink: false }),
-        // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）
-        B.together([...keys.map(k => B.scaleIn(k, { axis: 'z', dur: 0.8 })), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 2.0, back: Math.PI / 2, during: [B.focus('home', { hold: 1.0 })] })]),
+        B.focus(dest === 'windmill' ? WINDMILL : PLAYGROUND, { zoom: ISLAND_ZOOM }),
+        B.apply(e, { only: now, blink: false }),
+        // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）；
+        //   支線上每秒 3.5 公尺（平常 2.5；計畫 5b 任務 4：列車剛開過支線口時整級 8.4 s，支線來回省 0.7 s）
+        B.together([...now.map(grow), B.trainStop({ spur: dest, stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: 3.5, during: [
+          B.focus('home', { hold: 1.0 }), ...later.flatMap(k => [B.apply(e, { only: [k], blink: false }), grow(k)]),
+        ] })]),
         B.apply(e), B.levelUp('token'),
       ];
     },

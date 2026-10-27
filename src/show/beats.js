@@ -403,7 +403,7 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
     cur = null;
   };
   return {
-    kind: 'trainStop', during: subs,   // during 原樣留在拍上（測試看裡面的拍）
+    kind: 'trainStop', spur, during: subs,   // spur、during 原樣留在拍上（測試看開進哪條支線、裡面的拍）
     dur: () => arrive + total,
     start(ctx) {
       i = 0; cur = null;

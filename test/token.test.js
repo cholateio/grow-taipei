@@ -15,7 +15,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { createTimeline } from '../src/show/timeline.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, overviewRig, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
@@ -23,6 +23,8 @@ const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower'), TWO_PI = 2 * Math.PI, CELL = cellOf('token');
 const satC = kind => { const s = SATELLITES.find(x => x.kind === kind); return axialToWorld(s.q, s.r); };
 const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
+// 代幣 Lv7 開往哪座島：燈泡先放（賽博）→ 燈泡 Lv7 先鋪好風車島的支線 → 遊樂場島（裁決 R7）；不然風車島
+const islandOf7 = order => (order.indexOf('bulb') < order.indexOf('token') ? 'playground' : 'windmill');
 const views = Array.from({ length: 11 }, (_, n) => token.view(L({ token: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const PALETTE = new Set(Object.values(C));
@@ -237,7 +239,7 @@ test('orbit headings turn smoothly: ≤ 0.2 rad per frame through in → lap →
 // ── 劇本（§6：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、回全景定格）──
 const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
 // 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
-const want = to => (to === 7 ? [String(satCell('windmill')), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
+const want = (to, order) => (to === 7 ? [String(satCell(islandOf7(order))), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
 test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10 6–10 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
@@ -253,7 +255,7 @@ test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over token`);
-        assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to), `${what} camera trail`);
+        assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to, order), `${what} camera trail`);
       }
       for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
       assert.equal(show.roster.members('token.staff').length, to >= 2 ? 1 : 0, `${what} staff count`);
@@ -269,7 +271,7 @@ test('Lv8: the camera is back on the token cell before the LEVEL UP (the label n
   assert.ok(i >= 0 && beats[i + 1].kind === 'levelUp' && i + 2 === beats.length, `focus token, then LEVEL UP last (${beats.map(b => b.kind)})`);
   assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
 });
-test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8', () => {
+test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8 (the playground island once the windmill spur is there, R7)', () => {
   for (const n of [7, 10]) {
     const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n, milk: 5 }), flags: {} }, fakeCtx));
     const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 1.0),   // 停 ≥ 1.0（裁決 R17：◆ ≤ 8 s，原 ≥ 1.5）
@@ -279,6 +281,14 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
   const b7 = token.script.grow[7]({ kind: 'grow', item: 'token', to: 7 }, { lv: L({ token: 7 }), flags: {} }, fakeCtx);
   assert.equal(b7[0].kind, 'focus'); assert.equal(b7[0].dur, 0.8); assert.deepEqual(focusCell(b7[0], fakeCtx), satCell('windmill'));
   assert.ok(flat(b7).some(b => b.kind === 'trainStop'), 'the train rides out on the spur');
+  // 風車島的支線已經在（燈泡 ≥ 7，裁決 R7）：開在遊樂場島、列車開進遊樂場島的支線、只長那一條
+  const prev = { lv: L({ token: 6, bulb: 7 }), flags: {} }, p7 = token.script.grow[7]({ kind: 'grow', item: 'token', to: 7 }, { lv: L({ token: 7, bulb: 7 }), flags: {}, prev }, fakeCtx);
+  assert.deepEqual(focusCell(p7[0], fakeCtx), satCell('playground'));
+  assert.equal(flat(b7).find(b => b.kind === 'trainStop').spur, 'windmill'); assert.equal(flat(p7).find(b => b.kind === 'trainStop').spur, 'playground');
+  assert.deepEqual(flat(p7).filter(b => b.kind === 'scaleIn').length, 1, 'only the playground spur grows');
+  // 兩條都要長：遊樂場島那條排在回全景之後（列車島那頭停站的 during 裡）
+  const during = flat(b7).find(b => b.kind === 'trainStop').during, iHome = during.findIndex(b => b.kind === 'focus' && b.target === 'home');
+  assert.ok(iHome >= 0 && during.slice(iHome + 1).some(b => b.kind === 'scaleIn'), 'the playground spur grows after the camera is back on the overview');
 });
 // trainStop 支線版：列車進到支線入口（環上 trip.a）→ 開到風車島那頭停住 → 開回環上；skip 不留行程
 test('trainStop({ spur }) takes the train out to the island end, holds it there, brings it back; end clears the trip', () => {
@@ -322,13 +332,38 @@ async function liveAt(h, order, to) {
   }
   return null;
 }
-// Lv7 live：列車真的開到風車島那頭（車頭離島心 < 1.3）
-test('Lv7 live: the train rides out to the windmill island while the camera is there, then the overview', async () => {
-  const h = await headlessShow(), { show } = h, c = satC('windmill'), update = show.update;
-  let near = 0;
-  show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
-  const done = !!await liveAt(h, SOLUTIONS[0], 7);
-  assert.ok(done && near >= 15, `head near the windmill island for ${near} frames`);
+// Lv7 live：列車真的開到新支線那頭（車頭離島心 < 1.3）——風車島的支線已經被燈泡 Lv7 鋪好（賽博）就開進遊樂場島（裁決 R7），不然風車島
+test('Lv7 live: the train rides out to the island of the new spur while the camera is there, then the overview', async () => {
+  assert.deepEqual(SOLUTIONS.map(islandOf7).sort(), ['playground', 'windmill'], 'one solution each');
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show } = h, kind = islandOf7(order), c = satC(kind), update = show.update;
+    let near = 0;
+    show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
+    const done = !!await liveAt(h, order, 7);
+    assert.ok(done && near >= 15, `${order.join('>')}: head near the ${kind} island for ${near} frames`);
+  }
+});
+// 審稿（計畫 5b 任務 3，裁決 R7）：賽博那條燈泡 Lv7 先到、風車島支線已經鋪好；代幣 Lv7 只長遊樂場島那條——鏡頭要在遊樂場島，
+// 不能還飛去風車島（新長的支線整段在畫面外）。真的鏡頭 rig（16:9 全景）：支線長出來的每一幀，新長的那條支線的島心投影在 NDC ±0.9 裡
+test('Lv7 live, real camera: the island of every newly grown spur is on screen (NDC ±0.9) while the spur grows, in both solutions', async () => {
+  for (const order of SOLUTIONS) {
+    const cam = overviewRig(), h = await headlessShow({ rig: cam.rig }), { show } = h, update = show.update, frames = {}, out = [];
+    const ndc = p => { cam.camera.lookAt(cam.controls.target); cam.camera.updateMatrixWorld(); cam.camera.updateProjectionMatrix(); return new THREE.Vector3(p.x, p.y, p.z).project(cam.camera); };
+    show.update = (dt, t) => {
+      update(dt, t);
+      for (const kind of token.SPURS) {
+        const o = show.stage.partObject(`token.spur.${kind}`), k = o?.scale.z;
+        if (!(k > 1e-3 && k < 1)) continue;
+        const c = satC(kind), p = ndc({ x: c.x, y: token.spurPath(kind).at(-1).y, z: c.z });
+        frames[kind] = (frames[kind] ?? 0) + 1;
+        if (Math.abs(p.x) > 0.9 || Math.abs(p.y) > 0.9) out.push(`${kind} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
+      }
+    };
+    const e = await liveAt(h, order, 7);
+    assert.ok(e, `${order.join('>')}: token reaches 7`);
+    assert.ok(Object.values(frames).some(n => n >= 10), `${order.join('>')}: a spur grows on screen (${JSON.stringify(frames)})`);
+    assert.deepEqual([...new Set(out)].slice(0, 5), [], `${order.join('>')}: ${out.length} frames with a growing spur's island off screen`);
+  }
 });
 test('Lv8 live: the playground kids get off the shuttle at the island end and go home on the island; still one staff (R16)', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, end = token.spurPath('playground').at(-1);

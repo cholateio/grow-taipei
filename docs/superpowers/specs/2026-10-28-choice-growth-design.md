@@ -79,6 +79,27 @@
 - 一回合的升級變多（實測正解單回合最多 13 個 grow）。超過上限時先砍非關鍵劇本的停頓與泡泡，不加快走路；仍超過再記裁決放寬上限。
 - pace 報表另印「最後一輪＋終局」合計，跟計畫 5 的最終章（外星 70.9、賽博 67.0）對照，不設門檻。
 
+實測（計畫 5b 任務 4，`node tools/pace.mjs --check`，種子 21；格內是「秒數／上限」，上限 50 + 8 × max(0, ◆ − 1)）：
+
+| 回合 | 賽博龐克台北 | 外星人統治台北 |
+|---|---|---|
+| 1 | 鮮奶 7.8／50 | 鮮奶 7.8／50 |
+| 2 | 棒球 15.9／50 | 棒球 15.9／50 |
+| 3 | 燈泡 29.7／50 | 代幣 27.7／50 |
+| 4 | 代幣 21.6／50 | 燈泡 30.2／50 |
+| 5 | 晶片 40.8／58 | 晶片 36.0／50 |
+| 6 | 珍奶 46.6／50 | 珍奶 49.1／50 |
+| 7 | 老鼠 53.0／58 | 老鼠 55.7／58 |
+| 8 | 颱風 59.9／90 | 颱風 57.6／82 |
+| 最後一輪 | 26.4／66 | 30.0／74 |
+| 終局（警告＋飛彈＋尾聲） | 13.9／22 | 16.3／22 |
+| 最後一輪＋終局 | 40.3（計畫 5 最終章 67.0） | 46.3（計畫 5 最終章 70.9） |
+| 合計 | 315.6 | 326.2 |
+
+壞結局終局：命中 6.5／12、吹歪 9.2／12。上限都沒有放寬。外星第 6 回合原本 59.0（燈泡 Lv5 走去 101 腳下 9 秒、101 跨門檻等鏡頭到了才走），
+砍法：燈泡 Lv5 不走路（回全景、原地看 101）、101 跨門檻時鏡頭飛的同時工人就出發、鮮奶 Lv8／晶片 Lv3／代幣 Lv5、Lv6 的泡泡各短 0.1–0.2 秒（一級仍 ≥ 3 秒）。
+只剩 ⚠：颱風 Lv2 劇本 5.5／4.9 秒（> 4.5，大家走去躲雨，走路不加速），不算失敗。
+
 ## 7. 驗收
 
 - `npm run check` 通過（剛好兩條正解）；`npm test`；`node tools/pace.mjs --check`；`npm run shot` 預算內。
@@ -92,4 +113,16 @@
 
 ## 8. 實作裁決
 
-（執行時由控制者補）
+（控制者在計畫 5b 執行時記的，照 SDD 帳本原文）
+
+- Ruling R1: accept the eight spec changes incl. skeleton thresholds blackout bulb ≤2→≤4, flood token ≤2→≤4 (typhoon now lands in its placement turn; without it both bad endings are unreachable) — cost if wrong: the user re-tunes bad-ending difficulty.
+- Ruling R2: the cyber/alien split is bulb 3rd (cyber) vs token 3rd (alien); rat 7th and typhoon 8th fixed in both — accepted (R7 of plan 4 already moved the split off rat timing) — cost: puzzle clue text.
+- Ruling R3: the typhoon lands in its own placement turn (cloud placed script → landing script in the same turn); T3 updates typhoon tests/scripts to that — cost if wrong: the one-turn cloud beat is gone.
+- Ruling R4: dead explicit jumps (bulb.jump[5], boba.jump[3]) stay for now; noted for the user — cost: dead script paths.
+- Ruling R5: keep exclusion, revisit if a placed item can stay Lv1（placed item excluded from post-scan wait/stall; no effect on shipped spec）.
+- Ruling R6: story beats that are now always the second half of a jump get the ◆ key flag so their full script plays: token Lv4 (ring line + train), chip Lv7 (antenna), chip Lv8 (shield test) — the island chain and the ring line are the game's main story; design §4 says key levels play full — cost: pace, handled in T4 by trimming pauses.
+- Ruling R7: carried into Task 4 instead of a separate fix round — T4 already re-keys token/chip levels and re-takes shots in the same area — cost if wrong: one more review cycle in T4.（Important：cyber token Lv7 ◆ opens on the windmill spur that bulb Lv7 already built; the new playground spur grows off frame.）
+
+任務 4 的做法（不是新裁決）：R7 → 風車島支線已在就開在遊樂場島、列車開進遊樂場支線；兩條都要長（外星）時遊樂場那條等鏡頭回全景才長；
+支線車速 2.5 → 3.5（◆ ≤ 8 s）。節奏見 §6 實測。走路格兩個修正（live 不變式量到）：走路互推一邊貼牆就由另一邊讓整段、
+起點在格點連不出去的夾縫裡（夜市攤位外擴之間）先直線走到附近連得通的點。

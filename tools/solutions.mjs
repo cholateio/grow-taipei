@@ -1,4 +1,4 @@
-// 重產 docs/superpowers/plans/solutions.md（劇透）：兩條正解逐回合表（含倒數回合）、壞結局代表順序、統計。
+// 重產 docs/superpowers/plans/solutions.md（劇透）：兩條正解逐回合表（含最後一輪）、壞結局代表順序、統計。
 // 「調參紀錄」一節從舊檔原樣保留，新紀錄手動加在後面。  npm run solutions
 import { readFile, writeFile } from 'node:fs/promises';
 import * as spec from '../src/rules/spec.js';
@@ -17,7 +17,7 @@ function table(order) {
     const r = kind === 'place' ? place(state, id, spec) : advance(state, spec); state = r.state;
     const ev = r.events.filter(e => e.kind === 'grow' || e.delta || e.flag).map(e => e.kind === 'grow' ? `${name(e.item)}${e.to}${e.via.length ? `（${e.via.map(name).join('、')}）` : ''}` : e.story ?? '').filter(Boolean).join('、');
     const cells = O.map(k => state.lv[k] === spec.ITEMS[k].max ? `**${state.lv[k]}**` : state.lv[k]);
-    return `| ${i + 1} | ${kind === 'place' ? name(id) : '（倒數）'} | ${cells.join(' | ')} | ${ev} |`;
+    return `| ${i + 1} | ${kind === 'place' ? name(id) : '（最後一輪）'} | ${cells.join(' | ')} | ${ev} |`;
   }).join('\n');
 }
 const head = `| 回合 | 放 | ${O.map(name).join(' | ')} | 事件（括號＝因為誰） |\n|---|---|${O.map(() => '---').join('|')}|---|`;

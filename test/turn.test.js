@@ -335,12 +335,14 @@ test('a grow with via gets a visit before its script: mark {visit}, focus, walk/
   assert.deepEqual(marks.map(m => [m.e.kind, !!m.info.visit]), [['placed', false], ['grow', true], ['grow', false]], 'one visit mark before the script mark');
   assert.ok(Math.abs(marks[1].info.gap - GAP) < 1e-9, 'the visit opens the new item: GAP before it');
   assert.equal(marks[1].info.key, false); assert.equal(marks[2].info.gap, 0, 'no second GAP before the script');
-  // 拜訪段：空拍、together(平移到晶片格, 走過去)、轉身、together(敲門 0.8, 揮手 0.8)、♥ 0.6、回日常；劇本前不再平移（同一格）
+  // 拜訪段：together(空拍, 原處閃白)（裁決 R4：閃白跟空拍一起演）、together(平移到晶片格, 走過去)、轉身、together(敲門 0.8, 揮手 0.8)、
+  // ♥（0 秒拍，泡泡活 0.6 s：轉身要走時冒出來，不擋後面，裁決 R4）、回日常；劇本前不再平移（同一格）
   const seg = between(raw, 1);
-  assert.deepEqual(seg.map(b => b.kind), ['wait', 'together', 'face', 'together', 'bubble', 'home']);
+  assert.deepEqual(seg.map(b => b.kind), ['together', 'together', 'face', 'together', 'bubble', 'home']);
+  assert.deepEqual(seg[0].beats.map(b => [b.kind, typeof b.dur === 'number' ? b.dur : 'fn']), [['wait', GAP], ['fade', 'fn']]);
   assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.deepEqual(seg[1].beats[0].target, cellOf('chip'));
   assert.deepEqual(seg[3].beats.map(b => [b.kind, b.dur]), [['gesture', VISIT_KNOCK], ['gesture', VISIT_KNOCK]]);
-  assert.equal(seg[4].dur, VISIT_LOVE);
+  assert.equal(seg[4].dur, 0, 'the ♥ does not hold the timeline'); assert.equal(seg[4].love, VISIT_LOVE);
   assert.deepEqual(kindsOf(between(raw, 2)), ['wait', 'levelUp', 'apply'], 'the level script right after, no pan');
   // 跳級的第二級（同幫手、第一級已經拜訪過）不插；◆ 關鍵級照插
   const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true }), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
@@ -364,7 +366,8 @@ test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later 
   // 照順序演每段拜訪的第一拍（走過去）：代表就在旁邊（不換位置）
   const rep = { ...walker, mode: 'home' }, roster = { claim() {}, setPose() {}, flash() {}, relocate() {}, members: () => [], keys: () => [] };
   const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, groundY: () => 0, version: 0 };
-  const play = (beats, c) => beats.map(b => (b.kind === 'together' ? b.beats.find(x => x.kind === 'walk') : b.kind === 'walk' ? b : null)).filter(Boolean).map(w => w.start(c) !== false);
+  // 一段拜訪照順序 start 原處閃白（決定要不要走、算配額）與走過去；回走過去有沒有演
+  const play = (beats, c) => { const flat = beats.flatMap(b => (b.kind === 'together' ? b.beats : [b])); flat.find(b => b.kind === 'fade').start(c); return [flat.find(b => b.kind === 'walk').start(c) !== false]; };
   const walks = raw2 => { const at = raw2.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return at.map((i, k) => raw2.slice(i + 1, at[k + 1])); };
   const near = buildTurn(events, base(visitMods().map(m => (m.script?.rep && m.id !== 'chip' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') } }) } } : m))), fakeCtx());
   const c = fakeCtx({ roster, nav });

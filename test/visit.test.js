@@ -86,7 +86,7 @@ for (const [n, item, to] of CASES) {
     assert.notEqual(v.marks[1].rep.mode, 'script', `${what}: the helper is back to daily life`);
     if (v.host) assert.notEqual(v.marks[1].host.mode, 'script', `${what}: the target rep is back to daily life`);
     assert.equal(v.marks[1].script, 0, `${what}: nobody left in script mode`);
-    assert.ok(v.secs <= VISIT_CAP && v.secs >= VISIT_KNOCK + VISIT_LOVE, `${what}: visit ${v.secs.toFixed(2)} s`);
+    assert.ok(v.secs <= VISIT_CAP && v.secs >= VISIT_KNOCK, `${what}: visit ${v.secs.toFixed(2)} s`);   // ♥ 不擋拍（裁決 R4）：段長是閃白＋走路＋敲門
     if (far && v.marks[1].rep.mode === 'away') {
       // 遠處叫來、回家的路又長：背景走回出現的那一點、閃白換回原本站的地方（也閃）、回日常（不在日常裡橫越半個島）
       const fr = [...v.after];

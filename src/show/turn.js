@@ -16,7 +16,7 @@
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）。
 // 拜訪（計畫 6 設計 §4，show/visit.js）：grow 事件 via 非空、不是跳級的第二級、颱風還沒登陸（登陸後大家躲著，indoors 照舊）——
-//   劇本前面先插一段拜訪：mark(e, { visit: true, gap }) → （不同物品先空 GAP）平移到拜訪點那一格、跟拜訪的第一拍（走過去）一起演 →
+//   劇本前面先插一段拜訪：mark(e, { visit: true, gap }) → （不同物品先空 GAP，幫手在原處閃白跟它一起演）→ 平移到拜訪點那一格、跟走過去一起演 →
 //   拜訪的拍；之後照舊 mark(e, { gap: 0, key }) + 這一級的劇本（◆ 關鍵級也插：原因才是重點，◆ 劇本自己仍另外量）。
 //   幫手 = via[0] 的模組；同一回合同一個幫手最多真的拜訪 VISIT_MAX_PER_HELPER 次（裁決 R2：2；演到才算——代表不在而略過的不算；
 //   之後的拜訪段只剩平移，有原因的升級照演自己的劇本）。
@@ -138,10 +138,14 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const id = e.via[0], target = mod(e.item), spot = target?.visitSpot?.(e.to, s), cell = spot && cellAt(spot.x, spot.z);
     const beats = cell ? visit(e, s, ctx, { helper: mod(id), target, quota: visits }) : [];
     if (!beats.length) return false;
-    const lead = lastItem && e.item !== lastItem ? [B.wait(GAP)] : [];
-    if (!sameCell(cell, lastCell)) { beats[0] = together([B.focus(cell), beats[0]]); lastCell = cell; away = true; }
+    // 第一拍（原處閃白，0 或 BLINK 秒）跟物品之間的空拍一起演（裁決 R4）；第二拍（走過去）跟平移一起演
+    const gap = lastItem && e.item !== lastItem ? GAP : 0;
+    const [fade, walk, ...rest] = beats;
+    const lead = gap ? [together([B.wait(gap), fade])] : [fade];
+    const go = sameCell(cell, lastCell) ? walk : together([B.focus(cell), walk]);
+    if (!sameCell(cell, lastCell)) { lastCell = cell; away = true; }
     lastItem = e.item;
-    out.push(mark(e, { gap: estimateTurn(lead, ctx), key: false, visit: true }), ...lead, ...beats);
+    out.push(mark(e, { gap, key: false, visit: true }), ...lead, go, ...rest);
     return true;
   };
 

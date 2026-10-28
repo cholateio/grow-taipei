@@ -1,10 +1,10 @@
 // 拜訪（計畫 6「看得見的因果與離島三段」設計 §4）：有原因的升級（grow 事件的 via 非空）先演一段幫手走來互動，再演那一級自己的劇本。
-// 一段拜訪 = [走到拜訪點, together(敲門, 被升級物品的代表揮手), 幫手 ♥, 兩人回日常]：
+// 一段拜訪 = [（要換位置的話）原處閃白, 走到拜訪點, together(敲門, 被升級物品的代表揮手), 幫手轉身要走時冒 ♥（不擋拍，裁決 R4）, 兩人回日常]：
 //   幫手的代表 = via[0] 那個模組的 script.rep(s, ctx)，演到第一拍才找、找到就記住（同 turn.js 的 once）；找不到、藏起來（躲進門裡）、
 //   在劇本手上（mode 'script'：同一回合別的劇本拿去用、還沒放回來——審稿重點 2：寧可略過，不半路搶人）、不在主島上（坐車頂、衛星島）、
 //   走不過去、這回合這個幫手已經真的拜訪過 VISIT_MAX_PER_HELPER 次（quota，演到才算：略過的那幾段不算數）→ 整段每一拍都跳過（0 秒）。
 //   拜訪點 = 被升級物品的 visitSpot(第幾級, s)（這一級的建築正面）；代表站在 frontOf(spot, r, nav)，面向建築敲門。
-//   走路上限 VISIT_WALK 秒（裁決 R3）：路線比 VISIT_WALK × 走路速度長，就在原處閃白 BLINK 秒、換到路線上離終點剛好 VISIT_WALK 秒的那一點
+//   走路上限 VISIT_WALK 秒（裁決 R3）：路線比 VISIT_WALK × 走路速度長，就在原處閃白 BLINK 秒（裁決 R4：跟物品之間的空拍一起演）、換到路線上離終點剛好 VISIT_WALK 秒的那一點
 //   （可能還在前一格、橋上）再閃白一下，走滿 VISIT_WALK 秒過去——至少 MIN_WALK 公尺真的走（設計 §4「走不到就在格邊出現再走剩下的」；
 //   走路速度不加快，§6）。不靜靜地放下：每次換位置都閃白（同零件的閃白）。
 //   被升級物品的代表在場（在拜訪點那一格、看得到、不在劇本手上）才轉身面向幫手揮手；不在場就只有敲門。
@@ -13,7 +13,7 @@
 // 鏡頭由 turn.js 補：拜訪的第一拍跟平移到拜訪點那一格一起演（邊平移邊走進來）。
 // 同一回合同一個幫手最多拜訪 VISIT_MAX_PER_HELPER 次（設計 §4 原本 3；裁決 R2：第三次重複，2，之後只演那一級的劇本）。
 // 颱風不拜訪、也不被拜訪（天氣）：helper／target 是颱風就回 []（颱風的 rep、visitSpot 本來也是 null）。
-import { B, together } from './beats.js';
+import { B, together, rate } from './beats.js';
 import { frontOf } from '../actors/anchors.js';
 import { cellAt } from '../scene/hex.js';
 import { BLINK } from './blink.js';
@@ -58,32 +58,39 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
   };
   const stand = c => (dest ??= frontOf(spot, spot.r, c.nav));
   const inner = B.walk(rep, stand);
-  // 走過去：要換位置的話先在原處閃白 BLINK 秒（fading），再換到 at、閃白、開始走（inner）；拍長 = BLINK + 從 at 走過去的秒數
-  let at = null, fading = false, tf = 0, span = 0, walking = false;
-  const go = c => { fading = false; c.roster.relocate(who, { ...at, yaw: yawTo(at, stand(c)) }); walking = inner.start(c) !== false; };
+  // 走過去（裁決 R3、R4）：先問好要不要換位置（fade 拍：在原處閃白 BLINK 秒——turn.js 把它跟物品之間的空拍一起演，不另外佔時間），
+  // 走路那拍一開始換到 at、閃白、開始走（inner）
+  let at = null, fading = false, span = 0, walking = false;
+  const plan = c => {
+    at = null; fading = false;
+    const m = rep(c); if (!m) return;
+    const to = stand(c), route = c.nav.route(m.pos, to), end = route.at(-1);
+    const used = quota?.get(helper.id) ?? 0;
+    if (!end || Math.hypot(end.x - to.x, end.z - to.z) > REACH || used >= VISIT_MAX_PER_HELPER) { who = null; return; }   // 走不過去、這回合來夠了：不拜訪
+    quota?.set(helper.id, used + 1);
+    const len = c.nav.routeLength(route), cap = VISIT_WALK * m.speed;
+    if (len <= cap) return;
+    at = pointAt(route, Math.max(0, Math.min(len - cap, len - MIN_WALK)), c.nav);
+    back = { ...(m.away?.back ?? m.pos) };   // 上一段拜訪完正走回去：回的還是最早那個地方
+    exit = c.nav.routeLength(c.nav.route(to, back)) > 2 * cap ? at : null;   // 回家的路不長：拜訪完自己走回去
+    span = c.nav.routeLength(c.nav.route(at, to)) / m.speed;
+  };
+  const fade = {
+    kind: 'fade', dur: () => (fading ? BLINK : 0), estimate: () => BLINK,
+    start(c) { plan(c); if (!at) return false; c.roster.claim(who); c.roster.flash(who); fading = true; },
+  };
   const arrive = {
-    kind: 'walk', estimate: () => BLINK + VISIT_WALK,
-    dur: c => (at ? BLINK + span : inner.dur(c)),
+    kind: 'walk', estimate: () => VISIT_WALK,
+    dur: c => (walking ? inner.dur(c) : 0),
     start(c) {
-      at = null; fading = false; walking = false;
+      walking = false;
       const m = rep(c); if (!m) return false;
-      const to = stand(c), route = c.nav.route(m.pos, to), end = route.at(-1);
-      const used = quota?.get(helper.id) ?? 0;
-      if (!end || Math.hypot(end.x - to.x, end.z - to.z) > REACH || used >= VISIT_MAX_PER_HELPER) { who = null; return false; }   // 走不過去、這回合來夠了：不拜訪
-      quota?.set(helper.id, used + 1);
-      const len = c.nav.routeLength(route), cap = VISIT_WALK * m.speed;
-      if (len <= cap) { walking = inner.start(c) !== false; return walking ? undefined : false; }
-      at = pointAt(route, Math.max(0, Math.min(len - cap, len - MIN_WALK)), c.nav);
-      back = { ...(m.away?.back ?? m.pos) };   // 上一段拜訪完正走回去：回的還是最早那個地方
-      exit = c.nav.routeLength(c.nav.route(to, back)) > 2 * cap ? at : null;   // 回家的路不長：拜訪完自己走回去
-      span = c.nav.routeLength(c.nav.route(at, to)) / m.speed;
-      c.roster.claim(m); c.roster.flash(m); fading = true; tf = 0;
+      if (at) c.roster.relocate(m, { ...at, yaw: yawTo(at, stand(c)) });
+      walking = inner.start(c) !== false;
+      if (!walking) return false;
     },
-    step(k, dt, c) {
-      if (fading) { tf += dt; if (tf < BLINK - 1e-9) return; go(c); return; }
-      if (walking) inner.step(k, dt, c);
-    },
-    end(c) { if (fading) go(c); if (walking || at) inner.end(c); },
+    step(k, dt, c) { if (walking) inner.step(k, dt, c); },
+    end(c) { if (who) inner.end(c); },
   };
   // 轉身：幫手面向建築、被升級物品的代表面向幫手（0 秒；人要先拿到劇本手上，日常才不會把朝向蓋掉）
   const face = {
@@ -95,10 +102,15 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
       return false;
     },
   };
+  // ♥（裁決 R4，設計 §4 第 4 步）：轉身要走的那一刻冒出來，跟著他走 VISIT_LOVE 秒——不擋後面的拍（0 秒拍，泡泡自己活 VISIT_LOVE 秒）
+  const love = {
+    kind: 'bubble', dur: 0, love: VISIT_LOVE,
+    start(c) { const m = rep(c); if (!m || m.hidden) return false; c.bubbles.show(m.head, '♥', VISIT_LOVE / rate(c)); return false; },
+  };
   return [
-    arrive, face,
+    fade, arrive, face,
     together([B.gesture(rep, 'knock', VISIT_KNOCK, { at: spot }), B.gesture(host, 'wave', VISIT_KNOCK)]),
-    B.bubble(rep, '♥', VISIT_LOVE),
+    love,
     // 回日常：換過位置、回家的路又長的幫手走回他出現的那一點、閃白換回原本的地方（roster.leave，背景走、不佔時間）；
     // 其他的直接回日常；揮手的人本來就在家那一格
     { kind: 'home', dur: 0, start(c) {

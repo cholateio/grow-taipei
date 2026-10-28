@@ -362,6 +362,20 @@ test('home(m, { hurry }) walks a member back at walking speed even outside the f
   assert.ok(fastest > 1.0, `at walking speed (${fastest.toFixed(2)} m/s)`);
   assert.ok(Math.hypot(b.pos.x - pb.x, b.pos.z - pb.z) < 1e-6, 'plain home() outside the focus stands still');
 });
+// 審查（任務 4）：path 成員趕回家走到折線上離他最近的那一點接上去——不是剛走進來那種錯開點（i / n，可能在路的另一頭）
+test('home(m, { hurry }) on a path member rejoins the route at its nearest point, not the staggered entry point', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
+  const { roster } = setup();
+  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  const m = roster.members('eng')[2], a = ENGINEER_ROUTE[0], b = ENGINEER_ROUTE[1], k = 0.3 / Math.hypot(b.x - a.x, b.z - a.z);
+  const near = { x: a.x + (b.x - a.x) * k, y: a.y, z: a.z + (b.z - a.z) * k };   // 路的起點往前 0.3：最近的點就在腳下，錯開點（2/3）在路的另一頭
+  roster.claim(m); roster.setPose(m, { ...near, walking: false }); roster.setFocus([[5, 5]]);
+  roster.home(m, { hurry: true });
+  let joined = null;
+  for (let i = 0; i < 300 && !joined; i++) { roster.update(1 / 30, i / 30); if (m.cursor) joined = { ...m.pos }; }
+  assert.ok(joined, 'back on the route');
+  assert.ok(gap(joined, near) < 0.3, `rejoined ${gap(joined, near).toFixed(2)} from where it stood`);
+});
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
 // final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
 test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {

@@ -391,4 +391,9 @@ test('gesture sigh: 1.0 s on a walker (walker gesture set, cleared at the end); 
   assert.ok(Math.abs(rat.holder.rotation.y - (1 + Math.PI / 2)) < 1e-9, 'a quarter round at a quarter of the way');
   tl.update(0.5); assert.ok(Math.abs(rat.holder.rotation.y - (1 + 1.5 * Math.PI)) < 1e-9);
   tl.update(0.5); assert.equal(rat.holder.rotation.y, 1, 'back to its own yaw');
+  // 跳過（玩家按下一個、reduced-motion 的 snap）：演到一半的 sigh 一樣清乾淨——小人的 gesture 拿掉、模型回原本的朝向
+  tl.play([B.gesture(member, 'sigh')], ctx); tl.update(0); tl.update(0.3); assert.equal(member.walker.gesture.kind, 'sigh');
+  tl.skip(); assert.equal(member.walker.gesture, null, 'skip clears the walker sigh'); assert.ok(!tl.busy);
+  tl.play([B.gesture(rat, 'sigh')], ctx); tl.update(0); tl.update(0.3); assert.notEqual(rat.holder.rotation.y, 1);
+  tl.skip(); assert.equal(rat.holder.rotation.y, 1, 'skip puts the model back on its yaw');
 });

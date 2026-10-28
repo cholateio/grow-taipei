@@ -87,8 +87,8 @@ test('story: true solutions carry no disaster extras; typhoonDeflect and milkExp
 });
 
 // 因果與離島（2026-10-28 §2、§3）：兩條正解裡 Lv3 以上的每個升級（颱風除外）都有 via——演出層靠它演拜訪；
-// via 只列真的成立的幫手，所以每個名字在那一刻都夠高／在場
-test('both solutions: every grow to Lv3+ (typhoon aside) carries a non-empty via of helpers that really hold', () => {
+// （via 只列真的成立的幫手——那一半由 engine.test 的 satisfiedHelpers 測試管，這裡只看非空）
+test('both solutions: every grow to Lv3+ (typhoon aside) carries a non-empty via', () => {
   for (const r of st.full) {
     const { events } = playOrder(r.order, spec);
     for (const e of events) if (e.kind === 'grow' && e.to >= 3 && e.item !== 'typhoon') assert.ok(e.via.length > 0, `${r.order.join(',')}: ${e.item} ${e.from}→${e.to} has no via`);

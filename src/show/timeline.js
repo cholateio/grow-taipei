@@ -69,20 +69,24 @@ export function createTimeline({ reducedMotion = false } = {}) {
     else finish();
   }
 
-  // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）
+  // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）。跳的期間 ctx.skipping 是 true：
+  // 0 秒、但自己留東西在畫面上活一陣子的拍（拜訪的 ♥）看它決定不冒出來——0 秒拍正常演也是 start → 馬上 end，分不出來
   const skip = guarded(() => {
     if (!busy) return;
     const c = current; current = null;
-    c?.beat.end?.(ctx);
-    while (busy && queue.length) {
-      const beat = queue.shift();
-      current = { beat, t: 0, dur: 0 };
-      beat.start?.(ctx);
-      if (!busy) return;
-      current = null;
-      beat.end?.(ctx);
-    }
-    if (busy) finish();
+    const own = ctx; if (own) own.skipping = true;
+    try {
+      c?.beat.end?.(ctx);
+      while (busy && queue.length) {
+        const beat = queue.shift();
+        current = { beat, t: 0, dur: 0 };
+        beat.start?.(ctx);
+        if (!busy) return;
+        current = null;
+        beat.end?.(ctx);
+      }
+      if (busy) finish();
+    } finally { if (own) own.skipping = false; }
   });
 
   return {

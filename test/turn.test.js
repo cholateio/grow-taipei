@@ -275,7 +275,8 @@ test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 on
 // ── 拜訪（計畫 6 設計 §4，show/visit.js）──
 // grow 事件 via 非空：劇本前面插一段拜訪——mark { visit: true }、（換物品空 GAP）、平移到拜訪點那一格跟走過去一起演、轉身、
 // 敲門＋被升級物品的代表揮手、♥、回日常；之後照舊 mark + 那一級的劇本
-const { VISIT_MAX_PER_HELPER, VISIT_KNOCK, VISIT_LOVE } = await import('../src/show/visit.js');
+const { VISIT_MAX_PER_HELPER, VISIT_KNOCK, VISIT_LOVE, visit } = await import('../src/show/visit.js');
+const { createTimeline } = await import('../src/show/timeline.js');
 const { anchorWorld } = await import('../src/actors/anchors.js');
 const visitMods = () => {
   const spotOf = id => ({ ...anchorWorld(id), r: 0.8 });
@@ -304,6 +305,16 @@ test('a grow with via gets a visit before its script: mark {visit}, focus, walk/
   assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.deepEqual(seg[1].beats[0].target, cellOf('chip'));
   assert.deepEqual(seg[3].beats.map(b => [b.kind, b.dur]), [['gesture', VISIT_KNOCK], ['gesture', VISIT_KNOCK]]);
   assert.equal(seg[4].dur, 0, 'the ♥ does not hold the timeline'); assert.equal(seg[4].love, VISIT_LOVE);
+  // ♥ 正常演：冒一個活 VISIT_LOVE 秒的泡泡；跳過（timeline 的 ctx.skipping）：不冒（0 秒拍沒辦法在 end 收掉）
+  {
+    const rep = { pos: { x: 0, y: 0, z: 0 }, speed: 1, mode: 'home', head: () => ({ x: 0, y: 1, z: 0 }) }, mods = visitMods();
+    const loveOf = () => visit(grow('chip', 2, ['milk']), { lv: { ...zero, milk: 1, chip: 2 }, flags: {} }, {}, { helper: { ...mods[1], script: { rep: () => rep } }, target: mods[4] }).find(b => b.love);
+    const shown = [], ctx = fakeCtx({ bubbles: { show: (head, kind, dur) => { shown.push([kind, dur]); return { cancel() {} }; } }, nav: { walkable: () => true } });
+    const tl = createTimeline(); tl.play([loveOf()], ctx); tl.update(0.016);
+    assert.deepEqual(shown, [['♥', VISIT_LOVE]], 'played: the ♥ pops');
+    tl.play([B.wait(1), loveOf()], ctx); tl.update(0.016); tl.skip();
+    assert.equal(shown.length, 1, 'skipped: no ♥'); assert.ok(!ctx.skipping, 'the flag is only up during the skip');
+  }
   assert.deepEqual(kindsOf(between(raw, 2)), ['wait', 'levelUp', 'apply'], 'the level script right after, no pan');
   // 跳級的第二級（同幫手、第一級已經拜訪過）不插；◆ 關鍵級照插
   const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true }), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
@@ -397,4 +408,23 @@ test('miss beats: the rep is found once at beat time; nobody (hidden, busy, away
   seg[1].beats[0].start(c); assert.deepEqual(cells, [[[0, 0]]], 'the pan goes to the rep\'s cell');
   seg[3].start(c); assert.deepEqual(homed, [rep]);
   assert.equal(asked, 1, 'the rep is asked once');
+});
+// 撲空沒演（代表叫不到，整段 0 秒）就不動鏡頭的帳（審稿）：下一個事件照撲空之前的帳——同一個物品不空拍、鏡頭本來就在那一格不再平移；
+// 撲空真的演了：鏡頭在代表那一格，下一個事件空一拍、平移回來
+test('a collapsed miss leaves the camera bookkeeping alone: the next event of the same item gets no GAP and no pan; a played miss does', () => {
+  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
+  const milk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.wait(1)], grow: { 2: (e, s, c) => [c.B.wait(1)] } } };
+  const events = [{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip'), grow('milk', 2, [])];
+  for (const [mode, played] of [['script', false], ['home', true]]) {
+    const rep = { ...walker, mode, pos: { x: 0, y: 0.65, z: 0 } }, focused = [];
+    const raw = buildTurn(events, base([tower, milk, ...repMods(() => rep)]), fakeCtx());
+    const c = fakeCtx({ roster: { claim() {}, home() {}, setPose() {}, setFocus: x => focused.push(x), members: () => [], keys: () => [] }, nav, rig: { grabbed: false, focus: () => true } });
+    const marks = raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = info; } }); return got; });
+    const g = between(raw, 3), [gap, pan] = g;
+    assert.deepEqual([gap.kind, pan.kind], ['wait', 'focus'], `${mode}: the GAP and the pan are there to decide at beat time`);
+    for (const b of between(raw, 1)) b.start?.(c);   // 撲空段演到（定案代表）
+    assert.equal(gap.start(c) !== false, played, `${mode}: GAP ${played ? 'kept' : 'skipped'}`);
+    assert.equal(pan.start(c) !== false, played, `${mode}: pan ${played ? 'kept' : 'skipped'}`);
+    assert.equal(marks[3].gap, played ? GAP : 0, `${mode}: the mark reports the GAP actually waited`);
+  }
 });

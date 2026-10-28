@@ -5,7 +5,7 @@
 //   走不過去、這回合這個幫手已經真的拜訪過 VISIT_MAX_PER_HELPER 次（quota，演到才算：略過的那幾段不算數）→ 整段每一拍都跳過（0 秒）。
 //   拜訪點 = 被升級物品的 visitSpot(第幾級, s)（這一級的建築正面）；代表站在 frontOf(spot, r, nav)，面向建築敲門。
 //   走路上限 VISIT_WALK 秒（裁決 R3）：路線比 VISIT_WALK × 走路速度長，就在原處閃白 BLINK 秒（裁決 R4：跟物品之間的空拍一起演）、換到路線上離終點剛好 VISIT_WALK 秒的那一點
-//   （可能還在前一格、橋上）再閃白一下，走滿 VISIT_WALK 秒過去——至少 MIN_WALK 公尺真的走（設計 §4「走不到就在格邊出現再走剩下的」；
+//   （可能還在前一格、橋上）再閃白一下，走滿 VISIT_WALK 秒過去——至少 MIN_WALK 公尺真的走（設計 §4 第 2 步；
 //   走路速度不加快，§6）。不靜靜地放下：每次換位置都閃白（同零件的閃白）。
 //   被升級物品的代表在場（在拜訪點那一格、看得到、不在劇本手上）才轉身面向幫手揮手；不在場就只有敲門。
 // 回日常：閃白換過位置、回家的路又超過 2 × VISIT_WALK 秒的幫手由名冊 leave 背景走回他出現的那一點、閃白、換回被叫來之前的地方再閃白、回日常
@@ -41,7 +41,7 @@ const REACH = 0.3;   // 路線的終點離拜訪點的站位超過這麼多 = �
 const MIN_WALK = 0.6;   // 換過位置之後至少真的走這麼多公尺（裁決 R3：不在門口放下、走 4 公分）
 
 const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
-// 在日常裡（或剛拜訪完正走回格邊：'away'，同一回合同一個幫手下一段拜訪照樣叫得到他）
+// 在日常裡（或剛拜訪完正走回出現的那一點：'away'，同一回合同一個幫手下一段拜訪照樣叫得到他）
 const usable = m => !!m && !m.hidden && !m.gone && (m.mode === 'home' || m.mode === 'away');
 // 站在主島格上或橋上（坐在車頂的 ride、衛星島上的人不走過來）
 const onIsland = (m, nav) => !!cellAt(m.pos.x, m.pos.z) || nav.walkable(m.pos.x, m.pos.z);
@@ -78,7 +78,7 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
   const inner = B.walk(rep, stand);
   // 走過去（裁決 R3、R4）：先問好要不要換位置（fade 拍：在原處閃白 BLINK 秒——turn.js 把它跟物品之間的空拍一起演，不另外佔時間），
   // 走路那拍一開始換到 at、閃白、開始走（inner）
-  let at = null, fading = false, span = 0, walking = false;
+  let at = null, fading = false, walking = false;
   const plan = c => {
     at = null; fading = false;
     const m = rep(c); if (!m) return;
@@ -91,7 +91,6 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
     at = pointAt(route, Math.max(0, Math.min(len - cap, len - MIN_WALK)), c.nav);
     back = { ...(m.away?.back ?? m.pos) };   // 上一段拜訪完正走回去：回的還是最早那個地方
     exit = c.nav.routeLength(c.nav.route(to, back)) > 2 * cap ? at : null;   // 回家的路不長：拜訪完自己走回去
-    span = c.nav.routeLength(c.nav.route(at, to)) / m.speed;
   };
   const fade = {
     kind: 'fade', dur: () => (fading ? BLINK : 0), estimate: () => BLINK,
@@ -120,10 +119,11 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
       return false;
     },
   };
-  // ♥（裁決 R4，設計 §4 第 4 步）：轉身要走的那一刻冒出來，跟著他走 VISIT_LOVE 秒——不擋後面的拍（0 秒拍，泡泡自己活 VISIT_LOVE 秒）
+  // ♥（裁決 R4，設計 §4 第 4 步）：轉身要走的那一刻冒出來，跟著他走 VISIT_LOVE 秒——不擋後面的拍（0 秒拍，泡泡自己活 VISIT_LOVE 秒）。
+  // 跳過時（timeline 的 ctx.skipping）不冒：0 秒拍的 end 正常演也馬上就到，沒辦法像 B.bubble 那樣在 end 收掉；已經冒出來的由跳過的 snap 清掉
   const love = {
     kind: 'bubble', dur: 0, love: VISIT_LOVE,
-    start(c) { const m = rep(c); if (!m || m.hidden) return false; c.bubbles.show(m.head, '♥', VISIT_LOVE / rate(c)); return false; },
+    start(c) { const m = rep(c); if (!m || m.hidden || c.skipping) return false; c.bubbles.show(m.head, '♥', VISIT_LOVE / rate(c)); return false; },
   };
   return [
     fade, arrive, face,
@@ -163,7 +163,7 @@ export function miss(w, s, ctx, { item, helper } = {}) {
     let pick = null;
     if (helper && helper.id !== 'typhoon') {
       const n = lvOf(helper.id), at = anchorWorld(helper.id);
-      const t = n === 0 ? { kind: 'lot', to: clearNear(at, nav), look: at } : door(helper, n, nav) && { kind: 'spot', ...door(helper, n, nav) };
+      const d = n === 0 ? null : door(helper, n, nav), t = n === 0 ? { kind: 'lot', to: clearNear(at, nav), look: at } : d && { kind: 'spot', ...d };
       const cell = t && cellAt(t.to.x, t.to.z);
       if (cell && near(cell, here) && reach(m, t.to, nav)) pick = t;
     }

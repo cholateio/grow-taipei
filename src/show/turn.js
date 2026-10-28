@@ -131,6 +131,21 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
   const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
   const visits = new Map();   // 這回合每個幫手真的拜訪過幾次（拜訪的拍演到、確定會走才 +1，show/visit.js）
+  // 撲空演到才知道有沒有人演（代表叫不到、在劇本手上……整段 0 秒）：missFirst 記下撲空之前的帳（上一個物品、鏡頭對著的格）與
+  // 每段撲空演了沒有（played）。之後第一個有東西演的事件，空拍與平移包成演到才決定的拍（afterMiss）：撲空全沒演就照撲空之前的帳——
+  // 不多空一拍、鏡頭本來就在那一格就不再平移一次（審稿：collapsed 的撲空不動鏡頭的帳）
+  let pending = null;   // { item, cell, segs: [{ item, played(c) }] }
+  const lastShown = (p, c) => p.segs.filter(x => x.played(c)).at(-1);
+  // 演到才決定的空拍：need(c) 真才等 GAP；info（mark 的）的 gap 照實際等了沒有回報（還沒演到時報 GAP——建串時的估計）
+  const gapBeat = need => { let ran = null; return { beat: { kind: 'wait', dur: GAP, start(c) { ran = !!need(c); if (!ran) return false; } }, gap: () => (ran === false ? 0 : GAP) }; };
+  // 撲空之後第一個事件的開頭：{ gap: beat 或 null, info, focus: 要平移的話演到才決定的平移拍 }；用掉 pending
+  const afterMiss = (item, cell) => {
+    const p = pending; pending = null;
+    const prevItem = c => lastShown(p, c)?.item ?? p.item, need = c => { const li = prevItem(c); return !!li && item !== li; };
+    const maybe = [p.item, ...p.segs.map(x => x.item)].some(li => li && item !== li), g = maybe ? gapBeat(need) : null;
+    const focus = cell && { ...B.focus(cell), start(c) { if (!lastShown(p, c) && sameCell(cell, p.cell)) return false; return B.focus(cell).start(c); } };
+    return { gap: g?.beat ?? null, gapOf: () => (g ? g.gap() : 0), focus };
+  };
 
   // 拜訪段（見檔頭）：插得上就把 mark＋平移＋拜訪的拍推進 out、回 true
   const visitFirst = (e, s) => {
@@ -139,8 +154,14 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const beats = cell ? visit(e, s, ctx, { helper: mod(id), target, quota: visits }) : [];
     if (!beats.length) return false;
     // 第一拍（原處閃白，0 或 BLINK 秒）跟物品之間的空拍一起演（裁決 R4）；第二拍（走過去）跟平移一起演
-    const gap = lastItem && e.item !== lastItem ? GAP : 0;
     const [fade, walk, ...rest] = beats;
+    if (pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）
+      const a = afterMiss(e.item, cell), info = { key: false, visit: true, get gap() { return a.gapOf(); } };
+      lastCell = cell; away = true; lastItem = e.item;
+      out.push(mark(e, info), ...(a.gap ? [together([a.gap, fade])] : [fade]), together([a.focus, walk]), ...rest);
+      return true;
+    }
+    const gap = lastItem && e.item !== lastItem ? GAP : 0;
     const lead = gap ? [together([B.wait(gap), fade])] : [fade];
     const go = sameCell(cell, lastCell) ? walk : together([B.focus(cell), walk]);
     if (!sameCell(cell, lastCell)) { lastCell = cell; away = true; }
@@ -152,15 +173,20 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   // 撲空段（見檔頭）：wait 事件的前 MISS_PER_TURN 個 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常
   const missFirst = (e, s) => {
     if (finale || landed) return;
+    const p = pending ?? { item: lastItem, cell: lastCell, segs: [] };
     for (const w of (e.waits ?? []).slice(0, MISS_PER_TURN)) {
       const beats = miss(w, s, ctx, { item: mod(w.item), helper: mod(w.for?.[0]) });
       if (!beats.length) continue;
-      const [walk, ...rest] = beats, gap = lastItem && w.item !== lastItem ? GAP : 0;
-      // 空拍：代表叫不到就連空拍也不等（整段 0 秒）；叫得到的話這拍就定案、把他拿到劇本手上站著等
-      const lead = gap ? [{ kind: 'wait', dur: gap, start: c => (walk.ready(c) ? undefined : false) }] : [];
-      out.push(mark(e, { gap, key: false, miss: true, item: w.item }), ...lead, together([B.focus(walk.cell), walk]), ...rest);
-      lastItem = w.item; lastCell = null; away = true;   // 鏡頭停在代表那一格（演到才知道是哪格）：下一個事件重新平移
+      const [walk, ...rest] = beats, before = [...p.segs];
+      // 空拍：代表叫不到就連空拍也不等（整段 0 秒）；叫得到的話這拍就定案、把他拿到劇本手上站著等。
+      // 要不要空拍看「真的演了的上一段」是哪個物品（前一段撲空沒演就看再前面的帳）
+      const prevItem = c => before.filter(x => x.played(c)).at(-1)?.item ?? p.item;
+      const maybe = [p.item, ...before.map(x => x.item)].some(li => li && w.item !== li), g = maybe ? gapBeat(c => walk.ready(c) && !!prevItem(c) && w.item !== prevItem(c)) : null;
+      out.push(mark(e, { key: false, miss: true, item: w.item, get gap() { return g ? g.gap() : 0; } }), ...(g ? [g.beat] : []), together([B.focus(walk.cell), walk]), ...rest);
+      p.segs.push({ item: w.item, played: c => walk.ready(c) });
+      lastItem = w.item; lastCell = null; away = true;   // 鏡頭停在代表那一格（演到才知道是哪格）：下一個事件重新平移（撲空沒演的話 afterMiss 照之前的帳）
     }
+    if (p.segs.length) pending = p;
   };
 
   events.forEach(e => {
@@ -205,9 +231,15 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     // 鏡頭：等待事件不補平移（撲空段自己平移到代表那一格）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
+    let gapOf = null;   // 撲空之後演到才決定的空拍：mark 的 info.gap 演完才知道
     if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
-      if (cell) {
+      if (cell && pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）
+        const a = afterMiss(item, cell);
+        if (a.gap) { lead.push(a.gap); gapOf = a.gapOf; }
+        if (!opensOnFocus(beats[0])) { lead.push(a.focus); lastCell = cell; }
+        lastItem = item;
+      } else if (cell) {
         if (lastItem && item !== lastItem) lead.push(B.wait(GAP));
         if (!opensOnFocus(beats[0]) && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
         lastItem = item;
@@ -217,7 +249,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     }
     const last = focusesOf([...lead, ...beats]).at(-1);
     if (last) away = last.target !== 'home';
-    out.push(mark(e, { gap: estimateTurn(lead.filter(b => b.kind === 'wait'), ctx), key }), ...lead, ...beats, B.apply(e));
+    const gap = gapOf ? null : estimateTurn(lead.filter(b => b.kind === 'wait'), ctx);
+    out.push(mark(e, gapOf ? { key, get gap() { return gapOf(); } } : { gap, key }), ...lead, ...beats, B.apply(e));
     if (landsTyphoon(e)) landed = true;
   });
 

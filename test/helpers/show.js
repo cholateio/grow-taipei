@@ -8,7 +8,7 @@ import { createGlowRegistry } from '../../src/scene/glow.js';
 import { createPeople } from '../../src/scene/people.js';
 import { mulberry32 } from '../../src/scene/random.js';
 import { createCameraRig, OVERVIEW_DIR } from '../../src/scene/camera.js';
-import { cellAt } from '../../src/scene/hex.js';
+import { cellAt, cellTop } from '../../src/scene/hex.js';
 
 installFakeDom();
 const { createShow } = await import('../../src/show/index.js');
@@ -158,7 +158,8 @@ export function overviewRig() {
 //   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）
 //   labels（有 cam 才查）：每個 LEVEL UP 字樣與頭頂泡泡（bubbles.levelUp／show）活著的那幾秒（dur），頭上的點投影在 NDC [-1, 1] 裡的幀數
 //          要 ≥ LABEL_ON（一半）——鏡頭沒跟上、演出的那一刻在畫面外（審稿：颱風登陸後的 LEVEL UP、101 頭上的字、撞攤車的 ！、等待圖框）
-//   pops（計畫 6 裁決 R3）：劇本手上（'script'）或拜訪完正走回去（'away'）的人一幀突然跳開超過 POP_MAX——那一幀他一定在閃白
+//   pops（計畫 6 裁決 R3）：劇本手上（'script'）或拜訪完正走回去（'away'）的人（這一幀或上一幀；走回去走到底換回原處那一幀模式已經是 home）
+//          一幀突然跳開超過 POP_MAX——那一幀他一定在閃白
 //          （show.blink 正閃著他的小人實例或模型 holder），或藏著、還沒畫出來（模型 holder 還沒到）；不准靜靜地瞬移。
 //          「突然」＝這一幀的位移跟上一幀的位移差超過 POP_MAX：坐在趕路的列車車頂（一幀 0.44）是連續的快，不是換位置
 // label(text)：之後的問題都標這個字串（例如「第幾回合」）
@@ -199,8 +200,10 @@ export function gameInvariants(show, { cam = null } = {}) {
       }
       if (daily) last.set(m, { ...m.pos }); else last.delete(m);
       const was = seen.get(m), step = was ? { x: m.pos.x - was.p.x, z: m.pos.z - was.p.z } : { x: 0, z: 0 };
-      seen.set(m, { p: { ...m.pos }, step });
-      if (was && !m.hidden && !m.gone && (m.mode === 'script' || m.mode === 'away') && (m.walker || m.holder)) {
+      seen.set(m, { p: { ...m.pos }, step, mode: m.mode });
+      // 上一幀的模式也算：走回去走到底那一刻換回原處、模式同一幀翻成 home——看這一幀的模式會漏掉那次換位置
+      const acting = mode => mode === 'script' || mode === 'away';
+      if (was && !m.hidden && !m.gone && (acting(m.mode) || acting(was.mode)) && (m.walker || m.holder)) {
         const jerk = Math.hypot(step.x - was.step.x, step.z - was.step.z);
         if (jerk > POP_MAX && !show.blink.has(m.walker ?? m.holder)) pops.add(`${what} jumped ${Math.hypot(step.x, step.z).toFixed(2)} without a blink`);
       }
@@ -246,7 +249,7 @@ export async function playLive(order, { seed = 21 } = {}) {
 
 // 拜訪點（計畫 6 設計 §4、§5）：照兩條正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
 // 在演之前（拜訪：走過去、敲門都在 apply 之前，舞台還是上一級）與演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）各問一次
-// visitSpot(n, { lv, flags })——spot 要有 y、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
+// visitSpot(n, { lv, flags })——spot 要有 y（＝那一格的 cellTop）、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
 // 拉回來不超過 tol。回傳 { bad, seen }：seen 是問到非 null 的「級」（排序過的數字陣列），測試寫死，少一級、多一級都看得到
 export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6 }) {
   const { frontOf } = await import('../../src/actors/anchors.js');
@@ -262,6 +265,8 @@ export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6
       if (!Number.isFinite(spot.y) || !(spot.r > 0)) { bad.push(`${what}: spot needs y and r > 0`); return; }
       const cell = cellAt(spot.x, spot.z), ok = cells(n, sv);
       if (!cell || !ok.some(c => c[0] === cell[0] && c[1] === cell[1])) bad.push(`${what}: spot (${spot.x.toFixed(2)}, ${spot.z.toFixed(2)}) in ${cell ?? 'no main cell'}, want ${ok.join(' | ')}`);
+      // y 釘在那一格的地面（cellTop：台地格比較高）——拜訪的人站在地上敲門，不是屋頂或半空
+      else if (Math.abs(spot.y - cellTop(cell)) > 1e-9) bad.push(`${what}: spot y ${spot.y.toFixed(3)} ≠ cell top ${cellTop(cell)}`);
       const req = frontOf(spot, spot.r), got = frontOf(spot, spot.r, show.nav), d = Math.hypot(got.x - req.x, got.z - req.z);
       if (d > tol) bad.push(`${what}: frontOf pulled ${d.toFixed(2)} > ${tol}`);
     };

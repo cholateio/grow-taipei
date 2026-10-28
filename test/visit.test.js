@@ -1,5 +1,5 @@
 // test/visit.test.js：拜訪（計畫 6 設計 §4，show/visit.js）——無頭 live 演一個有原因的升級（拜訪 + 那一級的劇本），
-// 量拜訪那一段：幫手的代表走到被升級物品拜訪點的鏡頭側（frontOf(visitSpot, r, nav)；遠的在格邊出現再走剩下的）、敲門、
+// 量拜訪那一段：幫手的代表走到被升級物品拜訪點的鏡頭側（frontOf(visitSpot, r, nav)；遠的原處閃白、換到路上離站位 VISIT_WALK 秒的那一點閃白、走滿 VISIT_WALK 秒，裁決 R3）、敲門、
 // 被升級物品的代表（在場的話）揮手、♥、兩人回日常；整段 ≤ VISIT_CAP；代表不在、正被別的劇本拿著時整段只剩平移。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ const { visit, VISIT_WALK, VISIT_KNOCK, VISIT_LOVE, VISIT_CAP, VISIT_MAX_PER_HEL
 const { frontOf } = await import('../src/actors/anchors.js');
 const { FOCUS_BEAT, B } = await import('../src/show/beats.js');
 const { BLINK } = await import('../src/show/blink.js');
-const { cellAt } = await import('../src/scene/hex.js');
+const { cellAt, NEIGHBORS } = await import('../src/scene/hex.js');
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const mod = id => ALL.find(m => m.id === id);
 const same = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
@@ -54,11 +54,11 @@ async function liveVisit(order, pick, { prepare } = {}) {
 }
 const isGrow = (item, to) => e => e.kind === 'grow' && e.item === item && e.to === to;
 
-// 兩條正解裡挑幾種：人走去人（少棒的球員 → 小學）、小孩走去人龍、小孩走去鼠窩（被升級的是模型）、站務員走去巨蛋（從別格來，在格邊出現）
+// 兩條正解裡挑幾種：人走去人（少棒的球員 → 小學）、小孩走去人龍、小孩走去鼠窩（被升級的是模型）、站務員走去巨蛋（從別格來：閃白換到路上再走過來）
 const CASES = [[0, 'milk', 3], [0, 'boba', 2], [0, 'rat', 2], [1, 'baseball', 6], [1, 'milk', 8]];
-const seen = { far: [], wave: [], away: [] };   // 這幾種裡真的量到「在格邊出現」與「被升級物品的代表揮手」（最後一條測試查）
+const seen = { far: [], wave: [], away: [] };   // 這幾種裡真的量到「閃白換位置再走過來」、「被升級物品的代表揮手」與「背景走回去」（最後一條測試查）
 for (const [n, item, to] of CASES) {
-  test(`visit live (${SOLUTIONS[n].join('>')} ${item} ${to}): the helper rep reaches frontOf(visitSpot) within VISIT_WALK (or appears at the cell edge), knocks, the target rep waves, ♥, both home; ≤ 3.5 s; nobody left in script mode`, async () => {
+  test(`visit live (${SOLUTIONS[n].join('>')} ${item} ${to}): the helper rep reaches frontOf(visitSpot) within VISIT_WALK (far ones blink out and reappear on the route VISIT_WALK from it), knocks, the target rep waves, ♥, both home; ≤ 3.5 s; nobody left in script mode`, async () => {
     const v = await liveVisit(SOLUTIONS[n], isGrow(item, to)), what = `${v.e.via[0]}→${item}${to}`;
     assert.ok(v.rep && !v.rep.hidden, `${what}: the helper has a rep`);
     assert.equal(v.marks.length, 2, `${what}: a visit mark and the script mark`); assert.equal(v.marks[0].info.visit, true); assert.ok(!v.marks[1].info.visit);
@@ -82,7 +82,7 @@ for (const [n, item, to] of CASES) {
     // ♥ 冒在幫手頭上
     assert.equal(v.hearts.length, 1, `${what}: one ♥`);
     assert.ok(Math.hypot(v.hearts[0].at.x - v.stand.x, v.hearts[0].at.z - v.stand.z) < 0.3, `${what}: the ♥ over the helper at the door`);
-    // 兩人回日常（幫手從別格來的話走回格邊再回日常：'away'），劇本手上沒有人；整段 ≤ VISIT_CAP（含跟走路一起演的平移）
+    // 兩人回日常（換過位置、回家的路又長的幫手背景走回他出現的那一點、閃白換回原處再回日常：'away'），劇本手上沒有人；整段 ≤ VISIT_CAP（含跟走路一起演的平移）
     assert.notEqual(v.marks[1].rep.mode, 'script', `${what}: the helper is back to daily life`);
     if (v.host) assert.notEqual(v.marks[1].host.mode, 'script', `${what}: the target rep is back to daily life`);
     assert.equal(v.marks[1].script, 0, `${what}: nobody left in script mode`);
@@ -100,7 +100,7 @@ for (const [n, item, to] of CASES) {
   });
 }
 
-test('the cases above cover a helper appearing at the cell edge and a target rep waving back', () => {
+test('the cases above cover a far helper blinking in on its route, a target rep waving back, and a walk back in the background', () => {
   assert.ok(seen.far.length >= 1, `far helpers: ${seen.far}`); assert.ok(seen.wave.length >= 1, `waves: ${seen.wave}`); assert.ok(seen.away.length >= 1, `walked back: ${seen.away}`);
   console.log(`# far: ${seen.far.join(', ')} | wave: ${seen.wave.join(', ')} | away: ${seen.away.join(', ')}`);
 });
@@ -136,7 +136,7 @@ test('helper without a rep (typhoon; electrician away) → no visit beats', asyn
 const { miss, SIGH, MISS_CAP, MISS_WALK, MISS_CLEAR, MISS_PER_TURN } = await import('../src/show/visit.js');
 const { anchorWorld } = await import('../src/actors/anchors.js');
 const { inShape } = await import('./helpers/show.js');
-async function liveMiss(order, waits = null) {
+async function liveMiss(order, waits = null, { prep } = {}) {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let s = engine.createState(spec), e = null;
   for (const [i, step] of turnSteps(order).entries()) {
@@ -152,6 +152,7 @@ async function liveMiss(order, waits = null) {
   show.update = (dt, t) => { update(dt, t); if (cur?.rep?.walker?.gesture?.kind === 'sigh') cur.sigh = true; if (cur?.rep) cur.frames.push({ ...cur.rep.pos }); };
   const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; cur.mode = cur.rep?.mode; cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
   let script = null;
+  await prep?.(show);   // 測試要的起點（例如把代表挪遠一點）：wait 事件演之前
   await run([e], { onMark: (x, info) => {
     close();
     if (!info?.miss) { script = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.mode === 'script').length; return; }
@@ -212,14 +213,32 @@ test('miss live: too far → own door (helper not adjacent; adjacent but over MI
   const n = await liveMiss(EXAMPLE.hit.slice(0, 3)), c = n.segs.find(g => g.w.item === 'chip');
   common(n, c, 'chip<bulb2');
   const sp = mod('bulb').visitSpot(c.sv.lv.bulb, c.sv), far = n.show.nav.routeLength(n.show.nav.route(c.start, frontOf(sp, sp.r, n.show.nav)));
+  // 前提：燈泡的拜訪點那一格跟工程師站的那一格相鄰（不是「不相鄰所以回門口」那一支）
+  const [cq, cr] = cellAt(c.start.x, c.start.z), [bq, br] = cellAt(sp.x, sp.z);
+  assert.ok(NEIGHBORS.some(([dq, dr]) => cq + dq === bq && cr + dr === br), `chip<bulb2: the engineer's cell [${cq},${cr}] is next to the bulb's [${bq},${br}]`);
   assert.ok(far > MISS_WALK * c.rep.speed, `chip<bulb2: the bulb is ${far.toFixed(2)} m away`);
   assert.ok(dist(c.end, doorOf(n.show, 'chip', c.sv)) < 0.15, `chip<bulb2: at its own door`);
-  // 吹歪第 6 回合：燈泡 < 晶片，電工散步到很遠，自己門口也超過 MISS_WALK 秒：往門口走 MISS_WALK 秒、在路上失望（不換位置）
-  const d = await liveMiss(EXAMPLE.deflect.slice(0, 6)), b = d.segs.find(g => g.w.item === 'bulb');
+  // 吹歪第 6 回合：燈泡 < 晶片，電工散步到很遠，自己門口也超過 MISS_WALK 秒：往門口走 MISS_WALK 秒、在路上失望（不換位置）。
+  // 前面的回合瞬間演完時電工站在固定的地方，離門口 2.8 m（剛好在 MISS_WALK 以內）——live 的局裡他常散步得更遠（pace 量到吹歪第 6、8 回合、
+  // 最後一輪都是這一支）；這裡把他放到自己巡路（bulb.ROAD）上一個走到門口要 MISS_WALK 秒再多 0.3–2 m 的點（日常裡本來就走得到；
+  // 前後 2 m 都在主島格上：焦點裡他會沿路走，代表要站在主島格上才叫得到）讓前提成立
+  const away = async show => {
+    const { ROAD } = await import('../src/actors/bulb.js'), { createPathCursor } = await import('../src/scene/path.js');
+    const sv = { lv: show.stage.lv, flags: show.stage.flags }, m = mod('bulb').script.rep(sv, { roster: show.roster, nav: show.nav }), door = doorOf(show, 'bulb', sv), nav = show.nav;
+    const cap = MISS_WALK * m.speed, len = p => { const r = nav.route(p, door); return dist(r.at(-1), door) < 0.3 ? nav.routeLength(r) : Infinity; };
+    const at = s => createPathCursor(ROAD, { s }).locate(), total = createPathCursor(ROAD).total;
+    for (let s = 0; s < total; s += 0.1) {
+      const p = at(s), l = len(p);
+      if (!(l > cap + 0.3 && l < cap + 2) || ![-2, -1, 0, 1, 2].every(k => cellAt(at((s + k + total) % total).x, at((s + k + total) % total).z))) continue;
+      show.roster.claim(m); show.roster.setPose(m, { ...p, walking: false }); show.roster.home(m); return;   // 放回日常：從這一點接著巡路
+    }
+    throw new Error('no point on the road far enough from the door');
+  };
+  const d = await liveMiss(EXAMPLE.deflect.slice(0, 6), null, { prep: away }), b = d.segs.find(g => g.w.item === 'bulb');
   common(d, b, 'bulb<chip2');
   const door = doorOf(d.show, 'bulb', b.sv), len = d.show.nav.routeLength(d.show.nav.route(b.start, door));
-  if (len > MISS_WALK * b.rep.speed) assert.ok(dist(b.end, door) < dist(b.start, door) - 1, `bulb<chip2: walked toward its door (${dist(b.start, door).toFixed(2)} → ${dist(b.end, door).toFixed(2)})`);
-  else assert.ok(dist(b.end, door) < 0.15);
+  assert.ok(len > MISS_WALK * b.rep.speed, `bulb<chip2: precondition — the door is ${len.toFixed(2)} m away (> ${(MISS_WALK * b.rep.speed).toFixed(2)})`);
+  assert.ok(dist(b.end, door) < dist(b.start, door) - 1, `bulb<chip2: walked toward its door (${dist(b.start, door).toFixed(2)} → ${dist(b.end, door).toFixed(2)})`);
 });
 
 test('miss: nobody to send (no rep function, typhoon, busy rep) → no beats or every beat skipped', async () => {

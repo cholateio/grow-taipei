@@ -78,7 +78,7 @@ test('CLOSING_TURNS is 1 and milk is steady', () => {
 // 看得見的因果與離島三段（2026-10-28 設計 §2、§3）：Lv3 以上沒有「自己長」——每一級的條件都提到至少一個別的物品（minLevel／present），
 // 條件裡任何地方都不能藏 always（or(auto, …) 等於自己長）。Lv2 可以自己長（剛放下那一回合的小成長）；颱風例外（天氣不是被誰觸發的）
 import { helperDeps } from '../src/rules/engine.js';
-test('no auto up[] from Lv3 on except typhoon; every condition from Lv3 names at least one helper (minLevel/present)', () => {
+test('no auto up[] from Lv3 on except typhoon; every condition from Lv3, and every or-branch in it, names at least one helper (minLevel/present)', () => {
   const hasAlways = c => !!c && typeof c === 'object' && (c.always || [...(c.and || []), ...(c.or || [])].some(hasAlways));
   for (const id of ORDER) {
     if (id === 'typhoon') continue;
@@ -87,6 +87,9 @@ test('no auto up[] from Lv3 on except typhoon; every condition from Lv3 names at
       const c = ITEMS[id][kind][n];
       assert.ok(!hasAlways(c), `${id} ${kind}[${n}] grows by itself`);
       assert.ok(helperDeps(c, id).length > 0, `${id} ${kind}[${n}] names no helper: ${JSON.stringify(c)}`);
+      // or 的每一支也要提到幫手：只有一支有幫手的話，另一支成立時就是「自己長」（via 會是空的，演不出拜訪）
+      const ors = x => !x || typeof x !== 'object' ? [] : [...(x.or ? [x] : []), ...[...(x.and || []), ...(x.or || [])].flatMap(ors)];
+      for (const o of ors(c)) for (const alt of o.or) assert.ok(helperDeps(alt, id).length > 0, `${id} ${kind}[${n}] has an or-branch without a helper: ${JSON.stringify(alt)}`);
     }
   }
 });

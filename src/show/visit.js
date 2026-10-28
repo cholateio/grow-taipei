@@ -34,6 +34,9 @@ import { cellAt, NEIGHBORS } from '../scene/hex.js';
 import { BLINK } from './blink.js';
 import { PAD } from './nav.js';
 
+// VISIT_WALK：拜訪走進來的秒數上限。裁決 R10（計畫 6 最終審稿）：維持 1.5——via[0] 改對之後外星第 6 回合 59.97/60（R4 的 59.5 是預留的餘裕，上限 60 內）。
+// 掃過 1.2–1.4：每個值都在 seed 21 或 23 的其中一個踩到不同的推擠情況（鼠窩、偵防師、變異鼠、外擴 footprint），只有 1.5 兩個種子都綠；
+// 根本原因是走路的人兩兩互推只推一輪（nav.separate），多推幾輪的修法另案（設計 §11 R10 記了量到的那一群人）
 export const VISIT_WALK = 1.5, VISIT_KNOCK = 0.8, VISIT_LOVE = 0.6, VISIT_MAX_PER_HELPER = 2, VISIT_CAP = 3.5;
 export const SIGH = 1.0, MISS_CAP = 3, MISS_PER_TURN = 2;
 export const MISS_WALK = MISS_CAP - SIGH - 0.2, MISS_CLEAR = 0.3;   // 撲空走路上限（秒）、空地離建築本身至少幾公尺

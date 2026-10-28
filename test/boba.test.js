@@ -38,7 +38,7 @@ test('boba has its v2 ladder (max 7)', () => { assert.equal(spec.ITEMS.boba.max,
 test('boba has something new at every level 1–7: cart, queue, shop, fountain, branch, flagship, festival', () => {
   assert.deepEqual(Object.keys(views[1]), ['boba.main', 'boba.owner']);
   for (let n = 2; n <= 7; n++) assert.ok(diffParts(nonRoster(whole(n - 1)), nonRoster(whole(n))).add.length, `lv${n}: something new`);
-  assert.equal(views[2]['boba.queue'].n, 4);
+  assert.equal(views[2]['boba.queue'].n, 3);
   assert.equal(views[3]['boba.main'].kind, 'glb'); assert.equal(views[2]['boba.main'].kind, 'compound');
   assert.ok(views[4]['boba.fountain'] && !views[3]['boba.fountain'], 'Lv4 fountain');
   assert.ok(whole(5)['sat.forestShop'] && !whole(4)['sat.forestShop'], 'Lv5 forest branch');
@@ -48,20 +48,38 @@ test('boba has something new at every level 1–7: cart, queue, shop, fountain, 
   assert.ok(boba.script.placed && [2, 3, 4, 5, 6, 7].every(n => boba.script.grow[n]) && boba.script.fx && boba.script.rep);
 });
 // 人數預算（使用者 2026-10-26）：人龍 ≤ 4，不再有閒晃的觀光客
-test('people budget: queue of 4 at every level, no strollers anywhere', () => {
+test('people budget: queue of 3 at every level, no strollers anywhere', () => {
   for (let n = 1; n <= 7; n++) for (const milk of [0, 2, 4, 10]) {
     const v = boba.view(lv({ boba: n, milk }), {});
     assert.equal(v['boba.strollers'], undefined, `lv${n} milk${milk}`);
     assert.ok(Object.keys(v).every(k => !k.includes('stroll')));
-    if (n >= 2) assert.equal(v['boba.queue'].n, 4); else assert.equal(v['boba.queue'], undefined);
+    if (n >= 2) assert.equal(v['boba.queue'].n, 3); else assert.equal(v['boba.queue'], undefined);
   }
-  assert.equal(boba.QUEUE_MAX, 4);
+  assert.equal(boba.QUEUE_MAX, 3, '2026-10-28 錄影修正：人龍 4 → 3');
+});
+// 2026-10-28 錄影修正（珍奶格太擠、店貼著格子前緣）：店在錨點北邊 0.05；人龍跟著店走，店門口那排離格子南緣 ≥ 0.7（店前有空地）；
+// 噴泉東緣離電工主路 ≥ 0.1（也 ≥ PAD：手畫的主路不切進外擴後的噴泉）、離夜市每一攤的攤身 ≥ 0.1、跟店身不重疊
+test('the shop sits 0.05 north of the anchor with open ground in front; the fountain clears the road and the night market', async () => {
+  const { PAD } = await import('../src/show/nav.js'), hexIn = HEX_R * Math.sqrt(3) / 2, c = axialToWorld(...CELL);
+  const edgeDist = p => hexIn - Math.max(...[0, 1, 2, 3, 4, 5].map(k => (p.x - c.x) * Math.cos(k * Math.PI / 3) + (p.z - c.z) * Math.sin(k * Math.PI / 3)));
+  assert.ok(Math.abs(boba.SHOP.x - (AT.x - 0.1)) < 1e-9 && Math.abs(boba.SHOP.z - (AT.z - 0.05)) < 1e-9, 'SHOP = AT + (−0.1, −0.05)');
+  for (const [n, dz] of [[2, 0.6], [3, 0.7]]) for (const q of views[n]['boba.queue'].home.spots) {
+    assert.ok(Math.abs(q.z - boba.SHOP.z - dz) < 1e-9, `lv${n} queue ${dz} in front of the shop`);
+    if (n >= 3) assert.ok(edgeDist(q) >= 0.7, `lv${n} open ground in front of the queue (${edgeDist(q).toFixed(2)} to the cell edge)`);
+  }
+  const F = boba.FOUNTAIN, r = boba.FOUNTAIN_R, R = bulb.ROAD;
+  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  const road = Math.min(...R.map((a, i) => segD(F, a, R[(i + 1) % R.length]))) - r;
+  assert.ok(road >= Math.max(0.1, PAD), `fountain ${road.toFixed(3)} from the electrician's road`);
+  const boxGap = (p, f, at) => Math.hypot(Math.max(0, Math.abs(p.x - at.x - f.x) - f.w / 2), Math.max(0, Math.abs(p.z - at.z - f.z) - f.d / 2));
+  for (let b = 2; b <= 9; b++) { const m = bulb.view(lv({ bulb: b }), {})['bulb.market']; for (const f of m.footprint) assert.ok(boxGap(F, f, m.at) - r >= 0.1, `bulb ${b}: fountain ${(boxGap(F, f, m.at) - r).toFixed(3)} from a stall`); }
+  const shop = views[4]['boba.main'].footprint; assert.ok(boxGap(F, { x: 0, z: 0, ...shop }, boba.SHOP) >= r, 'fountain clear of the shop body');
 });
 // 人龍（§13.3、計畫 3.8 Task 7）：一排、同一個 z、沿 x 間距 0.25、都面向攤車／店；店門口那排離捷運站、月台的入口 ≥ 0.25
 test('the queue is one horizontal row facing the cart (Lv2) or the shop door (Lv3+); clear of the station and platform entries', () => {
   for (const [n, shop] of [[2, false], [3, true], [7, true]]) {
     const q = views[n]['boba.queue'].home.spots;
-    assert.deepEqual(q, boba.queue(AT, 4, shop));
+    assert.deepEqual(q, boba.queue(AT, 3, shop));
     for (const p of q) {
       assert.ok(Math.abs(p.z - q[0].z) < 1e-9, `lv${n} one row`);
       assert.ok(Math.abs(p.yaw - Math.atan2(boba.SHOP.x - p.x, boba.SHOP.z - p.z)) < 1e-9, `lv${n} faces the shop`);
@@ -326,11 +344,11 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   assert.ok(near(show.roster.members('boba.owner')[0].pos, boba.ownerSpot(1), 0.1), 'owner by the cart');
 });
-test('Lv2: four tourists come from the pier and stand in the queue', async () => {
+test('Lv2: three tourists come from the pier and stand in the queue', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('boba.queue')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
   await liveAt(h, SOLUTIONS[0], isBoba(2));
-  assert.equal(firsts.size, 4);
+  assert.equal(firsts.size, 3);
   for (const p of firsts.values()) assert.ok(boba.PIER.some(q => near(p, show.nav.nearestWalkable(q), 0.3)), 'spawned at the pier');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   const spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;

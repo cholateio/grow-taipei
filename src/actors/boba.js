@@ -1,8 +1,8 @@
-// 珍奶（物品 v2 §4.7，max 7）：路邊攤車 → 人龍 4 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
+// 珍奶（物品 v2 §4.7，max 7）：路邊攤車 → 人龍 3 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
 //   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）→ 連鎖店（小森林島分店、觀光船多兩艘：satellites.js）
 //   → ★ 離島旗艦店（燈塔島開店；兩個觀光客坐小船從碼頭過去、住在島上；外送無人機兩台繞著店飛）
 //   → ◆ 世界珍奶節（全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
-// 人數預算（使用者 2026-10-26）：人龍最多 4 人、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
+// 人數預算（使用者 2026-10-26）：人龍最多 3 人（2026-10-28 錄影修正：4 → 3，珍奶格太擠）、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；老鼠撞翻攤車、颱風外送是那兩個模組的劇本，不在這裡。
 // 劇本（§6）：一級 3–5 秒；◆ Lv7 6–10 秒、最後回全景定格。
 import { anchorWorld } from './anchors.js';
@@ -16,24 +16,26 @@ export const id = 'boba';
 export const labelY = 1.0;
 const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
-// ── 版面（捷運格東半邊）：北邊是燈泡的夜市（四攤時最南那攤到錨點北邊 0.1）、西邊是捷運站與站前廣場、東邊是電工主路。
-// 攤車／店都在錨點南邊 0.4（SHOP），夜市第四攤的攤身外擴 PAD 後還碰不到；人龍在它前面（南邊）一排 ──
+// ── 版面（捷運格東半邊）：北邊是燈泡的夜市（兩攤，南緣在錨點北邊 1.1）、西邊是捷運站與站前廣場、東邊是電工主路。
+// 攤車／店在錨點北邊 0.05（SHOP）：2026-10-28 錄影修正——原本在錨點南邊 0.4，店和人龍貼著格子前緣、珍奶格看起來很擠；
+// 夜市縮成兩攤之後往北挪 0.45，店北緣離夜市攤身 0.64，店前（南邊）留出空地。人龍在店前面（南邊）一排，人龍、老闆站位、立牌、噴泉都跟著 SHOP 走 ──
 const AT = anchorWorld('boba');
-export const SHOP = offset(AT, -0.1, 0.4);   // queue() 用同一個偏移
+const SHOP_DZ = -0.05;
+export const SHOP = offset(AT, -0.1, SHOP_DZ);   // queue() 用同一個偏移
 // 排隊（§13.3，計畫 3.8 Task 7）：橫排一列沿 x 往 −x（捷運站那側）排，所有人同一個 z——沿 z 排的話在畫面上會疊成一條黑色長條。
-// 攤車時排在攤車前方（錨點 +z 1.0，排頭在攤車東緣）；珍奶店時改排店門口（+z 1.1，排頭在門前）。
+// 攤車時排在攤車前方（SHOP +z 0.6，排頭在攤車東緣）；珍奶店時改排店門口（SHOP +z 0.7，排頭在門前）。
 // 間距 0.25 = 站著的人的分離距離（nav.SEPARATION），站定不會再被擠開。都面向攤車／店。
-// 南邊格子收窄（離格邊 MARGIN 0.35 才走得到，走路格 0.3 一格）：店門口那排再往南 0.05，排頭就走不到了
+// 南邊格子收窄（離格邊 MARGIN 0.35 才走得到）：店北移之後店門口那排離格子南緣還有 0.45 的空地
 const QUEUE_GAP = 0.25;
 export function queue(at, n, shop = false) {
-  const front = offset(at, -0.1, 0.4);   // 攤車／店（at 是錨點時就是 SHOP）
+  const front = offset(at, -0.1, SHOP_DZ);   // 攤車／店（at 是錨點時就是 SHOP）
   return Array.from({ length: n }, (_, i) => {
-    const p = offset(at, (shop ? 0 : 0.2) - QUEUE_GAP * i, shop ? 1.1 : 1.0);
+    const p = offset(at, (shop ? 0 : 0.2) - QUEUE_GAP * i, SHOP_DZ + (shop ? 0.7 : 0.6));
     return { ...p, yaw: Math.atan2(front.x - p.x, front.z - p.z) };
   });
 }
-// 人龍最多 4 人一排（人數預算，使用者 2026-10-26：人龍太容易卡住）
-export const QUEUE_MAX = 4;
+// 人龍最多 3 人一排（人數預算：使用者 2026-10-26 人龍太容易卡住 → 4；2026-10-28 錄影修正珍奶格太擠 → 3）
+export const QUEUE_MAX = 3;
 // 碼頭（觀光客的入口，§13.2）：珍奶格靠海的東北角、夜市北邊（夜市 footprint 外擴 PAD 之外）；四個點沿 −x 錯開 0.25（一人一個）
 export const PIER = [0, 1, 2, 3].map(k => offset(AT, 0.35 - 0.25 * k, -1.7));
 
@@ -51,14 +53,17 @@ export const MODELS = {
 const SHOP_H = 1.0, SHOP_W = MODELS.shop.size[0] * SHOP_H / MODELS.shop.size[1];
 // 店面重上色票：牆奶油、磚與深色飾邊木色、招牌與木作珊瑚（和鮮奶的早餐店分得出來：早餐店磚邊沙色、牆奶油）
 const SHOP_TINT = { '^DarkWood$': C.coral, '^DarkBrown$': C.wood, '^Dark$': C.wood, '^Bricks$': C.wood, '^Main$': C.cream, '^Light$': C.yellow, '^White$': C.white, '^Black$': C.ink, '^Glass$': C.glass };
-// 老闆日常站在攤車／店的東南角外（面向排頭）：攤車後面（北邊）被夜市第四攤擋住；推車的位置會被 Lv3 的店面蓋住
+// 老闆日常站在攤車／店的東南角外（面向排頭）：攤車後面（北邊）離夜市太近；推車的位置會被 Lv3 的店面蓋住
 // （跳級 1→3 沒有劇本，人在建築裡會穿牆走出來）；店東側和格邊之間那條縫走路格（0.3 一格）走不進去。
 // 這一點在攤車、店、噴泉外擴 PAD 之外，南邊接著人龍那排，每一級都走得到（§14.1）
 const BY_DOOR = offset(SHOP, 0.51, 0.56);
 export const ownerSpot = n => { const q = queue(AT, 1, n >= 3)[0]; return { ...BY_DOOR, yaw: Math.atan2(q.x - BY_DOOR.x, q.z - BY_DOOR.z) }; };
 
-// 噴泉（Lv4）：店的東側、往北（離鏡頭那邊）退 0.3——鏡頭在南邊往北看，噴泉不在店與鏡頭之間；西緣離店身 0.03、東緣離電工主路 0.04
-export const FOUNTAIN = offset(SHOP, 0.73, -0.3), FOUNTAIN_R = 0.3;
+// 噴泉（Lv4）：店的東側、往北（離鏡頭那邊）退 0.3——鏡頭在南邊往北看，噴泉不在店與鏡頭之間。
+// 2026-10-28 錄影修正：店北移 0.45 之後這一段電工主路比較靠西（330°–30° 那一段是斜的），半徑 0.3 的噴泉東緣離主路只剩 0.02；
+// 西邊是店、北邊是夜市與店之間的走道、往南會擋在店前面，沒地方挪——半徑縮成 0.25：西緣離店身 0.02、東緣離電工主路 0.124
+// （≥ PAD 0.12，手畫的主路不切進外擴後的噴泉）、北緣離夜市第一攤 0.3
+export const FOUNTAIN = offset(SHOP, 0.675, -0.3), FOUNTAIN_R = 0.25;
 
 // ── 燈塔島（Lv6 旗艦店）：燈塔在島中心（底座半徑 0.5）、守塔人繞 0.6 一圈、東南有一棵樹；旗艦店在西南（朝主島、靠鏡頭那側）──
 const LIGHT = island('lighthouse');
@@ -165,7 +170,7 @@ export function view(lv, flags = {}) {
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
   v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [ownerSpot(n)], fidget: 'wave', rescue: true, entry: PIER[3] } };
-  // 人龍：攤車前／店門口一排（人數預算 ≤ 4）；從碼頭走來
+  // 人龍：攤車前／店門口一排（人數預算 ≤ 3）；從碼頭走來
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
   if (n >= 6) {
     v['boba.flagship'] = { kind: 'glb', at: FLAGSHIP, path: MODELS.flagship.path, h: FLAGSHIP_H, tint: SHOP_TINT, footprint: false };
@@ -270,7 +275,7 @@ export const script = {
     ];
   },
   grow: {
-    // 人龍：4 個觀光客從碼頭一個接一個走過來，在攤車前排成一排 → LEVEL UP
+    // 人龍：3 個觀光客從碼頭一個接一個走過來，在攤車前排成一排 → LEVEL UP
     2(e, s, ctx) {
       const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(k)));
       return [
@@ -321,7 +326,7 @@ export const script = {
         B.bubble(owner, '！', 0.8),
         B.together([B.focus('home', { hold: 1.2 }), B.apply(e, { only: ['boba.yard', 'boba.fleet'] })]),
         B.levelUp('tower', { text: '世界珍奶節' }),   // 鏡頭停在全景時打字（全景裝得下 101 頭頂，§14.4；拉近 101 格會切掉頭頂）
-        B.together([B.focus('home', { hold: 1.5 }), ...[0, 1, 2, 3].map(i => B.bubble(tourist(i), '♥', 1.0))]),
+        B.together([B.focus('home', { hold: 1.5 }), ...Array.from({ length: QUEUE_MAX }, (_, i) => B.bubble(tourist(i), '♥', 1.0))]),
         B.apply(e), B.levelUp('boba'),
       ];
     },

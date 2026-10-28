@@ -28,7 +28,7 @@ test('bulb lv1 is one street lamp', () => {
 });
 const N_STOPS = 9, LAMPS = v => Array.from({ length: N_STOPS }, (_, k) => v[`bulb.lamps.${k}`]);
 const posts = s => s.parts.filter(p => p.kind === 'cylinder');
-test('lv2: fifteen lamps on the five low cells plus two market stalls', () => {
+test('lv2: fifteen lamps on the five low cells plus one market stall', () => {
   const v = bulb.view(lv({ bulb: 2 }), {}); assert.equal(LAMPS(v).filter(Boolean).flatMap(heads).length, 15);
   assert.equal(posts(v['bulb.posts']).length, 15);
   const cells = new Set(LAMPS(v).flatMap(s => worldPoints(s)).map(p => String(cellAt(p.x, p.z))));
@@ -43,13 +43,26 @@ test('blackout strips every glow from the bulb views', () => {
   const v = bulb.view(lv({ bulb: 2 }), { blackout: true });
   for (const s of Object.values(v)) if (s.parts) assert.ok(!s.parts.some(p => p.glow));
 });
-test('lv4 widens the night market to four stalls with a neon sign; lv3 still two', () => {
-  const stalls = n => bulb.view(lv({ bulb: n }), {})['bulb.market'].parts.filter(p => p.kind === 'hip').length;
-  assert.equal(stalls(3), 2); assert.equal(stalls(4), 4);
-  assert.ok(bulb.view(lv({ bulb: 4 }), {})['bulb.market'].parts.some(p => p.glow === 0xff3fa0 && p.kind === 'box'));
-  // footprint：四個攤身 + 四攤圍起來的中間空地（不留走不出去的死角）
-  const fp = bulb.view(lv({ bulb: 4 }), {})['bulb.market'].footprint;
-  assert.equal(fp.length, 5); assert.deepEqual(fp.at(-1), { x: 0, z: 0.5, w: 0.5, d: 0.6 });
+// 2026-10-28 錄影修正（珍奶格太擠）：夜市 Lv2–3 一攤、Lv4 起兩攤（第二攤在東邊），不再有四攤；footprint 只有攤身。
+// 攤身離捷運站站體（每一級、淹水）≥ 0.3；兩攤南緣離珍奶攤車／店北緣 ≥ 0.4；Lv4 的霓虹招牌照舊、Lv9 霓虹條一攤一條
+test('lv4 opens a second night-market stall beside the first with a neon sign; lv2–3 one stall; clear of the station and the boba shop', async () => {
+  const token = await import('../src/actors/token.js'), boba = await import('../src/actors/boba.js');
+  const market = n => bulb.view(lv({ bulb: n }), {})['bulb.market'], stalls = n => market(n).parts.filter(p => p.kind === 'hip').length;
+  assert.equal(stalls(2), 1); assert.equal(stalls(3), 1); for (let n = 4; n <= 9; n++) assert.equal(stalls(n), 2, `lv${n}`);
+  assert.ok(market(4).parts.some(p => p.glow === 0xff3fa0 && p.kind === 'box'), 'neon sign board at Lv4');
+  assert.deepEqual(market(4).footprint, [{ x: 0, z: 0, w: 0.5, d: 0.4 }, { x: 0.5, z: 0.15, w: 0.5, d: 0.4 }], 'stall bodies only');
+  assert.equal(bulb.view(lv({ bulb: 9, token: 9 }), {})['bulb.neon.market'].parts.length, 2, 'one neon strip per stall');
+  const M = market(4).at, box = (f, at) => ({ x0: at.x + (f.x ?? 0) - (f.r ?? f.w / 2), x1: at.x + (f.x ?? 0) + (f.r ?? f.w / 2), z0: at.z + (f.z ?? 0) - (f.r ?? f.d / 2), z1: at.z + (f.z ?? 0) + (f.r ?? f.d / 2) });
+  const gap = (a, b) => Math.hypot(Math.max(0, a.x0 - b.x1, b.x0 - a.x1), Math.max(0, a.z0 - b.z1, b.z0 - a.z1));
+  const bodies = market(4).footprint.map(f => box(f, M));
+  for (let t = 1; t <= 10; t++) for (const flags of [{}, { flooded: true }]) {
+    const st = token.view(lv({ token: t }), flags)['token.main'], s = box(st.footprint, st.at);
+    for (const b of bodies) assert.ok(gap(b, s) >= 0.3 - 1e-9, `token ${t} ${JSON.stringify(flags)}: stall ${gap(b, s).toFixed(3)} from the station`);
+  }
+  for (let n = 1; n <= 7; n++) {
+    const main = boba.view(lv({ boba: n }), {})['boba.main'], north = main.at.z - main.footprint.d / 2;
+    for (const b of bodies) assert.ok(north - b.z1 >= 0.4, `boba ${n}: shop ${(north - b.z1).toFixed(2)} south of the market`);
+  }
 });
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
@@ -69,7 +82,7 @@ test('view: posts are one part, heads are one part per lighting stop in road ord
     assert.equal(heads(s).length, bulb.LAMP_STOPS[k].length);
     worldPoints(s).forEach((q, j) => { const p = bulb.LAMP_POINTS[bulb.LAMP_STOPS[k][j]]; assert.ok(near(q, p, 1e-9)); assert.equal(p.y, cellTop(cellAt(p.x, p.z))); });
   });
-  assert.deepEqual(v['bulb.main'].footprint, { r: 0.15 }); assert.deepEqual(v['bulb.market'].footprint, [{ x: 0, z: 0, w: 0.5, d: 0.4 }, { x: 0.5, z: 0.5, w: 0.5, d: 0.4 }], 'market footprint: each stall body');
+  assert.deepEqual(v['bulb.main'].footprint, { r: 0.15 }); assert.deepEqual(v['bulb.market'].footprint, [{ x: 0, z: 0, w: 0.5, d: 0.4 }], 'market footprint: the stall body');
   for (const n of [1, 2, 5]) {
     const el = bulb.view(lv({ bulb: n }), {})['bulb.electrician'];
     assert.deepEqual([el.kind, el.n, el.accessory], ['roster', 1, 'vest']); assert.deepEqual(el.home, { kind: 'path', path: bulb.ROAD, loop: true, speed: 0.5, entry: bulb.ELECTRICIAN_ENTRY });
@@ -547,5 +560,22 @@ test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (s
     const ev = at(7), five = at(5);
     assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn}: ${ev?.live.toFixed(2)} s`);
     assert.ok(five && !five.e.jump && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
+  }
+});
+// 2026-10-28 錄影修正：夜市第二攤不能關掉捷運站與夜市之間的通道——北邊碼頭（珍奶觀光客的入口）走到人龍、
+// 北邊路口推攤車進來都不繞過捷運站（每一級夜市、每一種車站，路線 ≤ 4.5 公尺、不出捷運格）
+test('the night market never closes the walkway between the station and the market: pier → queue and the cart push stay short', async () => {
+  const boba = await import('../src/actors/boba.js'), token = await import('../src/actors/token.js'), { offset } = await import('../src/actors/palette.js');
+  const AT = anchorWorld('boba'), nav = createNav(), from = offset(AT, -1.0, -3.65), cart = offset(boba.SHOP, -0.45, 0);
+  for (let b = 2; b <= 9; b++) for (const t of [0, 2, 3, 9]) for (const flags of [{}, { flooded: true }]) for (const n of [1, 2, 4]) {
+    const L = lv({ bulb: b, token: t, boba: n }), all = [bulb, token, boba].flatMap(m => Object.values(m.view(L, flags)));
+    nav.setFootprints(all.flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    const what = `bulb ${b} token ${t} ${JSON.stringify(flags)} boba ${n}`;
+    if (n === 1) { const len = nav.routeLength(nav.route(nav.nearestWalkable(from), cart)); assert.ok(len <= 4.5, `${what}: cart push ${len.toFixed(2)} m`); continue; }
+    boba.queue(AT, boba.QUEUE_MAX, n >= 3).forEach((q, k) => {
+      const r = nav.route(nav.nearestWalkable(boba.PIER[k]), q), len = nav.routeLength(r);
+      assert.ok(len <= 4.5, `${what}: pier ${k} → queue ${len.toFixed(2)} m`);
+      assert.ok(r.every(p => String(cellAt(p.x, p.z) ?? '') === '0,1' || !cellAt(p.x, p.z)), `${what}: pier ${k} stays in the boba cell`);
+    });
   }
 });

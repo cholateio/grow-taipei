@@ -258,7 +258,7 @@ export const script = {
         // surge 1.5 s：roster 的 live 不變式（偵防師與散步客不相碰、下車的老鼠不進建築）對整局的時間很敏感，審稿第 1、2 輪都是調時間才翻出來的；
         //   偵防師改成老鼠坐車時在站旁等之後 1.5、1.6 都過。任務 8 改了時間要再驗（見任務 6 報告）
         // 裁決 R17（颱風回合 ≤ 50 s）：光跑 1.5 → 1.2、♪ 與轉頭 0.9 → 0.7
-        B.focus('home'), B.together([surge(B, e, 1.2), B.apply(e, { only: ['sat.windmill.stages'] })]),   // 變電小站（離島三段）在全景裡跟著光閃白
+        B.focus('home'), B.together([surge(B, e, 1.2), B.apply(e, { only: ['sat.windmill.stage2'] })]),   // 變電小站（離島三段）在全景裡跟著光閃白
         B.focus(CHIP), B.apply(e), B.together([B.bubble(eng(0), '♪', 0.7), engineersLook(B, offset(AT, FACTORY.pos[0], FACTORY.pos[2]), 0.7)]),
         B.home(ENGINEERS), B.levelUp('chip'),
       ];

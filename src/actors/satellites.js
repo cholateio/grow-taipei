@@ -33,7 +33,7 @@ export const BRANCH = 5;
 export function view(lv, flags) {
   const v = {}, storm = lv.typhoon === 2, on = powered(lv, flags);
   // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）
-  // 離島三段：燈泡 Lv7 起第二支風機（塔身在 sat.windmill.stage1）的葉片也在這個零件裡（twin = 第二個轉子相對主轉子的位置）——
+  // 離島三段：燈泡 Lv7 起第二支風機（塔身在 sat.windmill.stage1，第一段）的葉片也在這個零件裡（twin = 第二個轉子相對主轉子的位置）——
   // 同一個 speed／wobble，颱風改速度時只重建這一個零件（第一段不跟著重建、不多閃一次）
   v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? (on ? 6 : 3) : on ? 1 : 0, wobble: storm, ...(lv.bulb >= POWERED ? { twin: TWIN } : {}) };
   if (on) {
@@ -68,14 +68,12 @@ export function view(lv, flags) {
       ] : []),
     ] };
   }
-  // 寶箱；離島三段的第一段（棒球 Lv6 的海鷗，stages 的 gull）併在同一個零件裡（少一個 draw call，計畫 6 任務 6）：
-  // 箱子本身只在開箱（全 MAX）那一刻變——開箱是主角、自己佔一格 stagger；還沒開箱時唯一會變的是海鷗飛來（點綴，tagAlong）
   const open = allMax(lv);
-  v['sat.chest'] = { kind: 'compound', at: at('chest'), open, ...(!open && { tagAlong: true }), parts: [...(open ? [
+  v['sat.chest'] = { kind: 'compound', at: at('chest'), open, parts: [...(open ? [
     { kind: 'rbox', pos: [0.2, 0.52, -0.02], scale: [0.58, 0.08, 0.43], rot: [-1.2, 0, 0], color: GOLD },
     { kind: 'sphere', pos: [0.2, 0.36, 0.2], scale: [0.4, 0.12, 0.28], color: GOLD, glow: GOLD },
     ...Array.from({ length: 6 }, (_, i) => ({ kind: 'cylinder', pos: [0.2 + Math.cos(i) * 0.5, 0.02, 0.2 + Math.sin(i) * 0.45], scale: [0.09, 0.02, 0.09], color: GOLD })),
-  ] : [{ kind: 'rbox', pos: [0.2, 0.37, 0.2], scale: [0.58, 0.08, 0.43], color: GOLD }]), ...gull(lv, open)] };
+  ] : [{ kind: 'rbox', pos: [0.2, 0.37, 0.2], scale: [0.58, 0.08, 0.43], color: GOLD }])] };
   Object.assign(v, stages(lv, flags, on));
   // low: false——?quality=low（手機）不畫海上的小船（點綴，一艘一個 draw call，裁決 R18）
   if (!storm) v['sat.boats'] = { kind: 'boats', at: { x: 0, y: WATER_Y - 0.02, z: 0 }, n: 2 + (lv.boba >= 2 ? 2 : 0) + (lv.boba >= BRANCH ? 2 : 0), low: false };
@@ -83,10 +81,10 @@ export function view(lv, flags) {
 }
 
 // ── 離島三段（計畫 6 §7）：每座島 = 空島（island.js 的 kit）→ 第一段 → 第二段，觸發固定照表、兩段各自獨立（亂放時第二段可以先出現）。
-// 零件（計畫 6 任務 6 為了 draw call 併過）：每座島不會動的段併成一個 compound sat.<島>.stages（parts 隨等級增減，仍是純函數；
-// 每個點綴零件標 stage: 1／2 與 low: false）；階梯丘的營區、小森林的分店本來就在那座島、觸發相同或更早，一起併進來（基座，手機照畫）；
-// 寶箱島的海鷗併進 sat.chest。會動的段各自一個零件、各一個 draw call：sat.playground.stage1（鞦韆）／stage2（旋轉木馬）、
-// sat.chest.stage2（金幣）、第二支風機的轉子在 sat.windmill 裡（rig：幾組各自繞 pivot 動的零件併成一個 mesh）。
+// 零件：一段一個零件 sat.<島>.stage1／stage2（裁決 R7：下一段出現時已經站著的東西不重閃）。同一級一起出現的基座跟第一段併在一起：
+// 階梯丘的營區（晶片 Lv3）在 sat.pyramid.stage1、小森林的分店（珍奶 Lv5）在 sat.forest.stage1——基座手機照畫，點綴零件標 low: false（與 stage: 1／2）。
+// 寶箱島的海鷗是自己的 sat.chest.stage1（不併進寶箱：寶箱開箱時才變）。會動的段：鞦韆（架子＋座位一個 mesh）、旋轉木馬、金幣，
+// 第二支風機的轉子在 sat.windmill 裡（rig：幾組各繞 pivot 動的零件併成一個 mesh）。
 // footprint: false（衛星島沒有走路格）；零件位置都相對島心（at = island(kind)）。
 // 每段閃白出現由舞台的 apply 管（那一級的劇本鏡頭在這座島就跟著閃白，否則回合末）。各島已經有的東西與要讓開的站位：
 //   燈塔島：塔身半徑 0.25、守塔人繞 0.6 一圈、東南一棵樹 (0.9, 0.5)、西南旗艦店 (-1.15, 0.85)、觀光客 (-1.3, 1.5)／(-0.95, 1.6)、小船停在 boba.DOCK
@@ -96,11 +94,11 @@ export function view(lv, flags) {
 //   遊樂場島：溜滑梯 (0.3, 0) 往南、樹 (-0.7, 0.3)、小孩繞 (-0.2, 0.3) r 0.5、支線停在西南 (-0.5, 0.87)
 //   小森林：五棵樹、分店 (1.0, 0.9)、觀光客 (0.3, 1.1)／(-0.2, 1.25)
 //   寶箱島：寶箱 (0.2, 0.2)、樹 (-0.6, -0.3)
-// draw call：每個零件黏土一個 + 每種發光色一個；每座島的衛星零件 ≤ 6（satellites.test）。全 MAX 一般畫質的截圖 249 → 239（≤ 240 留頭）。
+// draw call：每個零件黏土一個 + 每種發光色一個；每座島的衛星零件 ≤ 6（satellites.test）。全 MAX 一般畫質截圖（計畫 6 任務 6 修正第 1 輪實測）：
+//   wide-end 249 → 245、end 246 → 243、alien 208 → 205（手機 143／137 不變）；省下來的是營區／分店併第一段、鞦韆與兩支轉子各一個 mesh（裁決 R7：≤ 246）。
 //   low: false——?quality=low（手機）不畫點綴：全 MAX 的手機截圖本來就 143（≤ 150），十幾個點綴放不下（併進黏土也一段一個）
 // tagAlong：跟同一拍第一個閃的零件一起閃、不多佔 stagger（beats.apply）——加了點綴，劇本與整局的時間一格不變。
-//   併了基座的零件只在「這一刻只可能是點綴在變」的狀態標 tagAlong：階梯丘晶片 ≥ 9（營區早就在）、寶箱沒開；
-//   小森林一律 tagAlong（分店出現那拍 only 裡沒有別的閃白零件，自己仍佔第一格，拍長不變）
+//   含基座的第一段（階梯丘、小森林）不標：營區、分店是那一級的主角，跟原本的 sat.camp／sat.forestShop 一樣自己佔一格
 export const STAGE = { lighthouse: [['bulb', 7], ['boba', 6]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
   playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;
@@ -120,77 +118,80 @@ const PIER = () => pier ??= (() => {
 })();
 export const PIER_SPAN = [2.2, 2.85];   // 板面沿 d 的起訖（相對島心；測試量海岸與小船用）
 export const pierFrame = () => PIER();
-// 寶箱島 1：一隻海鷗停在寶箱蓋上（全 MAX 開箱後蓋子掀起來，改站到箱子東邊的草地上）——併在 sat.chest 裡
-function gull(lv, open) {
-  if (!reached(lv, STAGE.chest[0])) return [];
+// 寶箱島 1：一隻海鷗停在寶箱蓋上（全 MAX 開箱後蓋子掀起來，改站到箱子東邊的草地上）
+function gull(open) {
   const g = open ? [0.72, 0, 0.42] : [0.3, 0.41, 0.25];
-  return deco(1, [
+  return [
     { kind: 'sphere', pos: [g[0], g[1] + 0.07, g[2]], scale: [0.09, 0.08, 0.15], color: C.white },
     { kind: 'sphere', pos: [g[0], g[1] + 0.14, g[2] + 0.06], scale: 0.06, color: C.white },
     { kind: 'cone', pos: [g[0], g[1] + 0.135, g[2] + 0.11], scale: [0.025, 0.05, 0.025], rot: [Math.PI / 2, 0, 0], color: C.yellow },
     ...[-1, 1].map(sx => ({ kind: 'box', pos: [g[0] + sx * 0.05, g[1] + 0.09, g[2] - 0.01], scale: [0.02, 0.05, 0.12], rot: [0, 0, sx * 0.3], color: 0x9a9a9a })),
     ...[-1, 1].map(sx => ({ kind: 'cylinder', pos: [g[0] + sx * 0.025, g[1] + 0.015, g[2]], scale: [0.012, 0.03, 0.012], color: C.yellow })),
-  ]);
+  ];
 }
 // 點綴零件：標第幾段（測試用）、手機不畫
 const deco = (n, parts) => parts.map(p => ({ ...p, low: false, stage: n }));
 const shift = (parts, [dx, dy, dz]) => parts.map(p => ({ ...p, pos: [p.pos[0] + dx, p.pos[1] + dy, p.pos[2] + dz] }));
 function stages(lv, flags, on) {
   const v = {}, has = (kind, i) => !!STAGE[kind][i] && reached(lv, STAGE[kind][i]);
-  const seg = (kind, i, parts) => (has(kind, i) ? deco(i + 1, parts()) : []);
-  // 一座島不會動的段（＋基座）併成一個零件；沒有基座的整個零件在手機不畫（給空 Group，劇本照樣找得到鍵）
-  const put = (kind, parts, { base = [], tagAlong = true } = {}) => {
-    if (base.length + parts.length) v[`sat.${kind}.stages`] = { kind: 'compound', at: island(kind), footprint: false, ...(tagAlong && { tagAlong: true }), ...(!base.length && { low: false }), parts: [...base, ...parts] };
+  // 一段一個零件（裁決 R7）。base：同一級一起出現的基座（併進第一段；手機照畫；那一級的主角，不 tagAlong）；
+  // 沒有基座的段整個零件在手機不畫（給空 Group，劇本照樣找得到鍵）、tagAlong
+  const put = (kind, i, parts, { base = [] } = {}) => {
+    if (has(kind, i)) v[`sat.${kind}.stage${i + 1}`] = { kind: 'compound', at: island(kind), footprint: false, ...(base.length ? {} : { tagAlong: true, low: false }), parts: [...base, ...deco(i + 1, parts())] };
   };
   const anim = (kind, i, part) => { if (has(kind, i)) v[`sat.${kind}.stage${i + 1}`] = { at: island(kind), footprint: false, tagAlong: true, low: false, ...part }; };
   // 燈塔島 1：守塔人小屋——白牆紅頂，在島的東北（守塔人的圈外、樹的北邊）；2：棧橋碼頭——板面一條、橫板四片、柱子四根
   const P = PIER(), [s0, s1] = PIER_SPAN, deck = (s, y, sc, color) => { const [x, z] = P.pt(s); return { kind: 'box', pos: [x, y, z], scale: sc, rot: [0, P.yaw, 0], color }; };
   const sea = WATER_Y - TOP_SAT - 0.05;   // 柱腳在水面下 0.05
-  put('lighthouse', [...seg('lighthouse', 0, () => [
+  put('lighthouse', 0, () => [
     { kind: 'box', pos: [0.7, 0.15, -1.15], scale: [0.42, 0.3, 0.32], color: C.cream },
     { kind: 'hip', pos: [0.7, 0.38, -1.15], scale: [0.5, 0.18, 0.4], color: C.coral },
     { kind: 'box', pos: [0.7, 0.09, -0.985], scale: [0.1, 0.18, 0.02], color: C.window },
     { kind: 'cylinder', pos: [0.84, 0.45, -1.2], scale: [0.06, 0.14, 0.06], color: C.wall },
-  ]), ...seg('lighthouse', 1, () => [
+  ]);
+  put('lighthouse', 1, () => [
     deck((s0 + s1) / 2, 0.0, [0.24, 0.04, s1 - s0], C.wood),   // 頂在 +0.02；第二段的第一個零件是板面（測試量海岸與小船）
     ...[2.32, 2.47, 2.62, 2.77].map(s => deck(s, 0.025, [0.3, 0.02, 0.05], 0xb48560)),
     ...[[2.45, 0.1], [2.45, -0.1], [2.8, 0.1], [2.8, -0.1]].map(([s, l]) => { const [x, z] = P.pt(s, P.LAT + l); return { kind: 'cylinder', pos: [x, sea / 2, z], scale: [0.05, -sea, 0.05], color: C.wood }; }),
-  ])]);
-  // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的 twin 轉子；塔身是這個零件的第一個）＋電池屋（西邊，通電時亮一條藍燈——
-  // 跟變電小站的礙子同一個發光色，同一個零件裡併成一個 mesh）；2：變電小站——水泥墊、變壓箱、兩個礙子（霓虹藍，同 chip.cable 的光）
-  put('windmill', [...seg('windmill', 0, () => [
+  ]);
+  // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的 twin 轉子；塔身是這個零件的第一個）＋電池屋（西邊，通電時亮一條綠燈）；
+  // 2：變電小站——水泥墊、變壓箱、兩個礙子（霓虹藍，同 chip.cable 的光）
+  put('windmill', 0, () => [
     { kind: 'cylinder', pos: [-0.55, 0.6, -0.9], scale: [0.08, 1.2, 0.08], color: C.cream }, { kind: 'sphere', pos: [-0.55, 1.2, -0.86], scale: 0.11, color: C.cream },
     { kind: 'rbox', pos: [-1.45, 0.14, -0.2], scale: [0.36, 0.28, 0.28], color: C.navy },
-    { kind: 'box', pos: [-1.45, 0.2, -0.055], scale: [0.26, 0.05, 0.02], color: on ? C.neonBlue : C.window, ...(on ? { glow: C.neonBlue } : {}) },
+    { kind: 'box', pos: [-1.45, 0.2, -0.055], scale: [0.26, 0.05, 0.02], color: on ? C.alien : C.window, ...(on ? { glow: C.alien } : {}) },
     { kind: 'box', pos: [-1.45, 0.3, -0.2], scale: [0.38, 0.03, 0.3], color: C.curb },
-  ]), ...seg('windmill', 1, () => [
+  ]);
+  put('windmill', 1, () => [
     { kind: 'box', pos: [0.6, 0.02, -1.05], scale: [0.6, 0.04, 0.42], color: C.curb },
     { kind: 'rbox', pos: [0.45, 0.14, -1.05], scale: [0.2, 0.22, 0.24], color: 0x8a8f96 },
     ...[0.68, 0.82].flatMap(x => [
       { kind: 'cylinder', pos: [x, 0.13, -1.05], scale: [0.04, 0.22, 0.04], color: C.curb },
       ...[0.2, 0.26, 0.32].map(y => ({ kind: 'cylinder', pos: [x, y, -1.05], scale: [0.09, 0.03, 0.09], color: C.neonBlue, glow: C.neonBlue })),
     ]),
-  ])]);
+  ]);
   // 石堆島 1：最大那顆石頭的鏡頭側一個鼠洞＋島東南一塊曬太陽的平石板（老鼠照舊站在石頭頂上）
-  put('rocks', seg('rocks', 0, () => [
+  put('rocks', 0, () => [
     { kind: 'sphere', pos: [-0.38, 0.1, 0.66], scale: [0.2, 0.15, 0.06], color: C.ink },
     { kind: 'box', pos: [0.6, 0.04, 0.5], scale: [0.5, 0.06, 0.34], rot: [0, 0.4, 0], color: 0xd6c8b4 },
     { kind: 'box', pos: [0.62, 0.075, 0.48], scale: [0.36, 0.02, 0.22], rot: [0, 0.4, 0], color: C.sand },
-  ]));
+  ]);
   // 階梯丘：基座是營區（晶片 Lv3，梯田頂上，原本的 sat.camp；手機照畫）；1：第二頂帳篷，在第四層梯田上（營區旁、鏡頭側）；
-  // 2：觀測站——梯田腳下東北一座小圓頂（淡淡發光）＋斜指天空的望遠鏡。營區跟第一段同一級出現（那一拍營區佔一格）；晶片 ≥ 9 只可能是觀測站在變（tagAlong）
-  put('pyramid', [...seg('pyramid', 0, () => [
-    { kind: 'prism', pos: [0.05, 0.81, 0.35], scale: [0.2, 0.32, 0.18], rot: [0, 0, Math.PI / 2], color: C.coral },
-    { kind: 'box', pos: [0.05, 0.725, 0.45], scale: [0.18, 0.01, 0.06], color: C.wood },
-  ]), ...seg('pyramid', 1, () => [
-    { kind: 'cylinder', pos: [1.25, 0.12, -0.75], scale: [0.5, 0.24, 0.5], color: C.wall },
-    { kind: 'dome', pos: [1.25, 0.24, -0.75], scale: [0.48, 0.44, 0.48], color: C.cream, glow: C.glass },
-    { kind: 'cylinder', pos: [1.12, 0.46, -0.62], scale: [0.07, 0.4, 0.07], rot: [0.6, 0, 0.5], color: C.navy },
-  ])], { tagAlong: lv.chip >= 9, base: lv.chip >= 3 ? shift([
+  // 2：觀測站——梯田腳下東北一座小圓頂（淡淡發光）＋斜指天空的望遠鏡。營區跟第一段同一級出現，併在第一段（那一拍營區佔一格）；觀測站自己一個零件（tagAlong）
+  const camp = shift([
     { kind: 'prism', pos: [-0.12, 0.14, 0], scale: [0.36, 0.5, 0.28], rot: [0, 0, Math.PI / 2], color: C.yellow },
     ...[0, 1, 2].map(i => ({ kind: 'trunk', pos: [0.22 + Math.cos(i * 2.1) * 0.05, 0.03, Math.sin(i * 2.1) * 0.05], scale: [0.03, 0.06, 0.12], rot: [Math.PI / 2, i * 2.1, 0], color: C.wood })),
     { kind: 'sphere', pos: [0.22, 0.09, 0], scale: 0.09, color: C.coral, glow: C.coral },
-  ], [0, 0.9, 0]) : [] });
+  ], [0, 0.9, 0]);
+  put('pyramid', 0, () => [
+    { kind: 'prism', pos: [0.05, 0.81, 0.35], scale: [0.2, 0.32, 0.18], rot: [0, 0, Math.PI / 2], color: C.coral },
+    { kind: 'box', pos: [0.05, 0.725, 0.45], scale: [0.18, 0.01, 0.06], color: C.wood },
+  ], { base: camp });
+  put('pyramid', 1, () => [
+    { kind: 'cylinder', pos: [1.25, 0.12, -0.75], scale: [0.5, 0.24, 0.5], color: C.wall },
+    { kind: 'dome', pos: [1.25, 0.24, -0.75], scale: [0.48, 0.44, 0.48], color: C.cream, glow: C.glass },
+    { kind: 'cylinder', pos: [1.12, 0.46, -0.62], scale: [0.07, 0.4, 0.07], rot: [0.6, 0, 0.5], color: C.navy },
+  ]);
   // 遊樂場島 1：鞦韆——西北一座 A 字架、兩個座位（update 盪）
   anim('playground', 0, { kind: 'swing', pivot: [-0.55, 0.62, -1.05], parts: [
     ...[-0.38, 0.38].flatMap(dx => [-0.12, 0.12].map(dz => ({ kind: 'cylinder', pos: [-0.55 + dx, 0.3, -1.05 + dz], scale: [0.04, 0.64, 0.04], rot: [dz > 0 ? -0.36 : 0.36, 0, 0], color: C.blue }))),
@@ -213,17 +214,21 @@ function stages(lv, flags, on) {
   // 2：燈籠串——兩棵樹之間（西南那棵到東邊那棵）一條往鏡頭側彎的繩子掛六顆燈籠（暖黃發光；大停電時暗）
   const lit = !flags.blackout, bez = k => { const P0 = [-0.45, 0.62, 0.62], C1 = [0.05, 0.5, 0.95], P2 = [0.55, 0.62, 0.55], u = 1 - k; return P0.map((a, j) => u * u * a + 2 * u * k * C1[j] + k * k * P2[j]); };
   const lamps = Array.from({ length: 6 }, (_, i) => bez((i + 0.5) / 6)), knots = Array.from({ length: 7 }, (_, i) => bez(i / 6));
-  put('forest', [...seg('forest', 0, () => [0, 1].flatMap(i => { const x = 1.25 + i * 0.2, z = 0.2 - i * 0.5; return [   // 六角半徑 ≤ 1.9：離島緣的步道環（2.11 起）遠
+  const shop = shift([
+    { kind: 'box', pos: [0, 0.22, 0], scale: [0.45, 0.44, 0.35], color: C.wall }, { kind: 'hip', pos: [0, 0.55, 0], scale: [0.55, 0.2, 0.45], color: C.coral },
+    { kind: 'cylinder', pos: [0, 0.78, 0], scale: [0.16, 0.22, 0.16], color: 0xc9a27c },
+  ], [1.0, 0, 0.9]);
+  put('forest', 0, () => [0, 1].flatMap(i => { const x = 1.25 + i * 0.2, z = 0.2 - i * 0.5; return [   // 六角半徑 ≤ 1.9：離島緣的步道環（2.11 起）遠
     { kind: 'cylinder', pos: [x, 0.17, z], scale: [0.24, 0.025, 0.24], color: C.wood }, { kind: 'cylinder', pos: [x, 0.08, z], scale: [0.04, 0.16, 0.04], color: C.wood },
     { kind: 'cylinder', pos: [x - 0.18, 0.06, z + 0.05], scale: [0.1, 0.12, 0.1], color: C.coral }, { kind: 'cylinder', pos: [x + 0.18, 0.06, z - 0.05], scale: [0.1, 0.12, 0.1], color: C.coral },
-  ]; })), ...seg('forest', 1, () => [
+  ]; }), { base: shop });
+  put('forest', 1, () => [
     ...knots.slice(1).map((b, i) => { const a = knots[i], dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l = Math.hypot(dx, dy, dz);
       return { kind: 'box', pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.06, (a[2] + b[2]) / 2], scale: [0.012, 0.012, l], rot: [-Math.asin(dy / l), Math.atan2(dx, dz), 0], color: C.ink }; }),
     ...lamps.map(p => ({ kind: 'sphere', pos: p, scale: [0.09, 0.11, 0.09], color: C.warm, ...(lit ? { glow: C.warm } : {}) })),
-  ])], { base: lv.boba >= BRANCH ? shift([
-    { kind: 'box', pos: [0, 0.22, 0], scale: [0.45, 0.44, 0.35], color: C.wall }, { kind: 'hip', pos: [0, 0.55, 0], scale: [0.55, 0.2, 0.45], color: C.coral },
-    { kind: 'cylinder', pos: [0, 0.78, 0], scale: [0.16, 0.22, 0.16], color: 0xc9a27c },
-  ], [1.0, 0, 0.9]) : [] });
+  ]);
+  // 寶箱島 1：海鷗（自己一個零件：寶箱開箱時才變，海鷗飛來不重閃寶箱）
+  put('chest', 0, () => gull(allMax(lv)));
   // 寶箱島 2：金幣噴泉——全 MAX 開箱，六枚金幣從箱口慢慢噴起、落回（update；一個 InstancedMesh、金色發光）
   if (allMax(lv)) v['sat.chest.stage2'] = { kind: 'coins', at: island('chest'), footprint: false, tagAlong: true, low: false, parts: Array.from({ length: 6 }, (_, i) => ({ kind: 'cylinder', pos: [0.2 + Math.cos(i * 1.05) * 0.12, 0.42, 0.2 + Math.sin(i * 1.05) * 0.1], scale: [0.1, 0.02, 0.1], color: GOLD })) };
   return v;
@@ -243,9 +248,10 @@ function rig(THREE, ctx, object, groups) {
   // 建一次就涵蓋所有姿勢（不關裁切：關掉的話鏡頭外的轉子也多一個 draw call）
   const reach = ranges.map(([s, n]) => { let r = 0; for (let j = s; j < s + n; j++) r = Math.max(r, Math.hypot(base[j * 3], base[j * 3 + 1], base[j * 3 + 2])); return r; });
   const m4 = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
+  const inv = new THREE.Matrix4();
   const pose = () => {
     object.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(object.matrixWorld).invert();
+    inv.copy(object.matrixWorld).invert();
     groups.forEach((g, i) => {
       m4.multiplyMatrices(inv, g.pivot.matrixWorld); nm.getNormalMatrix(m4);
       const [s, n] = ranges[i];
@@ -257,8 +263,6 @@ function rig(THREE, ctx, object, groups) {
     pos.needsUpdate = nor.needsUpdate = true;
   };
   pose();
-  object.updateMatrixWorld(true);
-  const inv = new THREE.Matrix4().copy(object.matrixWorld).invert();
   geo.boundingSphere = groups.reduce((acc, g, i) => {
     m4.multiplyMatrices(inv, g.pivot.matrixWorld);
     const sph = new THREE.Sphere(new THREE.Vector3().setFromMatrixPosition(m4), reach[i] * m4.getMaxScaleOnAxis());

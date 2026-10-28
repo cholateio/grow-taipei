@@ -44,11 +44,11 @@ test('playground kids come with the shuttle and need a school; forest tourists a
   // 配件跟鮮奶格的小孩一樣（物品 v2 §4.2：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了）
   assert.deepEqual([3, 5, 6, 7, 8, 9, 10].map(n => sat.view(lv({ token: 8, milk: n }), {})['sat.playground'].accessory), ['none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   // 物品 v2：珍奶 Lv5 連鎖店（Lv4 是噴泉廣場）
-  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest.stages'], undefined);
-  assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest.stages'].kind, 'compound');
+  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest.stage1'], undefined);
+  assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest.stage1'].kind, 'compound');
 });
 test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), chest opens only when everything is MAX', () => {
-  assert.equal(sat.view(lv({ chip: 2 }), {})['sat.pyramid.stages'], undefined); assert.ok(sat.view(lv({ chip: 3 }), {})['sat.pyramid.stages'].parts.some(p => p.glow));
+  assert.equal(sat.view(lv({ chip: 2 }), {})['sat.pyramid.stage1'], undefined); assert.ok(sat.view(lv({ chip: 3 }), {})['sat.pyramid.stage1'].parts.some(p => p.glow));
   assert.equal(sat.view(lv({ rat: 3 }), {})['sat.rocks'].kind, 'rats');
   assert.equal(sat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['sat.rocks'], undefined, 'skeleton budget: 10 army + shiba');
   assert.equal(sat.view(lv({}), {})['sat.chest'].open, false); assert.equal(sat.view(allMax, {})['sat.chest'].open, true);
@@ -63,7 +63,7 @@ test('every satellite part sits on its island (within R of the island centre) ex
   for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 5, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
     // 棧橋（燈塔島第二段）伸到海上：離島三段的測試另外量海岸與小船
-    const pts = [s.at, ...(s.parts ?? []).filter(p => !(k === 'sat.lighthouse.stages' && p.stage === 2)).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
+    const pts = [s.at, ...(s.parts ?? []).filter(() => k !== 'sat.lighthouse.stage2').map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
   }
 });
@@ -74,7 +74,7 @@ test('satellites reset to the opening state (review focus 4)', async () => {
   let s = engine.createState(spec);
   for (const id of stats(enumerate(spec), spec).full[0].order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) stage.apply(e); }
   for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) stage.apply(e); }
-  assert.ok(stage.partKeys().includes('sat.forest.stages'));
+  assert.ok(stage.partKeys().includes('sat.forest.stage1'));
   stage.reset();
   assert.deepEqual(stage.partKeys().filter(k => k.startsWith('sat.')).sort(), ['sat.boats', 'sat.chest', 'sat.windmill']);
 });
@@ -164,7 +164,7 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
     assert.equal(!!tv['token.spur.playground'], t >= 7, `token ${t} bulb ${b}: the playground spur waits for token 7`);
   }
   assert.ok(Object.keys(spec.ITEMS.bulb.jump ?? {}).every(n => +n < 7), 'no jump lands on bulb 7 or later');
-  for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stages'], b >= 5, `boba ${b}`); }
+  for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stage1'], b >= 5, `boba ${b}`); }
   for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
 });
 
@@ -191,10 +191,10 @@ test('epilogue alien: sat.rocksRing becomes the landing pad (brighter ring + 3 l
 });
 
 // 計畫 6 §7 離島三段：每座島 = 空島 → 第一段 → 第二段，觸發固定照表（view 是純函數；兩段各自獨立，第二段可以先出現）。
-// 不會動的段併在 sat.<島>.stages（parts 標 stage: 1／2；寶箱島的海鷗併在 sat.chest），會動的段各自一個零件 sat.<島>.stage1／stage2；
+// 一段一個零件 sat.<島>.stage1／stage2（裁決 R7）；同一級一起出現的基座（營區、分店）併在第一段（點綴零件標 stage）；
 // 石堆島的第二段就是外星的綠光圈（現有 sat.rocksRing），賽博沒有第二段
-const stageOn = (v, isl, n) => !!v[`sat.${isl}.stage${n}`] || [v[`sat.${isl}.stages`], isl === 'chest' && v['sat.chest']].some(d => d && d.parts.some(p => p.stage === n));
-const stagePartOf = (v, isl, n) => v[`sat.${isl}.stage${n}`] ?? (isl === 'chest' ? v['sat.chest'] : v[`sat.${isl}.stages`]);
+const stageOn = (v, isl, n) => !!v[`sat.${isl}.stage${n}`];
+const stagePartOf = (v, isl, n) => v[`sat.${isl}.stage${n}`];
 const STAGES = {
   lighthouse: [['bulb', 7], ['boba', 6]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3], null],
   pyramid: [['chip', 3], ['chip', 9]], playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6], 'allMax'],
@@ -208,7 +208,7 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
       const v = sat.view(lv({ [item]: l }), {}), on = stageOn(v, isl, i + 1);
       assert.equal(on, l >= n, `${key} at ${item} ${l}`);
       const d = on && stagePartOf(v, isl, i + 1);
-      if (d && isl !== 'chest') { assert.equal(d.footprint, false, `${key} footprint`); assert.ok(Math.hypot(d.at.x - sat.island(isl).x, d.at.z - sat.island(isl).z) < 1e-9, `${key} anchored on its islet`); }
+      if (d) { assert.equal(d.footprint, false, `${key} footprint`); assert.ok(Math.hypot(d.at.x - sat.island(isl).x, d.at.z - sat.island(isl).z) < 1e-9, `${key} anchored on its islet`); }
     }
   });
   // 兩段各自獨立：只滿足第二段的觸發時只有第二段
@@ -224,8 +224,7 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
   assert.ok(!stageOn(sat.view(lv({ rat: 5 }), { ratBranch: 'cyber' }), 'rocks', 2));
   assert.ok(sat.view(lv({ rat: 5 }), { ratBranch: 'alien' })['sat.rocksRing']);
   // 空島：開局什麼段都沒有
-  assert.deepEqual(Object.keys(sat.view(lv({}), {})).filter(k => /\.stage(\d|s)$/.test(k)), []);
-  assert.ok(!stageOn(sat.view(lv({}), {}), 'chest', 1));
+  assert.deepEqual(Object.keys(sat.view(lv({}), {})).filter(k => /\.stage\d$/.test(k)), []);
 });
 
 // 會動的零件：鞦韆會盪、旋轉木馬會轉、第二支風機跟第一支一樣通電才轉、金幣噴泉的金幣會上下
@@ -243,9 +242,9 @@ test('islet stages that move: the swing swings, the carousel turns, the second t
   const twinOf = p => p.object.children[1].children[0];
   const lit = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']); lit.update(0.5, 0.5); assert.notEqual(twinOf(lit).rotation.z, 0, 'the second rotor turns');
   const dark = f.build(sat.view(lv({ bulb: 7 }), { blackout: true })['sat.windmill']); dark.update(0.5, 0.5); assert.equal(twinOf(dark).rotation.z, 0, 'blackout: the second rotor stands still like the first');
-  assert.deepEqual(sat.view(lv({ bulb: 7, typhoon: 2 }), {})['sat.windmill.stages'], sat.view(lv({ bulb: 7 }), {})['sat.windmill.stages'], 'the storm does not rebuild the stage-1 tower');
+  assert.deepEqual(sat.view(lv({ bulb: 7, typhoon: 2 }), {})['sat.windmill.stage1'], sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'], 'the storm does not rebuild the stage-1 tower');
   // 第二個轉子在第一段的塔頂前面
-  const w = sat.view(lv({ bulb: 7 }), {})['sat.windmill'], top = sat.view(lv({ bulb: 7 }), {})['sat.windmill.stages'].parts[0];
+  const w = sat.view(lv({ bulb: 7 }), {})['sat.windmill'], top = sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'].parts[0];
   assert.ok(Math.hypot(w.at.x + w.twin[0] - (sat.island('windmill').x + top.pos[0]), w.at.z + w.twin[2] - (sat.island('windmill').z + top.pos[2] + 0.1)) < 1e-9 && Math.abs(w.at.y + w.twin[1] - (sat.island('windmill').y + 1.2)) < 1e-9, 'twin hub on the stage-1 tower');
 });
 
@@ -274,10 +273,9 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
   for (const v of views) {
     const spots = keep(v);
     for (const [k, d] of Object.entries(v)) {
-      if (!/\.stage(\d|s)$/.test(k) && k !== 'sat.chest') continue;
-      const c = centreOf(k === 'sat.chest' ? 'sat.chest' : k);
-      for (const p of (d.parts ?? [d]).filter(p => !/\.stages$/.test(k) && k !== 'sat.chest' || p.stage)) {
-        const pier = k === 'sat.lighthouse.stages' && p.stage === 2;
+      if (!/\.stage\d$/.test(k)) continue;
+      const c = centreOf(k), pier = k === 'sat.lighthouse.stage2';
+      for (const p of d.parts ?? [d]) {
         const x = d.at.x + (p.pos?.[0] ?? 0), z = d.at.z + (p.pos?.[2] ?? 0), r = pier ? Math.hypot(x - c.x, z - c.z) : hexR(x - c.x, z - c.z);
         assert.ok(r <= (pier ? R + 0.5 : ISLET_R), `${k} part at ${pier ? 'r' : 'hex r'} ${r.toFixed(2)}`);
         for (const s of spots) { const g = Math.abs(Math.hypot(x - s.x, z - s.z) - s.r); assert.ok(g >= 0.3, `${k} part (${x.toFixed(2)}, ${z.toFixed(2)}) ${g.toFixed(2)} from a spot (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) r ${s.r}`); }
@@ -307,9 +305,11 @@ import * as B from '../src/show/beats.js';
 test('islet stages tag along: an apply beat is no longer with them (they blink with its first key); alone they blink once', () => {
   for (const v of [sat.view(allMax, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 3, baseball: 6 }), {})])
     for (const [k, d] of Object.entries(v)) {
-      if (/\.stage\d$/.test(k)) { assert.equal(d.tagAlong, true, k); assert.equal(d.low, false, `${k}: not drawn on ?quality=low (phone budget ≤ 150)`); }
-      if (/\.stages$/.test(k) || k === 'sat.chest') for (const p of d.parts.filter(p => p.stage)) assert.equal(p.low, false, `${k} stage ${p.stage}: not drawn on ?quality=low`);
-      if (/\.stages$/.test(k) && k !== 'sat.pyramid.stages') assert.equal(d.tagAlong, true, k);
+      if (!/\.stage\d$/.test(k)) continue;
+      const based = k === 'sat.pyramid.stage1' || k === 'sat.forest.stage1';   // 含基座（營區、分店）：那一級的主角，不 tagAlong、手機照畫基座
+      assert.equal(!!d.tagAlong, !based, k);
+      if (based) for (const p of d.parts.filter(p => p.stage)) assert.equal(p.low, false, `${k} stage part: not drawn on ?quality=low`);
+      else assert.equal(d.low, false, `${k}: not drawn on ?quality=low (phone budget ≤ 150)`);
     }
   const fake = changed => { const pending = new Set(changed.map(c => c.key)), committed = [];
     return { committed, ctx: { stage: { apply: () => ({ changed }), pendingKeys: () => [...pending], commit: k => { committed.push(k); pending.delete(k); }, commitAll() {}, footprints: () => [] }, nav: { setFootprints() {} } } }; };
@@ -323,9 +323,9 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
 // 棧橋（審查 fix round 1）：大部分伸在海上（六角島緣外）、板面頂在島面之上（蓋在路緣上）、遠端過了停好的小船船身中段、
 // 船側離板面 ≤ 0.2（靠在旁邊）；小船最後一段航線掃過的範圍不碰板面。船的尺寸照 Boat.glb 的 bounding box × FERRY_H 的縮放量
 test('the lighthouse pier reaches out over the sea beside the moored ferry, on top of the curb, clear of the ferry route', () => {
-  const pier = sat.view(lv({ boba: 6, bulb: 7 }), {})['sat.lighthouse.stages'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
-  const deck = pier.parts.find(p => p.stage === 2), len = deck.scale[2], half = deck.scale[0] / 2;
-  assert.ok(Math.abs(Math.hypot(deck.pos[0], deck.pos[2]) - Math.hypot(...[d[0] * (s0 + s1) / 2 + n[0] * LAT, d[1] * (s0 + s1) / 2 + n[1] * LAT])) < 1e-9 && Math.abs(len - (s1 - s0)) < 1e-9, 'the first stage-2 part is the deck');
+  const pier = sat.view(lv({ boba: 6, bulb: 7 }), {})['sat.lighthouse.stage2'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
+  const deck = pier.parts[0], len = deck.scale[2], half = deck.scale[0] / 2;
+  assert.ok(Math.abs(Math.hypot(deck.pos[0], deck.pos[2]) - Math.hypot(...[d[0] * (s0 + s1) / 2 + n[0] * LAT, d[1] * (s0 + s1) / 2 + n[1] * LAT])) < 1e-9 && Math.abs(len - (s1 - s0)) < 1e-9, 'parts[0] is the deck');
   assert.ok(pier.at.y + deck.pos[1] + deck.scale[1] / 2 >= TOP - 0.2 + 0.01, 'deck top above the island surface (on the curb)');
   // 海岸：沿板面中心線取樣，落在六角形外（|x| > 內切半徑 或 |z| + |x|/√3 > R）的比例
   const inside = (x, z) => { x = Math.abs(x); z = Math.abs(z); return x <= R * Math.sqrt(3) / 2 && z + x / Math.sqrt(3) <= R; };
@@ -363,32 +363,44 @@ test('carousel stops in a blackout; coins shrink to nothing at the wrap (no pop)
   assert.ok(scaleAt(0, 0) < 0.01 && scaleAt(2.4 - 1e-3, 0) < 0.01 && scaleAt(1.2, 0) > 0.09, 'grows out and shrinks back');
 });
 
-// draw call 頭寸（計畫 6 任務 6）：全 MAX 一般畫質的截圖 249 → ≤ 240。每座島不會動的段併成一個零件（＋基座：營區、分店、寶箱），
-// 會動的段（鞦韆、旋轉木馬、金幣、兩支風機的轉子）各一個 draw call；手機（?quality=low）照舊不畫點綴，基座照畫
+// draw call 頭寸（計畫 6 任務 6、裁決 R7）：全 MAX 一般畫質截圖 249 → ≤ 246。一段一個零件（下一段出現時已經站著的不重閃），
+// 同一級出現的基座（營區、分店）併在第一段；會動的段（鞦韆、旋轉木馬、金幣、兩支風機的轉子）各一個 draw call；手機照舊不畫點綴，基座照畫
 const meshesOf = (f, d) => { const p = f.build(d); let n = 0; p.object.traverse(o => { if (o.isMesh) n++; }); p.dispose(); return n; };
 const satCalls = (f, v) => Object.entries(v).filter(([k, d]) => k !== 'sat.boats' && d.kind !== 'roster').reduce((a, [, d]) => a + (d.kind === 'rats' ? d.n : meshesOf(f, d)), 0);
-test('islet draw calls: full MAX satellites ≤ 18 (was 27) on normal quality, unchanged on phones; animated stages one mesh each', () => {
+test('islet draw calls: full MAX satellites ≤ 24 (was 27) on normal quality, unchanged on phones; animated stages one mesh each', () => {
   for (const flags of [{ ratBranch: 'cyber', epilogue: 'cyber' }, { ratBranch: 'alien', epilogue: 'alien' }]) {
     const v = sat.view(allMax, flags);
-    assert.ok(satCalls(builtFactory(), v) <= 18, `${flags.ratBranch}: ${satCalls(builtFactory(), v)}`);
+    assert.ok(satCalls(builtFactory(), v) <= 24, `${flags.ratBranch}: ${satCalls(builtFactory(), v)}`);
     assert.equal(satCalls(builtFactory('low'), v), flags.ratBranch === 'alien' ? 7 : 6, `${flags.ratBranch} phone`);
-    for (const k of ['sat.windmill', 'sat.playground.stage1', 'sat.playground.stage2', 'sat.chest.stage2', 'sat.lighthouse.stages', 'sat.rocks.stages']) assert.equal(meshesOf(builtFactory(), v[k]), 1, k);
+    for (const k of ['sat.windmill', 'sat.playground.stage1', 'sat.playground.stage2', 'sat.chest.stage2']) assert.equal(meshesOf(builtFactory(), v[k]), 1, k);
   }
-  // 手機：基座照畫、點綴不畫（階梯丘晶片 9 = 只有營區那幾塊）
+  // 手機：基座照畫、點綴不畫（階梯丘第一段 = 只有營區那幾塊）
   const geoOf = (f, d) => { const p = f.build(d); let n = 0; p.object.traverse(o => { if (o.isMesh) n += o.geometry.attributes.position.count; }); p.dispose(); return n; };
-  const camp = sat.view(lv({ chip: 9 }), {})['sat.pyramid.stages'], campOnly = { ...camp, parts: camp.parts.filter(p => !p.stage) };
+  const camp = sat.view(lv({ chip: 3 }), {})['sat.pyramid.stage1'], campOnly = { ...camp, parts: camp.parts.filter(p => !p.stage) };
   assert.ok(campOnly.parts.length && campOnly.parts.length < camp.parts.length);
   assert.equal(geoOf(builtFactory('low'), camp), geoOf(builtFactory('low'), campOnly), 'phone: only the camp');
-  assert.ok(geoOf(builtFactory(), camp) > geoOf(builtFactory(), campOnly), 'normal: camp + stages');
-  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 7, boba: 6 }), {})['sat.lighthouse.stages']), 0, 'phone: no islet decoration');
+  assert.ok(geoOf(builtFactory(), camp) > geoOf(builtFactory(), campOnly), 'normal: camp + tent');
+  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 7, boba: 6 }), {})['sat.lighthouse.stage2']), 0, 'phone: no islet decoration');
 });
-// 併了基座的零件：只有「只可能是點綴在變」的狀態 tagAlong——營區出現那拍（晶片 3）、開箱那拍（全 MAX）照舊自己佔一格 stagger
-test('merged islet parts tag along only when nothing but a decoration can be changing', () => {
-  assert.ok(!sat.view(lv({ chip: 3 }), {})['sat.pyramid.stages'].tagAlong, 'chip 3: the camp arrives');
-  assert.equal(sat.view(lv({ chip: 9 }), {})['sat.pyramid.stages'].tagAlong, true, 'chip 9: only the observatory');
-  assert.equal(sat.view(lv({ baseball: 6 }), {})['sat.chest'].tagAlong, true, 'closed chest: only the gull can change');
-  assert.ok(!sat.view(allMax, {})['sat.chest'].tagAlong, 'the chest opening is the main event');
-  for (const L of [lv({ boba: 5 }), lv({ bulb: 9 }), lv({ boba: 5, bulb: 9 })]) assert.equal(sat.view(L, {})['sat.forest.stages'].tagAlong, true);
+// 裁決 R7：下一段出現時已經站著的不重閃——每座島把另一段的觸發拉上去，這一段的零件 spec 一字不變（寶箱：海鷗飛來寶箱不變）
+const STAGE_TRIGGERS = {
+  lighthouse: [{ bulb: 7 }, { boba: 6 }], windmill: [{ bulb: 7 }, { chip: 6 }], rocks: [{ rat: 3 }, { rat: 5 }],
+  pyramid: [{ chip: 3 }, { chip: 9 }], playground: [{ token: 8 }, { milk: 10 }], forest: [{ boba: 5 }, { bulb: 9 }],
+};
+test('raising one islet stage trigger leaves the other stage part (and the chest) spec untouched', () => {
+  const raise = (a, b) => ({ ...a, ...Object.fromEntries(Object.entries(b).map(([k, n]) => [k, Math.max(n, a[k] ?? 0)])) });
+  for (const [isl, [t1, t2]] of Object.entries(STAGE_TRIGGERS)) {
+    const flags = isl === 'rocks' ? { ratBranch: 'alien' } : {};
+    // 第二段的觸發拉上去：第一段不變
+    const before = sat.view(lv(t1), flags)[`sat.${isl}.stage1`], after = sat.view(lv(raise(t1, t2)), flags)[`sat.${isl}.stage1`];
+    assert.ok(before, `${isl} stage 1 at ${JSON.stringify(t1)}`); assert.deepEqual(after, before, `${isl}: stage 1 untouched by the stage-2 trigger`);
+    // 第一段的觸發拉上去：第二段不變（同一個物品的階梯丘、石堆島：第二段只會在第一段之後，跳過）
+    if (Object.keys(t2).some(k => k in t1)) continue;
+    const b2 = sat.view(lv(t2), flags)[`sat.${isl}.stage2`], a2 = sat.view(lv(raise(t2, t1)), flags)[`sat.${isl}.stage2`];
+    assert.ok(b2, `${isl} stage 2 at ${JSON.stringify(t2)}`); assert.deepEqual(a2, b2, `${isl}: stage 2 untouched by the stage-1 trigger`);
+  }
+  assert.deepEqual(sat.view(lv({ baseball: 6 }), {})['sat.chest'], sat.view(lv({}), {})['sat.chest'], 'the gull lands without re-blinking the chest');
+  assert.ok(sat.view(lv({ baseball: 6 }), {})['sat.chest.stage1'] && !sat.view(lv({ baseball: 5 }), {})['sat.chest.stage1']);
 });
 // rig：一個 mesh 裡各組頂點跟著自己的 pivot 動（鞦韆的座位盪、架子不動；第二支風機的葉片轉）
 test('rigged islet parts move their own vertices: the swing seats swing, the frame stays; the second rotor turns', () => {

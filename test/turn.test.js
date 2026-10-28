@@ -409,6 +409,34 @@ test('miss beats: the rep is found once at beat time; nobody (hidden, busy, away
   seg[3].start(c); assert.deepEqual(homed, [rep]);
   assert.equal(asked, 1, 'the rep is asked once');
 });
+// 一回合兩段撲空、一段演了一段沒演（兩種順序）：沒演的那段整段 0 秒（連空拍）；之後的空拍看「真的演了的上一段」是哪個物品；
+// 有一段演了，鏡頭就在代表那一格——下一個事件照樣空拍、平移回來
+test('two misses in a turn, one played and one collapsed (both orders): the collapsed one waits nothing, the next event still pans back', () => {
+  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
+  const milk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.wait(1)], grow: { 2: (e, s, c) => [c.B.wait(1)] } } };
+  const events = [{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip', 'bulb'), grow('milk', 2, [])];
+  for (const playing of ['chip', 'bulb']) {
+    const reps = Object.fromEntries(['chip', 'bulb'].map(id => [id, { ...walker, mode: id === playing ? 'home' : 'script', pos: { x: 0, y: 0.65, z: 0 } }]));
+    const mods = ['chip', 'bulb'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep: () => reps[id] } }));
+    const raw = buildTurn(events, base([tower, milk, ...mods]), fakeCtx());
+    const c = fakeCtx({ roster: { claim() {}, home() {}, setPose() {}, setFocus() {}, members: () => [], keys: () => [] }, nav, rig: { grabbed: false, focus: () => true } });
+    const marks = raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = info; } }); return got; });
+    assert.deepEqual(marks.slice(1, 3).map(m => m.item), ['chip', 'bulb']);
+    const seg = k => between(raw, k), gapOf = k => seg(k).find(b => b.kind === 'wait');
+    // 第一段（晶片）：演了才等空拍
+    assert.equal(gapOf(1).start(c) !== false, playing === 'chip', `${playing}: chip GAP`);
+    for (const b of seg(1).slice(1)) b.start?.(c);
+    // 第二段（燈泡）：演了的話，上一個演了的是晶片（或撲空之前的鮮奶），都不是燈泡 → 空拍；沒演 → 0 秒
+    assert.equal(gapOf(2).start(c) !== false, playing === 'bulb', `${playing}: bulb GAP`);
+    for (const b of seg(2).slice(1)) b.start?.(c);
+    assert.deepEqual([marks[1].gap, marks[2].gap], playing === 'chip' ? [GAP, 0] : [0, GAP], `${playing}: the marks report what was waited`);
+    // 下一個事件（鮮奶 2）：有一段撲空演了，鏡頭在代表那一格 → 空拍、平移回鮮奶格
+    const [gap, pan] = seg(4);
+    assert.deepEqual([gap.kind, pan.kind], ['wait', 'focus']);
+    assert.notEqual(gap.start(c), false, `${playing}: GAP before the next item`); assert.notEqual(pan.start(c), false, `${playing}: pan back`);
+    assert.equal(marks[4].gap, GAP);
+  }
+});
 // 撲空沒演（代表叫不到，整段 0 秒）就不動鏡頭的帳（審稿）：下一個事件照撲空之前的帳——同一個物品不空拍、鏡頭本來就在那一格不再平移；
 // 撲空真的演了：鏡頭在代表那一格，下一個事件空一拍、平移回來
 test('a collapsed miss leaves the camera bookkeeping alone: the next event of the same item gets no GAP and no pan; a played miss does', () => {

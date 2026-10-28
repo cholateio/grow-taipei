@@ -354,11 +354,24 @@ test('a grow with via gets a visit before its script: mark {visit}, focus, walk/
   const two = buildTurn([grow('chip', 2, ['bulb', 'milk'])], base(visitMods()), fakeCtx());
   assert.deepEqual(marksOf(two).filter(m => m.info.visit).map(m => m.e.via[0]), ['bulb']);
 });
-test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later caused grows play only their script', () => {
+test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later caused grows play only their script (counted when a visit plays)', () => {
+  // 建拍時每個有原因的升級都插拜訪段；演到才數（裁決 R3）：同一個幫手第三段起只剩平移。代表叫不到而略過的那段不算數
   const events = [grow('chip', 2, ['milk']), grow('chip', 3, ['milk']), grow('chip', 4, ['milk']), grow('chip', 5, ['milk']), grow('milk', 2, ['bulb'])];
-  const marks = marksOf(buildTurn(events, base(visitMods()), fakeCtx()));
-  const visited = marks.filter(m => m.info.visit).map(m => `${m.e.via[0]}→${m.e.item}${m.e.to}`);
+  const raw = buildTurn(events, base(visitMods()), fakeCtx()), marks = marksOf(raw);
   assert.equal(VISIT_MAX_PER_HELPER, 2, 'ruling R2: a third visit by the same helper is repetitive');
-  assert.deepEqual(visited, ['milk→chip2', 'milk→chip3', 'bulb→milk2'], 'the third and fourth milk visits are dropped, another helper still comes');
+  assert.equal(marks.filter(m => m.info.visit).length, 5, 'every caused grow gets a visit segment at build time');
   assert.equal(marks.filter(m => !m.info.visit).length, events.length, 'every grow still plays its own script');
+  // 照順序演每段拜訪的第一拍（走過去）：代表就在旁邊（不換位置）
+  const rep = { ...walker, mode: 'home' }, roster = { claim() {}, setPose() {}, flash() {}, relocate() {}, members: () => [], keys: () => [] };
+  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, groundY: () => 0, version: 0 };
+  const play = (beats, c) => beats.map(b => (b.kind === 'together' ? b.beats.find(x => x.kind === 'walk') : b.kind === 'walk' ? b : null)).filter(Boolean).map(w => w.start(c) !== false);
+  const walks = raw2 => { const at = raw2.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return at.map((i, k) => raw2.slice(i + 1, at[k + 1])); };
+  const near = buildTurn(events, base(visitMods().map(m => (m.script?.rep && m.id !== 'chip' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') } }) } } : m))), fakeCtx());
+  const c = fakeCtx({ roster, nav });
+  const played = walks(near).filter((seg, k) => marksOf(near)[k].info.visit).map(seg => play(seg, c)[0]);
+  assert.deepEqual(played, [true, true, false, false, true], 'milk plays twice, then only the pan; bulb still comes');
+  // 代表叫不到（在劇本手上）的那段不算數：後面兩段照樣演
+  let n = 0;
+  const flaky = buildTurn(events.slice(0, 3), base(visitMods().map(m => (m.id === 'milk' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') }, mode: n++ === 0 ? 'script' : 'home' }) } } : m))), fakeCtx());
+  assert.deepEqual(walks(flaky).filter((seg, k) => marksOf(flaky)[k].info.visit).map(seg => play(seg, c)[0]), [false, true, true], 'a skipped visit does not use up the quota');
 });

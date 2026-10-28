@@ -3,6 +3,7 @@
 //   walker(w, dur)：小人是 InstancedMesh 的一個實例，改用 people.flashInstance 把整個實例塗白、時間到重塗原色。
 // 閃到一半再閃同一個東西：計時重來，原材質不會被白色蓋掉。clear()：全部立刻回原樣（跳過、RESET），不留白色材質。
 // stop(object 或 walker)：只把這一個立刻收掉（要拿掉、放回模型池的東西先換回原材質，白色材質才不會被 dispose 或帶走）。
+// has(object 或 walker)：這一個現在正在閃（測試查「換位置的那一幀有閃白」）。
 export const BLINK = 0.15;
 
 export function createBlink(THREE, { people }) {
@@ -42,5 +43,5 @@ export function createBlink(THREE, { people }) {
     for (const [o, it] of [...parts]) endPart(o, it);
     for (const w of [...walkers.keys()]) endWalker(w);
   }
-  return { part, walker, update, stop, clear, get count() { return parts.size + walkers.size; } };
+  return { part, walker, update, stop, clear, has: target => parts.has(target) || walkers.has(target), get count() { return parts.size + walkers.size; } };
 }

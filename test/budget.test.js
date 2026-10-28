@@ -9,8 +9,8 @@ import * as spec from '../src/rules/spec.js';
 import { createState } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { cellAt, SPACING, R } from '../src/scene/hex.js';
-import { headlessShow, turnSteps } from './helpers/show.js';
-import { finaleStep } from './helpers/endings.js';
+import { headlessShow, turnSteps, gameInvariants } from './helpers/show.js';
+import { finaleStep, EXAMPLE } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const TOTAL_MAX = 30, CELL_MAX = 8, SMALL = ['rat.pack'];
@@ -32,9 +32,9 @@ function census(roster) {
 }
 
 test('people budget: every turn end of both solutions, the finale turn included (and 5 s later), shows ≤ 30 roster members, ≤ 8 in any main cell (rats excluded)', async () => {
-  const bad = [], peak = { total: 0, cell: 0, away: 0 };
+  const bad = [], peak = { total: 0, cell: 0, away: 0 }, pops = [];
   for (const order of SOLUTIONS) {
-    const { show, run } = await headlessShow();
+    const { show, run } = await headlessShow(), inv = gameInvariants(show);   // 同一趟也查換位置一定閃白（裁決 R3）
     let s = createState(spec), t = 1000;
     // 每一回合：放置、最後一輪、最後的終局回合（finale：警告＋飛彈＋尾聲）
     const turns = [...turnSteps(order).map((step, i) => async () => {
@@ -55,7 +55,22 @@ test('people budget: every turn end of both solutions, the finale turn included 
         }
       }
     }
+    pops.push(...inv.pops);
   }
   console.log(`people budget peak: ${peak.total} on the main island, ${peak.cell} in one cell (${peak.away} on the satellites)`);
   assert.deepEqual(bad, [], `peak ${peak.total} on the main island, ${peak.cell} in one cell (${peak.away} on the satellites)`);
+  assert.deepEqual(pops.slice(0, 20), [], `${pops.length} silent relocations`);
+});
+
+// 裁決 R3：兩局固定的壞結局（EXAMPLE.hit／deflect，亂放：拜訪少、等待多）整局 live 演完（放置、最後一輪、終局回合），
+// 劇本手上與拜訪完正走回去的人換位置一定閃白（gameInvariants 的 pops）
+test('EXAMPLE.hit and EXAMPLE.deflect live through the finale: no scripted member relocates without a blink', async () => {
+  for (const outcome of ['hit', 'deflect']) {
+    const { show, run } = await headlessShow(), inv = gameInvariants(show), order = EXAMPLE[outcome];
+    let s = createState(spec);
+    for (const [i, step] of turnSteps(order).entries()) { const r = step(s); s = r.state; inv.label(`${outcome} turn ${i + 1}`); await run([...r.events, { kind: 'settle' }]); }
+    inv.label(`${outcome} finale`);
+    await run(finaleStep(s).events, { finale: true });
+    assert.deepEqual([...inv.pops].slice(0, 20), [], `${outcome}: ${inv.pops.size} silent relocations`);
+  }
 });

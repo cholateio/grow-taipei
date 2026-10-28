@@ -158,10 +158,13 @@ export function overviewRig() {
 //   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）
 //   labels（有 cam 才查）：每個 LEVEL UP 字樣與頭頂泡泡（bubbles.levelUp／show）活著的那幾秒（dur），頭上的點投影在 NDC [-1, 1] 裡的幀數
 //          要 ≥ LABEL_ON（一半）——鏡頭沒跟上、演出的那一刻在畫面外（審稿：颱風登陸後的 LEVEL UP、101 頭上的字、撞攤車的 ！、等待圖框）
+//   pops（計畫 6 裁決 R3）：劇本手上（'script'）或拜訪完正走回去（'away'）的人一幀突然跳開超過 POP_MAX——那一幀他一定在閃白
+//          （show.blink 正閃著他的小人實例或模型 holder），或藏著、還沒畫出來（模型 holder 還沒到）；不准靜靜地瞬移。
+//          「突然」＝這一幀的位移跟上一幀的位移差超過 POP_MAX：坐在趕路的列車車頂（一幀 0.44）是連續的快，不是換位置
 // label(text)：之後的問題都標這個字串（例如「第幾回合」）
-export const CAUGHT_MAX = 1.5, LABEL_ON = 0.5;
+export const CAUGHT_MAX = 1.5, LABEL_ON = 0.5, POP_MAX = 0.3;
 export function gameInvariants(show, { cam = null } = {}) {
-  const walls = new Set(), jumps = new Set(), camera = [], caught = new Map(), last = new Map(), update = show.update;
+  const walls = new Set(), jumps = new Set(), pops = new Set(), camera = [], caught = new Map(), last = new Map(), seen = new Map(), update = show.update;
   let label = '', t = 0, viewKey = null, view = {};
   // 標籤：出現時記下 { head, until, n（活著的幀數）, out（在畫面外的幀數）}；過了 until 就結算
   const labels = [], live = [];
@@ -195,6 +198,12 @@ export function gameInvariants(show, { cam = null } = {}) {
         if (d > max + 1e-6) jumps.add(`${what} moved ${d.toFixed(3)} > ${max.toFixed(3)}`);
       }
       if (daily) last.set(m, { ...m.pos }); else last.delete(m);
+      const was = seen.get(m), step = was ? { x: m.pos.x - was.p.x, z: m.pos.z - was.p.z } : { x: 0, z: 0 };
+      seen.set(m, { p: { ...m.pos }, step });
+      if (was && !m.hidden && !m.gone && (m.mode === 'script' || m.mode === 'away') && (m.walker || m.holder)) {
+        const jerk = Math.hypot(step.x - was.step.x, step.z - was.step.z);
+        if (jerk > POP_MAX && !show.blink.has(m.walker ?? m.holder)) pops.add(`${what} jumped ${Math.hypot(step.x, step.z).toFixed(2)} without a blink`);
+      }
       const inWall = !m.hidden && !m.gone && h?.kind !== 'ride' && !authored(h, m.i) && cellAt(m.pos.x, m.pos.z) && fps.some(f => inShape(f, m.pos.x, m.pos.z));
       if (!inWall) { caught.delete(m); continue; }
       if (!caught.has(m)) caught.set(m, t);
@@ -203,7 +212,7 @@ export function gameInvariants(show, { cam = null } = {}) {
   };
   show.update = (dt, tt) => { update(dt, tt); t += dt; check(dt); if (cam) watchLabels(); };
   return {
-    walls, jumps, camera, labels,
+    walls, jumps, pops, camera, labels,
     label(text) { label = text; },
     // 回合演完：鏡頭飛完（最多 3 秒，照樣推演出層），再查全景與 101 頭頂
     turnEnd() {

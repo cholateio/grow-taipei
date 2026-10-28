@@ -170,10 +170,11 @@ test('both solutions live through the finale: one plain closing turn, finale tur
   }
 });
 
-test('both solutions live: nobody stays inside a building > 1.5 s, no daily member teleports, every turn ends at the overview with the 101 top in frame', async () => {
+test('both solutions live: nobody stays inside a building > 1.5 s, no daily member teleports, no scripted member relocates without a blink, every turn ends at the overview with the 101 top in frame', async () => {
   for (const { inv } of await playBoth()) {
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
+    assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);   // 裁決 R3：換位置一定閃白
     assert.deepEqual(inv.camera, []);
   }
 });
@@ -185,21 +186,21 @@ test('both solutions live: every LEVEL UP label and bubble is on screen for at l
 });
 
 // 拜訪（計畫 6 設計 §4、§6、§8）：兩條正解每一個有原因的升級（via 非空、不是跳級的第二級、登陸之後不算、幫手與被升級的都不是颱風、
-// 這一級有拜訪點、同一幫手這回合還沒來過 VISIT_MAX_PER_HELPER 次（裁決 R2：2））都插了拜訪；幫手的代表叫得到的那幾段真的演了（段裡冒了 ♥），叫不到的只剩平移；
+// 這一級有拜訪點）都插了拜訪段；幫手的代表叫得到、這回合還沒真的來過 VISIT_MAX_PER_HELPER 次（裁決 R2：2；演到才算，R3）的那幾段真的演了
+// （段裡冒了 ♥），其他的只剩平移；
 // 每段 ≤ VISIT_CAP（事件秒數扣掉物品之間的空拍）；放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
 test('both solutions: every grow with via (not jump-second, not indoors) played a visit; visits ≤ 3.5 s; turns within 60 + 8 × (◆ − 1)', async () => {
   for (const [n, { paced }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
     let played = 0, skipped = [];
     for (const [i, { events, marks, secs, end }] of paced.entries()) {
-      const what = `${name} turn ${i + 1}`, count = new Map();
+      const what = `${name} turn ${i + 1}`, count = new Map();   // count：這回合每個幫手真的拜訪了幾次（演到才算，裁決 R3）
       let landed = false;
       const expected = [];
       for (const e of events) {
         if (e.kind === 'grow' && e.via?.length && !e.jump && !landed && e.via[0] !== 'typhoon' && e.item !== 'typhoon') {
           const m = marks.find(x => x.e === e), target = ALL.find(x => x.id === e.item);
-          const spot = target.visitSpot(e.to, { lv: { ...m.lv, [e.item]: e.to }, flags: m.flags }), k = count.get(e.via[0]) ?? 0;
-          if (spot && k < VISIT_MAX_PER_HELPER) { expected.push(e); count.set(e.via[0], k + 1); }
+          if (target.visitSpot(e.to, { lv: { ...m.lv, [e.item]: e.to }, flags: m.flags })) expected.push(e);
         }
         if (engine.landsTyphoon(e)) landed = true;
       }
@@ -208,7 +209,9 @@ test('both solutions: every grow with via (not jump-second, not indoors) played 
       for (const v of visits) {
         const label = `${what} ${v.e.via[0]}→${v.e.item}${v.e.to}`, live = (v.next?.t ?? secs) - v.t - (v.info.gap ?? 0), shown = (v.next?.hearts ?? end) > v.hearts;
         assert.equal(v.next?.e, v.e, `${label}: the level's own script follows its visit`);
-        assert.equal(shown, v.usable, `${label}: ${v.usable ? 'the helper rep was there but the visit did not play' : 'played without a usable rep'}`);
+        const k = count.get(v.e.via[0]) ?? 0, due = v.usable && k < VISIT_MAX_PER_HELPER;
+        assert.equal(shown, due, `${label}: ${due ? 'the helper rep was there but the visit did not play' : v.usable ? `played a ${k + 1}th time` : 'played without a usable rep'}`);
+        if (shown) count.set(v.e.via[0], k + 1);
         assert.ok(live <= VISIT_CAP, `${label}: visit ${live.toFixed(2)} s`);
         if (shown) played++; else skipped.push(label);
       }

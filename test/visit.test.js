@@ -11,6 +11,7 @@ import { headlessShow, turnSteps, ALL } from './helpers/show.js';
 const { visit, VISIT_WALK, VISIT_KNOCK, VISIT_LOVE, VISIT_CAP, VISIT_MAX_PER_HELPER } = await import('../src/show/visit.js');
 const { frontOf } = await import('../src/actors/anchors.js');
 const { FOCUS_BEAT, B } = await import('../src/show/beats.js');
+const { BLINK } = await import('../src/show/blink.js');
 const { cellAt } = await import('../src/scene/hex.js');
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const mod = id => ALL.find(m => m.id === id);
@@ -31,12 +32,14 @@ async function liveVisit(order, pick, { prepare } = {}) {
     const rep = helper.script.rep(sv, ctx), host = target.script.rep?.(sv, ctx) ?? null, spot = target.visitSpot(e.to, sv);
     const stand = frontOf(spot, spot.r, show.nav), cell = cellAt(spot.x, spot.z);
     prepare?.(h, e, rep);
-    const out = { e, rep, host, spot, stand, cell, start: rep && { ...rep.pos }, marks: [], frames: [], knock: false, wave: false, from: bubblesLog.length };
+    const out = { e, rep, host, spot, stand, cell, start: rep && { ...rep.pos }, marks: [], frames: [], after: [], knock: false, wave: false, from: bubblesLog.length };
     const update = show.update;
     show.update = (dt, t) => {
       update(dt, t);
-      if (out.marks.length !== 1 || !rep) return;   // 只看拜訪段（拜訪的 mark 之後、劇本的 mark 之前）
-      out.frames.push({ t: show.elapsed, pos: { ...rep.pos }, mode: rep.mode });
+      if (!out.marks.length || !rep) return;
+      const f = { t: show.elapsed, pos: { ...rep.pos }, mode: rep.mode, blink: show.blink.has(rep.walker ?? rep.holder) };
+      if (out.marks.length > 1) { out.after.push(f); return; }   // 劇本的 mark 之後：幫手走回去的那一段（'away'）
+      out.frames.push(f);   // 拜訪段（拜訪的 mark 之後、劇本的 mark 之前）
       if (rep.walker?.gesture?.kind === 'knock') out.knock = true;
       if (host?.walker?.gesture?.kind === 'wave' || host?.waving) out.wave = true;
     };
@@ -53,20 +56,25 @@ const isGrow = (item, to) => e => e.kind === 'grow' && e.item === item && e.to =
 
 // 兩條正解裡挑幾種：人走去人（少棒的球員 → 小學）、小孩走去人龍、小孩走去鼠窩（被升級的是模型）、站務員走去巨蛋（從別格來，在格邊出現）
 const CASES = [[0, 'milk', 3], [0, 'boba', 2], [0, 'rat', 2], [1, 'baseball', 6], [1, 'milk', 8]];
-const seen = { far: [], wave: [] };   // 這幾種裡真的量到「在格邊出現」與「被升級物品的代表揮手」（最後一條測試查）
+const seen = { far: [], wave: [], away: [] };   // 這幾種裡真的量到「在格邊出現」與「被升級物品的代表揮手」（最後一條測試查）
 for (const [n, item, to] of CASES) {
   test(`visit live (${SOLUTIONS[n].join('>')} ${item} ${to}): the helper rep reaches frontOf(visitSpot) within VISIT_WALK (or appears at the cell edge), knocks, the target rep waves, ♥, both home; ≤ 3.5 s; nobody left in script mode`, async () => {
     const v = await liveVisit(SOLUTIONS[n], isGrow(item, to)), what = `${v.e.via[0]}→${item}${to}`;
     assert.ok(v.rep && !v.rep.hidden, `${what}: the helper has a rep`);
     assert.equal(v.marks.length, 2, `${what}: a visit mark and the script mark`); assert.equal(v.marks[0].info.visit, true); assert.ok(!v.marks[1].info.visit);
-    // 走到拜訪點：第一次到站位那一刻離拜訪段開始 ≤ VISIT_WALK（平移跟走路一起演）；遠的人第一幀就在離站位 VISIT_WALK 秒的路程內（格邊出現）
+    // 走到拜訪點：第一次到站位那一刻離拜訪段開始 ≤ BLINK + VISIT_WALK（平移跟走路一起演；遠的人先在原處閃白 BLINK 秒）
     const reach = v.frames.find(f => Math.hypot(f.pos.x - v.stand.x, f.pos.z - v.stand.z) < 0.1);
     assert.ok(reach, `${what}: reached the stand (closest ${Math.min(...v.frames.map(f => Math.hypot(f.pos.x - v.stand.x, f.pos.z - v.stand.z))).toFixed(2)})`);
-    assert.ok(reach.t - v.marks[0].t <= VISIT_WALK + 0.1, `${what}: walked ${(reach.t - v.marks[0].t).toFixed(2)} s`);
-    const first = v.frames[0].pos, far = Math.hypot(v.start.x - v.stand.x, v.start.z - v.stand.z) > VISIT_WALK * v.rep.speed;
+    assert.ok(reach.t - v.marks[0].t <= BLINK + VISIT_WALK + 0.1, `${what}: walked ${(reach.t - v.marks[0].t).toFixed(2)} s`);
+    const far = Math.hypot(v.start.x - v.stand.x, v.start.z - v.stand.z) > VISIT_WALK * v.rep.speed;
     if (far) {
-      assert.ok(Math.hypot(first.x - v.stand.x, first.z - v.stand.z) <= VISIT_WALK * v.rep.speed + 0.1, `${what}: appears within a VISIT_WALK of the stand`);
-      assert.ok(same(cellAt(first.x, first.z), v.cell) || !cellAt(first.x, first.z), `${what}: appears in the spot's cell (or on its bridge)`);
+      // 裁決 R3：原處閃白、換位置的那一幀也在閃；換到的點離站位真的要走——走滿 VISIT_WALK 秒的路（直線不超過）、至少 0.6 公尺
+      const k = v.frames.findIndex((f, i) => i > 0 && Math.hypot(f.pos.x - v.frames[i - 1].pos.x, f.pos.z - v.frames[i - 1].pos.z) > 0.3), to = v.frames[k]?.pos;
+      assert.ok(k > 0, `${what}: relocated once`);
+      assert.ok(v.frames[0].blink && v.frames[k].blink, `${what}: blinks at the origin and where it appears`);
+      const d = Math.hypot(to.x - v.stand.x, to.z - v.stand.z);
+      assert.ok(d <= VISIT_WALK * v.rep.speed + 0.1 && d >= 0.6, `${what}: appears ${d.toFixed(2)} from the stand`);
+      assert.ok(reach.t - v.frames[k].t >= VISIT_WALK - 0.2, `${what}: walks the full VISIT_WALK (${(reach.t - v.frames[k].t).toFixed(2)} s)`);
     }
     assert.ok(v.knock, `${what}: knocks`);
     if (v.host && same(cellAt(v.host.pos.x, v.host.pos.z), v.cell)) assert.ok(v.wave, `${what}: the target rep waves`);
@@ -79,17 +87,22 @@ for (const [n, item, to] of CASES) {
     if (v.host) assert.notEqual(v.marks[1].host.mode, 'script', `${what}: the target rep is back to daily life`);
     assert.equal(v.marks[1].script, 0, `${what}: nobody left in script mode`);
     assert.ok(v.secs <= VISIT_CAP && v.secs >= VISIT_KNOCK + VISIT_LOVE, `${what}: visit ${v.secs.toFixed(2)} s`);
-    if (far) {
-      // 從別格來的：背景走回格邊，回到原本站的地方、回日常（不在日常裡橫越半個島）
-      for (let i = 0; i < 300 && v.rep.mode === 'away'; i++) v.show.update(1 / 30, 500 + i / 30);
-      assert.equal(v.rep.mode, 'home', `${what}: home again`);
+    if (far && v.marks[1].rep.mode === 'away') {
+      // 遠處叫來、回家的路又長：背景走回出現的那一點、閃白換回原本站的地方（也閃）、回日常（不在日常裡橫越半個島）
+      const fr = [...v.after];
+      for (let i = 0; i < 300 && v.rep.mode === 'away'; i++) { v.show.update(1 / 30, 500 + i / 30); fr.push({ pos: { ...v.rep.pos }, mode: v.rep.mode, blink: v.show.blink.has(v.rep.walker ?? v.rep.holder) }); }
+      const k = fr.findIndex(f => f.mode !== 'away');
+      assert.ok(k > 0, `${what}: home again`);
+      assert.ok(Math.hypot(fr[k].pos.x - v.start.x, fr[k].pos.z - v.start.z) < 0.05 && fr[k].blink, `${what}: back where it stood, blinking`);
+      assert.ok(fr.slice(0, k).filter(f => f.blink).length >= 4, `${what}: blinked before leaving too`);
+      seen.away.push(what);
     }
   });
 }
 
 test('the cases above cover a helper appearing at the cell edge and a target rep waving back', () => {
-  assert.ok(seen.far.length >= 1, `far helpers: ${seen.far}`); assert.ok(seen.wave.length >= 1, `waves: ${seen.wave}`);
-  console.log(`# far: ${seen.far.join(', ')} | wave: ${seen.wave.join(', ')}`);
+  assert.ok(seen.far.length >= 1, `far helpers: ${seen.far}`); assert.ok(seen.wave.length >= 1, `waves: ${seen.wave}`); assert.ok(seen.away.length >= 1, `walked back: ${seen.away}`);
+  console.log(`# far: ${seen.far.join(', ')} | wave: ${seen.wave.join(', ')} | away: ${seen.away.join(', ')}`);
 });
 
 test('helper rep busy in its own script this turn: the visit waits for it (plays after) or is skipped — never steals it mid-script (review focus 2)', async () => {

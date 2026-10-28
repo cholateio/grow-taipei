@@ -35,6 +35,7 @@ import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf, radiusOf } from './nav.js';
+import { BLINK } from './blink.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 // ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
@@ -198,6 +199,11 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (build) for (const s of modelExtras(md, md.h * m.scale)) { const p = build(s); m.extras.push(p); m.holder.add(p.object); }
   }
 
+  // 換位置的閃白（計畫 6 裁決 R3）：小人閃整個實例、模型閃 holder（holder 還沒到就不閃——還沒畫出來，也看不到他跳）
+  function flash(m) { if (!blink) return; if (m.walker) blink.walker(m.walker); else if (m.holder) blink.part(m.holder); }
+  // relocate：瞬間換到 p（劇本手上、'away' 的人；拜訪的格邊出現、走回原處）——新位置那一幀閃白，不靜靜地放下。
+  //   原處那一下由呼叫端先閃（flash，閃完 BLINK 才換位置）
+  function relocate(m, p) { if (out(m)) return; setPose(m, { ...p, yaw: p.yaw ?? m.yaw, walking: false }); flash(m); }
   // 換裝閃白（§13.2）：小人整個實例閃白；模型閃 holder——換了模型、新 holder 還沒到就記著，到了再閃
   function glint(m) {
     if (!blink) return;
@@ -317,6 +323,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 退場：藏起來的人（躲進門裡）、沒有入口（衛星島、ride）、走不到入口的直接拿掉；其他人走回入口（update 走到了才拿掉）
   function depart(m, spec) {
+    m.away = null;
     const e = !m.hidden && spec ? entryOf(spec, m.i) : null;
     if (e) { still(m); m.mode = 'exit'; m.cursor = null; m.arriving = false; m.settled = null; go(m, nav.route(m.pos, e)); }
     if (m.trip) exits.push(m); else destroy(m);
@@ -355,29 +362,34 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
   }
-  // 拜訪完離開（計畫 6 設計 §4）：從別格走來拜訪的幫手（拜訪時在格邊出現的那種）沿 route 用走路速度走回格邊，到了就回到 back
-  //   （他被叫來之前站的地方）、回日常——同進場「在入口出現」、退場「走到入口才拿掉」的說法；不在日常裡橫越半個島
+  // 拜訪完離開（計畫 6 設計 §4、裁決 R3）：從遠處叫來拜訪的幫手（拜訪時在路上閃白出現的那種）沿 route 用走路速度走回他出現的那一點，
+  //   在那裡閃白 BLINK 秒、換回 back（他被叫來之前站的地方）再閃白一下、回日常——不在日常裡橫越半個島
   //   （用走路速度在走的人每幀已經走滿不瞬移的限速，推不開沿路散步的鼠窩老鼠）。
   //   mode 'away'：不過日常、不被推也不推別人（同劇本手上的人；別人走路照樣讓他）；footprint 變了從現在的位置重新找路到同一個終點；
-  //   劇本 claim 他就不走了（照劇本演）、home／snap 直接回日常；藏起來（颱風登陸）就當場回到 back
+  //   劇本 claim 他就不走了（照劇本演）、home／snap 直接回日常；藏起來（颱風登陸）就當場換回 back；躺平（命中）時停著
   function leave(m, route, back) {
     if (out(m)) return;
     still(m); m.mode = 'away'; m.trip = null; m.cursor = null; m.arriving = false; m.settled = null;
     const cursor = route.length > 1 ? createPathCursor(route, { loop: false }) : null;
-    m.away = { cursor, left: cursor?.total ?? 0, end: route.at(-1), back: { ...back }, planned: nav.version };
+    m.away = { cursor, left: cursor?.total ?? 0, end: route.at(-1), back: { ...back }, planned: nav.version, fade: -1 };
   }
   function awayStep(m, dt) {
     const a = m.away;
-    if (a && nav.version !== a.planned && a.left > 1e-6) {
-      a.planned = nav.version;
-      const r = nav.route(m.pos, a.end); a.cursor = r.length > 1 ? createPathCursor(r, { loop: false }) : null; a.left = a.cursor?.total ?? 0;
+    if (!a) { home(m); return; }
+    if (!m.hidden && a.fade < 0) {
+      if (nav.version !== a.planned && a.left > 1e-6) {
+        a.planned = nav.version;
+        const r = nav.route(m.pos, a.end); a.cursor = r.length > 1 ? createPathCursor(r, { loop: false }) : null; a.left = a.cursor?.total ?? 0;
+      }
+      if (a.cursor && a.left > 1e-6) {
+        const ds = Math.min(m.speed * dt, a.left); a.left -= ds; a.cursor.advance(ds);
+        setPose(m, { ...a.cursor.locate(), walking: true });
+        if (a.left > 1e-6) return;
+      }
+      setPose(m, { ...m.pos, walking: false }); flash(m); a.fade = 0; return;   // 走到了：原處閃白
     }
-    if (a && !m.hidden && a.cursor && a.left > 1e-6) {
-      const ds = Math.min(m.speed * dt, a.left); a.left -= ds; a.cursor.advance(ds);
-      setPose(m, { ...a.cursor.locate(), walking: true });
-      if (a.left > 1e-6) return;
-    }
-    if (a) setPose(m, { ...a.back, yaw: m.yaw, walking: false });
+    if (!m.hidden && (a.fade += dt) < BLINK - 1e-9) return;
+    if (m.hidden) setPose(m, { ...a.back, yaw: m.yaw, walking: false }); else relocate(m, a.back);   // 閃完：換回原本的地方、再閃一下（藏著的看不到，不閃）
     home(m);
   }
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
@@ -630,7 +642,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'away') awayStep(m, dt);   // 拜訪完走回格邊（leave）：走完那一幀就回日常，下一幀才照日常走
+        if (m.mode === 'away') { if (!lying) awayStep(m, dt); }   // 拜訪完走回格邊（leave）：走完那一幀就回日常，下一幀才照日常走
         else if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
@@ -690,7 +702,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function setFocus(cells) { focus = cells ? cells.map(c => [c[0], c[1]]) : null; }
 
   const api = {
-    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, leave, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
+    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, leave, relocate, flash, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
     // visible：藏起來的人（颱風登陸躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {

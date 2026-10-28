@@ -350,7 +350,8 @@ test('landing turn live: people vanish at their doors without a blink; the next 
   let st = engine.createState(spec), k = 0;
   for (; k < steps.length; k++) { const r = steps[k](st); st = r.state; if (r.events.some(landing)) break; }
   const next = [...steps[k + 1](st).events, { kind: 'settle' }];
-  const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { blinked.add(w); return walker(w); };
+  // 從門口出來、走回家不閃；回合裡被劇本或拜訪叫去（劇本手上）之後換位置的閃白（計畫 6 裁決 R3）不算
+  const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { if (indoors.some(x => x.m.walker === w && x.m.mode === 'home')) blinked.add(w); return walker(w); };
   // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.4 以上；日常散步 0.5/s 只走得到 0.25）。
   // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、走回家那段平均每秒 1.0 以上也算
   // （只算 arriving 那段的走路幀：走到家之後日常散步接著走開的不算進去，物品 v2 任務 4）

@@ -18,7 +18,8 @@
 // 拜訪（計畫 6 設計 §4，show/visit.js）：grow 事件 via 非空、不是跳級的第二級、颱風還沒登陸（登陸後大家躲著，indoors 照舊）——
 //   劇本前面先插一段拜訪：mark(e, { visit: true, gap }) → （不同物品先空 GAP）平移到拜訪點那一格、跟拜訪的第一拍（走過去）一起演 →
 //   拜訪的拍；之後照舊 mark(e, { gap: 0, key }) + 這一級的劇本（◆ 關鍵級也插：原因才是重點，◆ 劇本自己仍另外量）。
-//   幫手 = via[0] 的模組；同一回合同一個幫手最多拜訪 VISIT_MAX_PER_HELPER 次（裁決 R2：2；之後有原因的升級只演自己的劇本）。
+//   幫手 = via[0] 的模組；同一回合同一個幫手最多真的拜訪 VISIT_MAX_PER_HELPER 次（裁決 R2：2；演到才算——代表不在而略過的不算；
+//   之後的拜訪段只剩平移，有原因的升級照演自己的劇本）。
 //   幫手沒有代表、代表藏著或正被別的劇本拿著（演到才知道）→ 拜訪的拍全部 0 秒（不找替身，不搶人）；被升級物品這一級沒有拜訪點（離島上的級）→ 不插。
 //   pace 看 mark 的 info.visit 把拜訪當獨立一段量（≤ VISIT_CAP），不算進那一級自己劇本的秒數。
 // 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
@@ -32,7 +33,7 @@ import { anchorWorld, cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
-import { visit, VISIT_MAX_PER_HELPER } from './visit.js';
+import { visit } from './visit.js';
 import { cellAt } from '../scene/hex.js';
 
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
@@ -129,17 +130,14 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
   let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
   const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
-  const visits = new Map();   // 這回合每個幫手拜訪過幾次
+  const visits = new Map();   // 這回合每個幫手真的拜訪過幾次（拜訪的拍演到、確定會走才 +1，show/visit.js）
 
   // 拜訪段（見檔頭）：插得上就把 mark＋平移＋拜訪的拍推進 out、回 true
   const visitFirst = (e, s) => {
     if (finale || landed || e.kind !== 'grow' || e.jump || !e.via?.length) return false;
-    const id = e.via[0], n = visits.get(id) ?? 0;
-    if (n >= VISIT_MAX_PER_HELPER) return false;
-    const target = mod(e.item), spot = target?.visitSpot?.(e.to, s), cell = spot && cellAt(spot.x, spot.z);
-    const beats = cell ? visit(e, s, ctx, { helper: mod(id), target }) : [];
+    const id = e.via[0], target = mod(e.item), spot = target?.visitSpot?.(e.to, s), cell = spot && cellAt(spot.x, spot.z);
+    const beats = cell ? visit(e, s, ctx, { helper: mod(id), target, quota: visits }) : [];
     if (!beats.length) return false;
-    visits.set(id, n + 1);
     const lead = lastItem && e.item !== lastItem ? [B.wait(GAP)] : [];
     if (!sameCell(cell, lastCell)) { beats[0] = together([B.focus(cell), beats[0]]); lastCell = cell; away = true; }
     lastItem = e.item;

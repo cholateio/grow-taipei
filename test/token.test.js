@@ -48,7 +48,7 @@ test('trainPose: cars trail along the track radius at the right spacing; speed 0
   const { TRACK, trainPose } = token;
   const a = trainPose(5, 0), b = trainPose(5, 1);
   for (const p of [a, b]) { assert.ok(Math.abs(Math.hypot(p.x, p.z) - TRACK.radius) < 1e-9); assert.equal(p.y, TRACK.y); }
-  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - 0.6) < 0.01, 'car gap 0.6');
+  assert.ok(Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - token.GAP) < 0.01 && Math.abs(token.GAP - 0.6 * token.CAR_H / 0.3) < 1e-9, 'car gap 0.6 × CAR_H / 0.3');
   assert.deepEqual(trainPose(1, 0, { speed: 0 }), trainPose(9, 0, { speed: 0 }));
 });
 test('trainCars: no train before Lv4, 3 cars at Lv4, 5 from Lv5', () => {
@@ -488,4 +488,44 @@ test('orbit part fly({ speed: 2 }) flies the lap at double speed and parks in ha
     p.object.userData.fly({ speed }); let n = 0; p.update(0, 0); while (!park() && n < 900) { p.update(1 / 30, n / 30); n++; } return n / 30;
   };
   const one = time(1), two = time(2); assert.ok(Math.abs(two - one / 2) < 0.1, `×1 ${one.toFixed(2)} s, ×2 ${two.toFixed(2)} s`);
+});
+
+// 2026-10-28 錄影修正：列車加大（CAR_H 0.3 → 0.42，車頂座位、車頭泡泡的高度照比例從 CAR_H 推算）。沿環一圈與兩條支線每 0.2 公尺取樣，
+// 車廂的包圍盒（載入器實際量 glb，高 CAR_H）不碰任何 footprint（兩條結局的終盤、代幣 Lv7–8）、主島的橋面；在環上時不壓到主島或衛星島的島面；
+// 相鄰兩節不重疊（間距 ≥ 車長）
+test('the bigger train (CAR_H 0.42) clears every footprint, bridge deck and island edge along the ring and both spurs; cars do not overlap', async () => {
+  const { readFileSync } = await import('node:fs'), { GLTFLoader } = await import('../vendor/three/addons/loaders/GLTFLoader.js'), { createAssets } = await import('../src/scene/assets.js');
+  const { ALL, inShape } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint } = await import('../src/scene/hex.js'), { BRIDGE_HALF, satelliteAt } = await import('../src/show/nav.js');
+  const { RIDE_Y } = token;
+  assert.equal(token.CAR_H, 0.42); assert.ok(Math.abs(RIDE_Y - 0.6 * token.CAR_H) < 1e-9, 'roof seats at 0.6 × CAR_H');
+  const fakeTexture = () => ({ name: 'fakeTexture', loadTexture: () => { const t = new THREE.Texture({ width: 1, height: 1 }); t.flipY = false; return Promise.resolve(t); } });
+  const loader = { load: (url, ok, _, fail) => { const b = readFileSync(url); new GLTFLoader().register(fakeTexture).parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength), '', ok, fail); } };
+  const assets = createAssets(THREE, { base: 'assets/', loader, pixels: () => ({ width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) }) });
+  let hw = 0, hl = 0;
+  for (const kind of ['subway', 'bullet']) for (const x of ['a', 'b', 'c']) {
+    const g = await assets.spawn(`kenney/train/train-electric-${kind}-${x}.glb`, { h: token.CAR_H }), size = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+    assert.ok(Math.abs(size.y - token.CAR_H) < 0.01, `${kind}-${x} is ${size.y.toFixed(3)} tall`);
+    hw = Math.max(hw, size.x / 2); hl = Math.max(hl, size.z / 2);   // 車頭朝 +z：x 是車寬、z 是車長
+  }
+  const a = token.trainPose(0, 0), b = token.trainPose(0, 1), gap = Math.hypot(a.x - b.x, a.z - b.z);
+  assert.ok(gap - 2 * hl >= 0.05, `cars ${(gap - 2 * hl).toFixed(3)} apart (gap ${gap.toFixed(2)}, car ${(2 * hl).toFixed(2)})`);
+  // 車廂底面的取樣點（每 0.05）
+  const body = p => { const ux = Math.sin(p.yaw), uz = Math.cos(p.yaw), out = [];
+    for (let u = -hl; u <= hl + 1e-9; u += hl / 6) for (let v = -hw; v <= hw + 1e-9; v += hw / 3) out.push({ x: p.x + ux * u + uz * v, z: p.z + uz * u - ux * v });
+    return out; };
+  const bridges = adjacentPairs(MAIN_CELLS).map(([A, Bc]) => { const { a: p, b: q } = edgeMidpoint(A, Bc, RING_R * Math.sqrt(3) / 2), len = Math.hypot(q.x - p.x, q.z - p.z); return { p, len, ux: (q.x - p.x) / len, uz: (q.z - p.z) / len }; });
+  const onBridge = c => bridges.some(br => { const dx = c.x - br.p.x, dz = c.z - br.p.z, s = dx * br.ux + dz * br.uz; return s >= -0.1 && s <= br.len + 0.1 && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
+  const max = { milk: 10, chip: 9, bulb: 9, token: 10, typhoon: 3, rat: 5, boba: 7, baseball: 8 };
+  const states = [[max, { ratBranch: 'cyber' }], [max, { ratBranch: 'alien' }], [{ ...max, token: 7, bulb: 7 }, {}], [L({ token: 8, bulb: 7, milk: 3 }), {}]];
+  const fps = states.flatMap(([lvs, flags]) => ALL.flatMap(m => Object.values(m.view(lvs, flags, {}))).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: (p.at?.x ?? 0) + (f.x ?? 0), z: (p.at?.z ?? 0) + (f.z ?? 0) }))));
+  const bad = new Set();
+  const check = (p, where, ring) => { for (const c of body(p)) {
+    const f = fps.find(f => inShape(f, c.x, c.z)); if (f) bad.add(`${where}: footprint ${JSON.stringify(f)}`);
+    if (onBridge(c)) bad.add(`${where}: bridge deck`);
+    if (ring && (cellAt(c.x, c.z) || satelliteAt(c) >= 0)) bad.add(`${where}: on an island at (${c.x.toFixed(2)}, ${c.z.toFixed(2)})`);
+  } };
+  const C0 = TWO_PI * token.TRACK.radius;
+  for (let s = 0; s < C0; s += 0.2) check(token.trainPose(s / token.TRACK.radius / 0.35, 0), `ring ${s.toFixed(1)}`, true);
+  for (const kind of token.SPURS) { const trip = token.spurTrip(kind); for (let s = 0; s <= trip.total; s += 0.2) check(token.trainPose(0, 0, { trip: { ...trip, s } }), `${kind} spur ${s.toFixed(1)}`, false); }
+  assert.deepEqual([...bad].slice(0, 10), [], `${bad.size} samples hit something`);
 });

@@ -24,7 +24,7 @@
 //   都是滑過去的，不會一幀跳 0.3–0.5）；劇本手上的人、ride、藏起來的人不限
 // 不穿牆（§14.1）：footprint 一變（建築長出來），走到一半的人從現在的位置重新找路；推擠、追游標會切進 footprint 的那一幀不動；
 //   閒晃的人站在走路格外（建築長在身上、劇本把人放在門裡）馬上走出來
-import { trainPose } from '../actors/token.js';
+import { trainPose, RIDE_Y } from '../actors/token.js';
 import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
@@ -35,7 +35,7 @@ export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_
 // ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
 const ROUTE_TRIES = 6, LOW_MODELS = 3;
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
-const MODEL_H = 0.2, RIDE_Y = 0.18, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
+const MODEL_H = 0.2, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
@@ -597,7 +597,16 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     }
     // 走出去的人：走到入口就拿掉
     exits = exits.filter(m => { if (frozen(m, null)) return true; keep(m, null); if (m.trip) walk(m, dt); if (m.trip) { moving.push(m); return true; } destroy(m); return false; });
-    nav.separate(moving, dt);   // 只推日常走動的人（劇本手上的主角不被推歪）
+    // 只推日常走動的人（劇本手上的主角不被推歪）。走在路線上的人下一幀位置又從游標算（游標＋橫移 m.side），推開的那一截會被拉回來、
+    // 兩個人斜著交會時就一直貼著走（2026-10-28 列車加大後 live 測試量到偵防師和島民並肩走 0.10）：推開的橫向分量記進 m.side，
+    // 之後照 sidestep 的速度慢慢收回路線上。橋上不記（橋面只有 0.5 寬，同 sidestep 橋上不讓）
+    const pushedFrom = moving.map(m => ({ x: m.pos.x, z: m.pos.z }));
+    nav.separate(moving, dt);
+    moving.forEach((m, i) => {
+      const dx = m.pos.x - pushedFrom[i].x, dz = m.pos.z - pushedFrom[i].z;
+      if ((!dx && !dz) || !m.trip || !cellAt(m.pos.x, m.pos.z)) return;
+      m.side = Math.max(-YIELD_CLEAR, Math.min(YIELD_CLEAR, (m.side ?? 0) - dx * Math.cos(m.yaw) + dz * Math.sin(m.yaw)));
+    });
     nav.separateStanding(standing, WALK_SPEED.people * dt);
     // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。
     // 被推、被拉回游標的這一小段要是會切進 footprint（§14.1），這幀就站著不動（游標照走，下一幀再追上）。

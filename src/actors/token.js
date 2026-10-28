@@ -15,7 +15,13 @@ export const id = 'token';
 export const labelY = 1.0;
 // 環狀線沿著主島外圍的水道繞（像淡水線沿河），橋墩立在水裡；放低、放外面才不會擋住島上的東西
 export const TRACK = { radius: 8.3, y: TOP - 0.25 };   // 比島面低：從前面看只會切到島的側壁，不會切到建築
-const GAP = 0.6;   // 車廂間距（弧長）
+// 列車車廂高（Kenney Train Kit glb 縮放到這個高度）：2026-10-28 錄影修正 0.3 → 0.42（列車太小）。車廂長、寬、間距、
+// 車頂座位（老鼠、小人坐車頂）、車頭泡泡的高度、接駁車都照 CAR_H 等比例——原本在 0.3 調好的比例不動
+export const CAR_H = 0.42;
+const K = CAR_H / 0.3;
+export const GAP = 0.6 * K;   // 車廂間距（弧長）：車長約 1.7 × CAR_H（0.3 時長約 0.5、間距 0.6）
+export const RIDE_Y = 0.6 * CAR_H;          // 車頂座位的高度（軌道面以上；roster 的 ride、beats 的上車都用這一個）
+export const TRAIN_HEAD_Y = 0.5 * K;        // 車頭泡泡（列車當主角時的頭頂；0.3 時是 0.5）
 const POOL = 0xa4d4da;
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower');
 export const POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站務員的崗位（站門口旁）、站門
@@ -87,7 +93,7 @@ function spur(kind) {
   return { kind: 'spur', at, bearing, footprint: false, parts };
 }
 
-// ── 列車（Kenney Train Kit）：車頭 a、中間車 b／c、車尾是車頭轉半圈；車廂高 0.3（長約 0.5，間距 0.6）──
+// ── 列車（Kenney Train Kit）：車頭 a、中間車 b／c、車尾是車頭轉半圈；車廂高 CAR_H（長約 1.7 × CAR_H，間距 GAP）──
 // 色票圖的格子顏色（'#rrggbb'，sRGB）分族：紅色飾條、藍色（高鐵車頂與鼻）、淺藍車窗、橘色車燈、近黑（輪子、車底）、其餘灰藍車身分深淺兩段
 const WINDOW = '^#(8[0-9a-f][a-b]|9[0-9a-f][b-c]|a[0-9a-f][c-d]|b[0-9a-f][d-e])';
 const trainTint = (stripe, glass) => ({
@@ -96,7 +102,6 @@ const trainTint = (stripe, glass) => ({
 });
 const SUBWAY_TINT = trainTint(C.blue, C.glass);    // 北捷：白車身、藍飾條、淺色車窗
 const BULLET_TINT = trainTint(C.coral, C.ink);     // 高鐵：白底橘線、深色車窗
-const CAR_H = 0.3;
 function trainModels(kind, n) {
   const p = x => `kenney/train/train-electric-${kind}-${x}.glb`;
   const mids = n === 5 ? ['b', 'c', 'b'] : ['b'];
@@ -229,9 +234,9 @@ export function view(lv, flags) {
 }
 
 export const builders = {
-  // 小島接駁車：一節黃色小車在支線上來回
+  // 小島接駁車：一節黃色小車在支線上來回（跟列車一起照 CAR_H 等比例放大）
   shuttle(THREE, spec, ctx) {
-    const car = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'rbox', pos: [0, 0.14, 0], scale: [0.25, 0.22, 0.4], color: C.yellow }, { kind: 'box', pos: [0, 0.18, 0], scale: [0.26, 0.06, 0.32], color: C.white }] });
+    const car = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'rbox', pos: [0, 0.14 * K, 0], scale: [0.25 * K, 0.22 * K, 0.4 * K], color: C.yellow }, { kind: 'box', pos: [0, 0.18 * K, 0], scale: [0.26 * K, 0.06 * K, 0.32 * K], color: C.white }] });
     const object = new THREE.Group(), cursor = createPathCursor(spec.path, { loop: false }), o = spec.at; object.add(car.object);   // path 是世界座標，車放在 at 底下
     return { object, update(dt) { cursor.advance(dt * spec.speed); const p = cursor.locate(); car.object.position.set(p.x - o.x, p.y - o.y, p.z - o.z); car.object.rotation.y = p.yaw; }, dispose: car.dispose };
   },

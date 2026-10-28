@@ -5,7 +5,7 @@
 import { together } from './timeline.js';
 import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';
-import { trainPose, trainCars, spurTrip, SPUR_SPEED } from '../actors/token.js';
+import { trainPose, trainCars, spurTrip, SPUR_SPEED, RIDE_Y, TRAIN_HEAD_Y } from '../actors/token.js';
 import { anchorWorld, cellOf, cellCentre } from '../actors/anchors.js';
 import { worldToAxial } from '../scene/hex.js';
 import { createPathCursor } from '../scene/path.js';
@@ -17,7 +17,7 @@ export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff:
 export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');
 export const STATION_A = Math.atan2(STATION.z, STATION.x);   // 捷運站對島心的方位（列車車頭停在站前島緣）
-const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, RIDE_Y = 0.18, TRAIN_HEAD_Y = 0.5, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
+const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
 
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = k => k * k * (3 - 2 * k);

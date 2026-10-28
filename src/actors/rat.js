@@ -15,7 +15,7 @@ import { CRATE } from './milk.js';
 import { C, offset } from './palette.js';
 import { ITEMS } from '../rules/spec.js';
 import { compile } from '../rules/conditions.js';
-import { trainCars, ROOF_Y } from './token.js';
+import { trainCars, ROOF_Y, GAP, TRACK } from './token.js';
 import { modelExtras } from '../show/roster.js';
 import { body as towerBody, shipTop } from './tower.js';
 
@@ -161,18 +161,21 @@ const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m)
 // 他是晶片格的工程師原地換的，鏡頭在老鼠窩格看不到：先回全景停一下再冒 ！（之後的 LEVEL UP 也在全景）
 const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.focus('home', { hold: 0.6 }), ctx.B.bubble(detective, '！', 0.8)] : []);
 // 列車停在 at 方位，車頂的老鼠一起跳到島緣 slots 裡自己的位置；這次升級前不在車上（鼠災後在巨蛋）就不等車
+// 搭車時車頭停在窩的方位再往前半列車（列車的中間對著窩）：2026-10-28 列車加大之後間距 0.6 → 0.84，車頭對著窩的話
+//   第五節離窩 3.4 公尺（0.41 rad），最後一隻要跳一大段；置中之後最遠 1.7 公尺
+const centred = cars => NEST_A + (Math.max(1, cars) - 1) / 2 * GAP / TRACK.radius;
 // 搭車（老鼠 Lv3）：五隻跑到窩那側島緣的 spots 上，列車同時趕來（最快 TRAIN_IN 秒，牠們還在跑就照牠們跑到的時間）；
 // 到站後等最後一隻跑到再一起跳上車頂。拍長在 start 才知道（看牠們現在在哪、列車在哪）
-function catchTrain(B, ids, spots, ctx) {
+function catchTrain(B, ids, spots, ctx, at = NEST_A) {
   let inner = null;
   return {
     kind: 'catchTrain',
     dur: c => (inner ? inner.dur(c) : 0),
     start(c) {
       const walks = ids.map(i => B.walk(rat(i), cc => spots(cc)[i])), wt = Math.max(0, ...walks.map(w => w.estimate(c))), within = Math.max(TRAIN_IN, wt);
-      const pause = Math.max(0, wt - B.trainRun(c, NEST_A, { within, back: TRAIN_BACK }).arrive);
+      const pause = Math.max(0, wt - B.trainRun(c, at, { within, back: TRAIN_BACK }).arrive);
       inner = B.together([B.bubble(rat(0), '！', 0.8), ...walks, B.wait(CATCH_MIN),
-        B.trainStop({ at: NEST_A, arrive: within, back: TRAIN_BACK, stop: pause + HOLD, during: [B.wait(pause), B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] })]);
+        B.trainStop({ at, arrive: within, back: TRAIN_BACK, stop: pause + HOLD, during: [B.wait(pause), B.together(ids.map(i => B.jump(rat(i), B.seat(i, ctx), JUMP))), B.home(RATS)] })]);
       inner.start(c);
     },
     step(k, dt, c) { inner.step(k, dt, c); },
@@ -238,7 +241,7 @@ export const script = {
         return [
           B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
           // 老鼠跑到島緣的同時列車就趕過來（不是跑到了才叫車；裁決 R15 一級 ≤ 4.5 s）
-          catchTrain(B, ids, wait, ctx),
+          catchTrain(B, ids, wait, ctx, centred(trainCars(s.lv.token))),
           B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃
         ];
       }
@@ -272,7 +275,8 @@ export const script = {
       // 外星：一隻在溫泉那側跳下車、走到溫泉邊 …… → 閃白變異（放大、綠光、三眼；其餘的閃白後拿掉）→ 對天揮手 → ？（鏡頭對著溫泉格）
       return [
         B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1),
-        B.walk(r0, MUTANT), B.bubble(r0, '……', 0.7),
+        // …… 0.7 → 0.5（2026-10-28 列車加大、搭車置中之後列車到溫泉那側要多趕 0.1 s，整段貼著 ◆ 8 s 的上限）
+        B.walk(r0, MUTANT), B.bubble(r0, '……', 0.5),
         ...transform, B.home(r0), B.wait(0.2), B.together([B.bubble(r0, '？', 0.8), B.levelUp('rat')]),   // 裁決 R17 ◆ ≤ 8 s：？ 跟 LEVEL UP 一起
       ];
     },

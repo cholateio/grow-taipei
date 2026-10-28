@@ -6,7 +6,7 @@ import * as milk from '../src/actors/milk.js';
 import * as sat from '../src/actors/satellites.js';
 import * as landmarks from '../src/actors/landmarks.js';
 import { ENGINEER_ROUTE } from '../src/actors/chip.js';
-import { TRACK } from '../src/actors/token.js';
+import { TRACK, RIDE_Y } from '../src/actors/token.js';
 import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
 import { offset } from '../src/actors/palette.js';
 import { cellAt } from '../src/scene/hex.js';
@@ -273,7 +273,7 @@ function checkRat({ show, bubblesLog }, e, secs, n) {
   assert.equal(rats.length, rat.view(show.stage.lv, show.stage.flags)['rat.pack'].n, `${what} rat count`);
   if (lvl === 3) {
     assert.equal(rat.view(show.stage.lv, show.stage.flags)['rat.pack'].home.kind, 'ride');
-    for (const m of rats) assert.ok(Math.abs(m.pos.y - (TRACK.y + 0.18)) < 1e-6 && Math.abs(Math.hypot(m.pos.x, m.pos.z) - TRACK.radius) < 0.2, `${what} rat ${m.i} on the roof`);
+    for (const m of rats) assert.ok(Math.abs(m.pos.y - (TRACK.y + RIDE_Y)) < 1e-6 && Math.abs(Math.hypot(m.pos.x, m.pos.z) - TRACK.radius) < 0.2, `${what} rat ${m.i} on the roof`);
     for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) assert.ok(Math.hypot(rats[i].pos.x - rats[j].pos.x, rats[i].pos.z - rats[j].pos.z) >= 0.2, `${what} rats ${i}/${j} apart`);
     assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'), `${what} ！ and run for the train`);
   }
@@ -332,7 +332,7 @@ test('Lv3 train: all five run to the nest-side shore and hop on together while t
   let prev = null;
   show.update = (dt, t) => {
     const before = h.rail.offset; update(dt, t);
-    const held = Math.abs(h.rail.offset - before + dt) < 1e-9, roof = show.roster.members('rat.pack').map(m => Math.abs(m.pos.y - (TRACK.y + 0.18)) < 1e-6);
+    const held = Math.abs(h.rail.offset - before + dt) < 1e-9, roof = show.roster.members('rat.pack').map(m => Math.abs(m.pos.y - (TRACK.y + RIDE_Y)) < 1e-6);
     if (prev) roof.forEach((r, i) => { if (r && !prev[i]) boards.push({ i, held, a: Math.atan2(show.roster.members('rat.pack')[i].pos.z, show.roster.members('rat.pack')[i].pos.x) }); });
     prev = roof;
   };

@@ -10,7 +10,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 import { C, offset } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
-import { TRACK } from '../src/actors/token.js';
+import { TRACK, CAR_H } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
@@ -351,7 +351,7 @@ test('Lv5 concert never sends the electrician (he may live on the windmill islan
   const src = baseball.script.grow[5].toString(); assert.ok(!src.includes('bulb.electrician'));
   assert.ok(flat(baseball.script.grow[5]({ kind: 'grow', item: 'baseball', to: 5 }, { lv: lv({ baseball: 5 }), flags: {} }, ctx)).some(b => b.kind === 'gesture'));
 });
-// Lv8 月台外緣（甲板、雨棚沿徑向最外的那一點）離列車車廂側面 ≥ 0.1：車廂寬度用載入器實際量 glb（高 0.3，同 token.js）
+// Lv8 月台外緣（甲板、雨棚沿徑向最外的那一點）離列車車廂側面 ≥ 0.1：車廂寬度用載入器實際量 glb（高 CAR_H，同 token.js）
 test('the Lv8 platform\'s outer edge stays ≥ 0.1 clear of the train cars passing on the ring', async () => {
   const { readFileSync } = await import('node:fs'), { GLTFLoader } = await import('../vendor/three/addons/loaders/GLTFLoader.js'), { createAssets } = await import('../src/scene/assets.js');
   const fakeTexture = () => ({ name: 'fakeTexture', loadTexture: () => { const t = new THREE.Texture({ width: 1, height: 1 }); t.flipY = false; return Promise.resolve(t); } });
@@ -359,7 +359,7 @@ test('the Lv8 platform\'s outer edge stays ≥ 0.1 clear of the train cars passi
   const assets = createAssets(THREE, { base: 'assets/', loader, pixels: () => ({ width: 1, height: 1, data: new Uint8ClampedArray([255, 255, 255, 255]) }) });
   let half = 0;
   for (const kind of ['subway', 'bullet']) for (const x of ['a', 'b', 'c']) {
-    const g = await assets.spawn(`kenney/train/train-electric-${kind}-${x}.glb`, { h: 0.3 }), size = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+    const g = await assets.spawn(`kenney/train/train-electric-${kind}-${x}.glb`, { h: CAR_H }), size = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
     half = Math.max(half, size.x / 2);   // 車頭朝 +z：x 是車寬
   }
   assert.ok(half > 0.05 && half < 0.2, `car half-width ${half.toFixed(3)}`);

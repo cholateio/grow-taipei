@@ -10,6 +10,7 @@ import { createPeople } from '../src/scene/people.js';
 import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
 const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead } = await import('../src/show/beats.js');
+const { GAP } = await import('../src/actors/token.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 const ev = { kind: 'grow', item: 'milk' };
@@ -339,7 +340,7 @@ test('spawn takes a held member out at once without a blink; home hands members 
 test('seat and trainHead follow the train clock', () => {
   const { ctx } = fake({ parts: ['token.train'] }); ctx.now = 3; ctx.rail.offset = 1; ctx.stage.lv.token = 5;
   const s = B.seat(1, ctx)(), h = B.trainHead(ctx).head();
-  const a = 4 * 0.35, ar = a - 0.6 / 8.3;   // 5 節車的第 1 個座位在第 2 節（SEATS[5][1] = [1, 0]）
+  const a = 4 * 0.35, ar = a - GAP / 8.3;   // 5 節車的第 1 個座位在第 2 節（SEATS[5][1] = [1, 0]）
   assert.ok(Math.abs(s.x - Math.cos(ar) * 8.3) < 1e-9 && Math.abs(s.z - Math.sin(ar) * 8.3) < 1e-9);
   assert.ok(Math.abs(h.x - Math.cos(a) * 8.3) < 1e-9 && Math.abs(h.z - Math.sin(a) * 8.3) < 1e-9 && h.y > s.y);
 });

@@ -72,8 +72,9 @@ const GATE = offset(AT, 0, 1.1);
 export const DOME_STOP = Math.atan2(GATE.z, GATE.x);
 const U = { x: Math.cos(DOME_STOP), z: Math.sin(DOME_STOP) };
 const ringAt = (r, side = 0, y = 0) => ({ x: U.x * r - U.z * side, y, z: U.z * r + U.x * side });
-// 月台外緣（DECK_OUT + 0.1）離車廂側面 ≥ 0.1：最寬的車廂（Kenney 地鐵、高鐵，高 0.3，載入器量的包圍盒）半寬約 0.13
-const DECK_IN = 6.75, DECK_OUT = TRACK.radius - 0.35, DECK_Y = AT.y - 0.06;
+// 月台外緣（DECK_OUT + 0.1）離車廂側面 ≥ 0.1：最寬的車廂（Kenney 地鐵、高鐵，高 CAR_H 0.42，載入器量的包圍盒）半寬約 0.18
+// （2026-10-28 列車加大之後月台往島那側收 0.05：原本 −0.35 時只剩 0.07）
+const DECK_IN = 6.75, DECK_OUT = TRACK.radius - 0.4, DECK_Y = AT.y - 0.06;
 // 下車的地方：月台靠軌道那頭，兩個人並排
 export const RIDE_OFF = [-0.1, 0.1].map(s => ringAt(DECK_OUT - 0.12, s, DECK_Y + 0.03));
 // 直通之後兩個觀眾坐新線來：Lv8 門口留走道兩側和西邊三個人，Lv7 的另外兩個走回捷運站，空出來的兩個位置給從月台下車的人。

@@ -167,9 +167,12 @@ async function playLanding(h, evs, opts = {}) {
   // 每個人是走到門口停下那一刻才藏起來（不是整群一起關掉）；記下藏的時候在不在走
   const w0 = worldLog.length, hide = show.roster.hide, hides = [];
   show.roster.hide = m => { hides.push({ m, walking: m.walking }); return hide(m); };
+  // LEVEL DOWN 冒出來那一刻鮮奶的頭頂（計畫 6：大停電掉回 Lv1 之後，同一回合鮮奶又可能長回 Lv2，回合末的頭頂換了建築）
+  const levelUp = show.bubbles.levelUp, downs = [];
+  show.bubbles.levelUp = (head, o = {}) => { if (o.down) downs.push({ at: head(), milk: show.stage.headOf('milk') }); return levelUp(head, o); };
   const n = bubblesLog.length, marks = [];
   let secs;
-  try { secs = await run(evs, { ...opts, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) }); } finally { show.roster.hide = hide; }
+  try { secs = await run(evs, { ...opts, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) }); } finally { show.roster.hide = hide; show.bubbles.levelUp = levelUp; }
   const i0 = marks.findIndex(([e]) => landing(e)), at = k => marks[k]?.[1] ?? show.elapsed;
   // 登陸之後的事件：◆ 關鍵級照演劇本（裁決 R14），不算進「只演 apply + LEVEL UP」
   const seg = at(i0 + 1) - at(i0), after = marks.slice(i0 + 1).map(([e], k) => [e, at(i0 + 2 + k) - at(i0 + 1 + k), k]).filter(([e]) => !isKey(e));
@@ -183,8 +186,8 @@ async function playLanding(h, evs, opts = {}) {
   const bubbles = bubblesLog.slice(n);
   if (reacts.includes('blackout')) assert.ok(live.some(w => w.glowScale === 0));
   if (evs.some(e => e.flag?.name === 'blackout' && e.delta?.to < e.delta?.from)) {   // 鮮奶真的掉級才有 LEVEL DOWN（Lv1 掉不下去）
-    const down = bubbles.find(b => b.text === 'LEVEL DOWN'), m = show.stage.headOf('milk');
-    assert.ok(down && Math.hypot(down.at.x - m.x, down.at.z - m.z) < 0.3, 'LEVEL DOWN over milk');
+    assert.ok(bubbles.some(b => b.text === 'LEVEL DOWN'), 'LEVEL DOWN');
+    assert.ok(downs.some(d => Math.hypot(d.at.x - d.milk.x, d.at.z - d.milk.z) < 0.3), 'LEVEL DOWN over milk');
   }
   if (reacts.includes('flooded')) { assert.equal(show.roster.members('token.staff').length, 0); assert.equal(show.roster.members('token.swimmers').length, 2); }
   if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
@@ -196,14 +199,19 @@ async function playLanding(h, evs, opts = {}) {
   assert.equal(show.stage.lv.typhoon, 2);
   return { reacts, secs, seg, after };
 }
-// 引擎裡能讓登陸回合觸發最多反應的兩種放法（大停電與淹水不會同一回合：燈泡、代幣都 ≤4 時只有剛放的那個）。
-// 裁決 R3：颱風放下當回合就登陸，所以燈泡／代幣放在颱風前一個（放下當回合到 Lv2，登陸時 ≤4）
-const BLACKOUT = ['rat', 'milk', 'baseball', 'boba', 'bulb', 'typhoon'], FLOOD = ['rat', 'milk', 'baseball', 'boba', 'token', 'typhoon'];
-for (const [name, order, react] of [['blackout', BLACKOUT, 'blackout'], ['flood', FLOOD, 'flooded']]) {
+// 引擎裡能讓登陸回合觸發最多反應的放法（計畫 6 任務 1「每一級都有觸發者」之後重找：照 ORDER 的子集合排列、颱風最後放，
+// 窮舉到 8 個物品，看登陸那回合 fx 的反應組合）。裁決 R3：颱風放下當回合就登陸。
+//   大停電＋淹水現在可以同一回合（燈泡、代幣長得慢：鮮奶 → 代幣 → 珍奶 → 燈泡 → 颱風，兩個都還 ≤4）；
+//   鼠災要老鼠 ≥4（Lv3 要代幣 ≥4），代幣、燈泡都過了 4，跟停電／淹水湊不到同一回合——鼠災另一局（老鼠在登陸當回合到 Lv5、外星分支，
+//   鼠災優先，鼠窩搬到巨蛋門口五隻）。兩局都有珍奶外送與颱風假的故事
+const BLACKOUT_FLOOD = ['milk', 'token', 'boba', 'bulb', 'typhoon'], DOME = ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'boba', 'typhoon'];
+// 大停電（棒球 ≥3 的登陸回合；下面「雲賴在巨蛋」那條用）：燈泡放在颱風前一個
+const BLACKOUT = ['rat', 'milk', 'baseball', 'boba', 'bulb', 'typhoon'];
+for (const [name, order, need] of [['blackout and flood', BLACKOUT_FLOOD, ['blackout', 'flooded']], ['dome rats', DOME, ['domeRats']]]) {
   test(`landing turn with reactions (${name}, real engine) live as one turn: people hide only at the doors, the reactions land as apply + LEVEL UP`, async () => {
     const h = await headlessShow();
     const { reacts, seg, after } = await playLanding(h, await turnWith(h.run, order, landing));
-    assert.ok(reacts.includes(react) && reacts.includes('domeRats') && reacts.includes('boba') && reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
+    assert.ok(need.every(k => reacts.includes(k)) && reacts.includes('boba') && reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
     assert.ok(seg <= 10, `landing ${seg.toFixed(1)} s`);
     for (const [e, t] of after) if (e.kind !== 'settle') assert.ok(t <= 2.6, `${e.kind} ${e.item ?? ''} after the landing took ${t.toFixed(2)} s`);
   });

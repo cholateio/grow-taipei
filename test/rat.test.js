@@ -391,7 +391,8 @@ test('a bite that costs milk a level: crate tips, kids ！ run to the school gat
 // 之後日常自己走過去：老鼠在門口晃、工作人員跟著牠們
 test('typhoon dome rats: after the landing turn the real rats settle by the dome gate and the staff stay with them', async () => {
   const h = await headlessShow(), { show } = h, walls = watchWalls(h);
-  const { events } = await liveAt(h, ['rat', 'baseball', 'chip', 'milk', 'typhoon', 'bulb'], e => e.flag?.name === 'domeRats', { whole: true });
+  // 計畫 6 任務 1 之後重找（老鼠要 Lv4 才有鼠災，Lv3 要代幣 ≥4）：同 typhoon.test 的鼠災那局，老鼠在登陸當回合到 Lv5（外星），鼠災優先
+  const { events } = await liveAt(h, ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'boba', 'typhoon'], e => e.flag?.name === 'domeRats', { whole: true });
   assert.ok(events.some(e => e.flag?.name === 'domeRats'));
   const rats = show.roster.members('rat.pack'), staff = show.roster.members('baseball.staff');
   assert.equal(rats.length, 5); assert.equal(staff.length, 2);

@@ -393,10 +393,12 @@ test('the ◆ key nodes are Lv4 (R6), Lv7 and Lv10 (R11)', () => {
   assert.deepEqual(Object.entries(token.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [4, 7, 10]);
 });
 // 兩個事件以上的回合整段 live 演：Lv4 環狀線的列車從站後面 0.6 rad 駛出
-// 選擇帶動升級：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級；Lv4 標 ◆（裁決 R6），跳級的第二級照演完整劇本。
-// 照正解演到跳級那回合，整回合原樣 live 演（別的劇本在前面，列車的位置跟著時鐘走）
+// Lv4 標 ◆（裁決 R6），跳級的第二級照演完整劇本。計畫 6 任務 1（每一級都有觸發者）之後代幣 Lv3、Lv4 各有條件：
+// 賽博正解 2 → 4 跳級（Lv4 是跳級的第二級），外星正解 3 → 4 一般升級（4 → 5 才跳）——兩種都要演到列車出發，至少一條是跳級（◆ 跳級那條路真的量到）。
+// 照正解演到那回合，整回合原樣 live 演（別的劇本、拜訪在前面，列車的位置跟著時鐘走）
 test('grow 4 in a full live turn: the ring line rises and the train departs from behind the station', async () => {
   const h = await headlessShow(), { show, run } = h, is4 = e => e.kind === 'grow' && e.item === 'token' && e.to === 4;
+  let jumped = 0;
   for (const order of SOLUTIONS) {
     show.reset();
     let st = engine.createState(spec), evs = null;
@@ -406,7 +408,7 @@ test('grow 4 in a full live turn: the ring line rises and the train departs from
       await run([...r.events, { kind: 'settle' }], { instant: true });
     }
     assert.ok(evs, 'grow 4 happens in a placement turn');
-    assert.ok(evs.find(is4).jump, 'grow 4 is the second level of a jump (2 → 4)');
+    if (evs.find(is4).jump) jumped++;
     assert.ok(evs.findIndex(is4) > 1, 'other scripts play before it');
     const scripted = token.script.grow[4]; let angle = null;
     token.script.grow[4] = (e, s2, ctx) => {
@@ -421,6 +423,7 @@ test('grow 4 in a full live turn: the ring line rises and the train departs from
     assert.ok(Math.abs(d) < 0.05, `head car at ${angle} vs ${STATION_A - 0.6}`);
     assert.ok(show.stage.partObject('token.train') && show.stage.partObject('token.track'));
   }
+  assert.ok(jumped >= 1, 'grow 4 is the second level of a jump (2 → 4) in some solution');
 });
 
 // ── 入口點、站體 footprint、站務員不穿過珍奶人龍（計畫 3.8 Task 6、§14.1）──

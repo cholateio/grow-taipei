@@ -310,3 +310,55 @@ test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 on
   const beats = buildTurn([{ kind: 'grow', item: 'token', from: 9, to: 10 }], { ...base([quietTower, token]), lv: { ...zero, token: 9 } }, ctx);
   assert.ok(beats.some(b => b.kind === 'fly'), 'the speeders fly in');
 });
+
+// ── 拜訪（計畫 6 設計 §4，show/visit.js）──
+// grow 事件 via 非空：劇本前面插一段拜訪——mark { visit: true }、（換物品空 GAP）、平移到拜訪點那一格跟走過去一起演、轉身、
+// 敲門＋被升級物品的代表揮手、♥、回日常；之後照舊 mark + 那一級的劇本
+const { VISIT_MAX_PER_HELPER, VISIT_KNOCK, VISIT_LOVE } = await import('../src/show/visit.js');
+const { anchorWorld } = await import('../src/actors/anchors.js');
+const visitMods = () => {
+  const spotOf = id => ({ ...anchorWorld(id), r: 0.8 });
+  const helper = id => ({ id, view() {}, visitSpot: () => spotOf(id), script: { rep: () => walker, grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
+  const two = (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], four = (e, s, c) => [c.B.wait(2), c.B.levelUp('chip')];
+  four.key = true;
+  const chip = { id: 'chip', view() {}, visitSpot: () => spotOf('chip'), script: { rep: () => null, grow: { 2: two, 3: two, 4: four, 5: two } } };
+  const typhoon = { id: 'typhoon', view() {}, visitSpot: () => null, script: { rep: () => null, grow: { 2: () => null } } };
+  const satellite = { id: 'boba', view() {}, visitSpot: () => null, script: { rep: () => walker, grow: { 5: (e, s, c) => [c.B.wait(1)] } } };   // 離島上的級：沒有拜訪點
+  return [quietTower, helper('milk'), helper('bulb'), helper('token'), chip, typhoon, satellite];
+};
+// 一串拍裡每個 mark 的 info（start 一次就知道）
+const marksOf = raw => raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = { e, info }; } }); return got; });
+const grow = (item, to, via, extra = {}) => ({ kind: 'grow', item, from: to - 1, to, via, ...extra });
+test('a grow with via gets a visit before its script: mark {visit}, focus, walk/knock/♥/home; jump second level and indoors events get none; ◆ levels do get one', () => {
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, grow('chip', 2, ['milk'])], base(visitMods()), fakeCtx());
+  const marks = marksOf(raw);
+  assert.deepEqual(marks.map(m => [m.e.kind, !!m.info.visit]), [['placed', false], ['grow', true], ['grow', false]], 'one visit mark before the script mark');
+  assert.ok(Math.abs(marks[1].info.gap - GAP) < 1e-9, 'the visit opens the new item: GAP before it');
+  assert.equal(marks[1].info.key, false); assert.equal(marks[2].info.gap, 0, 'no second GAP before the script');
+  // 拜訪段：空拍、together(平移到晶片格, 走過去)、轉身、together(敲門 0.8, 揮手 0.8)、♥ 0.6、回日常；劇本前不再平移（同一格）
+  const seg = between(raw, 1);
+  assert.deepEqual(seg.map(b => b.kind), ['wait', 'together', 'face', 'together', 'bubble', 'home']);
+  assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.deepEqual(seg[1].beats[0].target, cellOf('chip'));
+  assert.deepEqual(seg[3].beats.map(b => [b.kind, b.dur]), [['gesture', VISIT_KNOCK], ['gesture', VISIT_KNOCK]]);
+  assert.equal(seg[4].dur, VISIT_LOVE);
+  assert.deepEqual(kindsOf(between(raw, 2)), ['wait', 'levelUp', 'apply'], 'the level script right after, no pan');
+  // 跳級的第二級（同幫手、第一級已經拜訪過）不插；◆ 關鍵級照插
+  const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true }), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
+  assert.deepEqual(marksOf(jump).map(m => [m.e.to, !!m.info.visit, !!m.info.key]), [[2, true, false], [2, false, false], [3, false, false], [4, true, false], [4, false, true]]);
+  // 颱風登陸之後（indoors）、颱風當幫手、被升級的這一級沒有拜訪點、via 空：都不插
+  const after = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk']), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
+  assert.ok(marksOf(after).every(m => !m.info.visit), 'nobody visits after the landing (◆ included: everyone is indoors)');
+  const none = buildTurn([grow('chip', 2, ['typhoon']), grow('boba', 5, ['milk']), grow('chip', 3, [])], base(visitMods()), fakeCtx());
+  assert.ok(marksOf(none).every(m => !m.info.visit), 'typhoon never visits; off-island levels and causeless grows get none');
+  // via[0] 是幫手：via 有兩個時只有第一個來
+  const two = buildTurn([grow('chip', 2, ['bulb', 'milk'])], base(visitMods()), fakeCtx());
+  assert.deepEqual(marksOf(two).filter(m => m.info.visit).map(m => m.e.via[0]), ['bulb']);
+});
+test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later caused grows play only their script', () => {
+  const events = [grow('chip', 2, ['milk']), grow('chip', 3, ['milk']), grow('chip', 4, ['milk']), grow('chip', 5, ['milk']), grow('milk', 2, ['bulb'])];
+  const marks = marksOf(buildTurn(events, base(visitMods()), fakeCtx()));
+  const visited = marks.filter(m => m.info.visit).map(m => `${m.e.via[0]}→${m.e.item}${m.e.to}`);
+  assert.equal(VISIT_MAX_PER_HELPER, 3);
+  assert.deepEqual(visited, ['milk→chip2', 'milk→chip3', 'milk→chip4', 'bulb→milk2'], 'the fourth milk visit is dropped, another helper still comes');
+  assert.equal(marks.filter(m => !m.info.visit).length, events.length, 'every grow still plays its own script');
+});

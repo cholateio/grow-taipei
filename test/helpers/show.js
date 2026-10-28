@@ -85,8 +85,10 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
 
 // 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），
 // 單獨測那一級自己的劇本要當一般事件。計畫 5b 之後跳級很多（例：燈泡 4／6／8、晶片 4、珍奶 4、棒球 7 在兩條正解裡都是跳級的第二級），正式演出時不演劇本；
-// 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測
-export const solo = ({ jump, ...e }) => e;
+// 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測。
+// via 也拿掉（計畫 6 設計 §4）：有原因的升級在回合裡前面會插一段拜訪，拜訪單獨量（≤ VISIT_CAP，visit.test／chain.test），
+// 不算進那一級自己劇本的秒數——單獨測一級的劇本就只演劇本
+export const solo = ({ jump, via, ...e }) => e;
 
 // 照 order 放完一局、再長 CLOSING_TURNS 回合（最後一輪）：itemId 的 placed／grow 事件單獨 live 演並呼叫
 // check(e, secs)，其他事件 instant；每回合最後 settle instant（單獨演一個事件沒問題：回合末的 apply 會補完剩下的零件，settle 瞬間結算）。

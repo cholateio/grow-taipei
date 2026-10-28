@@ -5,6 +5,7 @@
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開；折線先 nav.ground 貼地，過拱橋不陷進橋面）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
+// 'away' 模式（leave，計畫 6 拜訪）：拜訪完的幫手沿給的路線走回格邊、到了回到被叫來之前的位置再回日常（見 leave）。
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
@@ -347,12 +348,37 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 走出去的人（mode 'exit'）、已經拿掉的人不歸劇本：claim／home／setPose 不算數（劇本 once() 快取的人可能已經在退場）
   const out = m => m.mode === 'exit' || m.gone;
-  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; }
+  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; m.away = null; }
   function home(m) {
     if (out(m)) return;
-    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
+    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null; m.away = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
+  }
+  // 拜訪完離開（計畫 6 設計 §4）：從別格走來拜訪的幫手（拜訪時在格邊出現的那種）沿 route 用走路速度走回格邊，到了就回到 back
+  //   （他被叫來之前站的地方）、回日常——同進場「在入口出現」、退場「走到入口才拿掉」的說法；不在日常裡橫越半個島
+  //   （用走路速度在走的人每幀已經走滿不瞬移的限速，推不開沿路散步的鼠窩老鼠）。
+  //   mode 'away'：不過日常、不被推也不推別人（同劇本手上的人；別人走路照樣讓他）；footprint 變了從現在的位置重新找路到同一個終點；
+  //   劇本 claim 他就不走了（照劇本演）、home／snap 直接回日常；藏起來（颱風登陸）就當場回到 back
+  function leave(m, route, back) {
+    if (out(m)) return;
+    still(m); m.mode = 'away'; m.trip = null; m.cursor = null; m.arriving = false; m.settled = null;
+    const cursor = route.length > 1 ? createPathCursor(route, { loop: false }) : null;
+    m.away = { cursor, left: cursor?.total ?? 0, end: route.at(-1), back: { ...back }, planned: nav.version };
+  }
+  function awayStep(m, dt) {
+    const a = m.away;
+    if (a && nav.version !== a.planned && a.left > 1e-6) {
+      a.planned = nav.version;
+      const r = nav.route(m.pos, a.end); a.cursor = r.length > 1 ? createPathCursor(r, { loop: false }) : null; a.left = a.cursor?.total ?? 0;
+    }
+    if (a && !m.hidden && a.cursor && a.left > 1e-6) {
+      const ds = Math.min(m.speed * dt, a.left); a.left -= ds; a.cursor.advance(ds);
+      setPose(m, { ...a.cursor.locate(), walking: true });
+      if (a.left > 1e-6) return;
+    }
+    if (a) setPose(m, { ...a.back, yaw: m.yaw, walking: false });
+    home(m);
   }
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
   function hide(m) { m.hidden = true; place(m); }
@@ -379,7 +405,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
+        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null; m.away = null;   // 跳過：晚到的模型不再補閃
         m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
@@ -604,7 +630,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
+        if (m.mode === 'away') awayStep(m, dt);   // 拜訪完走回格邊（leave）：走完那一幀就回日常，下一幀才照日常走
+        else if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）
@@ -663,7 +690,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function setFocus(cells) { focus = cells ? cells.map(c => [c[0], c[1]]) : null; }
 
   const api = {
-    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
+    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, leave, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
     // visible：藏起來的人（颱風登陸躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {

@@ -1,4 +1,4 @@
-// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 3 個小孩 → 兩層、小孩長高 → 三層、升旗 → 鐘塔、棒球帽（有球場就組少棒隊）
+// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 3 個小孩 → 兩層、小孩長高 → 三層、操場多了籃球架 → 鐘塔、棒球帽（有球場就組少棒隊）
 //   → ◆ 大學（校舍拉長、拱門校門、學士帽）→ 研究大樓（玻璃盒）、白袍、校門 YouBike → 畢業典禮（拋學士帽、101 打字）
 //   → ◆ 鮮奶節（全島每格多一個小孩、牛奶箱旁停牛奶車、岸邊觀光船載牛奶箱）。
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
@@ -17,7 +17,9 @@ const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 export const FESTIVAL_HOMES = [[-1, 0], [1, 0], [1, -1]].map(cellCentre);   // 鮮奶節多的三個小孩：鮮奶格、晶片格、溫泉格（裁決 R16）
-const POLE = offset(AT, 0.75, 0.95);                  // 旗桿
+// 籃球架（Lv5）：站在操場東緣（原本旗桿的位置，2026-10-28 錄影修正：拿掉所有旗子），籃板與籃框朝西、對著操場；
+// 沒有 footprint（同 YouBike，小東西不擋往橋頭的路）。投籃的小學生站在操場上、籃框西南邊 SHOT
+const HOOP = offset(AT, 0.75, 0.95), SHOT = offset(HOOP, -0.55, 0.1);
 const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（中心、兩根柱子離中心多遠）；右柱離小學生入口 ≥ 0.3（柱子有 footprint）
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
 const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
@@ -86,6 +88,12 @@ const table = (x, z) => [
   { kind: 'cylinder', pos: [x - 0.24, 0.07, z], scale: [0.12, 0.14, 0.12], color: C.coral },
   { kind: 'cylinder', pos: [x + 0.24, 0.07, z], scale: [0.12, 0.14, 0.12], color: C.coral },
 ];
+// 籃球架（相對院子的 at，(x, z) 是柱子）：柱子高 0.8，頂上的籃板朝西（操場那側）、籃框在籃板前面一點、水平
+const hoopParts = (x, z) => [
+  { kind: 'cylinder', pos: [x, 0.4, z], scale: [0.04, 0.8, 0.04], color: C.cream },
+  { kind: 'box', pos: [x - 0.04, 0.82, z], scale: [0.02, 0.2, 0.3], color: C.white },
+  { kind: 'torus', pos: [x - 0.13, 0.74, z], scale: 0.18, rot: [Math.PI / 2, 0, 0], color: C.coral },
+];
 // YouBike：黃車架、黑輪，三台前後排（車身沿 x，輪子朝鏡頭）＋車柱
 const bikes = (x, z) => [
   ...[-0.18, 0, 0.18].flatMap(dz => [
@@ -126,22 +134,20 @@ export function view(lv, flags, meta = {}) {
   const top = Math.max(...models.map(m => m.h), n >= 6 ? towerOf(n).base + towerOf(n).hh + 0.4 : 0);
   v['milk.main'] = { kind: 'campus', at, models, labelY: top + 0.3, footprint: models.map(footprintOf) };
   if (n >= 6) v['milk.tower'] = { kind: 'compound', at, footprint: n >= 7 ? { x: 0, z: UNI + 0.15, w: 0.42, d: 0.42 } : false, parts: clockTower(n, lv) };
-  // 院子：Lv2 早餐店的桌子；Lv3 起操場（沙地），Lv5 起旗桿；Lv10 岸邊觀光船上的牛奶箱也併在這裡（一個 draw call）
+  // 院子：Lv2 早餐店的桌子；Lv3 起操場（沙地），Lv5 起籃球架（柱、籃板、籃框）；Lv10 岸邊觀光船上的牛奶箱也併在這裡（一個 draw call）
   const yard = n === 2 ? [...table(-0.6, 0.3), ...table(0.3, 0.45)] : [
     { kind: 'cylinder', pos: [0, 0.02, 0.95], scale: [1.2, 0.04, 1.2], color: C.sand },
-    ...(n >= 5 ? [{ kind: 'cylinder', pos: [0.75, 0.4, 0.95], scale: [0.03, 0.8, 0.03], color: C.cream }] : []),
+    ...(n >= 5 ? hoopParts(HOOP.x - at.x, HOOP.z - at.z) : []),
     ...(n >= 9 ? [   // 畢業典禮的紅布條：操場後面兩根竿子
       { kind: 'box', pos: [-0.45, 0.35, 0.3], scale: [0.03, 0.7, 0.03], color: C.cream }, { kind: 'box', pos: [0.45, 0.35, 0.3], scale: [0.03, 0.7, 0.03], color: C.cream },
       { kind: 'box', pos: [0, 0.6, 0.3], scale: [0.9, 0.16, 0.02], color: C.coral },
     ] : []),
     ...(n >= 10 ? [-0.12, 0.14].map((dx, i) => ({ kind: 'rbox', pos: [BOAT.x - at.x + dx, BOAT.y - at.y + 0.3 + i * 0.05, BOAT.z - at.z], scale: 0.2, color: C.cream })) : []),
   ];
-  // footprint 只算早餐店的桌子（操場、旗桿、布條可以走）
+  // footprint 只算早餐店的桌子（操場、籃球架、布條可以走）
   v['milk.yard'] = { kind: 'compound', at, parts: yard, footprint: n === 2 ? [{ x: -0.6, z: 0.3, r: 0.4 }, { x: 0.3, z: 0.45, r: 0.4 }] : false };
-  // 旗子自己一個零件：Lv5 劇本讓它沿著旗桿升上去（scale.y 0→1，以地面為基準）
-  if (n >= 5) v['milk.flag'] = { kind: 'compound', at, footprint: false, low: false, parts: [{ kind: 'box', pos: [0.86, 0.72, 0.95], scale: [0.2, 0.13, 0.02], color: C.coral, flag: true }] };
   // 大學校門：兩根柱子 + 半圈拱；Lv8 起旁邊 YouBike 站。footprint 只算兩根柱子（拱門中間可以穿過去；
-  // 單車跟旗桿一樣是小東西，不擋往橋頭的路）
+  // 單車跟籃球架一樣是小東西，不擋往橋頭的路）
   const pillars = [-PILLAR, PILLAR].map(dx => ({ x: ARCH.x - at.x + dx, z: ARCH.z - at.z }));
   if (n >= 7) v['milk.gate'] = { kind: 'compound', at, footprint: pillars.map(p => ({ ...p, r: 0.06 })), parts: [
     ...pillars.map(p => ({ kind: 'box', pos: [p.x, 0.35, p.z], scale: [0.1, 0.7, 0.1], color: C.wall })),
@@ -238,13 +244,13 @@ export const script = {
         B.home(allKids),
       ];
     },
-    // 三層、升旗：一個小學生走到旗桿、！→ 旗子沿旗桿升上去（他抬頭看）→ 校舍閃白 → LEVEL UP
+    // 三層、籃球架：籃球架閃白立在操場東緣 → 一個小學生走到籃框前、轉向籃框 → 跳起來（投籃）→ ♪ → 校舍閃白 → LEVEL UP
     5(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
       return [
-        B.walk(k0, offset(POLE, -0.2, 0.15)), B.bubble(k0, '！', 0.8),
-        B.apply(e, { only: ['milk.flag', 'milk.yard'], blink: false }),
-        B.together([B.scaleIn('milk.flag', { axis: 'y', dur: 1.2 }), B.gesture(k0, 'look', { at: POLE })]),
+        B.apply(e, { only: ['milk.yard'] }),
+        B.walk(k0, SHOT), B.gesture(k0, 'look', { at: HOOP }),
+        B.gesture(k0, 'jump'), B.bubble(k0, '♪', 0.8),
         B.apply(e), B.levelUp('milk'), B.home(k0),
       ];
     },

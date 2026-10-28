@@ -1,7 +1,7 @@
 // 珍奶（物品 v2 §4.7，max 7）：路邊攤車 → 人龍 4 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
 //   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）→ 連鎖店（小森林島分店、觀光船多兩艘：satellites.js）
 //   → ★ 離島旗艦店（燈塔島開店；兩個觀光客坐小船從碼頭過去、住在島上；外送無人機兩台繞著店飛）
-//   → ◆ 世界珍奶節（全島海岸插珍奶旗、船隊繞島、101 打「世界珍奶節」）。
+//   → ◆ 世界珍奶節（全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
 // 人數預算（使用者 2026-10-26）：人龍最多 4 人、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；老鼠撞翻攤車、颱風外送是那兩個模組的劇本，不在這裡。
 // 劇本（§6）：一級 3–5 秒；◆ Lv7 6–10 秒、最後回全景定格。
@@ -88,22 +88,24 @@ function drone(i) {
   };
 }
 
-// ── 世界珍奶節（Lv7）：主島外圍每一條靠海的格邊插一支珍奶旗（棒球格西南邊那條留給巨蛋捷運站的月台）；全部併在院子那個零件（不多花 draw call）──
-const FLAG_R = 2.0;   // 離格心：走路格（離格邊 0.35）外、還在島面上
-const SKIP_FLAG = '-1,1>-2,2';
-export const FLAG_SPOTS = MAIN_CELLS.flatMap(cell => NEIGHBORS.filter(([dq, dr]) => !MAIN_CELLS.some(c => c[0] === cell[0] + dq && c[1] === cell[1] + dr))
-  .filter(([dq, dr]) => `${cell}>${cell[0] + dq},${cell[1] + dr}` !== SKIP_FLAG)
+// ── 世界珍奶節（Lv7）：主島外圍每一條靠海的格邊綁一束氣球（棒球格西南邊那條留給巨蛋捷運站的月台）；全部併在院子那個零件（不多花 draw call）。
+// 2026-10-28 錄影修正：原本是海岸一圈旗竿＋旗面，旗子政治敏感，全部換成氣球——一條細繩（高 0.5）頂上三顆小球（半徑 0.07，錯開高度），沒有任何矩形旗面 ──
+const BALLOON_R = 2.0;   // 離格心：走路格（離格邊 0.35）外、還在島面上
+const SKIP_EDGE = '-1,1>-2,2';
+export const BALLOON_SPOTS = MAIN_CELLS.flatMap(cell => NEIGHBORS.filter(([dq, dr]) => !MAIN_CELLS.some(c => c[0] === cell[0] + dq && c[1] === cell[1] + dr))
+  .filter(([dq, dr]) => `${cell}>${cell[0] + dq},${cell[1] + dr}` !== SKIP_EDGE)
   .map(([dq, dr]) => {
     const c = axialToWorld(...cell), n = axialToWorld(cell[0] + dq, cell[1] + dr), d = Math.hypot(n.x - c.x, n.z - c.z);
-    return { x: c.x + (n.x - c.x) / d * FLAG_R, y: cellTop(cell), z: c.z + (n.z - c.z) / d * FLAG_R };
+    return { x: c.x + (n.x - c.x) / d * BALLOON_R, y: cellTop(cell), z: c.z + (n.z - c.z) / d * BALLOON_R };
   }));
-// 旗子的零件（相對 o）
-const flagParts = o => FLAG_SPOTS.flatMap((p, i) => [
-  { kind: 'cylinder', pos: [p.x - o.x, p.y - o.y + 0.35, p.z - o.z], scale: [0.03, 0.7, 0.03], color: C.cream, flag: true },
-  { kind: 'box', pos: [p.x - o.x + 0.13, p.y - o.y + 0.6, p.z - o.z], scale: [0.24, 0.16, 0.02], color: i % 2 ? C.coral : C.sand, flag: true },
-  { kind: 'sphere', pos: [p.x - o.x + 0.13, p.y - o.y + 0.6, p.z - o.z + 0.012], scale: [0.07, 0.07, 0.02], color: C.ink, flag: true },
+// 一束氣球的三顆球 [dx, 高度, 顏色]：左右錯開 0.07、高低錯開，最高那顆在中間
+const BALLOONS = [[-0.07, 0.5, C.coral], [0, 0.6, C.yellow], [0.07, 0.47, C.white]];
+// 氣球的零件（相對 o）；coast：在海岸邊、珍奶格外（不出格的測試放行）
+const balloonParts = o => BALLOON_SPOTS.flatMap(p => [
+  { kind: 'cylinder', pos: [p.x - o.x, p.y - o.y + 0.25, p.z - o.z], scale: [0.012, 0.5, 0.012], color: C.cream, coast: true },
+  ...BALLOONS.map(([dx, y, color]) => ({ kind: 'sphere', pos: [p.x - o.x + dx, p.y - o.y + y, p.z - o.z], scale: 0.14, color, coast: true })),
 ]);
-// 船隊：五艘小船（船身、船艙、桅杆、珍奶旗）排在半徑 FLEET_R 的圓上（衛星島外、海上觀光船內），整組繞島慢慢轉——一個零件
+// 船隊：五艘小船（船身、船艙、桅杆、桅杆頂一顆珊瑚色圓燈籠——不掛旗）排在半徑 FLEET_R 的圓上（衛星島外、海上觀光船內），整組繞島慢慢轉——一個零件
 export const FLEET_R = 14.6, FLEET_N = 5;
 const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
   const a = i / FLEET_N * Math.PI * 2, x = Math.cos(a) * FLEET_R, z = Math.sin(a) * FLEET_R, ry = Math.atan2(-Math.sin(a), Math.cos(a));   // 船頭朝切線（逆時針）
@@ -112,7 +114,7 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
     { kind: 'rbox', pos: at(0, 0, 0.08), scale: [0.3, 0.14, 0.7], rot: [0, ry, 0], color: C.white },
     { kind: 'box', pos: at(-0.08, 0, 0.21), scale: [0.22, 0.14, 0.24], rot: [0, ry, 0], color: C.cream },
     { kind: 'cylinder', pos: at(0.12, 0, 0.4), scale: [0.025, 0.5, 0.025], color: C.wood },
-    { kind: 'box', pos: at(0.12, 0.1, 0.55), scale: [0.02, 0.14, 0.2], rot: [0, ry, 0], color: C.coral },
+    { kind: 'sphere', pos: at(0.12, 0, 0.62), scale: 0.14, color: C.coral },
   ];
 }).flat();
 
@@ -157,8 +159,8 @@ export function view(lv, flags = {}) {
     v['boba.main'] = { kind: 'glb', at: SHOP, path: MODELS.shop.path, h: SHOP_H, tint: SHOP_TINT, labelY: SHOP_H + 0.55, footprint: { w: SHOP_W, d: SHOP_W } };
     v['boba.sign'] = { kind: 'glb', at: offset(SHOP, 0, SHOP_W / 2 - 0.15, SHOP_H), path: MODELS.cup.path, h: 0.32, footprint: false };
   }
-  // 世界珍奶節的旗子併在院子這個零件裡（整局截圖的 draw call ≤ 150）
-  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 7 ? flagParts(AT) : [])] };
+  // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
+  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 7 ? balloonParts(AT) : [])] };
   if (n >= 4) v['boba.fountain'] = { kind: 'compound', at: FOUNTAIN, footprint: { r: FOUNTAIN_R }, parts: fountainParts() };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
@@ -311,7 +313,7 @@ export const script = {
         B.apply(e), B.together([B.focus('boba'), launch(), B.levelUp('boba')]),
       ];
     },
-    // ◆ 世界珍奶節（燈泡 ≥5）：老闆 ！ → 回全景，全島海岸的珍奶旗、繞島的船隊閃白出現 → 101 頭上打「世界珍奶節」→
+    // ◆ 世界珍奶節（燈泡 ≥5）：老闆 ！ → 回全景，全島海岸的氣球、繞島的船隊閃白出現 → 101 頭上打「世界珍奶節」→
     //   排隊的觀光客 ♥ → 全景定格 → LEVEL UP
     7(e, s, ctx) {
       const { B } = ctx;

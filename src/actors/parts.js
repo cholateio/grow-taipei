@@ -267,7 +267,7 @@ export function createPartFactory(THREE, ctx) {
   // 模組自己的 kind 拿到的 ctx 多一個 build，可以用 compound 等基本零件組出會動的東西
   const builderCtx = { ...ctx, build: s => build(s) };
 
-  // low: false 的零件（燈光秀、堤防、旗子、煙火、船隊這類點綴）在 ?quality=low 不畫：給一個空的 Group（footprint 照宣告的算，劇本照樣找得到零件）
+  // low: false 的零件（燈光秀、堤防、煙火、船隊這類點綴）在 ?quality=low 不畫：給一個空的 Group（footprint 照宣告的算，劇本照樣找得到零件）
   function build(spec) {
     if (ctx.quality === 'low' && spec.low === false) { const object = new THREE.Group(), { x = 0, y = 0, z = 0 } = spec.at ?? {}; object.position.set(x, y, z); return { object, dispose() {} }; }
     const make = ctx.builders?.[spec.kind] ? s => ctx.builders[spec.kind](THREE, s, builderCtx) : KINDS[spec.kind];

@@ -576,8 +576,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 心情回 normal（RESET 經 app 的 showWorld、演出層 reset 的 world 拍）下一幀就接著走，roster.reset 也不用另外清
     const lying = people.mood === 'lie', frozen = (m, spec) => lying && !!m.walker && spec?.home?.kind !== 'ride';
     const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
-    // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）
-    const keep = (m, spec) => { if (spec?.home?.kind !== 'ride') was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, m.cursor && m.offPath ? !nav.passable(m.pos.x, m.pos.z) : !!(m.cursor || m.trip?.offgrid) || !nav.walkable(m.pos.x, m.pos.z)]); };
+    // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）。
+    // gap：loose 只是因為這幀開始時站在走路格的夾縫裡（walkable 假、passable 真：被推到柱子和牆之間）——這種人照樣不准切進外擴 footprint
+    //   （2026-10-28 錄影修正量到：島民被推離路線後追游標，直線斜切過校門柱子的 PAD；沿折線、走向格外終點的人不算）
+    const keep = (m, spec) => {
+      if (spec?.home?.kind === 'ride') return;
+      const free = !!(m.cursor || m.trip?.offgrid), loose = m.cursor && m.offPath ? !nav.passable(m.pos.x, m.pos.z) : free || !nav.walkable(m.pos.x, m.pos.z);
+      was.push([m, { ...m.pos }, Math.max(m.speed, spec?.home?.speed ?? 0) * dt, loose, loose && !free && nav.passable(m.pos.x, m.pos.z)]);
+    };
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
@@ -596,12 +602,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。
     // 被推、被拉回游標的這一小段要是會切進 footprint（§14.1），這幀就站著不動（游標照走，下一幀再追上）。
     // 看的是 nav.passable（外擴後的 footprint、水），不是 walkable：路線會貼著外擴邊走過格點被擋住的夾縫，那不是牆
-    for (const [m, p, max, loose] of was) {
+    for (const [m, p, max, loose, gap] of was) {
       if (m.gone || m.hidden || m.mode === 'script') continue;
       const dx = m.pos.x - p.x, dz = m.pos.z - p.z, d = Math.hypot(dx, dz);
       // 只走到一半時 y 不用兩點的直線內插（拱橋上那條弦會陷進橋面）：落在走路格上就貼那裡的地面
       if (d > max) { const k = max / d, x = p.x + dx * k, z = p.z + dz * k; m.pos = { x, y: nav.passable(x, z) ? nav.groundY(x, z) : p.y + (m.pos.y - p.y) * k, z }; }
-      if (!loose && !nav.passable(m.pos.x, m.pos.z)) m.pos = p;
+      if ((!loose || gap) && !nav.passable(m.pos.x, m.pos.z)) m.pos = p;
       // 追上游標了：回到折線上，之後照手畫的線走（可以走到走路格外的橋頭）
       if (m.offPath && m.cursor) { const c = m.cursor.locate(); if (Math.hypot(c.x - m.pos.x, c.z - m.pos.z) <= 2 * ARRIVE) m.offPath = false; }
       place(m);

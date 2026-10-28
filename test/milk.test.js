@@ -55,7 +55,10 @@ test('milk view has a distinct main part at every level 1–10 (part spec differ
     assert.ok(views[n]['milk.main'], `lv${n} main`);
     if (n <= 8) assert.notEqual(JSON.stringify(views[n]['milk.main']), JSON.stringify(views[n - 1]['milk.main']), `lv${n} main changes`);
   }
-  assert.ok(views[5]['milk.flag'] && !views[4]['milk.flag'], 'flag goes up at Lv5');
+  // 2026-10-28 錄影修正：不再有旗子（政治敏感）——Lv5 操場多一座籃球架（院子裡的籃框 torus），沒有 milk.flag 零件
+  const hoop = n => views[n]['milk.yard'].parts.some(p => p.kind === 'torus');
+  assert.ok(hoop(5) && !hoop(4), 'basketball hoop on the playground at Lv5');
+  for (let n = 1; n <= 10; n++) assert.ok(!views[n]['milk.flag'] && Object.values(views[n]).every(p => !(p.parts ?? []).some(x => x.flag)), `lv${n}: no flag parts`);
   assert.ok(views[6]['milk.tower'] && !views[5]['milk.tower'], 'clock tower at Lv6');
   assert.ok(views[7]['milk.gate'] && !views[6]['milk.gate'], 'arch gate at Lv7');
   assert.ok(views[8]['milk.gate'].parts.length > views[7]['milk.gate'].parts.length, 'YouBike stand at Lv8');
@@ -159,10 +162,10 @@ test('every milk part and footprint corner stays inside the milk cell (the festi
   }
 });
 
-test('view: kids are a roster declaration; crate, yard and flag are separate parts; school footprints declared, playground walkable', () => {
+test('view: kids are a roster declaration; crate and yard are separate parts; school footprints declared, playground walkable', () => {
   const v = views[5];
   assert.equal(v['milk.kids'].kind, 'roster'); assert.equal(v['milk.kids'].n, 3); assert.equal(v['milk.kids'].home.kind, 'wander');
-  assert.ok(v['milk.crate'] && v['milk.flag'] && v['milk.yard']); assert.deepEqual(v['milk.crate'].footprint, { r: 0.3 }); assert.equal(v['milk.flag'].footprint, false); assert.equal(v['milk.yard'].footprint, false);
+  assert.ok(v['milk.crate'] && v['milk.yard']); assert.deepEqual(v['milk.crate'].footprint, { r: 0.3 }); assert.equal(v['milk.yard'].footprint, false, 'the hoop does not block the way to the bridge');
   assert.deepEqual(milk.CRATE, v['milk.crate'].at);
   for (let n = 2; n <= 10; n++) {
     const f = views[n]['milk.main'].footprint; assert.equal(f.length, views[n]['milk.main'].models.length);

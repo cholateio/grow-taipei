@@ -24,7 +24,7 @@ const DELAYED = compile(ITEMS.typhoon.delay[3], {});
 const lingers = (lv, meta) => lv.typhoon === 2 && DELAYED({ lv }) && !meta.landing;
 
 // 堤防（Lv3）：主島外圍每一條靠海的格邊、離格心 LEVEE_R 的一道矮牆（走路格離格邊 0.35 以外、格面還在的那一圈邊上，
-// 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶旗），第一隻老鼠爬上岸的那道牆在爬上來的地方留 LEVEE_OPEN 寬的缺口
+// 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶節的海岸氣球），第一隻老鼠爬上岸的那道牆在爬上來的地方留 LEVEE_OPEN 寬的缺口
 // （rat.js RAT_LANDING 投影到牆上那一點）。全部一個零件、一種顏色（深灰水泥，1 個 draw call）
 export const LEVEE_R = 2.08, LEVEE_H = 0.08, LEVEE_OPEN = 0.9;
 const LEVEE_GAP = '-1,1>-2,2';

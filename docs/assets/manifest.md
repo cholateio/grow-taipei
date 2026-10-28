@@ -24,7 +24,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 鮮奶 | 2 | `milk.main`、`milk.yard` | `quat/buildings/1Story_Sign_Mat.glb`（早餐店，tint 奶油牆、珊瑚招牌）＋程式桌子 | CC0 | 換新 |
 | 鮮奶 | 3 | `milk.main`、`milk.yard`、`milk.kids` | `kenney/commercial/building-e.glb`（一層教室＋兩層辦公室，視覺標準件：牆 `C.cream`、飾邊 `C.coral`、窗 `C.window`）＋程式操場；小孩 = 程式名冊 | CC0 | 換新 |
 | 鮮奶 | 4 | `milk.main`、`milk.kids` | `kenney/commercial/building-e.glb`＋`building-c.glb`（加一棟兩層教室）；小孩長高 1.3 | CC0 | 換新 |
-| 鮮奶 | 5 | `milk.main`、`milk.yard`、`milk.flag` | `kenney/commercial/building-e.glb`＋`building-a.glb`（三層教室）＋程式旗桿、旗子 | CC0 | 換新 |
+| 鮮奶 | 5 | `milk.main`、`milk.yard` | `kenney/commercial/building-e.glb`＋`building-a.glb`（三層教室）＋程式籃球架（柱、籃板、籃框，併在院子零件裡；2026-10-28 拿掉旗桿、旗子） | CC0 | 換新 |
 | 鮮奶 | 6 | `milk.tower`、`milk.kids` | 程式鐘塔（三層樓頂；Quaternius `Bell_Tower.glb` 728 KB 超過單檔上限，沒收）；少棒隊 = 程式名冊 | — | 現有 |
 | 鮮奶 | 7 ◆ | `milk.main`、`milk.tower`、`milk.gate` | `kenney/commercial/building-e.glb` ×2（大學兩翼，右翼轉 180°）＋程式鐘塔（兩翼中間）、拱門校門；學士帽 = 名冊配件 | CC0 | 換新 |
 | 鮮奶 | 8 | `milk.main`、`milk.gate` | `kenney/commercial/low-detail-building-wide-b.glb`（玻璃研究大樓，帶狀玻璃 tint `C.blue`／`C.glass`，換掉大學左翼）＋程式 YouBike 站；白袍 = 名冊配件 | CC0 | 換新 |
@@ -62,7 +62,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 珍奶 | 4 | `boba.fountain` | 程式（噴泉在店東側、往北退 0.3：不在店與鏡頭之間；水面不發光，整局截圖 draw call ≤ 150） | — | 換新（挪到店側邊） |
 | 珍奶 | 5 | `sat.forestShop`、`sat.forest`、`sat.boats` | 程式（小森林島分店、觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；門檻由 Lv4 改 Lv5（satellites.js `BRANCH`）。`3Story_Small_Mat.glb` 沒用 | CC0（船） | 現有 |
 | 珍奶 | 6 ★ | `boba.flagship`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | `quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店，同店面 tint）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`，繞店飛一小圈、停在屋頂）；觀光客 = 程式名冊 | CC0 | 換新 |
-| 珍奶 | 7 ◆ | `boba.yard`（旗子）、`boba.fleet` | 程式（主島 17 條靠海格邊的珍奶旗，併在院子零件裡；五艘小船一個零件繞島轉；101「世界珍奶節」是劇本字卡） | — | 換新 |
+| 珍奶 | 7 ◆ | `boba.yard`（氣球）、`boba.fleet` | 程式（主島 17 條靠海格邊各一束氣球——細繩＋三顆小球，併在院子零件裡；五艘小船桅杆頂掛圓燈籠，一個零件繞島轉；101「世界珍奶節」是劇本字卡；2026-10-28 拿掉所有旗子） | — | 換新 |
 | 棒球 | 1 | `baseball.main`、`baseball.lines.*`、`baseball.players` | 程式（沙地球場；第一個球員放置時從看台後方進場跑壘，裁決 R16：球場格不住島民） | — | 現有 |
 | 棒球 | 2 | `baseball.stands`、`baseball.players` | `kenney/racing/grandStand.glb` ×2（木看台，tint 座椅珊瑚、骨架木色；零件 kind `stands`）；球員 = 程式名冊 | CC0 | 換新 |
 | 棒球 | 3 ◆ | `baseball.main`、`baseball.deco` | `kenney/space/hangar_roundA.glb`（大巨蛋，高 1.0，tint 圓頂白、殼奶油、飾條珊瑚）＋程式底座與門口；Quaternius `GeodesicDome` 是 Draco 壓縮，沒收 | CC0 | 換新 |

@@ -346,16 +346,26 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）。
   // 本來在外擴 footprint 外的人也不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：計畫 5b 任務 4 量到老鼠在窩邊）；
   // 一邊推不動（貼著牆）就由另一邊讓開整段（同 separateStanding），兩個人才不會在窄道上疊在一起
-  function separate(members, _dt) {
+  // standing（2026-10-28 錄影修正第二輪）：站定的人（不在走）——走路的人離他不到兩人半徑相加就自己退開整段，站著的不動
+  //   （以前只推兩個都在走的人，老鼠、小孩直直穿過站著的觀眾）；推不動（會進外擴 footprint）就不推
+  function separate(members, _dt, standing = []) {
     const walkers = members.filter(m => m.walking === true);
     const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
     const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
+    for (const w of walkers) for (const s of standing) {
+      if (s === w || s.walking) continue;
+      const p = w.pos, dx = p.x - s.pos.x, dz = p.z - s.pos.z, d = Math.hypot(dx, dz), need = apart(w, s);
+      if (d >= need) continue;
+      const ux = d ? dx / d : 1, uz = d ? dz / d : 0, x = s.pos.x + ux * need, z = s.pos.z + uz * need;
+      if (can(p, x, z)) put(p, x, z);
+    }
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
       if (d >= need) continue;
       const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
       const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
-      const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
+      // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）當成貼著牆：整段由另一個人讓（第二輪：偵防師和通勤的工程師擦身 0.11）
+      const okP = !walkers[i].cursor && can(p, ...at(p, -1, 1)), okQ = !walkers[j].cursor && can(q, ...at(q, 1, 1));
       if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
       else if (okP) put(p, ...(can(p, ...at(p, -1, 2)) ? at(p, -1, 2) : at(p, -1, 1)));
       else if (okQ) put(q, ...(can(q, ...at(q, 1, 2)) ? at(q, 1, 2) : at(q, 1, 1)));

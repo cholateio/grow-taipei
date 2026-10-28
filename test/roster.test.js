@@ -575,12 +575,13 @@ const livePlay = () => (livePlayed ??= playBoth());
 async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const { headlessShow, ALL, inShape } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
-  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set(), ratNear = new Set(), mutantNear = new Set();
-  let detectiveFrames = 0, bridgeFrames = 0, ratFrames = 0, mutantFrames = 0;
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set(), ratNear = new Set(), mutantNear = new Set(), nestNear = new Set(), passStand = new Set(), armyNear = new Set();
+  let detectiveFrames = 0, bridgeFrames = 0, ratFrames = 0, mutantFrames = 0, nestFrames = 0, passFrames = 0;
+  const RAT_AT = anchorWorld('rat'), TOWER_AT = anchorWorld('tower'), homeAt = (h, p) => h?.kind === 'wander' && Math.hypot(h.at.x - p.x, h.at.z - p.z) < 1e-9;
   // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
   const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
-  const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
+  const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, nestNear, passStand, armyNear, get nestFrames() { return nestFrames; }, get passFrames() { return passFrames; }, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
   for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
     const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map(), decked = new WeakSet(), stepping = new Map();
     let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;
@@ -597,12 +598,14 @@ async function playBoth() {
       for (const r of seen) if (r.key === 'rat.pack' && daily(r)) for (const o of seen) {
         if (o.kind !== 'people' || !daily(o)) continue;
         ratFrames++; if (r.radius > 0.3) mutantFrames++;
+        const rh = view[r.key]?.home, nest = homeAt(rh, RAT_AT), army = homeAt(rh, TOWER_AT), pass = r.walking && !o.walking && view[o.key]?.home?.kind === 'stand' && !!o.settled;
+        if (nest) nestFrames++; if (pass) passFrames++;
         const d = Math.hypot(o.pos.x - r.pos.x, o.pos.z - r.pos.z), need = r.radius + o.radius, pair = `${r.key}#${r.i}|${o.key}#${o.i}`;
         if (d >= need - SEP_TOL) { ratPass.delete(pair); continue; }
         if (!ratPass.has(pair)) ratPass.set(pair, t);
         const what = `${label} rat#${r.i} (r ${r.radius.toFixed(3)}${r.walking ? ' walking' : ''}) ${d.toFixed(2)} from ${o.key}#${o.i}${o.walking ? ' walking' : ''} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`;
         const bad = d < BODY_K * need ? what : t - ratPass.get(pair) > PASS_MAX ? `${what} for > ${PASS_MAX} s` : null;
-        if (bad) { ratNear.add(bad); if (r.radius > 0.3) mutantNear.add(bad); }
+        if (bad) { ratNear.add(bad); if (r.radius > 0.3) mutantNear.add(bad); if (nest) nestNear.add(bad); if (pass) passStand.add(bad); if (army) armyNear.add(bad); }
       }
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
@@ -721,13 +724,23 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
   assert.ok(mutantFrames > 300, `${mutantFrames} mutant–person frames`);
   assert.deepEqual([...mutantNear].slice(0, 20), [], `${mutantNear.size} frames too close`);
 });
-// 所有老鼠對小人（簡報 D 的驗收）：老鼠窩（老鼠 Lv2，繞錨點 r 0.7）還貼著巨蛋門口的觀眾——錨點要搬到哪裡待定（簡報要的「巨蛋格東南角、
-// 離門口與觀眾站位 ≥ 1.0」在格子裡不存在，見 .superpowers/sdd/recording-fixes/report.md）；機器鼠軍團（Lv5 繞 101）走過島民、
-// 走路的老鼠穿過站著的人（nav.separate 只推兩個都在走的人）也還會碰到。先標 todo，照常跑、不擋測試
-test('live, both solutions: rats never overlap a person (≥ ra + rb, or only brushes past while walking)', { todo: '老鼠錨點待定；機器鼠軍團、走路穿過站著的人另案' }, async () => {
-  const { ratNear, ratFrames } = await livePlay();
-  assert.ok(ratFrames > 1000, `${ratFrames} rat–person frames`);
-  assert.deepEqual([...ratNear].slice(0, 20), [], `${ratNear.size} frames too close`);
+// 所有老鼠對小人（簡報 D 的驗收，2026-10-28 第二輪裁決拆三條）：
+// (a) 鼠窩的老鼠（老鼠 Lv1–2，繞錨點散步）對任何人——錨點搬到巨蛋正東，離門口觀眾 ≥ 1.09
+test('live, both solutions: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', async () => {
+  const { nestNear, nestFrames } = await livePlay();
+  assert.ok(nestFrames > 300, `${nestFrames} nest-rat–person frames`);
+  assert.deepEqual([...nestNear].slice(0, 20), [], `${nestNear.size} frames too close`);
+});
+// (c) 走路的老鼠經過站定的人（stand 站好了）：nav.separate 讓走路的那個退開整段，不穿過去
+test('live, both solutions: a walking rat never runs through a standing person', async () => {
+  const { passStand, passFrames } = await livePlay();
+  assert.ok(passFrames > 100, `${passFrames} walking-rat–standing-person frames`);
+  assert.deepEqual([...passStand].slice(0, 20), [], `${passStand.size} frames too close`);
+});
+// (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久——另案，先標 todo
+test('live, both solutions: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與中心格島民擦身，留待之後處理' }, async () => {
+  const { armyNear } = await livePlay();
+  assert.deepEqual([...armyNear].slice(0, 20), [], `${armyNear.size} frames too close`);
 });
 test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
   const { crowd, detectiveFrames } = await livePlay();

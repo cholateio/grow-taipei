@@ -604,8 +604,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 只推日常走動的人（劇本手上的主角不被推歪）。走在路線上的人下一幀位置又從游標算（游標＋橫移 m.side），推開的那一截會被拉回來、
     // 兩個人斜著交會時就一直貼著走（2026-10-28 列車加大後 live 測試量到偵防師和島民並肩走 0.10）：推開的橫向分量記進 m.side，
     // 之後照 sidestep 的速度慢慢收回路線上。橋上不記（橋面只有 0.5 寬，同 sidestep 橋上不讓）
+    // 站定的人（standing）也算：走路的人碰上他就自己退開（他不動）
     const pushedFrom = moving.map(m => ({ x: m.pos.x, z: m.pos.z }));
-    nav.separate(moving, dt);
+    nav.separate(moving, dt, standing);
     moving.forEach((m, i) => {
       const dx = m.pos.x - pushedFrom[i].x, dz = m.pos.z - pushedFrom[i].z;
       if ((!dx && !dz) || !m.trip || !cellAt(m.pos.x, m.pos.z)) return;

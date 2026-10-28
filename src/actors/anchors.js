@@ -6,7 +6,7 @@ import { groundAt } from '../show/nav.js';
 export const ANCHORS = {
   milk: { cell: [-1, 0], dx: 0, dz: 0.1 },       chip: { cell: [1, 0], dx: 0.1, dz: -0.2 },
   bulb: { cell: [0, 0], dx: -1.3, dz: 1.1 },     token: { cell: [0, 1], dx: -0.8, dz: -0.3 },   // 捷運站往北退 0.4（錄影：站體太靠前緣，2026-10-27）
-  typhoon: { cell: [0, 0], dx: -0.6, dz: -1.2 }, rat: { cell: [-1, 1], dx: 1.3, dz: 1.0 },
+  typhoon: { cell: [0, 0], dx: -0.6, dz: -1.2 }, rat: { cell: [-1, 1], dx: 1.2, dz: 0.0 },   // 鼠窩：巨蛋正東（2026-10-28 錄影修正：原本 (1.3, 1.0) 東南角離門口觀眾只有 0.3）
   boba: { cell: [0, 1], dx: 1.0, dz: 0.4 },      baseball: { cell: [-1, 1], dx: -0.2, dz: -0.2 },
   tower: { cell: [0, 0], dx: 0.6, dz: -0.3 },
 };

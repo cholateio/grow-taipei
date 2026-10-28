@@ -326,3 +326,28 @@ test('separate and separateStanding keep each pair ra + rb apart (members withou
     assert.ok(d >= ms[i].radius + ms[j].radius - 1e-9, `${i}-${j} ${d.toFixed(3)} apart`);
   }
 });
+// 2026-10-28 錄影修正第二輪：走路的人碰上站著的人（站定的 stand 成員）——走路的人一個人退開整段（站著的不動），到兩人半徑相加；
+// 照樣不推進外擴 footprint
+test('separate pushes a walker off a standing member by the whole gap (ra + rb); the stander never moves; never into a padded footprint', () => {
+  const nav = createNav(), o = c([1, 0]);
+  const stander = { pos: { x: o.x, y: o.y, z: o.z }, walking: false, radius: 0.125 };
+  const rat = { pos: { x: o.x + 0.1, y: o.y, z: o.z + 0.05 }, walking: true, radius: 0.13 };
+  nav.separate([rat], 1 / 30, [stander]);
+  assert.deepEqual(stander.pos, { x: o.x, y: o.y, z: o.z }, 'the stander stays put');
+  assert.ok(Math.abs(Math.hypot(rat.pos.x - o.x, rat.pos.z - o.z) - 0.255) < 1e-6, `walker ${Math.hypot(rat.pos.x - o.x, rat.pos.z - o.z).toFixed(3)} away`);
+  const far = { pos: { x: o.x + 1, y: o.y, z: o.z }, walking: true };
+  nav.separate([far], 1 / 30, [stander]); assert.deepEqual(far.pos, { x: o.x + 1, y: o.y, z: o.z }, 'nobody near: untouched');
+  // 牆：站著的人在牆邊，走路的人被推的方向是牆 → 不推進去
+  nav.setFootprints([{ x: o.x + 0.5, z: o.z, w: 0.4, d: 2 }]);
+  const wall = { pos: { x: o.x + 0.15, y: o.y, z: o.z }, walking: true, radius: 0.125 };
+  nav.separate([wall], 1 / 30, [stander]);
+  assert.ok(!nav.inFootprint(wall.pos.x, wall.pos.z), 'not pushed into the padded wall');
+});
+// 第二輪：兩個走路的人裡有一個沿手畫折線走（m.cursor，位置每幀從折線算）——他不被推，另一個人退開整段
+test('separate: a walker on a hand-drawn path (cursor) is not pushed; the other walker takes the whole gap', () => {
+  const nav = createNav(), o = c([1, 0]);
+  const onPath = { pos: { x: o.x, y: o.y, z: o.z }, walking: true, cursor: {} }, free = { pos: { x: o.x + 0.1, y: o.y, z: o.z }, walking: true };
+  nav.separate([onPath, free], 1 / 30);
+  assert.deepEqual(onPath.pos, { x: o.x, y: o.y, z: o.z }, 'the path walker stays on his line');
+  assert.ok(Math.hypot(free.pos.x - o.x, free.pos.z - o.z) >= SEPARATION - 1e-9, 'the other one makes room');
+});

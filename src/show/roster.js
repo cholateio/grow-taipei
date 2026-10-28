@@ -282,8 +282,13 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const prev = g.spec; g.spec = spec; g.held = false; g.pending = null; g.retired = false;
     while (g.members.length > spec.n) g.leaving.push(g.members.pop());
     const moved = prev && !same(prev.home, spec.home);
-    // 家搬了：留下來的人走過去（當成走回家：走路速度、焦點不限制）；劇本手上的人不搶
-    g.members.forEach((m, i) => { m.i = i; restyle(m, spec, i); if (moved && m.mode === 'home') { home(m); m.arriving = spec.home?.kind !== 'ride'; } });
+    // 家搬了：留下來的人走過去（當成走回家：走路速度、焦點不限制）；劇本手上的人不搶。
+    // 拜訪完正走回去的人（'away'）照走，但換回去的那一點改成新家的位置（最終審稿 4：不然閃白換回舊家的站位，再從那裡走過去）
+    g.members.forEach((m, i) => {
+      m.i = i; restyle(m, spec, i);
+      if (moved && m.mode === 'home') { home(m); m.arriving = spec.home?.kind !== 'ride'; }
+      else if (moved && m.mode === 'away' && m.away) m.away.back = { ...homePose(spec, i, m) };
+    });
     const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
       const m = src.leaving.length ? src.leaving.pop() : take(src);

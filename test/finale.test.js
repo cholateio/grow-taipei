@@ -111,7 +111,7 @@ test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×84
   };
   // 點燈天際線（必要）＋天際線最低（工地，全景不抬）也要在畫面裡
   for (const sky of [skyline, 3]) for (const [name, r] of [['16:9', overviewRig()], ['390×844', portrait()]]) {
-    r.rig.setSkyline(sky); r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
+    r.rig.setSkyline(sky); r.rig.update(1.1); r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
     const p = new THREE.Vector3(finale.FLARE_AT.x, finale.FLARE_AT.y, finale.FLARE_AT.z).project(r.camera);
     assert.ok(Math.abs(p.x) <= 0.9 && Math.abs(p.y) <= 0.9 && p.z < 1, `${name} skyline ${sky}: NDC (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
   }

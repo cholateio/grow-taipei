@@ -370,7 +370,7 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
   assert.equal(hm[2], before, 'back to the overview before the parts change');
   // LEVEL UP 出現時鏡頭已經停在（抬高的）全景，頭頂在畫面上緣 10% 以內
   const probe = { target: new THREE.Vector3(), update() {} }, pc = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320);
-  const pr = createCameraRig({ THREE, camera: pc, controls: probe }); pr.fit(16 / 9); pr.setSkyline(show.stage.headOf('tower').y);
+  const pr = createCameraRig({ THREE, camera: pc, controls: probe }); pr.fit(16 / 9); pr.setSkyline(show.stage.headOf('tower').y); pr.update(1.1);   // 停在全景時天際線變了是飛過去的（最終審稿 2）：飛完才是抬高的全景
   assert.equal(lu[2].flying, false, 'the rig has landed');
   assert.ok(lu[2].target.distanceTo(probe.target) < 1e-6, `at the raised overview (target y ${lu[2].target.y.toFixed(2)} vs ${probe.target.y.toFixed(2)})`);
   assert.ok(lu[2].top <= 0.8, `tower top at NDC ${lu[2].top.toFixed(3)}`);

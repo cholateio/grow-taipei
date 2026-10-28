@@ -130,6 +130,28 @@ test('helper without a rep (typhoon; electrician away) → no visit beats', asyn
   assert.equal(VISIT_MAX_PER_HELPER, 2);   // 裁決 R2
 });
 
+// 最終審稿 5：遠的幫手原處閃白之後，走路那拍才發現走不了（這一刻藏起來了、或換過去的那一點離站位不到一點路）——
+// 不先換位置再放著不管：不 relocate、放回日常、這段不算這回合拜訪過的次數
+test('a far helper that cannot start walking at the walk beat is not relocated: released home, quota untouched', () => {
+  const fake = () => {
+    const m = { pos: { x: -6, y: 0.65, z: 0 }, speed: 1.6, mode: 'home', hidden: false, head: () => ({ x: m.pos.x, y: 1, z: m.pos.z }) };
+    const log = [], roster = { claim: x => { x.mode = 'script'; log.push('claim'); }, flash: () => log.push('flash'), relocate: (x, p) => { log.push('relocate'); x.pos = { ...p }; }, home: x => { x.mode = 'home'; log.push('home'); }, setPose() {}, setFocus() {} };
+    const nav = { route: (a, b) => [{ x: a.x, y: 0.65, z: a.z }, { x: b.x, y: 0.65, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), groundY: () => 0.65, version: 0, walkable: () => true };
+    return { m, log, c: { roster, nav, B, instant: false, speed: 1 } };
+  };
+  const { m, log, c } = fake(), quota = new Map();
+  const helper = { id: 'milk', script: { rep: () => m } }, target = { id: 'chip', visitSpot: () => ({ x: 0, y: 0.65, z: 0, r: 0.3 }), script: {} };
+  const beats = visit({ kind: 'grow', item: 'chip', from: 1, to: 2, via: ['milk'] }, { lv: { chip: 2 }, flags: {} }, c, { helper, target, quota });
+  assert.equal(beats.length > 2, true);
+  const [fade, arrive] = beats;
+  assert.notEqual(fade.start(c), false, 'far: blinks out where he stands'); assert.equal(quota.get('milk'), 1);
+  m.hidden = true;   // 閃白那 BLINK 秒裡躲進門裡：走路那拍走不了
+  assert.equal(arrive.start(c), false, 'the walk does not start');
+  assert.ok(!log.includes('relocate'), `not moved to the route point (${log.join(' ')})`);
+  assert.equal(m.mode, 'home', 'released to the daily routine'); assert.equal(quota.get('milk') ?? 0, 0, 'this visit does not count');
+  for (const b of beats.slice(2)) if (b.start) assert.equal(b.start(c) ?? false, false, `${b.kind}: skipped`);
+});
+
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：無頭 live 演一個 wait 事件——照 order 瞬間演完前面的回合（real：最後一回合 wait 之前的事件也瞬間演），
 // 再 live 演 wait（real：引擎這回合吐出的那個；否則給的 waits 合成一個）。每段撲空記下：等待物品的代表（mark 那一刻問模組）、起點、
 // 段尾（下一個 mark 那一刻）站在哪、有沒有做 sigh、段裡冒了幾個泡泡、段長（扣掉空拍）、段尾他回日常了沒、劇本手上還有幾個人

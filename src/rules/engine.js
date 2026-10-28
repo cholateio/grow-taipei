@@ -204,8 +204,13 @@ function turn(state, id, spec, rules) {
       const jump = lv + 2 <= it.max && it.jump[lv + 2] && ready(lv + 2) && it.jump[lv + 2](s);
       if (!jump && !(ready(lv + 1) && it.up[lv + 1](s))) continue;
       const to = jump ? lv + 2 : lv + 1;
-      // via 在改級之前算（條件是照這一刻的全島狀態成立的）；跳級的兩個事件共用同一份
-      const via = satisfiedHelpers(jump ? it.jumpRaw[to] : it.raw[to], s, k, spec);
+      // via 在改級之前算（條件是照這一刻的全島狀態成立的）；跳級的兩個事件共用同一份。
+      // 跳級（最終審稿 1）：先列第一級（up[n−1]）成立的幫手、再列只有第二級才有的（各自照 ORDER）——演出層拿 via[0] 去敲第一級的門，
+      // 照 ORDER 混在一起排的話，常常是第二級的幫手跑來敲第一級的門（賽博 21 段拜訪裡 10 段原因錯人）。
+      // 都只從整條跳級條件真的成立的那幾支裡挑（spec 寫的 jump[n] 單獨成立時，第一級沒成立的幫手不列）
+      const all = satisfiedHelpers(jump ? it.jumpRaw[to] : it.raw[to], s, k, spec);
+      const first = jump ? satisfiedHelpers(it.raw[lv + 1], s, k, spec).filter(h => all.includes(h)) : all;
+      const via = [...first, ...all.filter(h => !first.includes(h))];
       lastGrown = k; changed = true; grown.add(k);
       for (let n = lv + 1; n <= to; n++) {
         s.lv[k] = n; s.held[k] = 0;

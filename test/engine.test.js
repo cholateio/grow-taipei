@@ -490,18 +490,19 @@ test('satisfiedHelpers: or → only the satisfied alternative(s); and → all; m
   assert.deepEqual(satisfiedHelpers({ always: true }, st({}), 'p', cause), []);
   assert.deepEqual(satisfiedHelpers({ minLevel: ['p', 1] }, st({ p: 1 }), 'p', cause), [], 'self is never a helper');
 });
-test('via lists only the helpers that satisfied the condition: or(min chip 3, min token 4) with only token placed → [token]; a jump unions both levels', () => {
+test('via lists only the helpers that satisfied the condition: or(min chip 3, min token 4) with only token placed → [token]; a jump unions both levels, first level first', () => {
   // 只有代幣：p 在 2，代幣到 4 → p 升 3，via 只有 token（晶片沒放）
   let s = place(createState(cause), 'token', cause).state; s = advance(s, cause).state; s = advance(s, cause).state;   // token 2 → 4
   assert.equal(s.lv.token, 4);
   s = place(s, 'p', cause).state; assert.equal(s.lv.p, 2);
   let r = place(s, 'z', cause), g = r.events.find(e => e.kind === 'grow' && e.item === 'p' && e.to === 3);
   assert.ok(g && !g.jump, 'p takes +1 (up[4] needs milk)'); assert.deepEqual(g.via, ['token']);
-  // 跳級：鮮奶在場、代幣 4 → p 2 → 4 一回合，預設跳級 up[3] ∧ up[4] 的聯集 = token（up[3] 成立的那支）＋ milk（up[4]）
+  // 跳級：鮮奶在場、代幣 4 → p 2 → 4 一回合，預設跳級 up[3] ∧ up[4] 的聯集 = token（up[3] 成立的那支）＋ milk（up[4]）。
+  // 順序（最終審稿 1）：先第一級（up[3]）的幫手、再第二級才有的——via[0] 是第一級的原因（拜訪敲門的是代幣，不是 ORDER 排前面的鮮奶）
   s = place(createState(cause), 'token', cause).state; s = advance(s, cause).state; s = advance(s, cause).state;
   s = place(s, 'milk', cause).state; s = place(s, 'p', cause).state; assert.equal(s.lv.p, 2);
   r = place(s, 'z', cause);
   const jumps = r.events.filter(e => e.kind === 'grow' && e.item === 'p');
   assert.deepEqual(jumps.map(e => [e.to, !!e.jump]), [[3, false], [4, true]]);
-  for (const e of jumps) assert.deepEqual(e.via, ['milk', 'token'], `jump event to ${e.to}: union of both levels' satisfied helpers`);
+  for (const e of jumps) assert.deepEqual(e.via, ['token', 'milk'], `jump event to ${e.to}: the first level's helpers first, then the second level's`);
 });

@@ -86,7 +86,7 @@ test('setSkyline raises the home target and distance so a point at (tower.x, top
     // 4.45 = 101 蓋一半的頭頂、7.75 = 完工／點燈的頭頂（stage.headOf('tower').y）
     for (const topY of [3.5, 4.45, 6, 7.75]) {
       const { rig, camera, controls } = rigWith(); camera.aspect = aspect; camera.updateProjectionMatrix(); rig.fit(aspect); rig.setSkyline(topY);
-      assert.equal(rig.flying, false, 'at home and not flying: re-applied at once');
+      assert.equal(rig.flying, true, 'at home and not flying: flies to the new framing (final review 2)'); rig.update(1.1); assert.equal(rig.flying, false);
       const top = ndcY(camera, { x: TOWER.x, y: topY, z: TOWER.z }), centre = ndcY(camera, { x: 0.4, y: 0.6, z: 0 });
       assert.ok(top <= 0.8, `aspect ${aspect.toFixed(2)} topY ${topY}: top at NDC ${top.toFixed(3)}`);
       assert.ok(centre >= -0.6, `aspect ${aspect.toFixed(2)} topY ${topY}: island centre at NDC ${centre.toFixed(3)}`);
@@ -99,7 +99,7 @@ test('setSkyline raises the home target and distance so a point at (tower.x, top
   }
 });
 test('setSkyline while flying home retargets the flight; while in a focus framing it does not move the camera', () => {
-  const raised = rigWith(); raised.rig.fit(16 / 9); raised.rig.setSkyline(7.75);
+  const raised = rigWith(); raised.rig.fit(16 / 9); raised.rig.setSkyline(7.75); raised.rig.update(1.1);
   const pos = raised.camera.position.clone(), target = raised.controls.target.clone();
   // 飛回全景途中：照樣飛，終點換成抬高的全景
   const a = rigWith(); a.rig.fit(16 / 9); a.rig.focus({ x: 4, y: 0.65, z: 2 }); a.rig.update(1.1); a.rig.home(1000); a.rig.update(0.3);
@@ -115,5 +115,22 @@ test('setSkyline while flying home retargets the flight; while in a focus framin
   b.rig.home(0); assert.ok(b.camera.position.distanceTo(pos) < 1e-6 && b.controls.target.distanceTo(target) < 1e-6, 'home uses the stored skyline');
   // 抬高之後換長寬比照樣跟著；再降回 ≤ 3 就回到原本的全景（RESET）
   b.rig.fit(1); assert.ok(b.camera.position.distanceTo(b.controls.target) > 26 + 1e-6);
-  b.rig.setSkyline(1.4); assert.ok(b.controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-9 && Math.abs(b.camera.position.distanceTo(b.controls.target) - 26) < 1e-9);
+  b.rig.setSkyline(1.4); b.rig.update(1.1); assert.ok(b.controls.target.distanceTo(new THREE.Vector3(0.4, 0.6, 0)) < 1e-9 && Math.abs(b.camera.position.distanceTo(b.controls.target) - 26) < 1e-9);
+});
+// 最終審稿 2：停在全景時天際線變了，照常飛 1000 ms 過去（颱風登陸那回合 101 的劇本只剩回全景，回合收尾 focus('home', { skyline }) 原本在一幀裡跳 5.66）；
+// reduced-motion 照舊直接到位；玩家拖過鏡頭就不動
+test('setSkyline at home with no flight flies there over 1000 ms (no single-frame jump); reduced motion snaps; grabbed stays put', () => {
+  const end = rigWith(); end.rig.fit(16 / 9); end.rig.setSkyline(7.75); end.rig.update(1.1);
+  const { rig, camera, controls } = rigWith(); rig.fit(16 / 9); const p0 = camera.position.clone();
+  rig.setSkyline(7.75);
+  assert.equal(rig.flying, true, 'flying'); assert.ok(camera.position.distanceTo(p0) < 1e-9, 'nothing moved yet');
+  let prev = camera.position.clone(), most = 0;
+  for (let i = 0; i < 30; i++) { rig.update(1 / 30); most = Math.max(most, camera.position.distanceTo(prev)); prev = camera.position.clone(); if (i === 14) assert.ok(camera.position.distanceTo(p0) > 0.1 && camera.position.distanceTo(end.camera.position) > 0.1, 'interpolating half way'); }
+  rig.update(0.1); assert.equal(rig.flying, false);
+  assert.ok(camera.position.distanceTo(end.camera.position) < 1e-6 && controls.target.distanceTo(end.controls.target) < 1e-6, 'lands on the raised overview');
+  assert.ok(most < 0.5 * p0.distanceTo(end.camera.position), `largest frame step ${most.toFixed(3)}`);
+  const r = rigWith({ reducedMotion: true }); r.rig.fit(16 / 9); r.rig.setSkyline(7.75);
+  assert.equal(r.rig.flying, false); assert.ok(r.camera.position.distanceTo(end.camera.position) < 1e-6, 'reduced motion: at once');
+  const g = rigWith(); g.rig.fit(16 / 9); const g0 = g.camera.position.clone(); g.rig.cancel(); g.rig.setSkyline(7.75); g.rig.update(1.1);
+  assert.equal(g.rig.flying, false); assert.ok(g.camera.position.distanceTo(g0) < 1e-9, 'grabbed: not moved');
 });

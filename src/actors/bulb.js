@@ -411,6 +411,7 @@ export const script = {
   fx: () => null,   // 燈泡自己沒有 onLevel
   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（不在主島格上）→ null（拜訪、撲空都略過）
   rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? null,
+  hasRep: lv => lv >= 1 && lv < ISLAND_LV,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：ISLAND_LV 起電工住在風車島上，叫不到
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[9].key = true;

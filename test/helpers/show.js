@@ -155,7 +155,9 @@ export function overviewRig() {
 //   walls：主島走路格上露出來的名冊成員在建築本身（stage.footprints()，不含 PAD）裡超過 CAUGHT_MAX 秒（坐車頂的 ride、
 //          站位本來就畫在外擴 footprint 裡的 stand——泡溫泉的老鼠、攤車後的老闆——例外）
 //   jumps：日常的人（前後兩幀都是 home、都露出來、不坐車頂）一幀走超過 max(自己的走路速度, 家的速度) × dt（瞬移）
-//   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）
+//   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）；
+//          每幀也查鏡頭沒有在飛行之外瞬間跳開：演出層這一幀（show.update，拍的 start／end）讓鏡頭位置一次移動超過 CAM_JUMP 公尺就記一筆
+//          ——飛行的內插在 rig.update 裡（正常最大一幀約 2.8，那是飛，不算）；最終審稿 2：天際線在全景裡重算原本一幀跳 5.66
 //   labels（有 cam 才查）：每個 LEVEL UP 字樣與頭頂泡泡（bubbles.levelUp／show）活著的那幾秒（dur），頭上的點投影在 NDC [-1, 1] 裡的幀數
 //          要 ≥ LABEL_ON（一半）——鏡頭沒跟上、演出的那一刻在畫面外（審稿：颱風登陸後的 LEVEL UP、101 頭上的字、撞攤車的 ！、等待圖框）
 //   pops（計畫 6 裁決 R3）：劇本手上（'script'）或拜訪完正走回去（'away'）的人（這一幀或上一幀；走回去走到底換回原處那一幀模式已經是 home）
@@ -163,7 +165,7 @@ export function overviewRig() {
 //          （show.blink 正閃著他的小人實例或模型 holder），或藏著、還沒畫出來（模型 holder 還沒到）；不准靜靜地瞬移。
 //          「突然」＝這一幀的位移跟上一幀的位移差超過 POP_MAX：坐在趕路的列車車頂（一幀 0.44）是連續的快，不是換位置
 // label(text)：之後的問題都標這個字串（例如「第幾回合」）
-export const CAUGHT_MAX = 1.5, LABEL_ON = 0.5, POP_MAX = 0.3;
+export const CAUGHT_MAX = 1.5, LABEL_ON = 0.5, POP_MAX = 0.3, CAM_JUMP = 1.0;
 export function gameInvariants(show, { cam = null } = {}) {
   const walls = new Set(), jumps = new Set(), pops = new Set(), camera = [], caught = new Map(), last = new Map(), seen = new Map(), update = show.update;
   let label = '', t = 0, viewKey = null, view = {};
@@ -213,7 +215,15 @@ export function gameInvariants(show, { cam = null } = {}) {
       else if (t - caught.get(m) > CAUGHT_MAX) walls.add(`${what} inside a building for > ${CAUGHT_MAX} s`);
     }
   };
-  show.update = (dt, tt) => { update(dt, tt); t += dt; check(dt); if (cam) watchLabels(); };
+  show.update = (dt, tt) => {
+    const p0 = cam && cam.camera.position.clone();
+    update(dt, tt); t += dt; check(dt);
+    if (cam) {
+      const d = cam.camera.position.distanceTo(p0);
+      if (d > CAM_JUMP) camera.push(`${label}: camera jumped ${d.toFixed(2)} in one frame outside a flight`);
+      watchLabels();
+    }
+  };
   return {
     walls, jumps, pops, camera, labels,
     label(text) { label = text; },

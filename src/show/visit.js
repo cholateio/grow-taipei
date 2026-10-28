@@ -78,14 +78,14 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
   const inner = B.walk(rep, stand);
   // 走過去（裁決 R3、R4）：先問好要不要換位置（fade 拍：在原處閃白 BLINK 秒——turn.js 把它跟物品之間的空拍一起演，不另外佔時間），
   // 走路那拍一開始換到 at、閃白、開始走（inner）
-  let at = null, fading = false, walking = false;
+  let at = null, fading = false, walking = false, counted = false;
   const plan = c => {
-    at = null; fading = false;
+    at = null; fading = false; counted = false;
     const m = rep(c); if (!m) return;
     const to = stand(c), route = c.nav.route(m.pos, to), end = route.at(-1);
     const used = quota?.get(helper.id) ?? 0;
     if (!end || Math.hypot(end.x - to.x, end.z - to.z) > REACH || used >= VISIT_MAX_PER_HELPER) { who = null; return; }   // 走不過去、這回合來夠了：不拜訪
-    quota?.set(helper.id, used + 1);
+    quota?.set(helper.id, used + 1); counted = true;
     const len = c.nav.routeLength(route), cap = VISIT_WALK * m.speed;
     if (len <= cap) return;
     at = pointAt(route, Math.max(0, Math.min(len - cap, len - MIN_WALK)), c.nav);
@@ -96,12 +96,21 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
     kind: 'fade', dur: () => (fading ? BLINK : 0), estimate: () => BLINK,
     start(c) { plan(c); if (!at) return false; c.roster.claim(who); c.roster.flash(who); fading = true; },
   };
+  // 走路那拍才發現走不了（閃白那幾拍裡躲進門裡、換過去的那一點到站位沒有路）：不拜訪了——放回日常、這段不算拜訪過的次數，
+  // 後面的拍全部跳過（who = null）
+  const drop = (c, m) => {
+    who = null; at = null;
+    if (counted) { quota?.set(helper.id, Math.max(0, (quota.get(helper.id) ?? 1) - 1)); counted = false; }
+    c.roster.home(m);
+  };
   const arrive = {
     kind: 'walk', estimate: () => VISIT_WALK,
     dur: c => (walking ? inner.dur(c) : 0),
     start(c) {
       walking = false;
       const m = rep(c); if (!m) return false;
+      // 最終審稿 5：先確定換過去之後走得動才換位置（B.walk 的 start 只在藏起來、或路線是 0 的時候不走）——不先瞬間換到路上再放著不管
+      if (m.hidden || (at && c.nav.routeLength(c.nav.route(at, stand(c))) < 1e-6)) { drop(c, m); return false; }
       if (at) c.roster.relocate(m, { ...at, yaw: yawTo(at, stand(c)) });
       walking = inner.start(c) !== false;
       if (!walking) return false;

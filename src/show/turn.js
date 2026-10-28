@@ -22,9 +22,10 @@
 //   之後的拜訪段只剩平移，有原因的升級照演自己的劇本）。
 //   幫手沒有代表、代表藏著或正被別的劇本拿著（演到才知道）→ 拜訪的拍全部 0 秒（不找替身，不搶人）；被升級物品這一級沒有拜訪點（離島上的級）→ 不插。
 //   pace 看 mark 的 info.visit 把拜訪當獨立一段量（≤ VISIT_CAP），不算進那一級自己劇本的秒數。
-// 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段：
+// 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件裡前 MISS_PER_TURN 個叫得到代表的 waits（照 ORDER）各一段
+//   （叫不叫得到建串時看模組的 script.hasRep(現在的等級)：鮮奶 Lv3 起、代幣 Lv2 起、燈泡 Lv7 起電工在離島上叫不到、颱風永遠沒有——不佔位子，往後補；最終審稿 3）：
 //   mark(e, { miss: true, item, gap }) → （不同物品先空 GAP；代表叫不到這拍也跳過）→ 平移到代表那一格、跟走過去一起演 → 失望 → 回日常。
-//   等待物品沒有代表劇本（颱風）→ 那一項不插（不往後補第三個）。代表叫不到（藏著、在劇本手上、拜訪完正走回去）→ 整段 0 秒。
+//   等待物品沒有代表劇本、這一級沒有代表（hasRep 假）→ 那一項不插、照 ORDER 往後補。代表演到才叫不到（藏著、在劇本手上、拜訪完正走回去）→ 整段 0 秒（不再往後補）。
 //   颱風登陸之後（大家躲在屋裡）、終局回合不插。之後 wait 事件自己照舊 mark + 不閃白的 apply（沒有別的拍）。
 //   pace 看 mark 的 info.miss 把撲空當獨立一段量（≤ MISS_CAP）。
 // 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
@@ -170,11 +171,13 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     return true;
   };
 
-  // 撲空段（見檔頭）：wait 事件的前 MISS_PER_TURN 個 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常
+  // 撲空段（見檔頭）：wait 事件裡前 MISS_PER_TURN 個「這一級叫得到代表」的 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常。
+  // 叫不叫得到先看模組的 script.hasRep(現在的等級)（沒寫就看有沒有 rep）：沒有代表的那一級不佔位子，照 ORDER 往後補（最終審稿 3）
+  const canMiss = (w, s) => { const sc = mod(w.item)?.script; return !!sc?.rep && (sc.hasRep ? !!sc.hasRep(s.lv?.[w.item] ?? 0) : true); };
   const missFirst = (e, s) => {
     if (finale || landed) return;
     const p = pending ?? { item: lastItem, cell: lastCell, segs: [] };
-    for (const w of (e.waits ?? []).slice(0, MISS_PER_TURN)) {
+    for (const w of (e.waits ?? []).filter(w => canMiss(w, s)).slice(0, MISS_PER_TURN)) {
       const beats = miss(w, s, ctx, { item: mod(w.item), helper: mod(w.for?.[0]) });
       if (!beats.length) continue;
       const [walk, ...rest] = beats, before = [...p.segs];

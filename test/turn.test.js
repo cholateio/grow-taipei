@@ -378,14 +378,31 @@ test('wait event → up to MISS_PER_TURN miss segments in ORDER; no icon bubble 
   assert.deepEqual(between(raw, 3).map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]], 'its own silent apply and the trailing apply');
   // 整回合沒有任何泡泡拍（等待圖框拿掉）
   assert.equal(anyBubble(raw), false, 'no bubble beat for a wait');
-  // 等待物品沒有代表劇本（颱風、這裡的 milk 沒有模組）→ 那一項不插、也不往後補
+  // 等待物品沒有代表劇本（颱風、這裡的 milk 沒有模組）→ 那一項不插、照 ORDER 往後補（最終審稿 3：兩個位子留給叫得到人的）
   const some = buildTurn([waitOf('milk', 'chip', 'bulb')], base([tower, ...repMods()]), fakeCtx());
-  assert.deepEqual(marksOf(some).filter(m => m.info.miss).map(m => m.info.item), ['chip']);
+  assert.deepEqual(marksOf(some).filter(m => m.info.miss).map(m => m.info.item), ['chip', 'bulb']);
   // 颱風登陸之後（大家躲在屋裡）不演撲空
   const typhoon = { id: 'typhoon', view() {}, script: { rep: () => null } };
   const landed = buildTurn([{ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, waitOf('chip', 'bulb')], base([tower, typhoon, ...repMods()]), fakeCtx());
   assert.ok(marksOf(landed).every(m => !m.info.miss), 'no misses after the landing');
   assert.equal(anyBubble(landed), false);
+});
+
+// 最終審稿 3：撲空的兩個位子在建串時就只給「這一級叫得到代表」的物品（各模組的 script.hasRep(lv)：鮮奶 Lv3 起才有小孩、代幣 Lv2 起才有站務員、
+// 燈泡的電工 Lv7 起住在風車島上、颱風永遠沒有）——原本前兩個 waits 先佔位，鮮奶 < 棒球（Lv2 沒有小孩）吃掉一個位子演 0 秒，
+// 叫得到人的燈泡 < 晶片反而被丟掉（EXAMPLE.deflect 第 7 回合五個 waits 只看到一次嘆氣）
+test('miss slots go to the first MISS_PER_TURN waits whose item has a rep at its level (script.hasRep), in ORDER', async () => {
+  const mods = ['milk', 'bulb', 'token', 'rat', 'boba'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep: () => walker, hasRep: { milk: lv => lv >= 3, token: lv => lv >= 2 }[id] ?? (() => true) } }));
+  const lv = { ...zero, milk: 2, bulb: 3, token: 1, rat: 1, boba: 2, chip: 1 };
+  const raw = buildTurn([waitOf('milk', 'bulb', 'token', 'rat', 'boba')], { ...base([tower, ...mods]), lv }, fakeCtx());
+  assert.deepEqual(marksOf(raw).filter(m => m.info.miss).map(m => m.info.item), ['bulb', 'rat'], 'milk Lv2 and token Lv1 have nobody to send: the next two with reps play');
+  // 等級夠了就排得上：鮮奶 Lv3 → 鮮奶、燈泡
+  const up = buildTurn([waitOf('milk', 'bulb', 'token', 'rat', 'boba')], { ...base([tower, ...mods]), lv: { ...lv, milk: 3 } }, fakeCtx());
+  assert.deepEqual(marksOf(up).filter(m => m.info.miss).map(m => m.info.item), ['milk', 'bulb']);
+  // 真的模組：hasRep 照各自的名冊
+  const real = Object.fromEntries(await Promise.all(spec.ORDER.map(async id => [id, (await import(`../src/actors/${id}.js`)).script.hasRep])));
+  assert.deepEqual([real.milk(2), real.milk(3), real.token(1), real.token(2), real.typhoon(1), real.typhoon(5), real.bulb(6), real.bulb(7)], [false, true, false, true, false, false, true, false]);
+  for (const id of ['chip', 'rat', 'boba', 'baseball']) assert.equal(real[id](1), true, `${id} Lv1 has a rep`);
 });
 
 test('miss beats: the rep is found once at beat time; nobody (hidden, busy, away) → every beat skipped, the GAP too', () => {

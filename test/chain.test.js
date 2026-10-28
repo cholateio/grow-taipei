@@ -228,7 +228,7 @@ test('both solutions: every grow with via (not jump-second, not indoors) played 
   }
 });
 
-// 撲空（計畫 6 設計 §5、§8）：亂放的兩局（EXAMPLE.hit／deflect）整局 live（真鏡頭、種子 21）——每回合撲空 ≤ MISS_PER_TURN 段、是 wait 事件的前兩項（照 ORDER）、
+// 撲空（計畫 6 設計 §5、§8）：亂放的兩局（EXAMPLE.hit／deflect）整局 live（真鏡頭、種子 21）——每回合撲空 ≤ MISS_PER_TURN 段、是 wait 事件裡前兩個這一級叫得到代表的（照 ORDER；最終審稿 3）、
 // 每段 ≤ MISS_CAP；演了的那幾段代表走到對的地方：缺的幫手那一格跟他同格或相鄰、走得到又在 MISS_WALK 秒內 → 幫手的空地（錨點旁）或拜訪點正面；
 // 否則自己門口（門口超過 MISS_WALK 秒：往門口走了 MISS_WALK 秒那麼遠）；回合 ≤ 60 + 8 × max(0, ◆ − 1)；
 // 不變式（不穿牆、不瞬移、不靜靜換位置 pops、每回合回全景、字在畫面裡）照查到終局
@@ -239,8 +239,11 @@ async function playMisses(order) {
   const mod = id => ALL.find(m => m.id === id), turns = [];
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
-    const r = step(s); s = r.state;
+    const prev = s, r = step(s); s = r.state;
     const turn = `${order.join('>')} turn ${i + 1}`, segs = [];
+    // wait 事件那一刻的等級（撲空排位子看的就是它：script.hasRep(lv)）
+    let view = { lv: prev.lv, flags: prev.flags };
+    for (const e of r.events) { if (e.kind === 'wait') break; view = engine.foldEvent(view, e); }
     inv.label(turn);
     let cur = null, keys = 0;
     const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
@@ -254,7 +257,7 @@ async function playMisses(order) {
       segs.push(cur);
     } });
     close(); inv.turnEnd();
-    turns.push({ events: r.events, segs, secs: show.elapsed, keys });
+    turns.push({ events: r.events, segs, secs: show.elapsed, keys, waitLv: view.lv });
     assert.deepEqual(show.stage.lv, s.lv, `${turn}: stage levels equal the engine`);
   }
   const { events: fin } = finaleStep(s);
@@ -269,11 +272,12 @@ for (const outcome of ['hit', 'deflect']) {
     const order = EXAMPLE[outcome], { turns, inv, show, mod } = await playMisses(order), nav = show.nav;
     let shown = 0;
     const kinds = new Set();
-    for (const [i, { events, segs, secs, keys }] of turns.entries()) {
+    for (const [i, { events, segs, secs, keys, waitLv }] of turns.entries()) {
       const what = `${outcome} turn ${i + 1}`, wait = events.find(e => e.kind === 'wait');
       const landed = wait && events.slice(0, events.indexOf(wait)).some(e => engine.landsTyphoon(e));
-      const want = !wait || landed ? [] : wait.waits.slice(0, MISS_PER_TURN).filter(w => mod(w.item)?.script?.rep && w.item !== 'typhoon').map(w => w.item);
-      assert.deepEqual(segs.map(g => g.w.item), want, `${what}: misses = the first ${MISS_PER_TURN} waits in ORDER`);
+      // 最終審稿 3：位子只給這一級叫得到代表的（script.hasRep），照 ORDER 往後補
+      const want = !wait || landed ? [] : wait.waits.filter(w => mod(w.item)?.script?.rep && mod(w.item).script.hasRep(waitLv[w.item])).slice(0, MISS_PER_TURN).map(w => w.item);
+      assert.deepEqual(segs.map(g => g.w.item), want, `${what}: misses = the first ${MISS_PER_TURN} waits in ORDER that have a rep at their level`);
       assert.ok(segs.length <= MISS_PER_TURN);
       for (const g of segs) {
         const label = `${what} ${g.w.item}<${g.w.for[0]}`;

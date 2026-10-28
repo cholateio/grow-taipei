@@ -1,4 +1,4 @@
-// 卡片：怎麼玩、結局、錯誤，以及右上角的工具列。
+// 卡片：怎麼玩、結局，以及右上角的工具列（啟動失敗的訊息由 main.js 寫在載入畫面上）。
 
 function card(root, cls, html) {
   root.querySelector(`.card.${cls}`)?.remove();
@@ -23,8 +23,6 @@ export function showEndCard(root, { title, line, onRestart }) {
   el.querySelector('button').addEventListener('click', () => { el.remove(); onRestart?.(); });
   return el;
 }
-
-export function showError(root, message) { return card(root, 'error', `<h2>無法啟動 3D 畫面</h2><p>${message}</p>`); }
 
 export function createTopBar(root, { onReset, onHowTo }) {
   const el = document.createElement('div'); el.className = 'topbar';

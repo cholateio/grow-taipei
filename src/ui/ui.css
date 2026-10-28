@@ -46,7 +46,6 @@ button.primary:hover { background: #3a3333; }
 .card.end .line { margin: 0; font-size: 14px; }
 .card.end button { flex: none; }
 @media (max-width: 640px) { .card.end { bottom: 196px; flex-direction: column; align-items: stretch; text-align: center; } }
-.card.error h2 { color: var(--ink); }
 
 /* 表演層（CSS2D 標籤）：外層只負責被 CSS2DRenderer 用 inline transform 定位，不能有 transform 動畫；動畫一律放內層 span */
 /* GROW 風格的頭頂泡泡：符號或圖框；字級跟視窗高度走（§13.5：字 2vh、圖框 3vh，各有上下限） */

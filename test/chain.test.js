@@ -185,7 +185,7 @@ test('both solutions live: every LEVEL UP label and bubble is on screen for at l
 });
 
 // 拜訪（計畫 6 設計 §4、§6、§8）：兩條正解每一個有原因的升級（via 非空、不是跳級的第二級、登陸之後不算、幫手與被升級的都不是颱風、
-// 這一級有拜訪點、同一幫手這回合還沒來過 3 次）都插了拜訪；幫手的代表叫得到的那幾段真的演了（段裡冒了 ♥），叫不到的只剩平移；
+// 這一級有拜訪點、同一幫手這回合還沒來過 VISIT_MAX_PER_HELPER 次（裁決 R2：2））都插了拜訪；幫手的代表叫得到的那幾段真的演了（段裡冒了 ♥），叫不到的只剩平移；
 // 每段 ≤ VISIT_CAP（事件秒數扣掉物品之間的空拍）；放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
 test('both solutions: every grow with via (not jump-second, not indoors) played a visit; visits ≤ 3.5 s; turns within 60 + 8 × (◆ − 1)', async () => {
   for (const [n, { paced }] of (await playBoth()).entries()) {

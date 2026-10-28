@@ -280,8 +280,8 @@ export const script = {
       const { B } = ctx;
       return [
         B.apply(e, { only: ['milk.main'] }),
-        // 計畫 5b 任務 4（節奏，第 6 回合 ≤ 50 s；一級至少 3 秒）：！ 1.0 → 0.8、♪ 0.8 → 0.7
-        B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'look', { at: LAB })), B.bubble(kid(ctx, 0), '！', 0.8)]),
+        // 計畫 5b 任務 4（節奏，第 6 回合 ≤ 50 s；一級至少 3 秒）：！ 1.0 → 0.8、♪ 0.8 → 0.7；計畫 6 裁決 R2（拜訪之後第 6 回合 ≤ 60 s）：！ 0.8 → 0.7
+        B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'look', { at: LAB })), B.bubble(kid(ctx, 0), '！', 0.7)]),
         B.together([B.walk(kid(ctx, 1), offset(BIKES, -0.35, 0)), B.apply(e)]), B.bubble(kid(ctx, 1), '♪', 0.7),
         B.levelUp('milk'), B.home(allKids),
       ];

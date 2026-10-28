@@ -10,12 +10,13 @@
 // 回日常：從別格來的（在格邊出現的）幫手由名冊 leave 背景走回格邊、回到被叫來之前的地方再回日常（不佔拍的時間，
 //   也不在日常裡橫越半個島穿過鼠窩）；本來就在附近的直接回日常。
 // 鏡頭由 turn.js 補：拜訪的第一拍跟平移到拜訪點那一格一起演（邊平移邊走進來）。
+// 同一回合同一個幫手最多拜訪 VISIT_MAX_PER_HELPER 次（設計 §4 原本 3；裁決 R2：第三次重複，2，之後只演那一級的劇本）。
 // 颱風不拜訪、也不被拜訪（天氣）：helper／target 是颱風就回 []（颱風的 rep、visitSpot 本來也是 null）。
 import { B, together } from './beats.js';
 import { frontOf } from '../actors/anchors.js';
 import { cellAt } from '../scene/hex.js';
 
-export const VISIT_WALK = 1.5, VISIT_KNOCK = 0.8, VISIT_LOVE = 0.6, VISIT_MAX_PER_HELPER = 3, VISIT_CAP = 3.5;
+export const VISIT_WALK = 1.5, VISIT_KNOCK = 0.8, VISIT_LOVE = 0.6, VISIT_MAX_PER_HELPER = 2, VISIT_CAP = 3.5;
 const REACH = 0.3;   // 路線的終點離拜訪點的站位超過這麼多 = 走不過去（被 footprint 隔斷），整段略過
 
 const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];

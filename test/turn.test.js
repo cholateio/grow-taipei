@@ -358,7 +358,7 @@ test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later 
   const events = [grow('chip', 2, ['milk']), grow('chip', 3, ['milk']), grow('chip', 4, ['milk']), grow('chip', 5, ['milk']), grow('milk', 2, ['bulb'])];
   const marks = marksOf(buildTurn(events, base(visitMods()), fakeCtx()));
   const visited = marks.filter(m => m.info.visit).map(m => `${m.e.via[0]}→${m.e.item}${m.e.to}`);
-  assert.equal(VISIT_MAX_PER_HELPER, 3);
-  assert.deepEqual(visited, ['milk→chip2', 'milk→chip3', 'milk→chip4', 'bulb→milk2'], 'the fourth milk visit is dropped, another helper still comes');
+  assert.equal(VISIT_MAX_PER_HELPER, 2, 'ruling R2: a third visit by the same helper is repetitive');
+  assert.deepEqual(visited, ['milk→chip2', 'milk→chip3', 'bulb→milk2'], 'the third and fourth milk visits are dropped, another helper still comes');
   assert.equal(marks.filter(m => !m.info.visit).length, events.length, 'every grow still plays its own script');
 });

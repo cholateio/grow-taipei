@@ -114,5 +114,5 @@ test('helper without a rep (typhoon; electrician away) → no visit beats', asyn
   assert.equal(v.rep, null, 'bulb has no rep on the main island');
   assert.equal(v.marks[0].info.visit, true, 'the visit mark is still there (turn.js cannot know before the beat)');
   assert.equal(v.hearts.length, 0); assert.ok(v.secs <= FOCUS_BEAT + 0.1, `visit collapsed to the pan (${v.secs.toFixed(2)} s)`);
-  assert.equal(VISIT_MAX_PER_HELPER, 3);
+  assert.equal(VISIT_MAX_PER_HELPER, 2);   // 裁決 R2
 });

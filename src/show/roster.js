@@ -22,7 +22,8 @@
 //   wander 馬上走下一趟、path 沿路接著走，走到不擠了才停。
 // 推擠（nav.separate，2026-10-28）：走路的人碰上沒在走的人（站定、休息中）自己退開整段（站著的不動；走回 stand 站位的這一趟、終點就在他旁邊時
 //   不推也不讓路，走到站定後由 separateStanding 錯開）；兩個走路的人裡沿手畫折線走的那個（m.cursor）不被推，整段由另一個人讓。
-//   推開的橫向分量記進 m.side、橋上往後推的那一截記成游標倒退（跟在後面慢下來）
+//   推開的橫向分量記進 m.side；橋上跟著同方向的人、或被前面站著的人擋住時，往後推的那一截記成游標倒退（跟在後面慢下來），
+//   迎面走來的兩人各自往右讓 ±BRIDGE_SIDE 錯身（橋上只讓迎面的人）
 // 不瞬移（final review）：日常、退場中的人每幀最多移動自己的走路速度 × dt（nav.separate 的推擠、開始／停下走路時推擠突然消失，
 //   都是滑過去的，不會一幀跳 0.3–0.5）；劇本手上的人、ride、藏起來的人不限
 // 不穿牆（§14.1）：footprint 一變（建築長出來），走到一半的人從現在的位置重新找路；推擠、追游標會切進 footprint 的那一幀不動；
@@ -39,6 +40,7 @@ export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_
 const ROUTE_TRIES = 6, LOW_MODELS = 3;
 export const SEATS = { 3: [[0, 0.12], [0, -0.12], [1, 0.12], [1, -0.12], [2, 0]], 5: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]] };   // [車廂, 沿車身偏移]
 const MODEL_H = 0.2, ARRIVE = 0.05, BELOW = -5;   // HEAD_Y.model 是 h 0.2 的頭高；藏起來的小人放到海面下
+const BRIDGE_SIDE = 0.12;   // 橋上迎面讓路最多橫移多少（橋面半寬 0.25，兩人各讓 0.12 剛好錯身）
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
@@ -427,9 +429,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const toward = (a, b) => a + Math.max(-max, Math.min(max, b - a));
     // 遲滯：前方有人擋就記住他和要讓的量；沒人擋時，記住的那個人還沒落到身後 SEPARATION 以外就照樣讓著
     // 橋上（不在格子裡）不讓：橋面只有 0.5 寬，讓出去就踩到橋外，拱橋的高度也對不上
-    const onBridge = !cellAt(c.x, c.z), t = onBridge ? null : yieldTarget(c, c.yaw, others.map(o => ({ x: o.pos.x, z: o.pos.z, r: radiusOf(o) })), radiusOf(m));
-    if (onBridge) m.yielding = null;
-    else if (t) m.yielding = { who: others[t.index], side: t.side };
+    // 橋上（第三輪審稿）：只讓迎面走來的人（朝向相反），各自往右手邊讓到 ±BRIDGE_SIDE（橋面半寬 0.25 裡）——不讓的話兩人在中線上互相頂住、
+    // 原地空走；同方向的、站著的不讓（跟在後面，見 update 的游標倒退）
+    const onBridge = !cellAt(c.x, c.z), cand = onBridge ? others.filter(o => o.walking && Math.cos(o.yaw - c.yaw) < 0) : others;
+    const t = yieldTarget(c, c.yaw, cand.map(o => ({ x: o.pos.x, z: o.pos.z, r: radiusOf(o) })), radiusOf(m));
+    if (t) m.yielding = { who: cand[t.index], side: onBridge ? Math.max(-BRIDGE_SIDE, Math.min(BRIDGE_SIDE, t.side)) : t.side };
+    else if (onBridge) m.yielding = null;
     else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -(radiusOf(m) + radiusOf(w))) m.yielding = null; }
     let side = toward(m.side ?? 0, m.yielding?.side ?? 0), p = at(side);
     if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
@@ -623,6 +628,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       // 不會下一幀又被游標拉進他身上（第二輪審稿：偵防師在窄橋上跟著通勤的工程師貼著走 0.09）。格子裡照舊記成橫移繞過去
       // （格子裡也倒退的話，站著的人擋在路上就永遠過不去）
       if (!cellAt(m.pos.x, m.pos.z)) {
+        // 只在跟著同方向的人、或被前面站著的人擋住時倒退；迎面的人（朝向相反）兩邊各自讓開走過去（sidestep），身後站著的人不擋
+        const blocker = [...moving, ...still].find(o => o !== m && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < radiusOf(m) + radiusOf(o) + 0.02
+          && aheadOf(m.pos, m.yaw, o.pos) > 0 && (!o.walking || Math.cos(o.yaw - m.yaw) > 0));
+        if (!blocker) return;
         const along = dx * Math.sin(m.yaw) + dz * Math.cos(m.yaw), back = Math.min(-along, m.trip.cursor.total - m.trip.left);
         if (back > 0) { m.trip.cursor.advance(-back); m.trip.left += back; }
         return;

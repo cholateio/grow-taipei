@@ -875,6 +875,23 @@ test('a stand member whose spot is within ra + rb of a settled stander still arr
   assert.ok(Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) >= 0.25 - 1e-6, 'separateStanding spreads the pair');
 });
 
+// 第三輪審稿：兩個人在橋上迎面相遇（中心格 ↔ 晶片格那座橋）——不能在橋上互相頂住、原地空走；6 秒內各自走到對面的站位
+test('two walkers meeting head-on on a bridge pass each other and both reach their spots within 6 s', async () => {
+  const { edgeMidpoint, RING_R } = await import('../src/scene/hex.js');
+  const { roster } = setup(), { a, b } = edgeMidpoint([0, 0], [1, 0], RING_R * Math.sqrt(3) / 2);
+  const len = Math.hypot(b.x - a.x, b.z - a.z), ux = (b.x - a.x) / len, uz = (b.z - a.z) / len;
+  const at = (p, s, cell) => ({ x: p.x + ux * s, y: cellTop(cell), z: p.z + uz * s, yaw: 0 });
+  const A0 = at(a, -0.6, [0, 0]), A1 = at(b, 0.6, [1, 0]), B0 = at(b, 0.7, [1, 0]), B1 = at(a, -0.7, [0, 0]);
+  roster.declare('a', { kind: 'roster', at: A1, n: 1, home: { kind: 'stand', spots: [A1], entry: A0 } });
+  roster.declare('b', { kind: 'roster', at: B1, n: 1, home: { kind: 'stand', spots: [B1], entry: B0 } });
+  const [ma] = roster.members('a'), [mb] = roster.members('b');
+  for (let f = 0; f < 180; f++) roster.update(1 / 30, f / 30);
+  for (const [m, spot, k] of [[ma, A1, 'a'], [mb, B1, 'b']]) {
+    const d = Math.hypot(m.pos.x - spot.x, m.pos.z - spot.z);
+    assert.ok(d < 0.3 && !m.walking, `${k} ${d.toFixed(2)} from its spot, walking ${m.walking}`);
+  }
+});
+
 // 最終章 §6（最終審稿）：命中後全島躺平「姿勢持續到標題卡」——people.mood 是 'lie' 時名冊不推日常（不散步、不走趟、不被錯開），
 // 躺著的人不在島上滑；心情回 normal（RESET 經 app 的 showWorld、或 roster.reset 重來）就接著走
 test('people mood lie freezes every home-mode people walker (wander, stand); mood normal resumes the daily walk', () => {

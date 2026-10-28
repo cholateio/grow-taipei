@@ -31,6 +31,7 @@ export const aheadOf = (p, yaw, o) => (o.x - p.x) * Math.sin(yaw) + (o.z - p.z) 
 // 9 片甲板各長 len/9 × 1.08，兩端的板子超出端點半片（PLANK·len）。DENSE：路線過橋那一段每隔多遠補一個點（游標直線內插才貼著拱）
 const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05, STEP_Y = 0.03;   // STEP_Y：相鄰取樣差這麼多就是一階（拱的弧每 0.05 只差 0.02 以內）
 const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32, ESCAPE_MAX = 1.6;
+const ROUND = [0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5];   // separate：推離站著的人時試的方向（相對直直退開，rad）
 const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
@@ -346,26 +347,37 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）。
   // 本來在外擴 footprint 外的人也不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：計畫 5b 任務 4 量到老鼠在窩邊）；
   // 一邊推不動（貼著牆）就由另一邊讓開整段（同 separateStanding），兩個人才不會在窄道上疊在一起
-  // standing（2026-10-28 錄影修正第二輪）：站定的人（不在走）——走路的人離他不到兩人半徑相加就自己退開整段，站著的不動
-  //   （以前只推兩個都在走的人，老鼠、小孩直直穿過站著的觀眾）；推不動（會進外擴 footprint）就不推
-  function separate(members, _dt, standing = []) {
+  // standing（2026-10-28 錄影修正第二輪）：沒在走的人（名冊傳日常裡站定的、休息中的、站著等的）——走路的人離他不到兩人半徑相加就自己退開整段，站著的不動
+  //   （以前只推兩個都在走的人，老鼠、小孩直直穿過站著的觀眾）；推不動（會進外擴 footprint）就不推。
+  //   沿手畫折線走的人（m.cursor）不推（同兩兩互推）；keep(w, s, need) 回 true 的也不推——名冊用它放過「站位就在這個人旁邊」
+  //   的人（第二輪審稿：站位離站好的人不到 ra + rb 時每幀被推開整段、走不到站位，在原地空走；讓他走到、站定後由 separateStanding 錯開）。
+  //   一次處理一個站著的人：被一個人推開後又落進另一個人的範圍，就再推一次（不保證同時離開所有人，下一幀再修）
+  function separate(members, _dt, standing = [], keep = () => false) {
     const walkers = members.filter(m => m.walking === true);
     const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
     const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
+    // w 自己退到離 s 兩人半徑相加（s 不動）。直直退開會撞牆（s 背後是池子、牆，或兩人在窄橋上）：繞著 s 往旁邊轉，找第一個推得過去的方向
+    const stepOff = (w, s, need) => {
+      const p = w.pos, a0 = Math.atan2(p.z - s.pos.z, p.x - s.pos.x) || 0, r = need;
+      for (const da of ROUND) {
+        const x = s.pos.x + Math.cos(a0 + da) * r, z = s.pos.z + Math.sin(a0 + da) * r;
+        if (can(p, x, z)) { put(p, x, z); return; }
+      }
+    };
     for (const w of walkers) for (const s of standing) {
-      if (s === w || s.walking) continue;
-      const p = w.pos, dx = p.x - s.pos.x, dz = p.z - s.pos.z, d = Math.hypot(dx, dz), need = apart(w, s);
-      if (d >= need) continue;
-      const ux = d ? dx / d : 1, uz = d ? dz / d : 0, x = s.pos.x + ux * need, z = s.pos.z + uz * need;
-      if (can(p, x, z)) put(p, x, z);
+      if (s === w || s.walking || w.cursor) continue;
+      const need = apart(w, s);
+      if (Math.hypot(w.pos.x - s.pos.x, w.pos.z - s.pos.z) >= need || keep(w, s, need)) continue;
+      stepOff(w, s, need);
     }
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
       const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
       if (d >= need) continue;
+      // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）不推：另一個人自己退開整段（第二輪：偵防師和通勤的工程師在橋上擦身）
+      if (!!walkers[i].cursor !== !!walkers[j].cursor) { const [w, r] = walkers[i].cursor ? [walkers[j], walkers[i]] : [walkers[i], walkers[j]]; stepOff(w, r, need); continue; }
       const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
       const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
-      // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）當成貼著牆：整段由另一個人讓（第二輪：偵防師和通勤的工程師擦身 0.11）
-      const okP = !walkers[i].cursor && can(p, ...at(p, -1, 1)), okQ = !walkers[j].cursor && can(q, ...at(q, 1, 1));
+      const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
       if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
       else if (okP) put(p, ...(can(p, ...at(p, -1, 2)) ? at(p, -1, 2) : at(p, -1, 1)));
       else if (okQ) put(q, ...(can(q, ...at(q, 1, 2)) ? at(q, 1, 2) : at(q, 1, 1)));

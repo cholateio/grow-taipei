@@ -18,8 +18,11 @@
 // 走進來、走出去、家搬了走過去都是有目的的走路，用走路速度（小人 1.6、老鼠 2.0）；日常散步、走回站位仍是 WANDER_SPEED。
 // 站著的 stand 成員彼此 < 兩人半徑相加（m.radius：小人 0.125、模型照高度，2026-10-28）→ nav.separateStanding 沿 x 錯開（改 m.pos、不改 spot；每幀最多滑走路速度 × dt，
 //   站定後就留在錯開的位置，不走回 spot）
-// 不在焦點也不疊著（final review）：休息中的 wander 成員、焦點外停下的 path 成員離別人（任何露出來的成員）< 0.25 就不停——
+// 不在焦點也不疊著（final review）：休息中的 wander 成員、焦點外停下的 path 成員離別人（任何露出來的成員）< 兩人半徑相加就不停——
 //   wander 馬上走下一趟、path 沿路接著走，走到不擠了才停。
+// 推擠（nav.separate，2026-10-28）：走路的人碰上沒在走的人（站定、休息中）自己退開整段（站著的不動；走回 stand 站位的這一趟、終點就在他旁邊時
+//   不推也不讓路，走到站定後由 separateStanding 錯開）；兩個走路的人裡沿手畫折線走的那個（m.cursor）不被推，整段由另一個人讓。
+//   推開的橫向分量記進 m.side、橋上往後推的那一截記成游標倒退（跟在後面慢下來）
 // 不瞬移（final review）：日常、退場中的人每幀最多移動自己的走路速度 × dt（nav.separate 的推擠、開始／停下走路時推擠突然消失，
 //   都是滑過去的，不會一幀跳 0.3–0.5）；劇本手上的人、ride、藏起來的人不限
 // 不穿牆（§14.1）：footprint 一變（建築長出來），走到一半的人從現在的位置重新找路；推擠、追游標會切進 footprint 的那一幀不動；
@@ -113,6 +116,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   // 成員照哪份宣告過日常：hold 中先照待套用的（劇本 spawnHeld 出來的人回家要回新家）
   const current = g => (g.held && g.pending) || g.spec;
+  // 這一趟是日常走回自己的 stand 站位（推擠、讓路對「站位就在別人旁邊」的人網開一面，第二輪審稿）
+  const toSpot = m => { const g = groups.get(m.key); return !!m.trip && m.mode === 'home' && !!g && current(g)?.home?.kind === 'stand'; };
 
   // ── 家的位置 ──
   function wanderHome(spec, i) {
@@ -414,7 +419,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 橫移每幀最多 trip.speed × dt（不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
   function sidestep(m, c, max) {
     const others = [];
-    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone) others.push(o);
+    // 走回站位（stand）的這一趟，終點就在他旁邊的人不讓（散步、跟隨的終點只是隨便挑的點，照樣讓）：讓了就永遠走不到站位，在原地左右空走（第二輪審稿：排隊、觀眾的站位離站好的人不到 ra + rb）；
+    // 走到站定後由 separateStanding 錯開
+    const last = toSpot(m) ? m.trip.last : null, nearEnd = o => last && Math.hypot(last.x - o.pos.x, last.z - o.pos.z) < radiusOf(m) + radiusOf(o) + YIELD_CLEAR - SEPARATION;
+    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone && !nearEnd(o)) others.push(o);
     const at = side => ({ x: c.x - Math.cos(c.yaw) * side, z: c.z + Math.sin(c.yaw) * side });
     const toward = (a, b) => a + Math.max(-max, Math.min(max, b - a));
     // 遲滯：前方有人擋就記住他和要讓的量；沒人擋時，記住的那個人還沒落到身後 SEPARATION 以外就照樣讓著
@@ -422,7 +430,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const onBridge = !cellAt(c.x, c.z), t = onBridge ? null : yieldTarget(c, c.yaw, others.map(o => ({ x: o.pos.x, z: o.pos.z, r: radiusOf(o) })), radiusOf(m));
     if (onBridge) m.yielding = null;
     else if (t) m.yielding = { who: others[t.index], side: t.side };
-    else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -SEPARATION) m.yielding = null; }
+    else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -(radiusOf(m) + radiusOf(w))) m.yielding = null; }
     let side = toward(m.side ?? 0, m.yielding?.side ?? 0), p = at(side);
     if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
     m.side = side;
@@ -579,7 +587,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 劇本手上的照拍演（命中劇本的群眾拍在換心情之前就演完了）。這裡每幀讀 people.mood、不存狀態：
     // 心情回 normal（RESET 經 app 的 showWorld、演出層 reset 的 world 拍）下一幀就接著走，roster.reset 也不用另外清
     const lying = people.mood === 'lie', frozen = (m, spec) => lying && !!m.walker && spec?.home?.kind !== 'ride';
-    const moving = [], standing = [], was = [];   // was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
+    const moving = [], standing = [], still = [], was = [];   // still：日常裡沒在走的人（站定的、休息中的散步客、站著等的跟隨者）；was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
     // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）。
     // gap：loose 只是因為這幀開始時站在走路格的夾縫裡（walkable 假、passable 真：被推到柱子和牆之間）——這種人照樣不准切進外擴 footprint
     //   （2026-10-28 錄影修正量到：島民被推離路線後追游標，直線斜切過校門柱子的 PAD；沿折線、走向格外終點的人不算）
@@ -591,7 +599,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else if (m.settled) standing.push(m); }   // 藏起來的人（躲在門裡）不動、不推別人
+        if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）
@@ -604,13 +612,23 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 只推日常走動的人（劇本手上的主角不被推歪）。走在路線上的人下一幀位置又從游標算（游標＋橫移 m.side），推開的那一截會被拉回來、
     // 兩個人斜著交會時就一直貼著走（2026-10-28 列車加大後 live 測試量到偵防師和島民並肩走 0.10）：推開的橫向分量記進 m.side，
     // 之後照 sidestep 的速度慢慢收回路線上。橋上不記（橋面只有 0.5 寬，同 sidestep 橋上不讓）
-    // 站定的人（standing）也算：走路的人碰上他就自己退開（他不動）
+    // 沒在走的人（still：站定的、休息中的、等著的）也算：走路的人碰上他就自己退開（他不動）
     const pushedFrom = moving.map(m => ({ x: m.pos.x, z: m.pos.z }));
-    nav.separate(moving, dt, standing);
+    // 站位（這一趟的終點）就在那個人 ra + rb 內、或這一趟只剩不到 ra + rb：不推，讓他走到站定（第二輪審稿：推開整段會在原地空走）
+    nav.separate(moving, dt, still, (w, s, need) => toSpot(w) && (w.trip.left < need || Math.hypot(w.trip.last.x - s.pos.x, w.trip.last.z - s.pos.z) < need));
     moving.forEach((m, i) => {
       const dx = m.pos.x - pushedFrom[i].x, dz = m.pos.z - pushedFrom[i].z;
-      if ((!dx && !dz) || !m.trip || !cellAt(m.pos.x, m.pos.z)) return;
-      m.side = Math.max(-YIELD_CLEAR, Math.min(YIELD_CLEAR, (m.side ?? 0) - dx * Math.cos(m.yaw) + dz * Math.sin(m.yaw)));
+      if ((!dx && !dz) || !m.trip) return;
+      // 橋上（只有 0.5 寬，橫向推不開）：往後推的那一截（沿走路方向的負分量）記成游標倒退——被前面的人擋住就跟在後面慢下來，
+      // 不會下一幀又被游標拉進他身上（第二輪審稿：偵防師在窄橋上跟著通勤的工程師貼著走 0.09）。格子裡照舊記成橫移繞過去
+      // （格子裡也倒退的話，站著的人擋在路上就永遠過不去）
+      if (!cellAt(m.pos.x, m.pos.z)) {
+        const along = dx * Math.sin(m.yaw) + dz * Math.cos(m.yaw), back = Math.min(-along, m.trip.cursor.total - m.trip.left);
+        if (back > 0) { m.trip.cursor.advance(-back); m.trip.left += back; }
+        return;
+      }
+      const cap = Math.max(YIELD_CLEAR, Math.abs(m.yielding?.side ?? 0));   // 讓變異鼠這種大個子時橫移本來就超過 YIELD_CLEAR，不夾回去
+      m.side = Math.max(-cap, Math.min(cap, (m.side ?? 0) - dx * Math.cos(m.yaw) + dz * Math.sin(m.yaw)));
     });
     nav.separateStanding(standing, WALK_SPEED.people * dt);
     // 不瞬移：這幀的位移超過走路速度 × dt 就只走到那麼遠（推擠的位移下一幀接著滑；游標上的位置不變，下一幀照樣從游標算）。

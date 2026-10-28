@@ -82,13 +82,13 @@ function spur(kind) {
   const local = p => { const vx = p.x - at.x, vz = p.z - at.z; return [vx * Math.cos(bearing) - vz * Math.sin(bearing), vz * Math.cos(bearing) + vx * Math.sin(bearing)]; };
   for (let i = 0; i < 8; i++) {
     const z = seg * (i + 0.5), y = (L.y1 - L.y0) * (i + 0.5) / 8;
-    parts.push({ kind: 'box', pos: [0, y, z], scale: [0.3, 0.08, seg * 1.05], color: C.cream });
+    parts.push({ kind: 'box', pos: [0, y, z], scale: [0.3 * K, 0.08, seg * 1.05], color: C.cream });   // 路面寬照車寬放大（2026-10-28 列車加大，車廂不懸空）
     if (i % 2 === 1 && i < 7) { const q = pylon(L.ux * (L.from + z), L.uz * (L.from + z), L.y0 + y); parts.push({ ...q, pos: [0, q.pos[1] - L.y0, z] }); }
   }
   const curve = spurTrip(kind).path.filter(p => Math.hypot(p.x, p.z) < L.from + 0.6);
   for (let i = 1; i < curve.length; i++) {
     const [ax, az] = local(curve[i - 1]), [bx, bz] = local(curve[i]), len = Math.hypot(bx - ax, bz - az);
-    parts.push({ kind: 'box', pos: [(ax + bx) / 2, 0, (az + bz) / 2], scale: [0.3, 0.08, len * 1.1], rot: [0, Math.atan2(bx - ax, bz - az), 0], color: C.cream });
+    parts.push({ kind: 'box', pos: [(ax + bx) / 2, 0, (az + bz) / 2], scale: [0.3 * K, 0.08, len * 1.1], rot: [0, Math.atan2(bx - ax, bz - az), 0], color: C.cream });
   }
   return { kind: 'spur', at, bearing, footprint: false, parts };
 }

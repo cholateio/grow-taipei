@@ -24,7 +24,7 @@ export const labelY = 0.6;
 const RAT = 'quat/enemies/Rat.glb', GREY = { Grey: 0xc0c8d0 };
 const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring'), DOME = anchorWorld('baseball');
 const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時老鼠在這裡晃）
-export const MUTANT = offset(SPRING, 0.1, 1.1, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
+export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客改站池子北側、離牠 ≥ 1.9（landmarks.js BATHERS_NORTH，2026-10-28）
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 老鼠在這裡變身）
 // 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（飛天車停在中線 z 0.02 的左中右、車身沿 ±z 長 0.3，牠坐空著的左後角、

@@ -569,6 +569,7 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // （2）外星結局（closing 起）偵防師離每個露出來的人 ≥ SEPARATION。兩條正解只演一次，幾個測試共用（livePlay）
 const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
 const SEP_TOL = 0.005;   // 兩個走路的人互推剛好推到 SEPARATION（每幀限速的那一截下一幀才補上），差一點點不算擠
+const RAT_TOL = 0.03;   // 老鼠對人：半徑是估的（模型照高度），名冊每幀限速推開時會在半徑和內 1–3 公分徘徊，不算貼著
 const BODY = 0.16, PASS_MAX = 0.5, BODY_K = 0.64;   // 兩個小人身體（半徑 0.08）不相碰；走路擦身而過貼近不超過 0.5 秒；BODY_K：老鼠擦身而過時身體不相碰（人對人 0.25 × 0.64 = BODY）
 let livePlayed = null;
 const livePlay = () => (livePlayed ??= playBoth());
@@ -601,7 +602,7 @@ async function playBoth() {
         const rh = view[r.key]?.home, nest = homeAt(rh, RAT_AT), army = homeAt(rh, TOWER_AT), pass = r.walking && !o.walking && view[o.key]?.home?.kind === 'stand' && !!o.settled;
         if (nest) nestFrames++; if (pass) passFrames++;
         const d = Math.hypot(o.pos.x - r.pos.x, o.pos.z - r.pos.z), need = r.radius + o.radius, pair = `${r.key}#${r.i}|${o.key}#${o.i}`;
-        if (d >= need - SEP_TOL) { ratPass.delete(pair); continue; }
+        if (d >= need - RAT_TOL) { ratPass.delete(pair); continue; }
         if (!ratPass.has(pair)) ratPass.set(pair, t);
         const what = `${label} rat#${r.i} (r ${r.radius.toFixed(3)}${r.walking ? ' walking' : ''}) ${d.toFixed(2)} from ${o.key}#${o.i}${o.walking ? ' walking' : ''} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`;
         const bad = d < BODY_K * need ? what : t - ratPass.get(pair) > PASS_MAX ? `${what} for > ${PASS_MAX} s` : null;
@@ -858,6 +859,20 @@ test('walking past someone standing on the line keeps ≥ 0.23 from them, never 
   const { min, worst } = passRun(roster, ms, 120);
   assert.ok(gap(ms[0].pos, R) < 0.1, 'arrived');
   assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`); assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+});
+
+// 2026-10-28 第二輪審稿：站位離已經站好的人不到兩人半徑相加（排隊、觀眾擠一個點）——走過去的人不被「退開整段」推在原地空走，
+// 照樣走到站位站定，之後由 separateStanding 錯開
+test('a stand member whose spot is within ra + rb of a settled stander still arrives and settles (no walking in place)', () => {
+  const { roster } = setup(), C = centre([-1, 0]), A = { ...C, yaw: 0 }, Bs = { ...C, x: C.x + 0.05, yaw: 0 }, E = { ...C, x: C.x + 1, z: C.z + 0.3, yaw: 0 };
+  roster.declare('a', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [A] } }); roster.snap();
+  roster.declare('b', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [Bs], entry: E } });
+  const [a] = roster.members('a'), [b] = roster.members('b');
+  let walking = 0;
+  for (let f = 0; f < 300; f++) { roster.update(1 / 30, f / 30); if (f >= 150 && b.walking) walking++; }
+  assert.ok(b.settled && !b.walking, `B settled (walking ${walking} of the last 150 frames)`);
+  assert.ok(walking < 10, `B walks in place ${walking} frames`);
+  assert.ok(Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z) >= 0.25 - 1e-6, 'separateStanding spreads the pair');
 });
 
 // 最終章 §6（最終審稿）：命中後全島躺平「姿勢持續到標題卡」——people.mood 是 'lie' 時名冊不推日常（不散步、不走趟、不被錯開），

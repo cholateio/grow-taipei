@@ -441,9 +441,9 @@ test('token rosters enter from behind the station, walkable and ≥ 1.5 from eve
 });
 test('the staff entry walk to the post stays clear of the boba queue and the cart front', async () => {
   const BOBA = anchorWorld('boba'), POST = offset(AT, 0.6, 0.55);
-  const { queue } = await import('../src/actors/boba.js'), Q = queue(BOBA, 6);
+  const { queue, SHOP } = await import('../src/actors/boba.js'), Q = queue(BOBA, 6), ROW = queue(BOBA, 1)[0].z;   // 攤車前那排（店北移之後跟著 SHOP 算）
   const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, LL = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / LL)); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
-  const front = p => Math.abs(p.x - BOBA.x) < 1.3 && p.z > BOBA.z + 0.55 && p.z < BOBA.z + 1.25;
+  const front = p => Math.abs(p.x - BOBA.x) < 1.3 && p.z > SHOP.z + 0.15 && p.z < ROW + 0.25;   // 攤車前緣到人龍後面 0.25
   const check = (route, what) => {
     for (let k = 1; k < route.length; k++) {
       for (const q of Q) assert.ok(segD(q, route[k - 1], route[k]) >= 0.25, `${what}: passes ${segD(q, route[k - 1], route[k]).toFixed(2)} from queue spot (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`);

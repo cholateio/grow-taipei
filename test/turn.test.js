@@ -26,7 +26,7 @@ const kindsOf = beats => noMarks(beats).map(b => b.kind);
 const walker = { pos: { x: 0, y: 0, z: 0 }, speed: 1, head: () => ({ x: 0, y: 1, z: 0 }) };
 const navOf = len => ({ route: () => [{ x: 0, z: 0 }, { x: len, z: 0 }], routeLength: () => len });
 
-test('default scripts: placed → apply; grow → apply + levelUp; knock-back → LEVEL DOWN; the wait hint is one bubble', () => {
+test('default scripts: placed → apply; grow → apply + levelUp; knock-back → LEVEL DOWN; a wait without an item rep plays nothing', () => {
   // base()：lv chip 1、其他 0（所以 settle 的總等級 1 → 3 不跨 101 門檻，什麼都不演）
   const ctx = fakeCtx();
   const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }, { kind: 'settle' }];
@@ -41,52 +41,13 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-3).map(b => b.kind), ['home', 'world', 'focus']);
   assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
   const beats = noMarks(raw), kinds = kindsOf(raw);
-  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件只在演圖框時平移到代表角色（不空拍）；回合最後回全景
-  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'focus', 'bubble', 'wait', 'focus', 'home', 'world', 'focus']);
+  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件不平移（撲空段自己平移，這裡燈泡沒有模組、沒有代表 → 沒有撲空）；回合最後回全景
+  assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'home', 'world', 'focus']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
   // placed：平移 + 預設 apply + 補的 apply；每個事件至少一個 apply
   assert.deepEqual(kinds.slice(0, 3), ['focus', 'apply', 'apply']);
   assert.equal(kinds.filter(k => k === 'apply').length, 2 + 2 + 2 + 2 + 2);
-});
-
-test('only the last wait event of a turn shows the hint; the hint target falls back to the nearest islander', () => {
-  const islander = { ...walker }, asked = [];
-  const ctx = fakeCtx({ roster: { nearest: (key, p, opts) => { asked.push([key, p, opts]); return islander; }, keys: () => [], members: () => [] } });
-  const w = item => ({ kind: 'wait', item, waits: [{ item, for: ['baseball', 'milk'] }] });
-  const beats = buildTurn([w('chip'), w('bulb')], base(), ctx);
-  const bubbles = beats.filter(b => b.kind === 'bubble');
-  assert.equal(bubbles.length, 1); assert.equal(bubbles[0].dur, 1.2);
-  // 沒有 rep 劇本 → 找離 bulb 錨點最近的島民；泡泡內容是第一個缺的幫手的圖框
-  let shown = null;
-  bubbles[0].start({ ...ctx, bubbles: { show: (head, kind, dur) => { shown = { head: head(), kind, dur }; return { cancel() {} }; } } });
-  assert.equal(asked[0][0], 'landmarks.islanders'); assert.deepEqual(asked[0][2], { visible: true }, 'hidden islanders do not count'); assert.deepEqual(shown.kind, { icon: 'baseball' }); assert.deepEqual(shown.head, { x: 0, y: 1, z: 0 });
-  // 圖框前面鏡頭先平移到代表角色身上（審稿：兩條正解唯一的等待圖框在畫面外）；只有演圖框的那個 wait 平移
-  assert.equal(noMarks(beats).filter(b => b.kind === 'focus' && !b.final).length, 1, 'one pan for the hint, none for the silent wait');
-  const pan = noMarks(beats)[noMarks(beats).indexOf(bubbles[0]) - 1], got = [];
-  assert.equal(pan.kind, 'focus');
-  pan.start({ ...ctx, roster: { ...ctx.roster, setFocus: c => got.push(['cells', c]) }, rig: { grabbed: false, focus: (p, o) => got.push(['rig', { ...p }, o.zoom]) } });
-  assert.deepEqual(got, [['cells', [[0, 0]]], ['rig', { x: 0, y: 0, z: 0 }, 0.6]], 'the camera centres on the islander');
-  // 模組 rep 劇本優先
-  const rep = { ...walker, head: () => ({ x: 9, y: 9, z: 9 }) };
-  const bulb = { id: 'bulb', view() {}, script: { rep: (s, c) => (s.lv && c ? rep : null) } };
-  const [hint] = buildTurn([w('bulb')], base([tower, bulb]), ctx).filter(b => b.kind === 'bubble');
-  hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } });
-  assert.deepEqual(shown, { x: 9, y: 9, z: 9 });
-});
-
-// 外面一個看得到的人都沒有（颱風登陸大家躲進門裡）：等待圖框掛在物品頭上（終審 Important 2）
-test('the wait hint hangs over the item when no visible islander is around', () => {
-  const ctx = fakeCtx({ stage: { headOf: id => ({ x: id === 'bulb' ? 7 : 0, y: 2, z: 0 }), lv: {}, flags: {}, meta: {} } });
-  const [hint] = buildTurn([{ kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }], base(), ctx).filter(b => b.kind === 'bubble');
-  let shown = null;
-  assert.notEqual(hint.start({ ...ctx, bubbles: { show: head => { shown = head(); return { cancel() {} }; } } }), false, 'the hint still shows');
-  assert.deepEqual(shown, { x: 7, y: 2, z: 0 });
-  // 鏡頭平移到物品的格子
-  const pan = buildTurn([{ kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }], base(), ctx).find(b => b.kind === 'focus');
-  let cells = null;
-  pan.start({ ...ctx, roster: { ...ctx.roster, setFocus: c => { cells = c; } }, rig: { grabbed: false, focus() {} } });
-  assert.deepEqual(cells, [cellOf('bulb')]);
 });
 
 test('a module script replaces the default and still gets a trailing apply', () => {
@@ -377,4 +338,63 @@ test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later 
   let n = 0;
   const flaky = buildTurn(events.slice(0, 3), base(visitMods().map(m => (m.id === 'milk' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') }, mode: n++ === 0 ? 'script' : 'home' }) } } : m))), fakeCtx());
   assert.deepEqual(walks(flaky).filter((seg, k) => marksOf(flaky)[k].info.visit).map(seg => play(seg, c)[0]), [false, true, true], 'a skipped visit does not use up the quota');
+});
+
+// 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段——mark { miss, item }、（換物品空 GAP）、
+// together(平移到代表那一格, 走過去)、失望 sigh、回日常；沒有泡泡、沒有圖框（舊的等待圖框拿掉）
+const { MISS_PER_TURN, SIGH, MISS_WALK, MISS_CAP } = await import('../src/show/visit.js');
+// 一串拍（together 裡也算）有沒有泡泡拍
+const anyBubble = beats => beats.some(b => b.kind === 'bubble' || (b.kind === 'together' && anyBubble(b.beats)));
+const waitOf = (...items) => ({ kind: 'wait', item: items[0], waits: items.map(item => ({ item, for: ['baseball', 'milk'] })) });
+const repMods = (rep = () => walker) => ['chip', 'bulb', 'token', 'boba'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep } }));
+test('wait event → up to MISS_PER_TURN miss segments in ORDER; no icon bubble anywhere', () => {
+  assert.equal(MISS_PER_TURN, 2); assert.equal(SIGH, 1.0); assert.equal(MISS_CAP, 3);
+  assert.ok(MISS_WALK + SIGH <= MISS_CAP, 'the walk cap leaves room for the sigh');
+  const e = waitOf('chip', 'bulb', 'token');
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, e], base([tower, ...repMods()]), fakeCtx());
+  const marks = marksOf(raw);
+  // 前兩個 waits 各一段撲空（照 ORDER：引擎的 waits 本來就照 ORDER 排），第三個不演；之後 wait 事件自己照舊一個 mark
+  assert.deepEqual(marks.map(m => [m.e.kind, !!m.info.miss, m.info.item ?? null]), [['placed', false, null], ['wait', true, 'chip'], ['wait', true, 'bulb'], ['wait', false, null], ['settle', false, null]].slice(0, marks.length));
+  assert.equal(marks.filter(m => m.info.miss).length, 2);
+  assert.ok(Math.abs(marks[1].info.gap - GAP) < 1e-9 && Math.abs(marks[2].info.gap - GAP) < 1e-9, 'a new item: GAP before each miss');
+  // 一段撲空：空拍（代表叫不到就跳過）、together(平移到代表那一格, 走過去)、失望 1.0 s、回日常
+  const seg = between(raw, 1);
+  assert.deepEqual(seg.map(b => b.kind), ['wait', 'together', 'gesture', 'home']);
+  assert.equal(seg[0].dur, GAP);
+  assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.equal(typeof seg[1].beats[0].target, 'function', 'the pan target is the rep, found at beat time');
+  assert.equal(seg[2].dur, SIGH);
+  // wait 事件自己：只剩不閃白的套用（沒有泡泡、沒有平移）
+  assert.deepEqual(between(raw, 3).map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]], 'its own silent apply and the trailing apply');
+  // 整回合沒有任何泡泡拍（等待圖框拿掉）
+  assert.equal(anyBubble(raw), false, 'no bubble beat for a wait');
+  // 等待物品沒有代表劇本（颱風、這裡的 milk 沒有模組）→ 那一項不插、也不往後補
+  const some = buildTurn([waitOf('milk', 'chip', 'bulb')], base([tower, ...repMods()]), fakeCtx());
+  assert.deepEqual(marksOf(some).filter(m => m.info.miss).map(m => m.info.item), ['chip']);
+  // 颱風登陸之後（大家躲在屋裡）不演撲空
+  const typhoon = { id: 'typhoon', view() {}, script: { rep: () => null } };
+  const landed = buildTurn([{ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, waitOf('chip', 'bulb')], base([tower, typhoon, ...repMods()]), fakeCtx());
+  assert.ok(marksOf(landed).every(m => !m.info.miss), 'no misses after the landing');
+  assert.equal(anyBubble(landed), false);
+});
+
+test('miss beats: the rep is found once at beat time; nobody (hidden, busy, away) → every beat skipped, the GAP too', () => {
+  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
+  const claimed = [], homed = [], roster = { claim: m => claimed.push(m), home: m => homed.push(m), setPose() {}, setFocus() {}, members: () => [], keys: () => [] };
+  for (const mode of ['script', 'away']) {
+    const busy = { ...walker, mode }, raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip')], base([tower, ...repMods(() => busy)]), fakeCtx());
+    const seg = between(raw, 1), c = fakeCtx({ roster, nav, rig: { grabbed: false, focus: () => true } });
+    assert.equal(seg[0].start(c), false, `${mode}: the GAP is skipped`);
+    assert.equal(seg[1].beats[0].start(c), false, `${mode}: no pan`); assert.equal(seg[1].beats[1].start(c), false, `${mode}: no walk`);
+    assert.equal(seg[2].start(c), false, `${mode}: no sigh`);
+  }
+  assert.deepEqual(claimed, [], 'a busy rep is never taken'); assert.deepEqual(homed, []);
+  // 叫得到：空拍那拍就定案、拿到劇本手上；平移對著他那一格；回日常
+  let asked = 0;
+  const rep = { ...walker, mode: 'home', pos: { x: 0, y: 0.65, z: 0 } };
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip')], base([tower, ...repMods(() => { asked++; return rep; })]), fakeCtx());
+  const seg = between(raw, 1), cells = [], c = fakeCtx({ roster: { ...roster, setFocus: x => cells.push(x) }, nav, rig: { grabbed: false, focus: () => true } });
+  assert.notEqual(seg[0].start(c), false); assert.deepEqual(claimed, [rep]);
+  seg[1].beats[0].start(c); assert.deepEqual(cells, [[[0, 0]]], 'the pan goes to the rep\'s cell');
+  seg[3].start(c); assert.deepEqual(homed, [rep]);
+  assert.equal(asked, 1, 'the rep is asked once');
 });

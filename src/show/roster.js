@@ -356,11 +356,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 走出去的人（mode 'exit'）、已經拿掉的人不歸劇本：claim／home／setPose 不算數（劇本 once() 快取的人可能已經在退場）
   const out = m => m.mode === 'exit' || m.gone;
   function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; m.away = null; }
-  function home(m) {
+  // hurry（計畫 6 拜訪、撲空）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
+  //   不在別人的格子裡站著等焦點回來、回合結束後再用散步速度慢慢晃回去（擠在別格、壓過那一格的人數預算）
+  function home(m, { hurry = false } = {}) {
     if (out(m)) return;
     m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null; m.away = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
+    else if (hurry) m.arriving = true;
   }
   // 拜訪完離開（計畫 6 設計 §4、裁決 R3）：從遠處叫來拜訪的幫手（拜訪時在路上閃白出現的那種）沿 route 用走路速度走回他出現的那一點，
   //   在那裡閃白 BLINK 秒、換回 back（他被叫來之前站的地方）再閃白一下、回日常——不在日常裡橫越半個島

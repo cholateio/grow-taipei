@@ -409,7 +409,7 @@ export const script = {
     },
   },
   fx: () => null,   // 燈泡自己沒有 onLevel
-  // 等待圖框的代表：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（鏡頭不在那裡），改用離燈泡最近的島民
+  // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（不在主島格上）→ null（拜訪、撲空都略過）
   rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? null,
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）

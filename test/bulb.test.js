@@ -223,7 +223,8 @@ test('ROAD clears the core of every footprint at the end of both solutions', asy
 
 // 審查：起點那一站要用「劇本第一拍開演那一刻」電工的位置挑（計畫 3.8 Task 5 起第一拍是對準第一站那格的 focus，緊接著就是第一段走路），
 // 不是建拍時（同回合前面的劇本演的時候他還在巡路）
-// stub：關掉名冊焦點（電工照常巡路，驗「建拍之後他走開了」）；不關時只驗第一站是開走那一刻離他最近的
+// stub：關掉名冊焦點（電工照常巡路），並在建拍之後把他放到離建拍時最遠的那一站旁邊（計畫 6：拜訪完的人用走路速度回家〔roster.home hurry〕，
+// 不再在別格站著等，「建拍之後他剛好走開很遠」不能再靠巧合）——驗第一站跟著開走那一刻的位置；不關時只驗第一站是開走那一刻離他最近的
 async function firstStopRun({ stub }) {
   const h = await headlessShow(), { show, run } = h, order = SOLUTIONS[0];
   let st = engine.createState(spec), evs = null;
@@ -249,14 +250,19 @@ async function firstStopRun({ stub }) {
     const update = show.update, first = [];
     show.update = (dt, t) => { update(dt, t); for (let i = 0; i < N_STOPS; i++) if (!first.includes(i) && show.stage.partObject(`bulb.lamps.${i}`)?.visible) first.push(i); };
     assert.ok(evs.indexOf(evs.find(isBulb(2))) > 0, 'bulb grows after other events in the turn');
+    const far = p => bulb.LAMP_STOPS.reduce((b, gg, k) => (Math.hypot(bulb.lampApproach(gg[0]).x - p.x, bulb.lampApproach(gg[0]).z - p.z) > Math.hypot(bulb.lampApproach(bulb.LAMP_STOPS[b][0]).x - p.x, bulb.lampApproach(bulb.LAMP_STOPS[b][0]).z - p.z) ? k : b), 0);
     const onMark = e => {
-      if (afterPlaced && !atBuild) atBuild = { ...show.roster.members('bulb.electrician')[0].pos };
+      if (afterPlaced && !atBuild) {
+        const el = show.roster.members('bulb.electrician')[0];
+        atBuild = { ...el.pos };
+        if (stub) { const p = bulb.lampApproach(bulb.LAMP_STOPS[far(atBuild)][0]); show.roster.setPose(el, { ...p, yaw: el.yaw, walking: false }); }   // 他在別的劇本演的時候走開了
+      }
       afterPlaced = e.kind === 'placed' && e.item === 'bulb';
     };
     await run([...evs, { kind: 'settle' }], { onMark });
     assert.ok(atBuild && atWalk, 'electrician seen before and at the walk');
     const nearest = p => bulb.LAMP_STOPS.reduce((b, gg, k) => (Math.hypot(bulb.lampApproach(gg[0]).x - p.x, bulb.lampApproach(gg[0]).z - p.z) < Math.hypot(bulb.lampApproach(bulb.LAMP_STOPS[b][0]).x - p.x, bulb.lampApproach(bulb.LAMP_STOPS[b][0]).z - p.z) ? k : b), 0);
-    if (stub) assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1, 'electrician patrolled during the wait');
+    if (stub) assert.ok(Math.hypot(atWalk.x - atBuild.x, atWalk.z - atBuild.z) > 1 && nearest(atWalk) !== nearest(atBuild), `electrician moved during the wait (nearest stop ${nearest(atBuild)} → ${nearest(atWalk)})`);
     assert.equal(first[0], nearest(atWalk), `first stop ${first[0]} vs nearest at walk ${nearest(atWalk)} / at build ${nearest(atBuild)}`);
   } finally { bulb.script.grow[2] = scripted; }
 }

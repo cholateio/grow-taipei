@@ -345,6 +345,23 @@ test('setFocus limits idle wandering and fidgets to members whose home cell is i
   for (let i = 0; i < 180; i++) roster.update(1 / 30, 10 + i / 30);
   assert.ok(moved(b, pb), 'null frees everyone');
 });
+// 計畫 6（拜訪、撲空）：從別格叫來的人 home(m, { hurry: true }) 回家是有目的的走路——焦點不在他家那一格也照走、用走路速度（不是散步速度）；
+// 不帶 hurry 的照舊：焦點外站著不動
+test('home(m, { hurry }) walks a member back at walking speed even outside the focus; plain home() still waits for the focus', () => {
+  const { roster } = setup();
+  const centre = cell => { const c = axialToWorld(...cell); return { x: c.x, y: cellTop(cell), z: c.z }; };
+  roster.declare('w', { kind: 'roster', at: centre([-1, 0]), n: 2, home: { kind: 'wander', at: centre([-1, 0]), r: 0.6 } }); roster.snap();
+  const [a, b] = roster.members('w'), away = centre([0, 0]);
+  for (const m of [a, b]) { roster.claim(m); roster.setPose(m, { ...away, x: away.x + (m === a ? 0 : 0.5), walking: false }); }
+  roster.setFocus([[1, 0]]);
+  roster.home(a, { hurry: true }); roster.home(b);
+  const pb = { ...b.pos }, homeAt = centre([-1, 0]);
+  let fastest = 0, prev = { ...a.pos };
+  for (let i = 0; i < 120; i++) { roster.update(1 / 30, i / 30); fastest = Math.max(fastest, Math.hypot(a.pos.x - prev.x, a.pos.z - prev.z) * 30); prev = { ...a.pos }; }
+  assert.ok(Math.hypot(a.pos.x - homeAt.x, a.pos.z - homeAt.z) < 1.2, `hurried member is home (${Math.hypot(a.pos.x - homeAt.x, a.pos.z - homeAt.z).toFixed(2)} from home)`);
+  assert.ok(fastest > 1.0, `at walking speed (${fastest.toFixed(2)} m/s)`);
+  assert.ok(Math.hypot(b.pos.x - pb.x, b.pos.z - pb.z) < 1e-6, 'plain home() outside the focus stands still');
+});
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
 // final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
 test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {

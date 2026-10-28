@@ -337,7 +337,7 @@ export const script = {
     const { B } = ctx;
     return [B.apply(e, { blink: false }), B.together(Array.from({ length: ISLANDERS }, (_, i) => B.bubble(islander(i), '♥')))];
   },
-  rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
+  rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這一級，也演完整劇本（turn.js）
 script.grow[7].key = true;

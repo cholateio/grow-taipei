@@ -314,7 +314,7 @@ export const script = {
     if (!e.delta && !e.flag && s.lv.boba > 0) return crash(e, ctx);
     return null;
   },
-  rep: (s, ctx) => ctx.roster.members(KEY).find(m => !m.hidden) ?? null,   // 等待圖框的代表：藏起來的人（躲進門裡）不算
+  rep: (s, ctx) => ctx.roster.members(KEY).find(m => !m.hidden) ?? null,   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算
 };
 // ◆ 關鍵節點（裁決 R11）：分岔與最終型態——跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[4].key = script.grow[5].key = true;

@@ -197,8 +197,8 @@ test('on the opening screen no islander stands inside a building and no blink is
   }
 });
 
-// 颱風登陸那回合大家躲進門裡：等待圖框不能掛在藏起來的人頭上，沒人在外面就掛在建築上（終審 Important 2）
-test('the wait hint on a landing turn hangs over the building when its owner is hidden', async () => {
+// 颱風登陸那回合大家躲進門裡：撲空不演（計畫 6 設計 §5 取代舊的等待圖框）——沒有撲空段、沒有任何圖框泡泡，躲著的人不被拉出來
+test('a landing turn plays no miss and no icon bubble; hidden owners stay hidden', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
   // 選擇帶動升級：颱風放下當回合就長到 Lv2 登陸——珍奶、颱風，第二回合就是登陸回合（珍奶等晶片）
@@ -208,11 +208,10 @@ test('the wait hint on a landing turn hangs over the building when its owner is 
   const w = r.events.filter(e => e.kind === 'wait').at(-1)?.waits?.[0];
   assert.equal(w?.item, 'boba', 'boba waits on the landing turn');
   bubblesLog.length = 0;
-  await run([...r.events, { kind: 'settle' }]);
-  const hint = bubblesLog.find(b => b.kind?.icon === w.for[0]);
-  assert.ok(hint, 'the wait hint showed');
-  const head = show.stage.headOf('boba');
-  assert.ok(Math.hypot(hint.at.x - head.x, hint.at.z - head.z) < 1e-6 && Math.abs(hint.at.y - head.y) < 1e-6, `hint at (${hint.at.x.toFixed(2)}, ${hint.at.y.toFixed(2)}, ${hint.at.z.toFixed(2)})`);
+  const marks = [], owners = () => show.roster.members('boba.owner');
+  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().every(m => m.hidden), 'the owner is indoors'); } });
+  assert.ok(!marks.some(i => i?.miss), 'no miss segment after the landing');
+  assert.deepEqual(bubblesLog.filter(b => typeof b.kind === 'object'), [], 'no icon bubble');
 });
 
 // 真的鏡頭 rig（16:9 全景），記下每次 focus／home；step 一幀推演出層與鏡頭
@@ -429,7 +428,7 @@ test('both new solutions play to the end without a script error at every level (
 });
 
 // 使用者規則（計畫 4 任務 9）：颱風登陸（landsTyphoon）之後，同一回合的事件只演 [apply, LEVEL UP]——大家躲在屋裡，沒有人走路；
-// 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；等待圖框照舊（謎題提示，代表角色躲起來就掛在建築上）。
+// 不補鏡頭平移、不空拍。閃白照常（apply 不關 blink）；撲空不演（計畫 6：大家躲著）。
 // 裁決 R14：◆ 關鍵級（script.grow[n].key）照演劇本（老鼠不躲雨、霓虹不用人；藏起來的人由拍自己跳過）
 const isKey = e => e.kind === 'grow' && !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
 test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP (◆ key levels excepted): no walk, gesture, bubble or lead focus except one back home after a key script moved the camera; blinks still happen', async () => {

@@ -11,9 +11,10 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { missile, resolve } from '../src/rules/endings.js';
 import { headlessShow, turnSteps, overviewRig, gameInvariants, ALL } from './helpers/show.js';
-import { finaleStep } from './helpers/endings.js';
-import { VISIT_CAP, VISIT_MAX_PER_HELPER } from '../src/show/visit.js';
-import { cellAt } from '../src/scene/hex.js';
+import { finaleStep, EXAMPLE } from './helpers/endings.js';
+import { VISIT_CAP, VISIT_MAX_PER_HELPER, MISS_CAP, MISS_WALK, MISS_PER_TURN, SIGH } from '../src/show/visit.js';
+import { cellAt, NEIGHBORS } from '../src/scene/hex.js';
+import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const FLASH = 0.4;   // 測試閃光的峰值 0.55、谷底 0.04；待命的淡輪廓 0.08–0.2 不會越過
@@ -180,7 +181,7 @@ test('both solutions live: nobody stays inside a building > 1.5 s, no daily memb
 });
 
 // 審稿（計畫 4 最後一輪）：演出的那一刻要在畫面裡——颱風登陸後的 LEVEL UP、101 頭上的「恭喜畢業」「世界珍奶節」、代幣 Lv8 站上的 LEVEL UP、
-// 老鼠撞攤車時老闆的 ！、等待圖框，鏡頭都要跟上（gameInvariants 的 labels：活著的時間至少一半投影在 NDC [-1, 1] 裡）
+// 老鼠撞攤車時老闆的 ！，鏡頭都要跟上（gameInvariants 的 labels：活著的時間至少一半投影在 NDC [-1, 1] 裡）
 test('both solutions live: every LEVEL UP label and bubble is on screen for at least half its life', async () => {
   assert.deepEqual((await playBoth()).flatMap(({ inv }) => inv.labels), []);
 });
@@ -217,8 +218,97 @@ test('both solutions: every grow with via (not jump-second, not indoors) played 
       }
       const keys = marks.filter(m => m.info?.key).length, cap = 60 + 8 * Math.max(0, keys - 1);
       assert.ok(secs <= cap, `${what}: ${secs.toFixed(1)} s > ${cap} (◆ ${keys})`);
+      // 撲空（設計 §5）：正解幾乎沒有 wait（兩條各一回合、各一項），一樣每回合 ≤ MISS_PER_TURN 段、每段 ≤ MISS_CAP
+      const misses = marks.map((m, j) => ({ ...m, next: marks[j + 1] })).filter(m => m.info?.miss);
+      assert.ok(misses.length <= MISS_PER_TURN, `${what}: ${misses.length} misses`);
+      for (const m of misses) assert.ok((m.next?.t ?? secs) - m.t - m.info.gap <= MISS_CAP, `${what}: miss ${m.info.item} ${((m.next?.t ?? secs) - m.t - m.info.gap).toFixed(2)} s`);
     }
     // 叫不到的只能是少數（燈泡 Lv7 起電工在風車島上、代幣 Lv1 沒有站務員、正被別的劇本拿著）；大部分都真的演了
     assert.ok(played >= 20 && skipped.length <= 8, `${name}: ${played} visits played, skipped ${skipped.join(', ')}`);
   }
 });
+
+// 撲空（計畫 6 設計 §5、§8）：亂放的兩局（EXAMPLE.hit／deflect）整局 live（真鏡頭、種子 21）——每回合撲空 ≤ MISS_PER_TURN 段、是 wait 事件的前兩項（照 ORDER）、
+// 每段 ≤ MISS_CAP；演了的那幾段代表走到對的地方：缺的幫手那一格跟他同格或相鄰、走得到又在 MISS_WALK 秒內 → 幫手的空地（錨點旁）或拜訪點正面；
+// 否則自己門口（門口超過 MISS_WALK 秒：往門口走了 MISS_WALK 秒那麼遠）；回合 ≤ 60 + 8 × max(0, ◆ − 1)；
+// 不變式（不穿牆、不瞬移、不靜靜換位置 pops、每回合回全景、字在畫面裡）照查到終局
+const near = (a, b) => !!a && !!b && ((a[0] === b[0] && a[1] === b[1]) || NEIGHBORS.some(([dq, dr]) => a[0] + dq === b[0] && a[1] + dr === b[1]));
+const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+async function playMisses(order) {
+  const cam = overviewRig(), { show, run, bubblesLog } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
+  const mod = id => ALL.find(m => m.id === id), turns = [];
+  let s = engine.createState(spec);
+  for (const [i, step] of turnSteps(order).entries()) {
+    const r = step(s); s = r.state;
+    const turn = `${order.join('>')} turn ${i + 1}`, segs = [];
+    inv.label(turn);
+    let cur = null, keys = 0;
+    const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
+    await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => {
+      close(); inv.label(`${turn} [${e.kind}${e.item ? ` ${e.item}` : ''}]`);
+      if (info?.key) keys++;
+      if (!info?.miss) return;
+      const sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = mod(info.item).script.rep(sv, { roster: show.roster, nav: show.nav });
+      const usable = !!rep && !rep.hidden && !rep.gone && rep.mode === 'home' && (!!cellAt(rep.pos.x, rep.pos.z) || show.nav.walkable(rep.pos.x, rep.pos.z));
+      cur = { e, info, w: e.waits.find(w => w.item === info.item), sv, rep: usable ? rep : null, start: usable ? { ...rep.pos } : null, t: show.elapsed, from: bubblesLog.length };
+      segs.push(cur);
+    } });
+    close(); inv.turnEnd();
+    turns.push({ events: r.events, segs, secs: show.elapsed, keys });
+    assert.deepEqual(show.stage.lv, s.lv, `${turn}: stage levels equal the engine`);
+  }
+  const { events: fin } = finaleStep(s);
+  inv.label(`${order.join('>')} finale`);
+  await run(fin, { finale: true });
+  inv.turnEnd();
+  return { turns, inv, show, mod };
+}
+
+for (const outcome of ['hit', 'deflect']) {
+  test(`EXAMPLE.${outcome}: every turn plays ≤ 2 misses at the right places, invariants clean`, async () => {
+    const order = EXAMPLE[outcome], { turns, inv, show, mod } = await playMisses(order), nav = show.nav;
+    let shown = 0;
+    const kinds = new Set();
+    for (const [i, { events, segs, secs, keys }] of turns.entries()) {
+      const what = `${outcome} turn ${i + 1}`, wait = events.find(e => e.kind === 'wait');
+      const landed = wait && events.slice(0, events.indexOf(wait)).some(e => engine.landsTyphoon(e));
+      const want = !wait || landed ? [] : wait.waits.slice(0, MISS_PER_TURN).filter(w => mod(w.item)?.script?.rep && w.item !== 'typhoon').map(w => w.item);
+      assert.deepEqual(segs.map(g => g.w.item), want, `${what}: misses = the first ${MISS_PER_TURN} waits in ORDER`);
+      assert.ok(segs.length <= MISS_PER_TURN);
+      for (const g of segs) {
+        const label = `${what} ${g.w.item}<${g.w.for[0]}`;
+        assert.equal(g.bubbles, 0, `${label}: no bubble`);
+        assert.ok(g.secs <= MISS_CAP, `${label}: ${g.secs.toFixed(2)} s`);
+        if (!g.rep) { assert.ok(g.secs < 0.05, `${label}: nobody to send, 0 s (${g.secs.toFixed(2)})`); continue; }
+        shown++;
+        assert.ok(g.secs >= SIGH - 0.05, `${label}: played (${g.secs.toFixed(2)} s)`);
+        // 對的地方：幫手那邊（同格或相鄰、MISS_WALK 秒內走得到）優先，否則自己門口
+        const cap = MISS_WALK * g.rep.speed, h = g.w.for[0], hl = g.sv.lv[h], here = cellAt(g.start.x, g.start.z) ?? cellOf(g.w.item);
+        const len = to => { const r = nav.route(g.start, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; };
+        const spotOf = (id, n) => { const sp = n > 0 ? mod(id).visitSpot(n, g.sv) : null; return sp && cellAt(sp.x, sp.z) ? frontOf(sp, sp.r, nav) : null; };
+        const helperAt = h === 'typhoon' ? null : hl === 0 ? null : spotOf(h, hl), lot = h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null;
+        const door = spotOf(g.w.item, g.sv.lv[g.w.item]);
+        let kind;
+        if (lot && flat(g.end, lot) <= 1.3 && near(cellAt(g.end.x, g.end.z), here)) kind = 'lot';
+        else if (helperAt && flat(g.end, helperAt) < 0.2) kind = 'spot';
+        else if (door && flat(g.end, door) < 0.2) kind = 'door';
+        else if (door && len(door) > cap && flat(g.end, door) < flat(g.start, door) - Math.min(1, cap / 2)) kind = 'toward door';
+        else if (!door) kind = 'here';
+        assert.ok(kind, `${label}: ended at (${g.end.x.toFixed(2)}, ${g.end.z.toFixed(2)}) — not the helper, not its door (start ${g.start.x.toFixed(2)}, ${g.start.z.toFixed(2)})`);
+        // 幫手那邊走得到又近（同格／相鄰、MISS_WALK 秒內）就一定是去幫手那邊
+        if (helperAt && near(cellAt(helperAt.x, helperAt.z), here) && len(helperAt) <= cap - 0.05) assert.equal(kind, 'spot', `${label}: the helper's stand was within reach`);
+        if (kind === 'lot' || kind === 'spot') assert.ok(near(cellAt(g.end.x, g.end.z), here), `${label}: helper side only when same / adjacent cell`);
+        kinds.add(kind);
+      }
+      // 回合上限（設計 §6：60 秒上限在兩條正解與 EXAMPLE 上驗）：60 + 8 × max(0, ◆ − 1)
+      assert.ok(secs <= 60 + 8 * Math.max(0, keys - 1), `${what}: ${secs.toFixed(1)} s (◆ ${keys})`);
+    }
+    console.log(`# EXAMPLE.${outcome}: ${shown} misses played (${[...kinds].join(', ')})`);
+    assert.ok(shown >= 3, `${outcome}: misses actually play (${shown})`);
+    assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
+    assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
+    assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);
+    assert.deepEqual(inv.camera, []);
+    assert.deepEqual(inv.labels, []);
+  });
+}

@@ -13,12 +13,30 @@
 // 鏡頭由 turn.js 補：拜訪的第一拍跟平移到拜訪點那一格一起演（邊平移邊走進來）。
 // 同一回合同一個幫手最多拜訪 VISIT_MAX_PER_HELPER 次（設計 §4 原本 3；裁決 R2：第三次重複，2，之後只演那一級的劇本）。
 // 颱風不拜訪、也不被拜訪（天氣）：helper／target 是颱風就回 []（颱風的 rep、visitSpot 本來也是 null）。
+//
+// 撲空（設計 §5，miss）：引擎的 wait 事件列出每個等不到幫手的物品（w.item）與它缺的幫手（w.for，照 ORDER）。一段撲空 =
+//   [走到目標點, 失望 sigh SIGH 秒, 回日常]——沒有泡泡、沒有圖框（設計 §5、反目標：不用泡泡提示原因）。鏡頭由 turn.js 補（平移到代表那一格，跟走路一起演）。
+//   代表 = 等待物品的 script.rep(s, ctx)，演到第一拍才找、找到就記住；找不到、藏起來、在劇本手上、拜訪完正走回去（'away'——
+//   他在背景還有一段路要走完，不半路叫住）、不在主島上 → 整段每一拍都跳過（0 秒）。
+//   目標點（缺的幫手 = w.for[0]）：
+//     還沒放（等級 0）→ 那個幫手錨點旁的空地：可走、離建築本身至少 MISS_CLEAR 公尺的點（從錨點往鏡頭側一圈一圈找；找不到退回 nearestWalkable）；
+//     放了但不夠高 → 那個建築這一級的拜訪點正面 frontOf(visitSpot(幫手, 等級), r, nav)（跟拜訪站同一個位置）；
+//     兩種都只在目標點那一格跟代表現在那一格同一格或相鄰、而且走得到、路線 ≤ MISS_WALK 秒才走；
+//     否則（太遠、幫手是颱風、幫手這一級在離島上沒有拜訪點）→ 走到自己門口 frontOf(visitSpot(物品, 現在的等級), r, nav)；
+//     自己門口也超過 MISS_WALK 秒 → 往門口走 MISS_WALK 秒、在路上失望（short）；自己這一級沒有主島上的門口、走不過去 → 原地失望（here）。
+//     撲空不換位置、不閃白（只有拜訪才閃白叫人過來）。
+//   失望之前面向目標（幫手的錨點／建築；原地的話面向缺的那個幫手的錨點）。
+//   每段 ≤ MISS_CAP 真實秒數（跟走路一起演的平移不另外算，物品之間的空拍由 turn.js 另外記在 mark 的 info.gap）：
+//   MISS_WALK = MISS_CAP − SIGH − 0.2（幀的餘裕）。一回合最多 MISS_PER_TURN 段（turn.js：wait 事件的前兩個 waits，照 ORDER）。
 import { B, together, rate } from './beats.js';
-import { frontOf } from '../actors/anchors.js';
-import { cellAt } from '../scene/hex.js';
+import { frontOf, anchorWorld, cellOf } from '../actors/anchors.js';
+import { cellAt, NEIGHBORS } from '../scene/hex.js';
 import { BLINK } from './blink.js';
+import { PAD } from './nav.js';
 
 export const VISIT_WALK = 1.5, VISIT_KNOCK = 0.8, VISIT_LOVE = 0.6, VISIT_MAX_PER_HELPER = 2, VISIT_CAP = 3.5;
+export const SIGH = 1.0, MISS_CAP = 3, MISS_PER_TURN = 2;
+export const MISS_WALK = MISS_CAP - SIGH - 0.2, MISS_CLEAR = 0.3;   // 撲空走路上限（秒）、空地離建築本身至少幾公尺
 const REACH = 0.3;   // 路線的終點離拜訪點的站位超過這麼多 = 走不過去（被 footprint 隔斷），整段略過
 const MIN_WALK = 0.6;   // 換過位置之後至少真的走這麼多公尺（裁決 R3：不在門口放下、走 4 公分）
 
@@ -115,8 +133,93 @@ export function visit(e, s, ctx, { helper, target, quota = null }) {
     // 其他的直接回日常；揮手的人本來就在家那一格
     { kind: 'home', dur: 0, start(c) {
       const m = rep(c), h = host(c);
-      if (m && exit) c.roster.leave(m, c.nav.route(m.pos, exit), back); else if (m) c.roster.home(m);
+      if (m && exit) c.roster.leave(m, c.nav.route(m.pos, exit), back); else if (m) c.roster.home(m, { hurry: true });
       if (h) c.roster.home(h);
     } },
   ];
+}
+
+// 撲空（見檔頭）：w = { item, for }（引擎 wait 事件的一項）；s：turn.js 給劇本的 { lv, flags, … }；item／helper：等待物品、缺的幫手（w.for[0]）的模組。
+// 回 [走過去, 失望, 回日常]；等待物品沒有代表劇本（或是颱風）→ []。
+// 走過去那拍另外帶 ready(c)（找代表、定目標，第一次問就定案；回有沒有人要演）、cell(c)（代表現在那一格：turn.js 的平移目標）、
+// goal()（定案的目標 { kind: 'lot' | 'spot' | 'door' | 'here', at, look, from, short }：測試看）
+export function miss(w, s, ctx, { item, helper } = {}) {
+  if (!item || item.id === 'typhoon' || !item.script?.rep) return [];
+  const lvOf = id => s.lv?.[id] ?? 0;
+  let asked = false, who = null, goal = null, inner = null, walked = false;
+  // 某個模組第 n 級拜訪點的正面（在主島上才算）
+  const door = (mod, n, nav) => { const sp = n > 0 ? mod?.visitSpot?.(n, s) : null; return sp && cellAt(sp.x, sp.z) ? { to: frontOf(sp, sp.r, nav), look: sp } : null; };
+  // 走得到、路線不超過 MISS_WALK 秒
+  const reach = (m, to, nav) => {
+    const route = nav.route(m.pos, to), end = route.at(-1);
+    return !!end && Math.hypot(end.x - to.x, end.z - to.z) <= REACH && nav.routeLength(route) <= MISS_WALK * m.speed;
+  };
+  const ready = c => {
+    if (asked) return !!who;
+    asked = true;
+    const m = item.script.rep(s, c), nav = c.nav;
+    if (!m || m.hidden || m.gone || m.mode !== 'home' || !onIsland(m, nav)) return false;
+    const here = cellAt(m.pos.x, m.pos.z) ?? cellOf(item.id);
+    let pick = null;
+    if (helper && helper.id !== 'typhoon') {
+      const n = lvOf(helper.id), at = anchorWorld(helper.id);
+      const t = n === 0 ? { kind: 'lot', to: clearNear(at, nav), look: at } : door(helper, n, nav) && { kind: 'spot', ...door(helper, n, nav) };
+      const cell = t && cellAt(t.to.x, t.to.z);
+      if (cell && near(cell, here) && reach(m, t.to, nav)) pick = t;
+    }
+    if (!pick) {
+      // 自己門口：路線太長就走 MISS_WALK 秒那麼遠（往門口走、走不到門口就在路上失望；不換位置）
+      const d = door(item, lvOf(item.id), nav), route = d && nav.route(m.pos, d.to), end = route?.at(-1);
+      if (end && Math.hypot(end.x - d.to.x, end.z - d.to.z) <= REACH) {
+        const len = nav.routeLength(route), cap = MISS_WALK * m.speed;
+        pick = len <= cap ? { kind: 'door', ...d } : { kind: 'door', to: pointAt(route, cap, nav), look: d.look, short: true };
+      }
+    }
+    if (!pick) pick = { kind: 'here', to: { ...m.pos }, look: helper && helper.id !== 'typhoon' ? anchorWorld(helper.id) : null };
+    who = m; goal = { kind: pick.kind, at: { ...pick.to }, look: pick.look, from: { ...m.pos }, short: !!pick.short };
+    c.roster.claim(m);   // 定案就拿到劇本手上：空拍、平移的時候站著等，不再散步走開
+    inner = B.walk(m, pick.to);
+    return true;
+  };
+  const walk = {
+    kind: 'walk', estimate: () => MISS_WALK, ready, goal: () => goal,
+    cell: c => (ready(c) ? cellAt(who.pos.x, who.pos.z) ?? { ...who.pos } : null),
+    dur: c => (walked ? inner.dur(c) : 0),
+    start(c) {
+      walked = false;
+      if (!ready(c)) return false;
+      walked = inner.start(c) !== false;
+      if (!walked) return false;
+    },
+    step(k, dt, c) { if (walked) inner.step(k, dt, c); },
+    // 停下來面向目標（幫手的空地／建築、自己的門）
+    end(c) {
+      if (!who) return;
+      if (walked) inner.end(c);
+      const look = goal.look;
+      if (look && Math.hypot(look.x - who.pos.x, look.z - who.pos.z) > 0.05) c.roster.setPose(who, { ...who.pos, yaw: yawTo(who.pos, look), walking: false });
+    },
+  };
+  return [
+    walk,
+    B.gesture(() => who, 'sigh', SIGH),
+    { kind: 'home', dur: 0, start(c) { if (who) c.roster.home(who, { hurry: true }); } },
+  ];
+}
+
+const near = (a, b) => (a[0] === b[0] && a[1] === b[1]) || NEIGHBORS.some(([dq, dr]) => a[0] + dq === b[0] && a[1] + dr === b[1]);
+// 錨點旁的空地：可走、四周 MISS_CLEAR 內沒有建築本身（外擴 PAD 的 footprint 往外再查 MISS_CLEAR − PAD）的點；
+// 從錨點往鏡頭側（frontOf 的方向）一圈一圈找到 CLEAR_MAX，找不到退回 nearestWalkable
+const CLEAR_STEP = 0.15, CLEAR_MAX = 1.2, CLEAR_DIRS = 16, CLEAR_RING = 12;
+function clearNear(at, nav) {
+  const f = frontOf(at, 1), a0 = Math.atan2(f.x - at.x, f.z - at.z), d = MISS_CLEAR - PAD;
+  const ok = (x, z) => nav.walkable(x, z) && !nav.inFootprint(x, z)
+    && Array.from({ length: CLEAR_RING }, (_, k) => 2 * Math.PI * k / CLEAR_RING).every(a => !nav.inFootprint(x + d * Math.sin(a), z + d * Math.cos(a)));
+  for (let r = 0; r <= CLEAR_MAX + 1e-9; r += CLEAR_STEP) {
+    for (let k = 0; k < (r ? CLEAR_DIRS : 1); k++) {
+      const a = a0 + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 2 * Math.PI / CLEAR_DIRS, x = at.x + r * Math.sin(a), z = at.z + r * Math.cos(a);
+      if (ok(x, z)) return { x, y: nav.groundY(x, z), z };
+    }
+  }
+  return nav.nearestWalkable(at);
 }

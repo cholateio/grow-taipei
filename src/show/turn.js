@@ -22,22 +22,26 @@
 //   之後的拜訪段只剩平移，有原因的升級照演自己的劇本）。
 //   幫手沒有代表、代表藏著或正被別的劇本拿著（演到才知道）→ 拜訪的拍全部 0 秒（不找替身，不搶人）；被升級物品這一級沒有拜訪點（離島上的級）→ 不插。
 //   pace 看 mark 的 info.visit 把拜訪當獨立一段量（≤ VISIT_CAP），不算進那一級自己劇本的秒數。
+// 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段：
+//   mark(e, { miss: true, item, gap }) → （不同物品先空 GAP；代表叫不到這拍也跳過）→ 平移到代表那一格、跟走過去一起演 → 失望 → 回日常。
+//   等待物品沒有代表劇本（颱風）→ 那一項不插（不往後補第三個）。代表叫不到（藏著、在劇本手上、拜訪完正走回去）→ 整段 0 秒。
+//   颱風登陸之後（大家躲在屋裡）、終局回合不插。之後 wait 事件自己照舊 mark + 不閃白的 apply（沒有別的拍）。
+//   pace 看 mark 的 info.miss 把撲空當獨立一段量（≤ MISS_CAP）。
 // 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
 //   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。◆ 關鍵級例外（裁決 R14）：照演完整劇本
-//   （老鼠不躲雨、霓虹不用人；劇本要拉的人若躲在門裡，walk／gesture／bubble／jump 拍自己跳過，beats.js）。等待圖框照舊（謎題提示）；
+//   （老鼠不躲雨、霓虹不用人；劇本要拉的人若躲在門裡，walk／gesture／bubble／jump 拍自己跳過，beats.js）。撲空不演（大家躲著）；
 //   回合末的 settle 照 101 的劇本，但只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）。
 //   鏡頭：登陸自己回全景；◆ 關鍵劇本把鏡頭帶走之後（最後一個 focus 不是全景），下一個 indoors 事件前面補一拍 focus('home')，
 //   之後的 LEVEL UP 才在畫面裡（審稿：老鼠 Lv4 對著溫泉）；其他 indoors 事件照樣不平移。
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
-import { anchorWorld, cellOf } from '../actors/anchors.js';
+import { cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
-import { visit } from './visit.js';
+import { visit, miss, MISS_PER_TURN } from './visit.js';
 import { cellAt } from '../scene/hex.js';
 
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
-const HINT_DUR = 1.2;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['warning', 'missile', 'epilogue']);
 
@@ -113,9 +117,6 @@ function upright(key) {
 // 再扣掉它；key 是不是 ◆ 關鍵劇本
 const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e, info); } });
 
-// 演到才找、找到第一次就記住（等待圖框的平移和泡泡對著同一個人）
-const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
@@ -124,7 +125,6 @@ function scriptMembers(roster) {
 export function buildTurn(events, { modules, spec, lv, flags, meta, finale = false }, ctx) {
   const mod = id => modules.find(m => m.id === id);
   ctx.speed = 1;
-  const lastWait = events.map(e => e.kind).lastIndexOf('wait');
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
@@ -149,7 +149,21 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     return true;
   };
 
-  events.forEach((e, i) => {
+  // 撲空段（見檔頭）：wait 事件的前 MISS_PER_TURN 個 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常
+  const missFirst = (e, s) => {
+    if (finale || landed) return;
+    for (const w of (e.waits ?? []).slice(0, MISS_PER_TURN)) {
+      const beats = miss(w, s, ctx, { item: mod(w.item), helper: mod(w.for?.[0]) });
+      if (!beats.length) continue;
+      const [walk, ...rest] = beats, gap = lastItem && w.item !== lastItem ? GAP : 0;
+      // 空拍：代表叫不到就連空拍也不等（整段 0 秒）；叫得到的話這拍就定案、把他拿到劇本手上站著等
+      const lead = gap ? [{ kind: 'wait', dur: gap, start: c => (walk.ready(c) ? undefined : false) }] : [];
+      out.push(mark(e, { gap, key: false, miss: true, item: w.item }), ...lead, together([B.focus(walk.cell), walk]), ...rest);
+      lastItem = w.item; lastCell = null; away = true;   // 鏡頭停在代表那一格（演到才知道是哪格）：下一個事件重新平移
+    }
+  };
+
+  events.forEach(e => {
     const prev = view; view = foldEvent(view, e);
     const total = sum(view.lv);
     // settle 的 prevTotal 是上次結算的總等級（101 看的是結算值，不是事件中途的總和）
@@ -180,23 +194,15 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     }
     visitFirst(e, s);
     if (e.kind === 'wait') {
-      // 等待圖框（§6.5）：一回合只演最後一個 wait；代表角色先問模組，沒有就找離物品最近、看得到的島民
+      missFirst(e, s);
       beats = [B.apply(e, { blink: false })];
-      if (i === lastWait && e.waits?.length) {
-        // 藏起來的人（颱風登陸躲進門裡）不算；外面一個人都沒有就掛在物品（建築）頭上。演到才找、找到就記住：平移與圖框同一個對象
-        const w = e.waits[0], rep = once(c => mod(w.item)?.script?.rep?.(s, c) ?? c.roster.nearest('landmarks.islanders', anchorWorld(w.item), { visible: true }) ?? w.item);
-        // 鏡頭先平移到他身上（人：他站的地方；物品：它的格子），圖框才在畫面裡（審稿：兩條正解唯一的等待圖框在畫面外）
-        const pan = B.focus(c => { const r = rep(c); return typeof r === 'string' ? r : r?.pos ? { x: r.pos.x, y: r.pos.y, z: r.pos.z } : null; });
-        beats.push(pan, B.bubble(rep, { icon: w.for[0] }, HINT_DUR));   // 謎題提示 1.2 s
-        lastCell = null;
-      }
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
       const fn = { placed: sc?.placed, grow: sc?.grow?.[e.to], fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
       if (landed && e.kind === 'settle') beats = keepOnly(beats, indoorSettle);
     }
-    // 鏡頭：等待事件不補平移（演圖框的那個自己平移到代表角色）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
+    // 鏡頭：等待事件不補平移（撲空段自己平移到代表那一格）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
     if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {

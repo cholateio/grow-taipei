@@ -78,11 +78,13 @@ export async function start({ params, loading }) {
   const rig = createCameraRig({ THREE, camera: view.camera, controls, center: CENTER, reducedMotion: motion.matches });
   motion.addEventListener?.('change', e => rig.setReducedMotion(e.matches));
   view.renderer.domElement.addEventListener('pointerdown', () => rig.cancel()); // 停掉飛行（回全景的直接落地）並標記 grabbed：這回合不再自動 focus
-  const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); };
-  fit(); new ResizeObserver(fit).observe(document.body);
-  const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫
+  const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫（配 ?auto 時放完再擺一次，見下面）
   const camItem = ANCHORS[params.get('cam')] ? params.get('cam') : null;   // 除錯：?cam=milk 自動放完後鏡頭拉近那個物品的格子（同演出中的 focus）
-  if (cam?.length === 6) { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); }
+  const putCam = () => { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); };
+  let pinned = false;   // ?auto＋?cam=x,…：放完之後鏡頭釘在 cam（換長寬比的 fit 會照框景把鏡頭拉回全景，釘住時再擺回來）
+  const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); if (pinned) putCam(); };
+  fit(); new ResizeObserver(fit).observe(document.body);
+  if (cam?.length === 6) putCam();
 
   // 介面、演出層、遊戲
   // ?auto 預設瞬間套用（截圖用）；加 &live=1 保留演出：前面的物品瞬間放好，最後一個照常演，&warp=N 先同步快轉 N 秒（每秒 30 格）
@@ -152,6 +154,8 @@ export async function start({ params, loading }) {
       for (let i = 0, n = Math.round((+params.get('warp') || 0) * 30); i < n; i++) frame(1 / 30);
     } else for (const id of auto) await pick(id);
     if (camItem) rig.focus(cellCentre(cellOf(camItem)), { ms: 0 });
+    // ?cam=x,y,z,tx,ty,tz 配 ?auto（離島特寫）：每回合結束都回全景，放完再擺一次；標成拖過（rig.cancel），之後的回全景、天際線不搶鏡頭
+    else if (cam?.length === 6) { rig.cancel(); pinned = true; putCam(); }
     autoDone = true;
   })();
 }

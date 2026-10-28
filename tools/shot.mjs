@@ -3,7 +3,9 @@
 //   虛擬時間預設 20 s（夠載入＋?auto 瞬間放完）。但 ?live 在 warp 同步快轉之後動畫迴圈還會繼續演，20 s 拍到的是
 //   warp＋十幾秒那一刻，回合可能已經演完、鏡頭回全景。wide 的 live 截圖要拍「拉近到主角格」的那一刻，
 //   所以名稱含 wide（或物品 id- 開頭的特寫：milk-、token-…）又有 live=1 時預算縮成 1.5 s（實測拍到 warp 後不到 1 秒的畫面，每次同一刻）；其他截圖照舊 20 s。
-//   npm run shot 的 wide-live 用 warp=4.5：第 6 回合（鮮奶）放下、酪農在鮮奶格冒 ♥，鏡頭拉近在鮮奶格。
+//   npm run shot 的 wide-live 用 warp=2.1：第 6 回合（鮮奶）放下、酪農在鮮奶格冒 ♥，鏡頭拉近在鮮奶格。
+//   計畫 6 任務 6 重校（2026-10-29，warp=0／5 的颱風局）：現在 20 s 預算的 live 截圖（live-rat、live-storm、bridge-live）也拍到 warp 後不到 1 秒——
+//   上面「warp＋十幾秒」是舊的量測；warp 一律照無頭演出量到的事件秒數找。
 // node tools/shot.mjs --dom <query>  → 印出頁面 DOM（驗證錯誤畫面文字用）
 import { execFile } from 'node:child_process';
 import { mkdirSync } from 'node:fs';

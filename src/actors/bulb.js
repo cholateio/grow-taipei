@@ -378,9 +378,9 @@ export const script = {
         ...lay.slice(0, 1),
         B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ...lay.slice(1), ride(B, m, [
           // 按下開關 → 風車閃白開始轉 → 回全景（裁決 R17 ◆ ≤ 8 s：不再停 1 秒等鏡頭，燈塔在鏡頭飛往全景時亮）
-          B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }), applyN(B, e, ['sat.windmill', 'sat.windmill.stage1'], 1),   // 第二支風機與電池屋（離島三段，tagAlong）跟風車同一拍閃白、不多佔時間
+          B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }), applyN(B, e, ['sat.windmill', 'sat.windmill.stages'], 1),   // 第二支風機與電池屋（離島三段，tagAlong）跟風車同一拍閃白、不多佔時間
           B.focus('home'),
-          B.home(m), B.together([applyN(B, e, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'bulb.electrician', 'sat.lighthouse.stage1'], 2), B.levelUp('bulb')]),
+          B.home(m), B.together([applyN(B, e, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'bulb.electrician', 'sat.lighthouse.stages'], 2), B.levelUp('bulb')]),
         ])]),
       ];
     },
@@ -402,7 +402,7 @@ export const script = {
       return [
         B.focus(TOKEN_CELL), B.bubble(staff, '！', 0.8),
         B.apply(e, { only: ['bulb.neon.station'] }),
-        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'bulb.neon.market', 'bulb.market', 'sat.forest.stage2'] })]),
+        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'bulb.neon.market', 'bulb.market', 'sat.forest.stages'] })]),
         B.together([0, 1, 2, 3].map(i => B.bubble(c => cheer(c)[i] ?? null, '♪', 1.0))),
         B.levelUp('bulb'),
       ];

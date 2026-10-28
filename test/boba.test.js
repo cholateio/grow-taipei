@@ -28,7 +28,7 @@ const views = Array.from({ length: 8 }, (_, n) => boba.view(lv({ boba: n }), {})
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => keys.includes(k)));
 // 珍奶看得見的東西：自己的零件＋小森林島分店、觀光船（衛星島）
-const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.forestShop', 'sat.forest', 'sat.boats']) });
+const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.forest.stages', 'sat.forest', 'sat.boats']) });
 // 鏡頭方向（水平）：OVERVIEW_DIR 指向鏡頭
 const CAM = (() => { const n = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z); return { x: OVERVIEW_DIR.x / n, z: OVERVIEW_DIR.z / n }; })();
 
@@ -41,7 +41,7 @@ test('boba has something new at every level 1–7: cart, queue, shop, fountain, 
   assert.equal(views[2]['boba.queue'].n, 3);
   assert.equal(views[3]['boba.main'].kind, 'glb'); assert.equal(views[2]['boba.main'].kind, 'compound');
   assert.ok(views[4]['boba.fountain'] && !views[3]['boba.fountain'], 'Lv4 fountain');
-  assert.ok(whole(5)['sat.forestShop'] && !whole(4)['sat.forestShop'], 'Lv5 forest branch');
+  assert.ok(whole(5)['sat.forest.stages'] && !whole(4)['sat.forest.stages'], 'Lv5 forest branch');
   assert.equal(whole(5)['sat.boats'].n, whole(4)['sat.boats'].n + 2, 'Lv5 two more tour boats');
   assert.ok(views[6]['boba.flagship'] && !views[5]['boba.flagship'], 'Lv6 flagship');
   assert.ok(views[7]['boba.fleet'] && !views[6]['boba.fleet'] && views[7]['boba.yard'].parts.some(p => p.coast), 'Lv7 balloons and fleet');
@@ -256,7 +256,7 @@ test('scripts: the levels a jump or the typhoon delivery skips (Lv4, Lv5) also p
         if (to === 5) {
           const f = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(f.q, f.r), trail = focusTrail(h.rig.log, r0).map(String);
           assert.deepEqual(trail.slice(-3), [String(worldToAxial(c.x, c.z)), String(CELL), 'home'], 'forest island, back to boba for LEVEL UP, then home');
-          assert.equal(h.show.roster.members('sat.forest').length, 2); assert.ok(h.show.stage.partObject('sat.forestShop'));
+          assert.equal(h.show.roster.members('sat.forest').length, 2); assert.ok(h.show.stage.partObject('sat.forest.stages'));
         } else assert.ok(h.show.stage.partObject('boba.fountain'));
         done = true; break;
       }

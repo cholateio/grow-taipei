@@ -95,6 +95,7 @@ export function createPartFactory(THREE, ctx) {
   function compound(spec) {
     const object = new THREE.Group(), groups = new Map(), owned = [];
     for (const p of spec.parts) {
+      if (ctx.quality === 'low' && p.low === false) continue;   // 單一零件的 low: false（離島三段併在基座裡的點綴）：手機不畫那一塊
       const key = ctx.quality === 'low' ? 'clay' : p.glow ?? 'clay';   // ?quality=low：發光的部分照顏色併進同一個 mesh（一個零件一個 draw call，裁決 R18）
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(partGeometry(p));

@@ -409,8 +409,9 @@ export const script = {
     },
   },
   fx: () => null,   // 燈泡自己沒有 onLevel
-  // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（不在主島格上）→ null（拜訪、撲空都略過）
-  rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && cellAt(m.pos.x, m.pos.z)) ?? null,
+  // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算；Lv7 起電工在風車島上（不在主島格上、也不在走路格上）→ null（拜訪、撲空都略過）。
+  // 主島的橋上算（走路格上，同 show/visit.js 的 onIsland）：巡路的電工剛好走在橋上不是叫不到（最終審稿，裁決 R4 之後）
+  rep: (s, ctx) => ctx.roster.members('bulb.electrician').find(m => !m.hidden && (cellAt(m.pos.x, m.pos.z) || !!ctx.nav?.walkable(m.pos.x, m.pos.z))) ?? null,
   hasRep: lv => lv >= 1 && lv < ISLAND_LV,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：ISLAND_LV 起電工住在風車島上，叫不到
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）

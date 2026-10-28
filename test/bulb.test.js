@@ -594,3 +594,15 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9]);
 });
+
+// 最終審稿（裁決 R4 之後）：代表在主島的橋上（走路格上、不在格內）也叫得到——同 show/visit.js 的 onIsland；只有風車島上（Lv7 起）不算。
+// 原本只看 cellAt，巡路的電工剛好走在橋上那一刻拜訪就略過（賽博第 6 回合 燈泡→晶片 3）
+test('bulb rep: the electrician on a main-island bridge counts; on the windmill island he does not', async () => {
+  const { show } = await headlessShow(), nav = show.nav;
+  const bridge = { x: 2.4659, y: 0.75, z: 0 };
+  assert.ok(!cellAt(bridge.x, bridge.z) && nav.walkable(bridge.x, bridge.z), 'precondition: a bridge point');
+  const at = p => { const m = { pos: { ...p }, hidden: false }; return [m, bulb.script.rep({ lv: { bulb: 6 }, flags: {} }, { roster: { members: () => [m] }, nav })]; };
+  const [m1, r1] = at(bridge); assert.equal(r1, m1, 'on the bridge: called');
+  const [, r2] = at(bulb.ISLAND_HOME); assert.equal(r2, null, 'on the windmill island: nobody');
+  const [, r3] = at(anchorWorld('bulb')); assert.ok(r3, 'on a main-island cell: called');
+});

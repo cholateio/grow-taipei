@@ -395,3 +395,7 @@ export const script = {
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這幾級，也演完整劇本（turn.js）。
 // Lv4 環狀線（選擇帶動升級裁決 R6）：代幣 up[3]、up[4] 都是 auto，2 → 4 一定跳級——環狀線與列車是整局的主線，不標 ◆ 就只剩 apply + LEVEL UP
 script.grow[4].key = script.grow[7].key = script.grow[10].key = true;
+
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：每一級都在車站（錨點）；Lv7 支線、Lv8 接駁車在離島 → null（不插拜訪）。
+// Lv10 飛天車停在站頂，敲的也是車站
+export const visitSpot = n => (n >= 1 && n <= 10 && n !== 7 && n !== 8 ? { ...AT, r: 1.2 } : null);

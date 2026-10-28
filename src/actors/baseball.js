@@ -280,3 +280,6 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[3].key = script.grow[8].key = true;
+
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：每一級都是球場／巨蛋（錨點，站位半徑同劇本的 FRONT_R）
+export const visitSpot = n => (n >= 1 && n <= 8 ? { ...AT, r: FRONT_R } : null);

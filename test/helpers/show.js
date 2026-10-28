@@ -232,3 +232,37 @@ export async function playLive(order, { seed = 21 } = {}) {
   }
   return out;
 }
+
+// 拜訪點（計畫 6 設計 §4、§5）：照兩條正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
+// 在演之前（拜訪：走過去、敲門都在 apply 之前，舞台還是上一級）與演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）各問一次
+// visitSpot(n, { lv, flags })——spot 要有 y、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
+// 拉回來不超過 tol。回傳 { bad, seen }：seen 是問到非 null 的「級」（排序過的數字陣列），測試寫死，少一級、多一級都看得到
+export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6 }) {
+  const { frontOf } = await import('../../src/actors/anchors.js');
+  const bad = [], seen = new Set();
+  for (const order of orders) {
+    const { show, run } = await headlessShow();
+    let s = engine.createState(spec);
+    const check = (n, when) => {
+      const st = show.stage, sv = { lv: { ...st.lv, [mod.id]: n }, flags: st.flags }, spot = mod.visitSpot(n, sv);
+      if (!spot) return;
+      seen.add(n);
+      const what = `${order.join('>')} ${mod.id} Lv${n} (${when})`;
+      if (!Number.isFinite(spot.y) || !(spot.r > 0)) { bad.push(`${what}: spot needs y and r > 0`); return; }
+      const cell = cellAt(spot.x, spot.z), ok = cells(n, sv);
+      if (!cell || !ok.some(c => c[0] === cell[0] && c[1] === cell[1])) bad.push(`${what}: spot (${spot.x.toFixed(2)}, ${spot.z.toFixed(2)}) in ${cell ?? 'no main cell'}, want ${ok.join(' | ')}`);
+      const req = frontOf(spot, spot.r), got = frontOf(spot, spot.r, show.nav), d = Math.hypot(got.x - req.x, got.z - req.z);
+      if (d > tol) bad.push(`${what}: frontOf pulled ${d.toFixed(2)} > ${tol}`);
+    };
+    for (const step of turnSteps(order)) {
+      const r = step(s); s = r.state;
+      for (const e of [...r.events, { kind: 'settle' }]) {
+        const n = e.item === mod.id && (e.kind === 'placed' ? 1 : e.kind === 'grow' ? e.to : 0);
+        if (n) check(n, 'before');
+        await run([e], { instant: true });
+        if (n) check(n, 'after');
+      }
+    }
+  }
+  return { bad: [...new Set(bad)], seen: [...seen].sort((a, b) => a - b) };
+}

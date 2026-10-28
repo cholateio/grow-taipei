@@ -381,3 +381,12 @@ test('NEST_WATCH stays ≥ 0.4 from every bridge end and from the electrician\'s
     assert.ok(nav.walkable(w.x, w.z), `walkable at ${JSON.stringify(L)}`);
   }
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 chip 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof chip.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(chip, SOLUTIONS, { cells: () => [[1, 0]] });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+});

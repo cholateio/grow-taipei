@@ -198,3 +198,6 @@ export const script = {
   },
   rep: () => null,   // 颱風沒有等待
 };
+
+// 拜訪點（計畫 6 設計 §4）：颱風是天氣——沒有人拜訪它，每一級都是 null
+export const visitSpot = () => null;

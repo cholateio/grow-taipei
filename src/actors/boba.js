@@ -341,3 +341,7 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這一級，也演完整劇本（turn.js）
 script.grow[7].key = true;
+
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–4 攤車／店／噴泉廣場（錨點）；Lv5 森林島分店、Lv6 燈塔島旗艦店在離島 → null；
+// Lv7 珍奶節 → 主島的店
+export const visitSpot = n => ((n >= 1 && n <= 4) || n === 7 ? { ...AT, r: 0.9 } : null);

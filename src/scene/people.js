@@ -117,26 +117,31 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
 
   // 躺平：以腳底為軸繞 x 轉 −90°（頭往身後倒、臉朝天），整個抬高 0.1 讓身體貼地；頭髮、眼睛、配件都接在 W 後面，自然跟著躺
   const LIE = tr(0, 0.1, 0).multiply(rx(-Math.PI / 2));
+  // 嘆氣：脖子（身體頂、頭底，y ≈ 0.22）為軸往前垂 0.35 rad，轉完再整顆往下沉 0.03（頭、頭髮、眼睛、帽子共用這一個矩陣，一起垂）
+  const NECK = 0.22, SIGH_TILT = 0.35, SIGH_DROP = 0.03;
+  const SIGH_HEAD = tr(0, NECK - SIGH_DROP, 0).multiply(rx(SIGH_TILT)).multiply(tr(0, -NECK, 0));
   const show = (on, name, i, ...ops) => { if (on) at(name, i, ...ops); else meshes[name].setMatrixAt(i, hidden); };
 
   function place(w, t, k = 1) {
     const lie = mood === 'lie';
-    const i = walkers.indexOf(w), p = locate(w), still = lie || (w.controlled ? !w.pose.walking : w.speed === 0), pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）、嘆氣（sigh：頭低、雙手垂、腳不動）；躺平時一律不做
+    const g = lie ? null : w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build', sigh = g?.kind === 'sigh';
+    const i = walkers.indexOf(w), p = locate(w), still = lie || sigh || (w.controlled ? !w.pose.walking : w.speed === 0), pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）；躺平時一律不做
-    const g = lie ? null : w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
     if (build !== !!w.hoe) { w.hoe = build; paint(i, w); }   // 拿起、放下鋤頭時重塗 handle、case 的顏色
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
     const turn = (g?.kind === 'look' || build) && g.yaw !== undefined ? Math.min(1, g.dur ? gk * g.dur / TURN : 1) : 0;
     const yaw = turn ? p.yaw + turnBy(p.yaw, g.yaw) * turn : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
+    // 頭上的東西（頭、頭髮、眼睛、帽子類）：嘆氣時以脖子為軸往前垂 SIGH_TILT、整顆往下沉 SIGH_DROP（一整段都垂著，不做來回）
+    const H = sigh ? L.clone().multiply(SIGH_HEAD) : L;
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
     if (lie) W.multiply(LIE);
     show(!bike, 'legL', i, tr(-0.025, 0.09, 0), rx(pose.leg), tr(0, -0.045, 0));
     show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg), tr(0, -0.045, 0));
-    at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
+    at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(sigh ? 0 : bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
     // 比讚：右手固定 rx(−2.6)（跟揮手同一個舉手角度），躺下後手往天上斜舉
     if (lie) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-2.6), tr(0, -0.04, 0));
     else if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
@@ -145,22 +150,22 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
       const sw = rx(-1.8 + 0.9 * Math.cos(gk * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
       at('armR', i, L, sh, sw, tr(0, -0.04, 0));
       at('handle', i, L, sh, sw, ...HOE_HANDLE); at('case', i, L, sh, sw, ...HOE_BLADE);
-    } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
+    } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(sigh ? 0 : bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
     at('body', i, L, tr(0, 0.15 + lift, 0));
-    at('head', i, L, tr(0, 0.28 + lift, 0));
-    show(acc !== 'helmet', 'hair', i, L, tr(0, 0.292 + lift, -0.006));
-    at('eyeL', i, L, tr(-0.024, 0.285 + lift, 0.064)); at('eyeR', i, L, tr(0.024, 0.285 + lift, 0.064));
-    show(mood === 'alien', 'eye3', i, L, tr(0, 0.305 + lift, 0.064));
-    // 戴在頭上、身上的配件跟著前傾，才不會在敲門時浮在半空
-    show(acc === 'cap' || acc === 'uniform', 'cap', i, L, tr(0, 0.362, 0.004));
+    at('head', i, H, tr(0, 0.28 + lift, 0));
+    show(acc !== 'helmet', 'hair', i, H, tr(0, 0.292 + lift, -0.006));
+    at('eyeL', i, H, tr(-0.024, 0.285 + lift, 0.064)); at('eyeR', i, H, tr(0.024, 0.285 + lift, 0.064));
+    show(mood === 'alien', 'eye3', i, H, tr(0, 0.305 + lift, 0.064));
+    // 戴在頭上、身上的配件跟著前傾，才不會在敲門時浮在半空（頭上的跟著頭垂）
+    show(acc === 'cap' || acc === 'uniform', 'cap', i, H, tr(0, 0.362, 0.004));
     show(acc === 'coat', 'badge', i, L, tr(0.03, 0.17, 0.052));
     show(acc === 'vest', 'vest', i, L, tr(0, 0.17, 0.052));
     show(acc === 'apron', 'apron', i, L, tr(0, 0.13, 0.052));
     if (!build) show(acc === 'suitcase', 'case', i, tr(0.1, 0.045, 0));
     show(acc === 'glass', 'lens', i, L, tr(0.09, 0.2, 0.06));
     if (!build) show(acc === 'glass', 'handle', i, L, tr(0.09, 0.15, 0.06));
-    show(acc === 'helmet', 'helmet', i, L, tr(0, 0.3 + lift, 0));
-    show(acc === 'mortar', 'mortar', i, L, tr(0, 0.36, 0)); show(acc === 'mortar', 'tassel', i, L, tr(0.055, 0.34, 0.03));
+    show(acc === 'helmet', 'helmet', i, H, tr(0, 0.3 + lift, 0));
+    show(acc === 'mortar', 'mortar', i, H, tr(0, 0.36, 0)); show(acc === 'mortar', 'tassel', i, H, tr(0.055, 0.34, 0.03));
     const ry = new THREE.Matrix4().makeRotationY(Math.PI / 2);
     show(bike, 'wheelF', i, tr(0, 0.01, 0.07), ry); show(bike, 'wheelB', i, tr(0, 0.01, -0.07), ry);
     W.compose(new THREE.Vector3(p.x, p.y + 0.005, p.z), q, new THREE.Vector3(ks, ks, ks)); meshes.shadow.setMatrixAt(i, W); used.add('shadow'); meshes.shadow.visible = !SKIP.has('shadow');
@@ -170,7 +175,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     const k = Math.min(1.45, Math.max(1, cameraDistance / 20));
     used.clear();
     for (const w of walkers) {
-      if (!w.controlled && mood !== 'lie') {   // 受控小人的位置由 setPose 決定，不推進路徑；躺平的人也不走
+      if (!w.controlled && mood !== 'lie' && w.gesture?.kind !== 'sigh') {   // 受控小人的位置由 setPose 決定，不推進路徑；躺平、嘆氣的人也不走
         w.s += w.speed * dt * w.dir;
         if (!w.loop) { const total = w.lens.at(-1); if (w.s >= total) { w.s = total; w.dir = -1; } else if (w.s <= 0) { w.s = 0; w.dir = 1; } }
       }

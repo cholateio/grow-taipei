@@ -412,3 +412,12 @@ test('the pier entry is in the boba cell by the sea, walkable and ≥ 1.5 from e
   bad.push(...await entriesThroughSolutions(boba, SOLUTIONS));
   assert.deepEqual(bad, []);
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 boba 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof boba.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(boba, SOLUTIONS, { cells: () => [[0, 1]] });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 7]);
+});

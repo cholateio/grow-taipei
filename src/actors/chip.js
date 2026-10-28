@@ -298,3 +298,8 @@ export const script = {
 // Lv7 天線、Lv8 矽盾測試（選擇帶動升級裁決 R6）：離島鏈是整局的主線，跳級變多之後兩級常是跳級的第二級（外星 6 → 7、賽博 6 → 8），
 // 不標 ◆ 就看不到箱子搭車來、罩子閃三下
 script.grow[7].key = script.grow[8].key = script.grow[9].key = true;
+
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1 工地、Lv2 廠房（園區錨點）、Lv3 園區玻璃盒、Lv4 起星群總部、Lv5 變電站——站位半徑 FRONT_R。
+// Lv6 海底電纜在海裡 → 敲上岸那頭的變電站；Lv7 天線（101 上）、Lv8 矽盾測試、Lv9 待命 → 總部（拜訪的是晶片自己那格）
+const VISIT = { 1: AT, 2: AT, 3: offset(AT, 0.6, 0), 5: offset(AT, SUB.x, SUB.z), 6: offset(AT, SUB.x, SUB.z) };
+export const visitSpot = n => (n >= 1 && n <= 9 ? { ...(VISIT[n] ?? offset(AT, HQ.x, HQ.z)), r: FRONT_R } : null);

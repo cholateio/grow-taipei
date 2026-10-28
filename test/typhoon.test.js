@@ -392,3 +392,9 @@ test('landing turn with the camera dragged mid-turn: no home before the turn-end
   assert.equal(rig.grabbed, false, 'turn-end home clears the drag');
   assert.equal(rig.log.slice(n1).filter(([k]) => k === 'focus').length, 0, 'no focus while dragged');
 });
+
+// 拜訪點（計畫 6 設計 §4）：颱風是天氣——沒有人拜訪它，每一級、任何舞台都回 null
+test('visitSpot(n, s) is null for every typhoon level (nobody visits the weather)', () => {
+  assert.equal(typeof typhoon.visitSpot, 'function');
+  for (let n = 0; n <= spec.ITEMS.typhoon.max; n++) for (const flags of [{}, { blackout: true }, { flooded: true }]) assert.equal(typhoon.visitSpot(n, { lv: lv({ typhoon: n }), flags }), null);
+});

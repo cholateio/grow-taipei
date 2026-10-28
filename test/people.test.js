@@ -225,3 +225,27 @@ test('low quality keeps eye3 in alien mood (the normal eyes stay skipped)', () =
   assert.equal(partMesh(people, 'eye3').visible, true);
   assert.equal(partMesh(people, 'eyeL').visible, false); assert.equal(partMesh(people, 'eyeR').visible, false);
 });
+// 失望（計畫 6 設計 §5）：sigh——頭（含頭髮、眼睛）往下沉、以脖子為軸往前垂，兩手直直垂著、腳不動；走路徑的人這一秒不往前走
+test('gesture sigh: head lowered (head matrix y below the normal pose), arms down, walker does not advance', () => {
+  const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0, y: 0, z: 0, yaw: 0, walking: true });
+  const m = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler();
+  const partAt = (name, i = 0) => { people.group.getObjectByName(`people:${name}`).getMatrixAt(i, m); m.decompose(p, q, new THREE.Vector3()); return { y: p.y, z: p.z, rx: e.setFromQuaternion(q).x }; };
+  people.update(0.016, 0); const head = partAt('head'), eye = partAt('eyeL');
+  w.gesture = { kind: 'sigh', k: 0.5, dur: 1 };
+  for (const t of [0.1, 0.37, 0.8]) {
+    people.update(0.016, t);
+    assert.ok(partAt('head').y < head.y - 0.02, `head lower: ${partAt('head').y.toFixed(3)} vs ${head.y.toFixed(3)}`);
+    assert.ok(partAt('head').rx > 0.3, 'head tilted forward about the neck');
+    assert.ok(partAt('eyeL').y < eye.y - 0.02 && partAt('hair').y < head.y, 'eyes and hair follow the head');
+    for (const arm of ['armL', 'armR']) assert.ok(Math.abs(partAt(arm).rx) < 1e-9, `${arm} hangs straight`);
+    for (const leg of ['legL', 'legR']) assert.ok(Math.abs(partAt(leg).rx) < 1e-9, `${leg} still although the pose says walking`);
+  }
+  w.gesture = null; people.update(0.016, 0); assert.ok(Math.abs(partAt('head').y - head.y) < 1e-9, 'back to the normal pose');
+  // 走路徑的人（不受控）：嘆氣的這一秒停在原地
+  const walker = people.spawn({ path: [{ x: 0, y: 0, z: 0 }, { x: 5, y: 0, z: 0 }], speed: 1, loop: false });
+  people.update(0.016, 0); const before = { ...walker.pos };
+  walker.gesture = { kind: 'sigh', k: 0, dur: 1 };
+  for (let i = 0; i < 30; i++) { walker.gesture.k = i / 30; people.update(1 / 30, i / 30); }
+  assert.deepEqual(walker.pos, before);
+  walker.gesture = null; people.update(0.1, 1); assert.ok(Math.hypot(walker.pos.x - before.x, walker.pos.z - before.z) > 0.05, 'walks on afterwards');
+});

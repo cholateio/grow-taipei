@@ -315,3 +315,7 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[10].key = true;
+
+// 拜訪點（計畫 6 設計 §4）：幫手走到第 n 級建築的鏡頭側 frontOf(spot, r, nav) 敲門。Lv1 是牛奶箱；Lv2–9 校舍／大學（錨點，同 5b 之前的趕工）；
+// Lv10 鮮奶節：牛奶車旁小孩聚集的地方。s（{ lv, flags }）這裡用不到——每一級的建築都在同一處
+export const visitSpot = n => (n === 1 ? { ...CRATE, r: 0.5 } : n >= 2 && n <= 9 ? { ...AT, r: 1.0 } : n === 10 ? { ...offset(TRUCK, 0.8, 0.1), r: 1.0 } : null);

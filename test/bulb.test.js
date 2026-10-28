@@ -579,3 +579,12 @@ test('the night market never closes the walkway between the station and the mark
     });
   }
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 bulb 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof bulb.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(bulb, SOLUTIONS, { cells: n => (n === 4 || n === 9 ? [[0, 1]] : [[0, 0]]) });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9]);
+});

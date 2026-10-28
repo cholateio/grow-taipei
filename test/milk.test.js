@@ -267,3 +267,12 @@ test('the arch gate pillars block walkers (r 0.06 each); the passage between the
     assert.ok(nav.walkable(milk.KID_ENTRY.x, milk.KID_ENTRY.z), `lv${n} entry`);
   }
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 milk 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof milk.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(milk, SOLUTIONS, { cells: () => [[-1, 0]] });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+});

@@ -318,3 +318,15 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：分岔與最終型態——跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[4].key = script.grow[5].key = true;
+
+// 拜訪點（計畫 6 設計 §4）：看老鼠這一級住哪（ratMode）。一隻／鼠窩／搭捷運（窩在車站旁的岸邊等車）→ 鼠窩；泡溫泉、變異鼠 → 溫泉；
+// 賽博（Lv4 在園區門口變身、Lv5 軍團從那裡走去 101）→ 園區門口；鼠災 → 巨蛋門口。s 是劇本收到的 { lv, flags }（lv.rat 已是 n）
+export function visitSpot(n, s) {
+  if (!(n >= 1 && n <= ITEMS.rat.max)) return null;
+  switch (ratMode({ ...s.lv, rat: n }, s.flags)) {
+    case 'spring': case 'alien': return { ...SPRING, r: 0.9 };
+    case 'cyber': return { ...PARK, r: 0.5 };
+    case 'dome': return { ...GATE, r: 0.5 };
+    default: return { ...AT, r: 0.6 };
+  }
+}

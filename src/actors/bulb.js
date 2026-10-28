@@ -414,3 +414,13 @@ export const script = {
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[9].key = true;
+
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–3 路燈（錨點）、Lv4 夜市、Lv5 101（全島 LED 燈光秀）、Lv6 變電所（站位同劇本的 SUBSTATION_FRONT）、
+// Lv9 霓虹 → 夜市（三處霓虹裡唯一的「店面」）。Lv7 風車島、Lv8 海底電纜在主島外 → null（不插拜訪）
+export function visitSpot(n) {
+  if (n >= 1 && n <= 3) return { ...AT, r: 0.8 };
+  if (n === 4 || n === 9) return { ...MARKET, r: 1.0 };
+  if (n === 5) return { ...TOWER, r: 1.1 };
+  if (n === 6) return { ...SUBSTATION, r: SUBSTATION_FRONT.z - SUBSTATION.z };
+  return null;
+}

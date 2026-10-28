@@ -389,3 +389,12 @@ test('after the Lv7 and Lv8 scripts the baseball cell never holds more than 8 vi
     assert.ok(worst <= 8, `${order.join('>')} lv${to}: ${worst} in the cell (${who})`);
   }
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 baseball 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof baseball.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(baseball, SOLUTIONS, { cells: () => [[-1, 1]] });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8]);
+});

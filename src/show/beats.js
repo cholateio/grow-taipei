@@ -12,7 +12,7 @@ import { createPathCursor } from '../scene/path.js';
 import { worldEffects } from '../actors/world.js';
 
 export { together };
-export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6 };
+export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6, sigh: 1.0 };   // sigh：撲空時的失望（計畫 6 設計 §5）
 // 加速上限：一圈 2π / 0.35 ≈ 18 s，車剛開走時要 4.5 倍才趕得上 4 秒內進站（三倍會拖到 6 秒）
 export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');
@@ -126,7 +126,7 @@ export function bubble(who, kind, dur = 1.2) {
 }
 
 // 小動作。people：交給小人的 gesture（look、build 另外帶 { at } 決定轉向，演完就一直朝那邊；build 揮鋤頭的節奏要秒數，dur 一起帶）；
-// 模型：sniff 左右轉頭、jump 原地拋物線、wave 在 m.waving 的期間名冊把揮手的搖擺加大加快（roster.js；model wave 的模型才搖）；
+// 模型：sniff 左右轉頭、sigh 原地慢慢轉一圈（失望；演完回原本的朝向）、jump 原地拋物線、wave 在 m.waving 的期間名冊把揮手的搖擺加大加快（roster.js；model wave 的模型才搖）；
 // 零件鍵 + puff：零件鼓起來再縮回去
 export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   if (typeof dur === 'object') { at = dur.at; dur = GESTURE_DUR[kind]; }   // gesture(m, 'look', { at })
@@ -146,6 +146,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
       if (!m.holder) return;
       if (kind === 'look' && yaw !== undefined) m.holder.rotation.y = m.yaw + turnBy(m.yaw, yaw) * k;   // 模型：慢慢轉過去
       if (kind === 'sniff') m.holder.rotation.y = m.yaw + 0.3 * Math.sin(k * TWO_PI * 2);
+      if (kind === 'sigh') m.holder.rotation.y = m.yaw + TWO_PI * k;
       if (kind === 'jump') m.holder.position.y = m.pos.y + HOP_H * Math.sin(Math.PI * k);
     },
     end(ctx) {

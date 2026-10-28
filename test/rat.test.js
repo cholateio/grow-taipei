@@ -522,3 +522,12 @@ test('live play, both solutions: rat Lv3 script ≤ 4.5 s in the real turn', asy
     assert.ok(ev && ev.script <= SCRIPT_MAX, `${order.join('>')} turn ${ev?.turn}${ev?.closing ? ' (last round)' : ''}: ${ev?.script.toFixed(2)} s`);
   }
 });
+
+// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 rat 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
+  const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
+  assert.equal(typeof rat.visitSpot, 'function');
+  const { bad, seen } = await visitSpotsThroughSolutions(rat, SOLUTIONS, { cells: (n, s) => (['spring', 'alien'].includes(rat.ratMode(s.lv, s.flags)) ? [[1, -1]] : rat.ratMode(s.lv, s.flags) === 'cyber' ? [[1, 0]] : [[-1, 1]]) });
+  assert.deepEqual(bad, []);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5]);
+});

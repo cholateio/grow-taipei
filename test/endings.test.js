@@ -30,18 +30,24 @@ test('bobaSugar is a flag, so it holds even though milk is placed at the end', (
   const r = resolve(full({ lv: lv({ chip: 5, milk: 4, boba: 3 }) }, { bobaSugar: true }), spec);
   assert.ok(r.extras.includes('bobaSugar') || r.id === 'bobaSugar');
 });
-test('engine sets bobaSugar when boba maxes while milk is not placed yet', () => {
-  // 不寫死順序：找任何一條「鮮奶還沒放、珍奶就升滿」的前綴
-  const others = ORDER.filter(id => id !== 'milk');
+// 因果設計 2026-10-28 §3：珍奶長人龍要鮮奶 ≥3（學生排隊），所以「鮮奶還沒放珍奶就升滿」不會再發生；
+// 糖分超標改成鮮奶被拖下來（大停電 −1）時珍奶剛好到 4——旗標一插就留到最後，鮮奶之後長回來也不撤
+test('engine sets bobaSugar when boba reaches Lv4 while milk is ≤ 2, and the flag stays', async () => {
+  const { foldEvent } = await import('../src/rules/engine.js');
   const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
   let found = 0;
-  for (const order of perms(others)) {
-    let s = createState(spec);
-    for (const id of order) { s = place(s, id, spec).state; if (s.lv.boba === ITEMS.boba.max) break; }
-    if (s.lv.boba !== ITEMS.boba.max) continue;
-    found++; assert.equal(s.lv.milk, 0); assert.equal(s.flags.bobaSugar, true);
+  for (const order of perms(ORDER)) {
+    let s = createState(spec), view = { lv: s.lv, flags: {} }, at = null;
+    for (const id of order) {
+      const r = place(s, id, spec); s = r.state;
+      for (const e of r.events) { view = foldEvent(view, e); if (e.flag?.name === 'bobaSugar' && at === null) at = { milk: view.lv.milk, boba: view.lv.boba }; }
+    }
+    if (at === null) { assert.ok(!s.flags.bobaSugar); continue; }
+    found++; assert.ok(at.milk <= 2, `${order}: milk ${at.milk} when the sugar flag went up`); assert.equal(at.boba, 4);
+    assert.equal(s.flags.bobaSugar, true, 'the flag stays to the end');
+    if (found >= 200) break;
   }
-  assert.ok(found > 0, 'no order maxes boba before milk');
+  assert.ok(found > 0, 'no order raises bobaSugar');
 });
 test('deflect games light both typhoonDeflect and shieldDown, title card is the deflect', () => {
   const s = full({ lv: lv({ chip: 4, typhoon: 2 }) });
@@ -99,7 +105,7 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
 });
 
-// 最終章（計畫 5 任務 8；選擇帶動升級重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
+// 最終章（計畫 5 任務 8；選擇帶動升級、因果與離島 2026-10-28 重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
 // 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋飛彈（壞結局沒有尾聲）
 test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned literals)', async () => {
   const { enumerate } = await import('../src/solver/run.js'), { advance } = await import('../src/rules/engine.js');
@@ -107,7 +113,7 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   const all = enumerate(spec);
   // 字面值釘死（規則改了這裡跟 helpers/endings.js 一起換）
   assert.deepEqual(EXAMPLE, {
-    hit: ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'],
+    hit: ['milk', 'chip', 'bulb', 'token', 'rat', 'baseball', 'typhoon', 'boba'],
     deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
   });
   for (const outcome of ['hit', 'deflect']) {

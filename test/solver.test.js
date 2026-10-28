@@ -49,6 +49,7 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
 // 物品 v2（2026-10-26）：兩條正解快照、颱風第 8 個、晶片第 8 個的報告項
 // 選擇帶動升級（2026-10-28 §3）：9 回合下颱風一定第 8、老鼠一定第 7；兩條正解只差第 3、4 個先放燈泡（賽博）還是先放代幣（外星）
 import { chipEighth } from '../src/solver/run.js';
+// 因果與離島（2026-10-28 §3）：Lv3 以上每一級都要有觸發者之後，兩條正解剛好還是這兩條（求解器收到的，見 spec.js 註解）
 const all = enumerate(spec), st = stats(all, spec);
 test('check passes on the shipped spec: exactly two full orders, one cyber one alien (snapshot the two orders)', () => {
   const c = check(all, spec);
@@ -83,4 +84,13 @@ function storyGoals(results, s) {
 }
 test('story: true solutions carry no disaster extras; typhoonDeflect and milkExpired each title some orders', () => {
   assert.deepEqual(storyGoals(all, st), []);
+});
+
+// 因果與離島（2026-10-28 §2、§3）：兩條正解裡 Lv3 以上的每個升級（颱風除外）都有 via——演出層靠它演拜訪；
+// via 只列真的成立的幫手，所以每個名字在那一刻都夠高／在場
+test('both solutions: every grow to Lv3+ (typhoon aside) carries a non-empty via of helpers that really hold', () => {
+  for (const r of st.full) {
+    const { events } = playOrder(r.order, spec);
+    for (const e of events) if (e.kind === 'grow' && e.to >= 3 && e.item !== 'typhoon') assert.ok(e.via.length > 0, `${r.order.join(',')}: ${e.item} ${e.from}→${e.to} has no via`);
+  }
 });

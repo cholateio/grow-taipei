@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT, condDeps, foldEvent, landsTyphoon } from '../src/rules/engine.js';
+import { createState, place, advance, isAllMax, isComplete, SCAN_LIMIT, condDeps, foldEvent, landsTyphoon, satisfiedHelpers } from '../src/rules/engine.js';
 
 // 迷你 spec：a 放了就自己每回合升；b 的 Lv2 需要 a>=2，Lv3 需要 a>=3（同回合連鎖）
 const mini = {
@@ -313,9 +313,10 @@ const playReal = (order, closing = 0) => {
 test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn instead of never coming', () => {
   // 選擇帶動升級：颱風放下當回合就登陸。燈泡要到 6 才放得了晴，而燈泡 5 要棒球 ≥4，所以照常玩放晴時大巨蛋一定在：
   // 晶片還沒測矽盾 → 放下（登陸）→ 賴在巨蛋一回合 → 放晴
-  const { lvs } = playReal(['chip', 'bulb', 'token', 'baseball', 'typhoon', 'milk', 'rat', 'boba']);
-  assert.ok(lvs[5].baseball >= 3 && lvs[5].chip <= 7);
-  assert.deepEqual(lvs.slice(4, 7).map(l => l.typhoon), [2, 2, 3]);
+  // （因果設計 2026-10-28：棒球長要鮮奶 ≥3，所以鮮奶先放；第 6 個放颱風）
+  const { lvs } = playReal(['milk', 'chip', 'bulb', 'token', 'baseball', 'typhoon', 'rat', 'boba']);
+  assert.ok(lvs[6].baseball >= 3 && lvs[6].chip <= 7);
+  assert.deepEqual(lvs.slice(5, 8).map(l => l.typhoon), [2, 2, 3]);
   // 正解（賽博）：第 8 個放、晶片已經 8 → 罩子把颱風推走，最後一輪就放晴
   const cyber = playReal(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon'], 1).lvs;
   assert.deepEqual(cyber.slice(7).map(l => l.typhoon), [2, 3]); assert.equal(cyber[7].chip, 8);
@@ -350,7 +351,8 @@ test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', ()
   assert.equal(r.state.lv.rat, 2, 'the rat itself grows in its placement turn');
   let t = place(createState(real), 'milk', real).state; t = place(t, 'baseball', real).state;   // 鮮奶 3（小學，沙地球場當操場）
   const late = place(t, 'rat', real);
-  assert.ok(!late.events.some(e => e.delta?.target === 'milk')); assert.equal(late.state.lv.milk, 4);
+  // 沒咬；鮮奶也不長——兩層校舍要有人帶家庭來（晶片／燈泡／代幣／珍奶），老鼠不算（因果設計 2026-10-28 §3）
+  assert.ok(!late.events.some(e => e.delta?.target === 'milk')); assert.equal(late.state.lv.milk, 3);
   assert.equal(late.events.filter(e => e.kind === 'fx' && e.cause === 'rat').length, 0, 'no boba to knock over either');
 });
 test('ratBranch at rat Lv4: chip ≥ 8 → cyber, else alien', () => {
@@ -406,11 +408,12 @@ test('default jump: at n−2 with up[n−1] and up[n] both true the item rises +
   s = place(createState(choice), 'h', choice).state; s = place(s, 'g', choice).state;   // h2、g2
   let r = place(s, 'z', choice);
   assert.deepEqual(grows(r), ['g2>3', 'g3>4J']); assert.equal(r.state.flags.g3, true);
-  assert.deepEqual(r.events.find(e => e.jump).via, ['h', 'k'], 'via = helpers of or(explicit, up[3] ∧ up[4])');
+  assert.deepEqual(r.events.find(e => e.jump).via, ['h'], 'via = 真的成立的那一支（預設 up[3] ∧ up[4]，k 沒放就不列）');
   // spec 寫的那條：h 沒放、k 在場 → 一樣跳
   s = place(createState(choice), 'g', choice).state;
   r = place(s, 'k', choice);
   assert.deepEqual(grows(r), ['g2>3', 'g3>4J']);
+  assert.deepEqual(r.events.find(e => e.jump).via, ['k'], 'via = spec 寫的那條（present k）');
   // 在 3：預設 jump[5] = up[4] ∧ up[5]（h ≥ 9 永遠不成立）→ 只 +1；下一級也一樣
   s = place(createState(choice), 'g', choice).state; s = place(s, 'z', choice).state;   // g3
   assert.deepEqual(grows(place(s, 'h', choice)).filter(x => x[0] === 'g'), ['g3>4']);
@@ -422,9 +425,9 @@ test('steady items get no default jumps: milk rises one level per turn except it
   const loose = { ...choice, ITEMS: { ...choice.ITEMS, m: { ...choice.ITEMS.m, steady: false } } };
   assert.deepEqual(grows(advance(place(createState(loose), 'm', loose).state, loose)), ['m2>3', 'm3>4J'], 'the same item without steady jumps');
   // 真的鮮奶（棒球第 2 個放，當操場、組少棒隊）：2 → 5 一回合一級（不 steady 就會 3 → 5），5 → 7 是 spec 寫的跳級（大巨蛋蓋好）
+  // （因果設計 2026-10-28：鮮奶 4 要有人帶家庭來、5 要路燈，所以照賽博正解的前綴放，不再空轉）
   let t = place(createState(real), 'milk', real).state; const lvs = [t.lv.milk];
-  t = place(t, 'baseball', real).state; lvs.push(t.lv.milk);
-  for (let i = 0; i < 3; i++) { t = advance(t, real).state; lvs.push(t.lv.milk); }
+  for (const id of ['baseball', 'bulb', 'token', 'chip']) { t = place(t, id, real).state; lvs.push(t.lv.milk); }
   assert.deepEqual(lvs, [2, 3, 4, 5, 7]); assert.ok(t.lv.baseball >= 3);
   assert.deepEqual(real.ORDER.filter(id => real.ITEMS[id].steady), ['milk']);
 });
@@ -460,4 +463,45 @@ test('the +2 per turn cap still includes deltas', () => {
     AFTER_TURN: [], STORIES: { placed: { y: '' }, grow: { y: {} } } };
   const t = place(createState(self), 'y', self), d = t.events.find(e => e.delta);
   assert.deepEqual(d.delta, { target: 'y', from: 1, to: 2 }); assert.equal(t.state.lv.y, 2); assert.deepEqual(grows(t), []);
+});
+
+// 看得見的因果與離島三段（2026-10-28 設計 §3）：via 只列「這次真的讓條件成立」的幫手——or 只算成立的那一支（兩支都成立就兩支都列）、
+// and 全列、跳級是兩級條件的聯集；不成立的分支、「要低於」的物品都不算
+const cause = {
+  ORDER: ['milk', 'chip', 'token', 'p', 'z'],
+  ITEMS: {
+    milk: { name: 'M', max: 1, up: {} },
+    chip: { name: 'C', max: 3, up: { 2: { always: true }, 3: { always: true } } },
+    token: { name: 'T', max: 4, up: { 2: { always: true }, 3: { always: true }, 4: { always: true } } },
+    p: { name: 'P', max: 4, up: { 2: { always: true }, 3: { or: [{ minLevel: ['chip', 3] }, { minLevel: ['token', 4] }] }, 4: { present: 'milk' } } },
+    z: { name: 'Z', max: 1, up: {} },
+  },
+  AFTER_TURN: [], STORIES: { placed: { milk: '', chip: '', token: '', p: '', z: '' }, grow: { milk: {}, chip: { 2: '', 3: '' }, token: { 2: '', 3: '', 4: '' }, p: { 2: '', 3: '', 4: '' }, z: {} } },
+};
+test('satisfiedHelpers: or → only the satisfied alternative(s); and → all; maxLevel/flag/age never; nothing when the condition fails', () => {
+  const st = lv => ({ lv: { milk: 0, chip: 0, token: 0, p: 0, z: 0, ...lv }, age: {}, held: {}, flags: { f: true }, locked: {} });
+  const either = { or: [{ minLevel: ['chip', 3] }, { minLevel: ['token', 4] }] };
+  assert.deepEqual(satisfiedHelpers(either, st({ token: 4 }), 'p', cause), ['token']);
+  assert.deepEqual(satisfiedHelpers(either, st({ chip: 3 }), 'p', cause), ['chip']);
+  assert.deepEqual(satisfiedHelpers(either, st({ chip: 3, token: 4 }), 'p', cause), ['chip', 'token'], 'both alternatives hold → both listed, in ORDER');
+  assert.deepEqual(satisfiedHelpers(either, st({ chip: 2 }), 'p', cause), [], 'condition fails → nobody');
+  assert.deepEqual(satisfiedHelpers({ and: [{ present: 'milk' }, { minLevel: ['token', 2] }, { maxLevel: ['chip', 1] }, { flag: 'f' }] }, st({ milk: 1, token: 2 }), 'p', cause), ['milk', 'token']);
+  assert.deepEqual(satisfiedHelpers({ or: [{ and: [{ minLevel: ['chip', 3] }, { minLevel: ['milk', 1] }] }, { present: 'token' }] }, st({ chip: 3, token: 1 }), 'p', cause), ['token'], 'a failed and-branch lends none of its helpers');
+  assert.deepEqual(satisfiedHelpers({ always: true }, st({}), 'p', cause), []);
+  assert.deepEqual(satisfiedHelpers({ minLevel: ['p', 1] }, st({ p: 1 }), 'p', cause), [], 'self is never a helper');
+});
+test('via lists only the helpers that satisfied the condition: or(min chip 3, min token 4) with only token placed → [token]; a jump unions both levels', () => {
+  // 只有代幣：p 在 2，代幣到 4 → p 升 3，via 只有 token（晶片沒放）
+  let s = place(createState(cause), 'token', cause).state; s = advance(s, cause).state; s = advance(s, cause).state;   // token 2 → 4
+  assert.equal(s.lv.token, 4);
+  s = place(s, 'p', cause).state; assert.equal(s.lv.p, 2);
+  let r = place(s, 'z', cause), g = r.events.find(e => e.kind === 'grow' && e.item === 'p' && e.to === 3);
+  assert.ok(g && !g.jump, 'p takes +1 (up[4] needs milk)'); assert.deepEqual(g.via, ['token']);
+  // 跳級：鮮奶在場、代幣 4 → p 2 → 4 一回合，預設跳級 up[3] ∧ up[4] 的聯集 = token（up[3] 成立的那支）＋ milk（up[4]）
+  s = place(createState(cause), 'token', cause).state; s = advance(s, cause).state; s = advance(s, cause).state;
+  s = place(s, 'milk', cause).state; s = place(s, 'p', cause).state; assert.equal(s.lv.p, 2);
+  r = place(s, 'z', cause);
+  const jumps = r.events.filter(e => e.kind === 'grow' && e.item === 'p');
+  assert.deepEqual(jumps.map(e => [e.to, !!e.jump]), [[3, false], [4, true]]);
+  for (const e of jumps) assert.deepEqual(e.via, ['milk', 'token'], `jump event to ${e.to}: union of both levels' satisfied helpers`);
 });

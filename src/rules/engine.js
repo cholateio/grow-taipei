@@ -23,7 +23,8 @@ export function condDeps(cond, self, spec = defaultSpec) {
   return spec.ORDER.filter(id => found.has(id));
 }
 
-// 幫手：條件裡「要有／要夠高」的物品（minLevel、present）。「要低於／不在」的不是幫手（審查 #2）
+// 幫手：條件裡「要有／要夠高」的物品（minLevel、present），不管成不成立。「要低於／不在」的不是幫手（審查 #2）。
+// grow 事件的 via 改用 satisfiedHelpers（只列真的成立的）；這個留給規格測試問「這條條件有沒有提到幫手」
 export function helperDeps(cond, self, spec = defaultSpec) {
   const found = new Set();
   const walk = c => {
@@ -31,6 +32,26 @@ export function helperDeps(cond, self, spec = defaultSpec) {
     if ('minLevel' in c) found.add(c.minLevel[0]);
     if ('present' in c) found.add(c.present);
     for (const key of ['and', 'or']) if (key in c) c[key].forEach(walk);
+  };
+  walk(cond); found.delete(self);
+  return spec.ORDER.filter(id => found.has(id));
+}
+
+// 這次真的讓條件成立的幫手（看得見的因果與離島三段 §3、§4：grow 事件的 via，演出層讓 via[0] 走來拜訪）：
+// minLevel／present 成立就算；and 要整條成立才算、列全部；or 只算成立的那幾支（兩支都成立就都列）；
+// maxLevel／absent／flag／age 不是幫手。整條不成立 → []。自己不算，照 ORDER 排序。
+// 跳級的條件本身就是 up[n−1] ∧ up[n]（或再 or 上 spec 寫的那條），所以跳級的 via 自然是兩級的聯集
+const holdsCache = new WeakMap();
+const holds = (c, s) => { let f = holdsCache.get(c); if (!f) { f = compile(c, {}); holdsCache.set(c, f); } return f(s); };
+export function satisfiedHelpers(cond, s, self, spec = defaultSpec) {
+  const found = new Set();
+  const walk = c => {
+    if (!c || typeof c !== 'object' || !holds(c, s)) return false;
+    if ('minLevel' in c) found.add(c.minLevel[0]);
+    if ('present' in c) found.add(c.present);
+    if ('and' in c) c.and.forEach(walk);
+    if ('or' in c) c.or.forEach(walk);
+    return true;
   };
   walk(cond); found.delete(self);
   return spec.ORDER.filter(id => found.has(id));
@@ -54,19 +75,19 @@ function rulesOf(spec) {
   const r = { ctx, items: {} };
   for (const id of spec.ORDER) {
     const it = spec.ITEMS[id];
-    const up = {}, deps = {}, jump = {}, jumpDeps = {}, delay = {};
-    for (const n in it.up) { up[n] = compile(it.up[n], ctx); deps[n] = helperDeps(it.up[n], id, spec); }
+    const up = {}, jump = {}, jumpRaw = {}, delay = {};
+    for (const n in it.up) up[n] = compile(it.up[n], ctx);
     // 預設跳級（選擇帶動升級 §3）：在 n−2、第 n−1 與第 n 級的條件同時成立就一回合 +2；spec 寫的 jump[n] 是另一條（or）。
-    // jumpDeps 照編譯後的整條條件算（升級事件的 via）
+    // jumpRaw 留著整條條件，升級事件的 via 在決定的那一刻用 satisfiedHelpers 算
     for (let n = 3; n <= it.max; n++) {
       const explicit = it.jump?.[n], auto = it.steady || !it.up[n - 1] || !it.up[n] ? null : { and: [it.up[n - 1], it.up[n]] };
       const cond = explicit && auto ? { or: [explicit, auto] } : explicit || auto;
-      if (cond) { jump[n] = compile(cond, ctx); jumpDeps[n] = helperDeps(cond, id, spec); }
+      if (cond) { jump[n] = compile(cond, ctx); jumpRaw[n] = cond; }
     }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, deps, jump, jumpDeps, delay, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -183,10 +204,12 @@ function turn(state, id, spec, rules) {
       const jump = lv + 2 <= it.max && it.jump[lv + 2] && ready(lv + 2) && it.jump[lv + 2](s);
       if (!jump && !(ready(lv + 1) && it.up[lv + 1](s))) continue;
       const to = jump ? lv + 2 : lv + 1;
+      // via 在改級之前算（條件是照這一刻的全島狀態成立的）；跳級的兩個事件共用同一份
+      const via = satisfiedHelpers(jump ? it.jumpRaw[to] : it.raw[to], s, k, spec);
       lastGrown = k; changed = true; grown.add(k);
       for (let n = lv + 1; n <= to; n++) {
         s.lv[k] = n; s.held[k] = 0;
-        const e = { kind: 'grow', item: k, from: n - 1, to: n, story: spec.STORIES.grow[k][n], via: jump ? it.jumpDeps[to] : it.deps[n] };
+        const e = { kind: 'grow', item: k, from: n - 1, to: n, story: spec.STORIES.grow[k][n], via: [...via] };
         if (jump && n === to) e.jump = true;
         events.push(e);
         for (const a of it.onLevel[n] || []) applyAction(s, a, 'fx', k, rules, events);

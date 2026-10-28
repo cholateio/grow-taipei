@@ -59,3 +59,23 @@ test('islander and bather entries are walkable and ≥ 1.5 from their homes thro
   const spec = await import('../src/rules/spec.js'), { enumerate, stats } = await import('../src/solver/run.js'), { entriesThroughSolutions } = await import('./helpers/show.js');
   assert.deepEqual(await entriesThroughSolutions(landmarks, stats(enumerate(spec), spec).full.map(r => r.order)), []);
 });
+// 2026-10-28 錄影修正：變異鼠（外星 Lv4 起）站在池子正前方，兩位溫泉客太近——那時溫泉客改站池子北側（離變異鼠中心 ≥ 0.9、
+// 離木牌與小澡堂 ≥ 0.3、還在池邊、走得到、面向池心）；其他時候照舊站鏡頭那側
+test('with the mutant rat at the spring (rat ≥ 4, alien) the bathers move to the north side of the pool, clear of the mutant, the sign and the bathhouse', async () => {
+  const { MUTANT } = await import('../src/actors/rat.js');
+  const fp = [].concat(landmarks.view(zero, {})['landmarks.spring'].footprint), nav = createNav();
+  nav.setFootprints(fp.map(f => ({ ...f, x: SPRING.x + (f.x ?? 0), z: SPRING.z + (f.z ?? 0) })));
+  const boxGap = (p, f) => Math.hypot(Math.max(0, Math.abs(p.x - SPRING.x - f.x) - f.w / 2), Math.max(0, Math.abs(p.z - SPRING.z - f.z) - f.d / 2));
+  const spots = (lv, flags) => landmarks.view({ ...zero, ...lv }, flags)['landmarks.bathers'].home.spots;
+  for (const rat of [4, 5]) for (const p of spots({ rat }, { ratBranch: 'alien' })) {
+    const d = Math.hypot(p.x - SPRING.x, p.z - SPRING.z);
+    assert.ok(p.z < SPRING.z, `rat ${rat}: north of the pool`);
+    assert.ok(Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z) >= 0.9, `rat ${rat}: ${Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z).toFixed(2)} from the mutant`);
+    for (const f of fp.slice(1)) assert.ok(boxGap(p, f) >= 0.3, `rat ${rat}: ${boxGap(p, f).toFixed(2)} from ${JSON.stringify(f)}`);
+    assert.ok(d > fp[0].r + PAD && d < fp[0].r + PAD + 0.3, `on the pool edge (${d.toFixed(2)})`);
+    assert.ok(nav.walkable(p.x, p.z), 'walkable');
+    assert.ok(Math.abs(Math.atan2(Math.sin(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)), Math.cos(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)))) < 1e-9, 'faces the pool');
+  }
+  const [a, b] = spots({ rat: 4 }, { ratBranch: 'alien' }); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.25, 'the two bathers apart');
+  for (const [lv, flags] of [[{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 3 }, {}], [{ rat: 3 }, { ratBranch: 'alien' }]]) assert.deepEqual(spots(lv, flags), spots({}, {}), `${JSON.stringify(lv)} ${JSON.stringify(flags)}: unchanged`);
+});

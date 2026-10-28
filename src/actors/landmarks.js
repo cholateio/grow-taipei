@@ -15,12 +15,17 @@ const POOL_R = 0.75;
 export const BATHHOUSE = { x: 0.95, z: -0.75, w: 0.6, d: 0.5, door: true };
 const SPRING_FP = [{ r: POOL_R, door: false }, BATHHOUSE, { x: -0.85, z: 0.75, w: 0.36, d: 0.04 }];
 // 溫泉客：池邊靠鏡頭那側兩個位置（池子外擴 PAD 後 0.87 之外），夾在泡湯老鼠（池裡半徑 0.62）之間，離老鼠都 ≥ 0.25；面向池心
-const BATHERS = [0.93, 2.0].map(a => { const p = { x: Math.cos(a) * 0.97, z: Math.sin(a) * 0.97 }; return { p, yaw: Math.atan2(-p.x, -p.z) }; });
+const bathersAt = angles => angles.map(a => { const p = { x: Math.cos(a) * 0.97, z: Math.sin(a) * 0.97 }; return { p, yaw: Math.atan2(-p.x, -p.z) }; });
+const BATHERS = bathersAt([0.93, 2.0]);
+// 變異鼠站在池子正前方（外星 Lv4 起，rat.js MUTANT = 池心 + (0.1, 1.1)）時溫泉客改站池子北側（2026-10-28 錄影修正：兩位溫泉客離牠只有 0.55，
+// 牠半徑 0.325、人 0.125）：西北兩點，離變異鼠中心 ≥ 1.9、離木牌 ≥ 1.3、離小澡堂 ≥ 0.9，兩人相距 0.66
+const BATHERS_NORTH = bathersAt([3.75, 4.45]);
+const mutantAtSpring = (lv, flags) => lv.rat >= 4 && flags.ratBranch === 'alien';
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
 
 // 老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時池水變成淡綠色
-export function view(lv = {}) {
+export function view(lv = {}, flags = {}) {
   const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !trainCars(lv.token) ? 0xbfd39c : WATER;
   return {
     'landmarks.volcano': {
@@ -46,7 +51,7 @@ export function view(lv = {}) {
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
     'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: HOMES.length, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
-    // 溫泉客：站在池邊偶爾看一下池子；rescue：萬一池邊被擋住就站到最近的可走點（不站進池子裡）
-    'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: BATHERS.map(({ p, yaw }) => ({ ...offset(s, p.x, p.z), yaw })), fidget: 'look', rescue: true } },
+    // 溫泉客：站在池邊偶爾看一下池子；rescue：萬一池邊被擋住就站到最近的可走點（不站進池子裡）；變異鼠在池前時站北側
+    'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: (mutantAtSpring(lv, flags) ? BATHERS_NORTH : BATHERS).map(({ p, yaw }) => ({ ...offset(s, p.x, p.z), yaw })), fidget: 'look', rescue: true } },
   };
 }

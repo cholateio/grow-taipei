@@ -4,20 +4,26 @@ import { MAIN_CELLS, R, RING_R, cellAt, cellTop, axialToWorld, adjacentPairs, ed
 
 export const STEP = 0.3, MARGIN = 0.35, BRIDGE_HALF = 0.25, SEPARATION = 0.25, HALF = 9.5;   // 走路格的點在 -HALF + STEP·i
 export const PAD = 0.12;   // footprint 外擴：小人半徑約 0.08 加餘裕，站在牆邊身體不會陷進牆裡（§14.1）
+// 兩個人該離多遠：各自的半徑相加（名冊成員的 m.radius：小人 0.125、模型照高度；2026-10-28 錄影修正，變異鼠和溫泉客疊在一起）。
+// 沒帶半徑的（測試、舊的呼叫端）當成 SEPARATION / 2——人對人照舊 0.25
+export const radiusOf = m => m.radius ?? SEPARATION / 2;
+const apart = (a, b) => radiusOf(a) + radiusOf(b);
 // 正面擦身（任務 12）：走路的人前方 YIELD_LOOK 內、橫向不到 YIELD_CLEAR 有人，就往遠離他的那一側橫移到橫向 YIELD_CLEAR 再走過去
 export const YIELD_LOOK = 0.5, YIELD_CLEAR = SEPARATION + 0.05;
 // 該橫移多少：沿右手邊（朝 yaw 走時的 (−cos yaw, sin yaw)）的有號距離；前方沒人擋回 0。前方好幾個人照最近的那個讓
 export function yieldOffset(p, yaw, others) { return yieldTarget(p, yaw, others)?.side ?? 0; }
-// 同上，另外回讓的是 others 裡的第幾個（roster 記住他：直到他落在身後超過 SEPARATION 才收回，不在擦身的那一刻就切回路線上）
-export function yieldTarget(p, yaw, others) {
+// 同上，另外回讓的是 others 裡的第幾個（roster 記住他：直到他落在身後超過 SEPARATION 才收回，不在擦身的那一刻就切回路線上）。
+// 半徑（2026-10-28 錄影修正）：others 的點可以帶 r、自己的半徑 r0——要讓開的橫向距離是兩人半徑相加 + 0.05、往前看也多看那麼多
+// （小孩走過變異鼠 r 0.325 要讓到 0.5）；沒帶的當成 SEPARATION / 2，人對人照舊 YIELD_CLEAR、YIELD_LOOK
+export function yieldTarget(p, yaw, others, r0 = SEPARATION / 2) {
   const ux = Math.sin(yaw), uz = Math.cos(yaw), rx = -uz, rz = ux;
   let best = null;
   others.forEach((o, index) => {
-    const dx = o.x - p.x, dz = o.z - p.z, ahead = dx * ux + dz * uz, lat = dx * rx + dz * rz;
-    if (ahead <= 0 || ahead >= YIELD_LOOK || Math.abs(lat) >= YIELD_CLEAR) return;
-    if (!best || ahead < best.ahead) best = { ahead, lat, index };
+    const dx = o.x - p.x, dz = o.z - p.z, ahead = dx * ux + dz * uz, lat = dx * rx + dz * rz, clear = r0 + (o.r ?? SEPARATION / 2) + YIELD_CLEAR - SEPARATION;
+    if (ahead <= 0 || ahead >= YIELD_LOOK + clear - YIELD_CLEAR || Math.abs(lat) >= clear) return;
+    if (!best || ahead < best.ahead) best = { ahead, lat, index, clear };
   });
-  return best && { index: best.index, side: best.lat > 0 ? best.lat - YIELD_CLEAR : best.lat + YIELD_CLEAR };
+  return best && { index: best.index, side: best.lat > 0 ? best.lat - best.clear : best.lat + best.clear };
 }
 // p 前方 yaw 方向上 o 在多遠（負的 = 在身後）
 export const aheadOf = (p, yaw, o) => (o.x - p.x) * Math.sin(yaw) + (o.z - p.z) * Math.cos(yaw);
@@ -336,7 +342,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     return nearestWalkable(home);
   }
 
-  // 走動中的兩人太近就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）；
+  // 走動中的兩人太近（< 兩人半徑相加）就各退一半差距（dt 保留給呼叫端統一簽名，修正是一次到位）；
   // 走路格上的人推過去會落進 footprint（或水裡）那一半就不推（§14.1）；推到走路格上的點 y 跟著換成那裡的地面（拱橋上推一下不陷進橋面）。
   // 本來在外擴 footprint 外的人也不推進去（貼著牆、最近格點被擋的夾縫裡 walkable 是假，以前照推，推進 PAD 一兩幀：計畫 5b 任務 4 量到老鼠在窩邊）；
   // 一邊推不動（貼著牆）就由另一邊讓開整段（同 separateStanding），兩個人才不會在窄道上疊在一起
@@ -345,9 +351,9 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
     const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
     for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
-      const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
-      if (d >= SEPARATION) continue;
-      const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (SEPARATION - d) / 2;
+      const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
+      if (d >= need) continue;
+      const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
       const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
       const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
       if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
@@ -356,7 +362,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     }
   }
 
-  // 站著的人太近（< SEPARATION）：只沿 x 錯開（不往鏡頭縱深推，§13.3），各退一半；寫回 m.pos，回傳被推過的人。
+  // 站著的人太近（< 兩人半徑相加）：只沿 x 錯開（不往鏡頭縱深推，§13.3），各退一半；寫回 m.pos，回傳被推過的人。
   // 一串人擠在一起時推一次可能又撞到下一個，最多來回推 STAND_PASSES 輪（每次多推 1e-6，浮點誤差不會讓下一幀又推）。
   // 只推到可走點上（§14.1）：站在走路格上的人，推過去會落進 footprint（或水裡）就不推——貼著牆的人不動、
   //   另一個人讓開整段；兩邊都推不開就不推。走路格外的人（衛星島、屋頂）照舊錯開。
@@ -367,9 +373,9 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     for (let pass = 0; pass < STAND_PASSES; pass++) {
       let pushed = false;
       for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) {
-        const dx = xs[j] - xs[i], dz = zs[j] - zs[i];
-        if (Math.abs(dz) >= SEPARATION || Math.hypot(dx, dz) >= SEPARATION - 1e-9) continue;
-        const need = Math.sqrt(SEPARATION * SEPARATION - dz * dz) + 1e-6, dir = dx < 0 ? -1 : 1, push = (need - Math.abs(dx)) / 2;
+        const dx = xs[j] - xs[i], dz = zs[j] - zs[i], S = apart(members[i], members[j]);
+        if (Math.abs(dz) >= S || Math.hypot(dx, dz) >= S - 1e-9) continue;
+        const need = Math.sqrt(S * S - dz * dz) + 1e-6, dir = dx < 0 ? -1 : 1, push = (need - Math.abs(dx)) / 2;
         const ok = [can(i, xs[i] - dir * push), can(j, xs[j] + dir * push)];
         let di = ok[0] ? push : 0, dj = ok[1] ? push : 0;
         if (!ok[1] && ok[0] && can(i, xs[i] - dir * 2 * push)) di = 2 * push;   // 對方貼著牆：自己讓開整段

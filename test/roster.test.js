@@ -569,28 +569,41 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // （2）外星結局（closing 起）偵防師離每個露出來的人 ≥ SEPARATION。兩條正解只演一次，幾個測試共用（livePlay）
 const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
 const SEP_TOL = 0.005;   // 兩個走路的人互推剛好推到 SEPARATION（每幀限速的那一截下一幀才補上），差一點點不算擠
-const BODY = 0.16, PASS_MAX = 0.5;   // 兩個小人身體（半徑 0.08）不相碰；走路擦身而過貼近不超過 0.5 秒
+const BODY = 0.16, PASS_MAX = 0.5, BODY_K = 0.64;   // 兩個小人身體（半徑 0.08）不相碰；走路擦身而過貼近不超過 0.5 秒；BODY_K：老鼠擦身而過時身體不相碰（人對人 0.25 × 0.64 = BODY）
 let livePlayed = null;
 const livePlay = () => (livePlayed ??= playBoth());
 async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const { headlessShow, ALL, inShape } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
-  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set();
-  let detectiveFrames = 0, bridgeFrames = 0;
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set(), ratNear = new Set(), mutantNear = new Set();
+  let detectiveFrames = 0, bridgeFrames = 0, ratFrames = 0, mutantFrames = 0;
   // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
   const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
-  const results = { bad, slow, stuck, walls, sunk, crowd, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; } };
+  const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
   for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
     const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map(), decked = new WeakSet(), stepping = new Map();
     let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;
-    const passing = new Map();   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
+    const passing = new Map(), ratPass = new Map();   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
     const authored = (h, i) => { if (h?.kind !== 'stand' || h.rescue) return false; const p = h.spots[i % h.spots.length]; return show.nav.inFootprint(p.x, p.z); };
     const check = () => {
       const st = show.stage, view = Object.assign({}, ...ALL.map(mod => mod.view(st.lv, st.flags, st.meta))), changed = show.nav.version !== version;
       version = show.nav.version;
       const fps = st.footprints(), json = JSON.stringify(fps), rebuilt = json !== built; built = json;
       const all = show.roster.keys().flatMap(k => show.roster.members(k)), seen = all.filter(m => !m.hidden && !m.gone);
+      // 2026-10-28 錄影修正：老鼠（含變異鼠）和小人在日常裡不疊在一起——貼近（< 兩人半徑相加）只能是擦身而過：身體不相碰
+      // （≥ 半徑相加的 BODY_K 倍）、不超過 PASS_MAX 秒。劇本手上的、坐車頂的、沿手畫折線走的（path：路線是畫好的，另案）不算
+      const daily = m => m.mode === 'home' && !m.hidden && !m.gone && !['ride', 'path'].includes(view[m.key]?.home?.kind);
+      for (const r of seen) if (r.key === 'rat.pack' && daily(r)) for (const o of seen) {
+        if (o.kind !== 'people' || !daily(o)) continue;
+        ratFrames++; if (r.radius > 0.3) mutantFrames++;
+        const d = Math.hypot(o.pos.x - r.pos.x, o.pos.z - r.pos.z), need = r.radius + o.radius, pair = `${r.key}#${r.i}|${o.key}#${o.i}`;
+        if (d >= need - SEP_TOL) { ratPass.delete(pair); continue; }
+        if (!ratPass.has(pair)) ratPass.set(pair, t);
+        const what = `${label} rat#${r.i} (r ${r.radius.toFixed(3)}${r.walking ? ' walking' : ''}) ${d.toFixed(2)} from ${o.key}#${o.i}${o.walking ? ' walking' : ''} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`;
+        const bad = d < BODY_K * need ? what : t - ratPass.get(pair) > PASS_MAX ? `${what} for > ${PASS_MAX} s` : null;
+        if (bad) { ratNear.add(bad); if (r.radius > 0.3) mutantNear.add(bad); }
+      }
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
         const h = view[k]?.home, exempt = m.hidden || m.mode === 'script' || h?.kind === 'path' || authored(h, m.i);
@@ -702,6 +715,20 @@ test('live, both solutions: everyone on a bridge stays on the deck (y within 0.0
 // （走路經過別人身邊、別人走過他身邊：身體不相碰、貼近不超過 0.5 秒）
 // 任務 7–11 隔離過（正面擦身的兩個人分不開，對整局的時間極敏感）；任務 12 補上正面擦身的讓路（nav.yieldOffset：
 // 前方 0.5 內有人就往旁邊讓開，roster 的 sidestep）後重新打開——連跑三次都過，不靠調秒數
+// 2026-10-28 錄影修正：變異鼠（半徑 0.325）不和任何小人疊在一起——溫泉客站池子北側、偵防師的跟隨站位照兩人半徑相加挑
+test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, or only brushes past while walking)', async () => {
+  const { mutantNear, mutantFrames } = await livePlay();
+  assert.ok(mutantFrames > 300, `${mutantFrames} mutant–person frames`);
+  assert.deepEqual([...mutantNear].slice(0, 20), [], `${mutantNear.size} frames too close`);
+});
+// 所有老鼠對小人（簡報 D 的驗收）：老鼠窩（老鼠 Lv2，繞錨點 r 0.7）還貼著巨蛋門口的觀眾——錨點要搬到哪裡待定（簡報要的「巨蛋格東南角、
+// 離門口與觀眾站位 ≥ 1.0」在格子裡不存在，見 .superpowers/sdd/recording-fixes/report.md）；機器鼠軍團（Lv5 繞 101）走過島民、
+// 走路的老鼠穿過站著的人（nav.separate 只推兩個都在走的人）也還會碰到。先標 todo，照常跑、不擋測試
+test('live, both solutions: rats never overlap a person (≥ ra + rb, or only brushes past while walking)', { todo: '老鼠錨點待定；機器鼠軍團、走路穿過站著的人另案' }, async () => {
+  const { ratNear, ratFrames } = await livePlay();
+  assert.ok(ratFrames > 1000, `${ratFrames} rat–person frames`);
+  assert.deepEqual([...ratNear].slice(0, 20), [], `${ratNear.size} frames too close`);
+});
 test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
   const { crowd, detectiveFrames } = await livePlay();
   assert.ok(detectiveFrames > 300, `${detectiveFrames} detective frames in the closing`);
@@ -832,4 +859,15 @@ test('people mood lie freezes every home-mode people walker (wander, stand); moo
   people.setMood('normal');
   const lying = at(); run(roster, 90, 20);
   assert.ok(ms.some((m, i) => gap(m.pos, lying[i]) > 0.05), 'back on their feet, someone walks again');
+});
+// 2026-10-28 錄影修正：每個成員有自己的半徑——小人 0.125；模型照高度 0.65 × h、夾在 0.12–0.35（老鼠 h 0.2 → 0.13、變異鼠 h 0.5 → 0.325）
+test('every member carries a radius: people 0.125, models 0.65 × h clamped to 0.12–0.35', () => {
+  const { roster } = setup(), C = centre([-1, 0]);
+  roster.declare('p', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  for (const [k, h] of [['r', 0.2], ['m', 0.5], ['s', 0.1], ['g', 1.0]]) roster.declare(k, { kind: 'roster', at: C, n: 1, model: { path: 'rat.glb', h }, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  const r = k => roster.members(k)[0].radius;
+  assert.equal(r('p'), 0.125); assert.ok(Math.abs(r('r') - 0.13) < 1e-9); assert.ok(Math.abs(r('m') - 0.325) < 1e-9); assert.equal(r('s'), 0.12); assert.equal(r('g'), 0.35);
+  // 換模型（變異）半徑跟著換
+  roster.declare('r', { kind: 'roster', at: C, n: 1, model: { path: 'rat.glb', h: 0.5 }, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  assert.ok(Math.abs(r('r') - 0.325) < 1e-9, 'remodelled rat grows its radius');
 });

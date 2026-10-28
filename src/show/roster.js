@@ -16,7 +16,7 @@
 //   走出去的人不算成員（members／nearest／count 都看不到），也不再歸劇本管（claim／home／setPose 對他不算數）。
 //   還沒走到，同一個鍵又要補人 → 把他叫回來走回家，不從入口生新的。snap、reset 立刻拿掉。
 // 走進來、走出去、家搬了走過去都是有目的的走路，用走路速度（小人 1.6、老鼠 2.0）；日常散步、走回站位仍是 WANDER_SPEED。
-// 站著的 stand 成員彼此 < 0.25 → nav.separateStanding 沿 x 錯開（改 m.pos、不改 spot；每幀最多滑走路速度 × dt，
+// 站著的 stand 成員彼此 < 兩人半徑相加（m.radius：小人 0.125、模型照高度，2026-10-28）→ nav.separateStanding 沿 x 錯開（改 m.pos、不改 spot；每幀最多滑走路速度 × dt，
 //   站定後就留在錯開的位置，不走回 spot）
 // 不在焦點也不疊著（final review）：休息中的 wander 成員、焦點外停下的 path 成員離別人（任何露出來的成員）< 0.25 就不停——
 //   wander 馬上走下一趟、path 沿路接著走，走到不擠了才停。
@@ -29,7 +29,7 @@ import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
-import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf } from './nav.js';
+import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf, radiusOf } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 // ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
@@ -72,6 +72,10 @@ function nearestS(P, p) {
   return best;
 }
 const headYOf = spec => (spec.model ? HEAD_Y.model * spec.model.h / MODEL_H : HEAD_Y.people) * (spec.scale ?? 1);
+// 身體半徑（分離距離＝兩人半徑相加，nav.separate／separateStanding；2026-10-28 錄影修正）：小人 0.125（人對人照舊 0.25，長高的小孩也一樣）；
+// 模型照高度 0.65 × h（含 scale），夾在 0.12–0.35——老鼠 h 0.2 → 0.13、變異鼠 h 0.5 → 0.325
+export const PEOPLE_R = 0.125;
+const radiusFor = spec => (spec.model ? Math.min(0.35, Math.max(0.12, 0.65 * spec.model.h * (spec.scale ?? 1))) : PEOPLE_R);
 
 // 模型身上的小配件（從 rat.js 的 builders.rats 搬來；站頂的王冠鼠零件也用）：機器鼠天線、變異鼠的大眼睛、
 // 老鼠 Lv5 的王冠（金色圈＋四個尖，照模型高度縮放，戴在頭頂偏前）
@@ -206,14 +210,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   function remodel(m, spec) {
     if (m.holder) { blink?.stop(m.holder); dress(m, {}); assets.release(m.holder); m.holder = null; }
-    m.scale = spec.scale ?? 1; m.dress = spec.model; m.headY = headYOf(spec); load(m, spec.model);
+    m.scale = spec.scale ?? 1; m.dress = spec.model; m.headY = headYOf(spec); m.radius = radiusFor(spec); load(m, spec.model);
   }
 
   function spawn(g, spec, i, p, mode = 'home') {
     const kind = spec.model ? 'model' : 'people', scale = spec.scale ?? 1;
     const m = {
       key: g.key, i, kind, pos: { x: p.x, y: p.y ?? nav.groundY(p.x, p.z), z: p.z }, yaw: p.yaw ?? 0,
-      speed: spec.speed ?? WALK_SPEED[kind], headY: headYOf(spec), mode, walking: false, hidden: false, trip: null, rest: pause(), scale,
+      speed: spec.speed ?? WALK_SPEED[kind], headY: headYOf(spec), radius: radiusFor(spec), mode, walking: false, hidden: false, trip: null, rest: pause(), scale,
       arriving: false, settled: null,   // arriving：正在走回家（焦點不限制）；settled：站定在哪個 spot
     };
     m.head = () => ({ x: m.pos.x, y: m.pos.y + m.headY, z: m.pos.z });
@@ -415,7 +419,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const toward = (a, b) => a + Math.max(-max, Math.min(max, b - a));
     // 遲滯：前方有人擋就記住他和要讓的量；沒人擋時，記住的那個人還沒落到身後 SEPARATION 以外就照樣讓著
     // 橋上（不在格子裡）不讓：橋面只有 0.5 寬，讓出去就踩到橋外，拱橋的高度也對不上
-    const onBridge = !cellAt(c.x, c.z), t = onBridge ? null : yieldTarget(c, c.yaw, others.map(o => o.pos));
+    const onBridge = !cellAt(c.x, c.z), t = onBridge ? null : yieldTarget(c, c.yaw, others.map(o => ({ x: o.pos.x, z: o.pos.z, r: radiusOf(o) })), radiusOf(m));
     if (onBridge) m.yielding = null;
     else if (t) m.yielding = { who: others[t.index], side: t.side };
     else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -SEPARATION) m.yielding = null; }
@@ -435,20 +439,20 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   // 不在焦點：停在原地（沿線走的游標留著，恢復時接著走）
   function halt(m) { if (m.walking) setPose(m, { ...m.pos, walking: false }); }
-  // 離其他露出來的成員（任何名冊、任何模式）< SEPARATION：不在焦點也不在這裡停（final review）
+  // 離其他露出來的成員（任何名冊、任何模式）< 兩人半徑相加：不在焦點也不在這裡停（final review）
   function crowded(m) {
-    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < SEPARATION) return true;
+    for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) < radiusOf(m) + radiusOf(o)) return true;
     return false;
   }
 
   // 散步路線：人在家那格裡時，不挑要借道別格（過橋繞去鄰格再回來）才走得到的點——家那格被建築切成兩半時只在自己這半邊走
   // （人數預算，裁決 R16：路過的人不擠爆別格）。第一個點就好的話跟以前一樣只抽一次亂數；試 ROUTE_TRIES 次都借道就原地休息
-  // 也不挑別人身邊（< YIELD_CLEAR）的點：走過去停在人家旁邊就是貼著人站（任務 12，偵防師不變式）
+  // 也不挑別人身邊（< 兩人半徑相加 + 0.05，人對人 YIELD_CLEAR）的點：走過去停在人家旁邊就是貼著人站（任務 12，偵防師不變式）
   function wanderRoute(m, at, r) {
     const home = cellAt(at.x, at.z), here = cellAt(m.pos.x, m.pos.z);
     const inside = route => route.every(p => { const c = cellAt(p.x, p.z); return c && c[0] === home[0] && c[1] === home[1]; });
     if (!home || !here || here[0] !== home[0] || here[1] !== home[1]) return nav.route(m.pos, nav.wander(at, r));
-    const clear = p => { for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < YIELD_CLEAR) return false; return true; };
+    const clear = p => { for (const g of groups.values()) for (const o of g.members) if (o !== m && !o.hidden && !o.gone && Math.hypot(o.pos.x - p.x, o.pos.z - p.z) < radiusOf(m) + radiusOf(o) + YIELD_CLEAR - SEPARATION) return false; return true; };
     let fallback = null;   // 家裡擠到挑不到空位：走到第一個不借道的點（不在原地卡住，走進來的第一趟一定進得來）
     for (let k = 0; k < ROUTE_TRIES; k++) {
       const route = nav.route(m.pos, nav.wander(at, r)); if (!inside(route)) continue;
@@ -522,8 +526,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s }); m.offPath = Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE;
   }
   // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
-  // 不擠（最終審查：偵防師貼著泡湯客停了整個結局）：動身時就在目標周圍挑一個離每個人 ≥ SEPARATION 的站位走過去
-  //   （trip.spot：走到站位才停，不在 dist 內提早停）；站著時有人靠到 SEPARATION 內也重挑；挑不到就先站著，FOLLOW_RETRY 秒後再挑
+  // 不擠（最終審查：偵防師貼著泡湯客停了整個結局）：動身時就在目標周圍挑一個離每個人 ≥ 兩人半徑相加的站位走過去
+  //   （trip.spot：走到站位才停，不在 dist 內提早停）；站著時有人靠到兩人半徑相加內也重挑；挑不到就先站著，FOLLOW_RETRY 秒後再挑
   function follow(m, spec, dt) {
     const h = spec.home, dist = h.dist ?? 0.6, target = api.nearest(h.key, m.pos);
     if (!target && m.arriving) { if (!m.trip) go(m, nav.route(m.pos, spec.at)); if (m.trip) walk(m, dt); else m.arriving = false; return; }
@@ -548,12 +552,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     walk(m, dt);
   }
 
-  // follow 的站位：目標周圍 dist、dist + FOLLOW_SLACK 兩圈上可走、離每個露出來的成員 ≥ SEPARATION、走得到的點
+  // follow 的站位：目標周圍 dist、dist + FOLLOW_SLACK 兩圈上可走、離每個露出來的成員 ≥ 兩人半徑相加、走得到的點
   function followSpot(m, target, dist) {
     const others = [...groups.values()].flatMap(g => g.members).filter(o => o !== m && !o.hidden);
     const rings = [dist, dist + FOLLOW_SLACK].map(r => Array.from({ length: FOLLOW_DIRS }, (_, k) => {
       const a = 2 * Math.PI * k / FOLLOW_DIRS; return { x: target.pos.x + Math.cos(a) * r, z: target.pos.z + Math.sin(a) * r };
-    }).filter(p => nav.walkable(p.x, p.z) && others.every(o => Math.hypot(o.pos.x - p.x, o.pos.z - p.z) >= SEPARATION + 0.02)));
+    }).filter(p => nav.walkable(p.x, p.z) && others.every(o => Math.hypot(o.pos.x - p.x, o.pos.z - p.z) >= radiusOf(m) + radiusOf(o) + 0.02)));
     // 先挑 dist 那一圈（停在 dist 外，照原本的距離跟著），那一圈都擠才用外圈；同一圈裡挑離自己最近、走得到的
     for (const ring of rings) {
       ring.sort((a, b) => Math.hypot(a.x - m.pos.x, a.z - m.pos.z) - Math.hypot(b.x - m.pos.x, b.z - m.pos.z));

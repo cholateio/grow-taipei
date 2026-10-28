@@ -307,3 +307,22 @@ test('separate: when one walker is against a wall the other takes the whole push
   assert.ok(!nav.inFootprint(a.pos.x, a.pos.z), `a stays outside the pad (${a.pos.x.toFixed(3)})`);
   assert.ok(Math.hypot(b.pos.x - a.pos.x, b.pos.z - a.pos.z) >= SEPARATION - 1e-9, `apart ${Math.hypot(b.pos.x - a.pos.x, b.pos.z - a.pos.z).toFixed(3)}`);
 });
+// 2026-10-28 錄影修正（老鼠、變異鼠和路人疊在一起）：分離距離是兩個人各自的半徑相加（m.radius；沒有就當 SEPARATION / 2）。
+// 人對人仍是 0.25；變異鼠（0.325）對人（0.125）要 0.45
+test('separate and separateStanding keep each pair ra + rb apart (members without a radius count as SEPARATION / 2)', () => {
+  const nav = createNav(), o = c([1, 0]);
+  const walker = (x, r) => ({ pos: { x: o.x + x, y: o.y, z: o.z }, walking: true, ...(r ? { radius: r } : {}) });
+  const big = walker(0, 0.325), kid = walker(0.3, 0.125);
+  nav.separate([big, kid], 1 / 30);
+  assert.ok(Math.abs(Math.hypot(big.pos.x - kid.pos.x, big.pos.z - kid.pos.z) - 0.45) < 1e-6, `walkers ${Math.hypot(big.pos.x - kid.pos.x, big.pos.z - kid.pos.z).toFixed(3)} apart`);
+  const p1 = walker(0, 0.125), p2 = walker(0.2, null);
+  nav.separate([p1, p2], 1 / 30);
+  assert.ok(Math.abs(Math.hypot(p1.pos.x - p2.pos.x, p1.pos.z - p2.pos.z) - SEPARATION) < 1e-6, 'people still 0.25');
+  const stand = (x, z, r) => ({ pos: { x: o.x + x, y: o.y, z: o.z + z }, radius: r });
+  const ms = [stand(0, 0, 0.325), stand(0.2, 0.1, 0.125), stand(0.9, 0.1, 0.125)];
+  nav.separateStanding(ms);
+  for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
+    const d = Math.hypot(ms[i].pos.x - ms[j].pos.x, ms[i].pos.z - ms[j].pos.z);
+    assert.ok(d >= ms[i].radius + ms[j].radius - 1e-9, `${i}-${j} ${d.toFixed(3)} apart`);
+  }
+});

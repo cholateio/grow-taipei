@@ -62,6 +62,7 @@ test('every satellite part sits on its island (within R of the island centre) ex
   const centres = SATELLITES.map(s => axialToWorld(s.q, s.r));
   for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 5, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
+    if (k === 'sat.lighthouse.stage2') continue;   // 棧橋伸到海上（離島三段的測試另外量海岸與小船）
     const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
   }
@@ -203,7 +204,7 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
     for (let l = 0; l <= spec.ITEMS[item].max; l++) {
       const d = sat.view(lv({ [item]: l }), {})[key];
       assert.equal(!!d, l >= n, `${key} at ${item} ${l}`);
-      if (d) { assert.equal(d.kind === 'compound' ? d.footprint : d.footprint, false, `${key} footprint`); assert.ok(Math.hypot(d.at.x - sat.island(isl).x, d.at.z - sat.island(isl).z) < 1e-9, `${key} anchored on its islet`); }
+      if (d) { assert.equal(d.footprint, false, `${key} footprint`); assert.ok(Math.hypot(d.at.x - sat.island(isl).x, d.at.z - sat.island(isl).z) < 1e-9, `${key} anchored on its islet`); }
     }
   });
   // 兩段各自獨立：只滿足第二段的觸發時只有第二段
@@ -245,9 +246,12 @@ test('islet stages that move: the swing swings, the carousel turns, the second t
 
 // 位置：每段零件在自己的島上（離島心 ≤ ISLET_R；棧橋伸到岸外一點、仍在 R 以內），離守塔人的圈、觀光客、小孩、老鼠、電工的站位都 ≥ 0.3；
 // draw call：每座島上衛星零件（compound 數材質、builders 實際建出來數 mesh；名冊不算、老鼠一隻 1）≤ 6
-import { TOURIST_SPOTS, DOCK } from '../src/actors/boba.js';
+import { TOURIST_SPOTS, DOCK, FERRY_PATH, FERRY_H } from '../src/actors/boba.js';
+import { readFileSync } from 'node:fs';
+import { TOP } from '../src/scene/hex.js';
 import { ISLAND_HOME, ISLAND_R } from '../src/actors/bulb.js';
-const ISLET_R = 2.2;
+// 六角半徑（pointy-top：|x| 換算成外接半徑、|z| + |x|/√3 取大）：島緣的步道環從 RING_R − 0.14 = 2.11 起
+const hexR = (dx, dz) => Math.max(Math.abs(dx) * 2 / Math.sqrt(3), Math.abs(dz) + Math.abs(dx) / Math.sqrt(3)), ISLET_R = 2.0;
 test('islet parts stay inside their islet footprint and off the keeper / tourist / kid spots; draw calls per islet ≤ 6', () => {
   const full = { ...allMax }, views = [sat.view(full, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 5, baseball: 6 }), { ratBranch: 'alien' })];
   const centreOf = k => sat.island(k.split('.')[1]);
@@ -268,15 +272,12 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
       if (!/\.stage\d$/.test(k)) continue;
       const c = centreOf(k), pier = k === 'sat.lighthouse.stage2';
       for (const p of d.parts ?? [d]) {
-        const x = d.at.x + (p.pos?.[0] ?? 0), z = d.at.z + (p.pos?.[2] ?? 0), r = Math.hypot(x - c.x, z - c.z);
-        assert.ok(r <= (pier ? R - 0.02 : ISLET_R), `${k} part at r ${r.toFixed(2)}`);
+        const x = d.at.x + (p.pos?.[0] ?? 0), z = d.at.z + (p.pos?.[2] ?? 0), r = pier ? Math.hypot(x - c.x, z - c.z) : hexR(x - c.x, z - c.z);
+        assert.ok(r <= (pier ? R + 0.5 : ISLET_R), `${k} part at ${pier ? 'r' : 'hex r'} ${r.toFixed(2)}`);
         for (const s of spots) { const g = Math.abs(Math.hypot(x - s.x, z - s.z) - s.r); assert.ok(g >= 0.3, `${k} part (${x.toFixed(2)}, ${z.toFixed(2)}) ${g.toFixed(2)} from a spot (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) r ${s.r}`); }
       }
     }
   }
-  // 棧橋朝小船停的地方（boba.DOCK）伸出去：最外的板子比最裡的近碼頭
-  const pier = views[0]['sat.lighthouse.stage2'], dist = p => Math.hypot(pier.at.x + p.pos[0] - DOCK.x, pier.at.z + p.pos[2] - DOCK.z);
-  const near = Math.min(...pier.parts.map(dist)); assert.ok(near < 0.6, `pier end ${near.toFixed(2)} from the dock`);
   // draw call
   for (const quality of [undefined, 'low']) {
     const f = builtFactory(quality);
@@ -307,4 +308,47 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
   assert.equal(withStages.d, plain.d);
   assert.deepEqual(withStages.first.sort(), ['a', 'sat.x.stage1', 'sat.y.stage2']);
   assert.equal(durOf([{ key: 'sat.x.stage1', tagAlong: true }, { key: 'sat.y.stage1', tagAlong: true }]).d, durOf([{ key: 'a' }]).d, 'only stages: one blink');
+});
+
+// 棧橋（審查 fix round 1）：大部分伸在海上（六角島緣外）、板面頂在島面之上（蓋在路緣上）、遠端過了停好的小船船身中段、
+// 船側離板面 ≤ 0.2（靠在旁邊）；小船最後一段航線掃過的範圍不碰板面。船的尺寸照 Boat.glb 的 bounding box × FERRY_H 的縮放量
+test('the lighthouse pier reaches out over the sea beside the moored ferry, on top of the curb, clear of the ferry route', () => {
+  const pier = sat.view(lv({ boba: 6 }), {})['sat.lighthouse.stage2'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
+  const deck = pier.parts[0], len = deck.scale[2], half = deck.scale[0] / 2;
+  assert.ok(Math.abs(Math.hypot(deck.pos[0], deck.pos[2]) - Math.hypot(...[d[0] * (s0 + s1) / 2 + n[0] * LAT, d[1] * (s0 + s1) / 2 + n[1] * LAT])) < 1e-9 && Math.abs(len - (s1 - s0)) < 1e-9, 'parts[0] is the deck');
+  assert.ok(pier.at.y + deck.pos[1] + deck.scale[1] / 2 >= TOP - 0.2 + 0.01, 'deck top above the island surface (on the curb)');
+  // 海岸：沿板面中心線取樣，落在六角形外（|x| > 內切半徑 或 |z| + |x|/√3 > R）的比例
+  const inside = (x, z) => { x = Math.abs(x); z = Math.abs(z); return x <= R * Math.sqrt(3) / 2 && z + x / Math.sqrt(3) <= R; };
+  const at = (s, lat = LAT) => [d[0] * s + n[0] * lat, d[1] * s + n[1] * lat];
+  const N = 40, out = Array.from({ length: N + 1 }, (_, i) => !inside(...at(s0 + (s1 - s0) * i / N))).filter(Boolean).length / (N + 1);
+  assert.ok(out >= 0.6, `${(out * 100).toFixed(0)}% of the deck over the sea`);
+  assert.ok(inside(...at(s0)), 'the near end rests on the island');
+  // 小船：Boat.glb 的 bounding box（節點轉 −90° 繞 x：檔案的 y 是船長、z 是高）
+  const b = readFileSync('assets/quat/ships/Boat.glb'), j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)));
+  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (const m of j.meshes) for (const p of m.primitives) { const a = j.accessors[p.attributes.POSITION]; a.min.forEach((v, i) => { mn[i] = Math.min(mn[i], v); }); a.max.forEach((v, i) => { mx[i] = Math.max(mx[i], v); }); }
+  const k = FERRY_H / (mx[2] - mn[2]), bw = (mx[0] - mn[0]) * k / 2, bl = (mx[1] - mn[1]) * k / 2;
+  const [A, Bp] = FERRY_PATH.slice(-2), ul = Math.hypot(Bp.x - A.x, Bp.z - A.z), u = [(Bp.x - A.x) / ul, (Bp.z - A.z) / ul], up = [-u[1], u[0]];
+  // 板面上的點（相對 DOCK）：沿航向 al、橫向 pp
+  const deckPts = []; for (let i = 0; i <= 20; i++) for (const w of [-half, 0, half]) { const [x, z] = at(s0 + (s1 - s0) * i / 20, LAT + w); deckPts.push([c.x + x - DOCK.x, c.z + z - DOCK.z]); }
+  const al = p => p[0] * u[0] + p[1] * u[1], pp = p => Math.abs(p[0] * up[0] + p[1] * up[1]);
+  // 航線：船從後面開過來停在 DOCK，船身掃過航向上 ≤ +bl（船頭）的那條帶子
+  const sweep = Math.min(...deckPts.filter(p => al(p) <= bl).map(pp));
+  assert.ok(sweep >= bw + 0.05, `ferry route clears the deck by ${(sweep - bw).toFixed(2)} (boat half width ${bw.toFixed(2)})`);
+  // 停好時：船身那段（|al| ≤ bl）的板面離船側 ≤ 0.2；板面遠端過了船身中段（DOCK 在板面上的投影之外）
+  const side = Math.min(...deckPts.filter(p => Math.abs(al(p)) <= bl).map(pp)) - bw;
+  assert.ok(side > 0 && side <= 0.2, `moored ferry ${side.toFixed(2)} from the pier`);
+  const dockS = (DOCK.x - c.x) * d[0] + (DOCK.z - c.z) * d[1];
+  assert.ok(s1 > dockS + 0.2, `far end s ${s1} past the boat's middle (s ${dockS.toFixed(2)})`);
+  // 觀光客在另一側
+  for (const t of TOURIST_SPOTS) for (const p of deckPts) assert.ok(Math.hypot(p[0] + DOCK.x - t.x, p[1] + DOCK.z - t.z) >= 0.5, 'tourists clear of the pier');
+});
+test('carousel stops in a blackout; coins shrink to nothing at the wrap (no pop)', () => {
+  const f = builtFactory();
+  const off = f.build(sat.view(lv({ milk: 10 }), { blackout: true })['sat.playground.stage2']), a = posesOf(off.object); off.update(0.5, 0.5);
+  assert.equal(posesOf(off.object), a, 'blackout: still');
+  const coins = f.build(sat.view(allMax, {})['sat.chest.stage2']), mesh = coins.object.children[0], m = new THREE.Matrix4(), s = new THREE.Vector3(), q = new THREE.Quaternion(), p = new THREE.Vector3();
+  const scaleAt = (t, i) => { coins.update(0, t); mesh.getMatrixAt(i, m); m.decompose(p, q, s); return s.x; };
+  // 第 0 枚在 t = 0 剛噴出、t = 2.4 − ε 剛落回
+  assert.ok(scaleAt(0, 0) < 0.01 && scaleAt(2.4 - 1e-3, 0) < 0.01 && scaleAt(1.2, 0) > 0.09, 'grows out and shrinks back');
 });

@@ -79,7 +79,8 @@ const FERRY_LENS = measurePath(FERRY_PATH, false), FERRY_LEN = FERRY_LENS.at(-1)
 export const DOCK = FERRY_PATH.at(-1);
 const DOCK_YAW = (() => { const [a, b] = FERRY_PATH.slice(-2); return Math.atan2(b.x - a.x, b.z - a.z); })();
 export const SAIL = 2.4;   // 船開幾秒（R10：≤ 5 s）
-const FERRY_H = 0.3, BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream }, SEATS = [0.14, -0.14], SEAT_Y = 0.12;
+export const FERRY_H = 0.3;
+const BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream }, SEATS = [0.14, -0.14], SEAT_Y = 0.12;
 
 // ── 外送無人機（Lv6）：Kenney Space Kit craft_miner，一台寬約 0.26；停在店屋頂兩側，每隔一陣子繞店飛一小圈（零件 kind 'orbit'，parts.js）──
 const DRONE_TINT = { '^metalRed$': C.coral, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink };

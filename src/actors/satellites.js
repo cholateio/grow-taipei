@@ -10,9 +10,11 @@ import * as spec from '../rules/spec.js';
 import { DOCK } from './boba.js';
 
 export const id = 'satellites';
-const TOP_SAT = TOP - 0.2, GOLD = 0xe8c547;
+const TOP_SAT = satTop(), GOLD = 0xe8c547;
 // 函數宣告（不是 const）：boba.js 匯入 island、這裡又匯入 boba 的 DOCK（循環）——宣告會提升，誰先載入都叫得到（不碰本檔的 const）
-export function island(kind) { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: TOP - 0.2, z: c.z }; }
+export function island(kind) { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: satTop(), z: c.z }; }
+// 衛星島面高度 TOP_SAT 的唯一來源：也是函數宣告（island 在本檔的 const 初始化之前就可能被叫到，碰 TOP_SAT 會 TDZ）
+function satTop() { return TOP - 0.2; }
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
 // 石堆島朝主島中心的方位角（xz 平面，atan2(z, x)）：降落場的三盞燈從這個方位起等分；finale.js 的外星生物站在這個方位、
 // 三台 UFO 的碟心從它 + π/3 起等分（燈在碟心之間的空檔）——兩邊共用這一個值
@@ -104,15 +106,20 @@ export const STAGE = { lighthouse: [['bulb', 7], ['boba', 6]], windmill: [['bulb
 const reached = (lv, [item, n]) => lv[item] >= n;
 // 第二支風機：塔頂 (-0.55, 1.2, -0.9) 相對島心；轉子在塔頂前 0.1，換成相對主轉子（at('windmill', 0, 0.12, 1.6)）的位置
 const TWIN_HUB = [-0.55, 1.2, -0.9], TWIN = [TWIN_HUB[0], TWIN_HUB[1] - 1.6, TWIN_HUB[2] + 0.1 - 0.12];
-// 棧橋：從燈塔島西南岸朝小船停的地方（boba.DOCK）伸出去，往側邊讓開 0.5（觀光客站在船與旗艦店的連線上）；
-// 板面跟島面同高（略低 0.02），柱子插到水裡
+// 棧橋：燈塔島西南岸朝小船停的地方（boba.DOCK）伸出去、靠在小船旁邊。沿 d（島心 → DOCK）量的 s：DOCK 在 s 2.56，
+// 這條線上的海岸（六角島緣）在 s ≈ 2.3；板面 s 2.2–2.85——一小段搭在路緣上、大部分伸在水面上，遠端過了船身中段。
+// 往側邊（n 的負向）讓開 LAT 0.68：小船最後一段航線（船寬 0.71、長 1.3，Boat.glb 量的）掃過的範圍離板面 ≥ 0.09，
+// 停好時船側離板面 ≈ 0.17（看得出靠在棧橋旁）；觀光客在 n 的正向那側、離板面 ≥ 0.6。
+// 板面頂在島面上 0.02（蓋在路緣上），柱子從水面下插上來
 // （第一次用到才算：boba.js 先載入時，本檔先跑、DOCK 還沒初始化）
 let pier = null;
 const PIER = () => pier ??= (() => {
-  const c = island('lighthouse'), dx = DOCK.x - c.x, dz = DOCK.z - c.z, m = Math.hypot(dx, dz), d = [dx / m, dz / m], n = [d[1], -d[0]], LAT = -0.5;
+  const c = island('lighthouse'), dx = DOCK.x - c.x, dz = DOCK.z - c.z, m = Math.hypot(dx, dz), d = [dx / m, dz / m], n = [d[1], -d[0]], LAT = -0.68;
   const pt = (s, lat = LAT) => [d[0] * s + n[0] * lat, d[1] * s + n[1] * lat];
-  return { pt, yaw: Math.atan2(d[0], d[1]) };
+  return { pt, yaw: Math.atan2(d[0], d[1]), d, n, LAT };
 })();
+export const PIER_SPAN = [2.2, 2.85];   // 板面沿 d 的起訖（相對島心；測試量海岸與小船用）
+export const pierFrame = () => PIER();
 function stages(lv, flags, on) {
   const v = {}, put = (kind, i, part) => { if (STAGE[kind][i] && reached(lv, STAGE[kind][i])) v[`sat.${kind}.stage${i + 1}`] = { at: island(kind), footprint: false, tagAlong: true, low: false, ...part }; };
   const comp = parts => ({ kind: 'compound', parts });
@@ -124,11 +131,12 @@ function stages(lv, flags, on) {
     { kind: 'cylinder', pos: [0.84, 0.45, -1.2], scale: [0.06, 0.14, 0.06], color: C.wall },
   ]));
   // 燈塔島 2：棧橋碼頭——板面一條、橫板四片、柱子四根
-  const P = PIER(), deck = (s, sc, color) => { const [x, z] = P.pt(s); return { kind: 'box', pos: [x, -0.02, z], scale: sc, rot: [0, P.yaw, 0], color }; };
+  const P = PIER(), [s0, s1] = PIER_SPAN, deck = (s, y, sc, color) => { const [x, z] = P.pt(s); return { kind: 'box', pos: [x, y, z], scale: sc, rot: [0, P.yaw, 0], color }; };
+  const sea = WATER_Y - TOP_SAT - 0.05;   // 柱腳在水面下 0.05
   put('lighthouse', 1, comp([
-    deck(2.15, [0.26, 0.04, 0.62], C.wood),
-    ...[1.92, 2.07, 2.22, 2.37].map(s => deck(s, [0.32, 0.03, 0.05], 0xb48560)),
-    ...[[2.0, 0.11], [2.0, -0.11], [2.36, 0.11], [2.36, -0.11]].map(([s, l]) => { const [x, z] = P.pt(s, -0.5 + l); return { kind: 'cylinder', pos: [x, -0.33, z], scale: [0.05, 0.64, 0.05], color: C.wood }; }),
+    deck((s0 + s1) / 2, 0.0, [0.24, 0.04, s1 - s0], C.wood),   // 頂在 +0.02
+    ...[2.32, 2.47, 2.62, 2.77].map(s => deck(s, 0.025, [0.3, 0.02, 0.05], 0xb48560)),
+    ...[[2.45, 0.1], [2.45, -0.1], [2.8, 0.1], [2.8, -0.1]].map(([s, l]) => { const [x, z] = P.pt(s, P.LAT + l); return { kind: 'cylinder', pos: [x, sea / 2, z], scale: [0.05, -sea, 0.05], color: C.wood }; }),
   ]));
   // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的 twin 轉子）＋電池屋（西邊，通電時亮一條綠燈）
   put('windmill', 0, comp([
@@ -171,8 +179,8 @@ function stages(lv, flags, on) {
     { kind: 'box', pos: [dx - 0.07, -0.24, 0], scale: [0.01, 0.48, 0.01], color: C.ink }, { kind: 'box', pos: [dx + 0.07, -0.24, 0], scale: [0.01, 0.48, 0.01], color: C.ink },
     { kind: 'box', pos: [dx, -0.48, 0], scale: [0.18, 0.025, 0.1], color: C.coral },
   ]) });
-  // 遊樂場島 2：旋轉木馬——東邊一座圓台、四根柱子、條紋頂篷、四匹小馬（update 轉）
-  put('playground', 1, { kind: 'carousel', pivot: [1.3, 0, 0.45], parts: [
+  // 遊樂場島 2：旋轉木馬——東邊一座圓台、四根柱子、條紋頂篷、四匹小馬（update 轉；大停電時停，同燈籠串）
+  put('playground', 1, { kind: 'carousel', pivot: [1.3, 0, 0.45], speed: flags.blackout ? 0 : 1, parts: [
     { kind: 'cylinder', pos: [1.3, 0.04, 0.45], scale: [0.78, 0.08, 0.78], color: C.cream },
     { kind: 'cylinder', pos: [1.3, 0.3, 0.45], scale: [0.08, 0.5, 0.08], color: C.yellow },
     { kind: 'cone', pos: [1.3, 0.64, 0.45], scale: [0.86, 0.26, 0.86], color: C.coral },
@@ -182,7 +190,7 @@ function stages(lv, flags, on) {
     ]; }),
   ] });
   // 小森林 1：茶屋桌椅——分店北邊兩張圓桌、四張小凳
-  put('forest', 0, comp([0, 1].flatMap(i => { const x = 1.45 + i * 0.35, z = 0.15 - i * 0.35; return [
+  put('forest', 0, comp([0, 1].flatMap(i => { const x = 1.25 + i * 0.2, z = 0.2 - i * 0.5; return [   // 六角半徑 ≤ 1.9：離島緣的步道環（2.11 起）遠
     { kind: 'cylinder', pos: [x, 0.17, z], scale: [0.24, 0.025, 0.24], color: C.wood }, { kind: 'cylinder', pos: [x, 0.08, z], scale: [0.04, 0.16, 0.04], color: C.wood },
     { kind: 'cylinder', pos: [x - 0.18, 0.06, z + 0.05], scale: [0.1, 0.12, 0.1], color: C.coral }, { kind: 'cylinder', pos: [x + 0.18, 0.06, z - 0.05], scale: [0.1, 0.12, 0.1], color: C.coral },
   ]; })));
@@ -213,15 +221,17 @@ export const builders = {
   // 風車葉片：三片繞 hub 轉；暴風時整座搖。twin（離島三段，燈泡 Lv7 起）：第二支風機的轉子（縮 0.8）在相對 hub 的 twin 處，同速轉、同樣搖；?quality=low 不畫（塔身那段也不畫）
   blades(THREE, spec, ctx) {
     const rotor = () => ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [0, 1, 2].map(i => { const a = i * Math.PI * 2 / 3; return { kind: 'box', pos: [Math.sin(a) * 0.38, Math.cos(a) * 0.38, 0], scale: [0.08, 0.75, 0.03], rot: [0, 0, -a], color: C.cream }; }) });
+    // 搖晃只加在葉片的角度上（轉角 spin + 搖 w）：轉子的 hub 一直在各自的塔頂上，第二支不會繞著第一支的 hub 甩
     const part = rotor(), object = new THREE.Group(); object.add(part.object);
     const twin = spec.twin && ctx.quality !== 'low' ? rotor() : null, holder = new THREE.Group();
     if (twin) { holder.position.set(...spec.twin); holder.scale.setScalar(0.8); holder.add(twin.object); object.add(holder); }
+    let spin = 0;
     return {
       object,
       update(dt, t) {
         const w = spec.wobble ? Math.sin(t * 8) * 0.05 : 0;
-        part.object.rotation.z -= dt * spec.speed; object.rotation.z = w;
-        if (twin) { twin.object.rotation.z -= dt * spec.speed; holder.rotation.z = -w + (spec.wobble ? Math.sin(t * 8 + 1) * 0.05 : 0); }
+        spin -= dt * spec.speed; part.object.rotation.z = spin + w;
+        if (twin) twin.object.rotation.z = spin + (spec.wobble ? Math.sin(t * 8 + 1) * 0.05 : 0);
       },
       dispose() { part.dispose(); twin?.dispose(); },
     };
@@ -233,14 +243,14 @@ export const builders = {
     const object = new THREE.Group(); object.add(frame.object, pivot);
     return { object, update(dt, t) { pivot.rotation.x = Math.sin(t * 2.4) * 0.45; }, dispose() { frame.dispose(); seats.dispose(); } };
   },
-  // 旋轉木馬：整座繞 pivot 的直軸慢慢轉（每 8 秒一圈）
+  // 旋轉木馬：整座繞 pivot 的直軸慢慢轉（speed 1 = 每 8 秒一圈；0 停）
   carousel(THREE, spec, ctx) {
     const [px, py, pz] = spec.pivot, body = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts.map(p => ({ ...p, pos: [p.pos[0] - px, p.pos[1] - py, p.pos[2] - pz] })) });
     const pivot = new THREE.Group(); pivot.position.set(px, py, pz); pivot.add(body.object);
     const object = new THREE.Group(); object.add(pivot);
-    return { object, update(dt) { pivot.rotation.y += dt * Math.PI / 4; }, dispose: body.dispose };
+    return { object, update(dt) { pivot.rotation.y += dt * (spec.speed ?? 1) * Math.PI / 4; }, dispose: body.dispose };
   },
-  // 金幣噴泉：六枚金幣（spec.parts 是箱口的起點）輪流沿拋物線噴起 0.5、往外 0.25 落回，一枚 2.4 秒、彼此錯開；邊飛邊翻。
+  // 金幣噴泉：六枚金幣（spec.parts 是箱口的起點）輪流沿拋物線噴起 0.5、往外 0.25 落回，一枚 2.4 秒、彼此錯開；邊飛邊翻，頭尾縮放（不閃現）。
   // 一個 InstancedMesh（一個 draw call），金色發光（?quality=low 不發光）；建好就是 t = 0 的樣子
   coins(THREE, spec, ctx) {
     const N = spec.parts.length, PERIOD = 2.4, geo = new THREE.CylinderGeometry(0.5, 0.5, 1, 12);
@@ -252,7 +262,8 @@ export const builders = {
       spec.parts.forEach((c, i) => {
         const k = ((t / PERIOD + i / N) % 1 + 1) % 1, a = i * 1.05, out = 0.25 * k;
         p.set(c.pos[0] + Math.cos(a) * out, c.pos[1] + 2 * 0.5 * 2 * k * (1 - k), c.pos[2] + Math.sin(a) * out);
-        mesh.setMatrixAt(i, m4.compose(p, q.setFromEuler(e.set(k * 6, a, 0)), sc.set(...c.scale)));
+        const g = Math.min(1, k / 0.12, (1 - k) / 0.12);   // 噴出時從 0 長大、落回箱口前縮到 0：一輪接一輪不跳
+        mesh.setMatrixAt(i, m4.compose(p, q.setFromEuler(e.set(k * 6, a, 0)), sc.set(c.scale[0] * g, c.scale[1] * g, c.scale[2] * g)));
       });
       mesh.instanceMatrix.needsUpdate = true;
     };

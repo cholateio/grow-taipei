@@ -164,8 +164,10 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 // commit 由舞台自己閃白 BLINK 秒（移除的閃完才拿掉），拍長 BLINK + 0.15·(n−1)。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
 // stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻閃（大停電：電一斷整區一起暗，拍長 BLINK）
+// tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個閃的零件一起閃、不多佔一格 stagger：
+// 加了點綴不改任何一拍的長度（整局的走位對時間很敏感）；這拍只剩點綴時照常閃一次
 export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
-  let keys = [], fired = 0, t = 0;
+  let keys = [], along = [], fired = 0, t = 0;
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
   const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: blink }; };
   return {
@@ -177,12 +179,14 @@ export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
       // 新建築的 footprint 從套用這一刻就算（閃白期間還藏著也一樣）：不然閃白那 0.15 秒走路格還不知道，走路的人會走進剛長出來的建築
       if (all.length) ctx.nav.setFootprints(ctx.stage.footprints());
       const pending = new Set(blink ? ctx.stage.pendingKeys() : []);
-      keys = all.map(c => c.key).filter(k => pending.has(k));
+      const shown = all.filter(c => pending.has(c.key));
+      keys = shown.filter(c => !c.tagAlong).map(c => c.key); along = shown.filter(c => c.tagAlong).map(c => c.key);
+      if (!keys.length) keys = along.splice(0, 1);
       if (!keys.length) return false;
     },
     step(k, dt, ctx) {
       t += dt;
-      while (fired < keys.length && t >= stagger * fired - 1e-9) ctx.stage.commit(keys[fired++]);
+      while (fired < keys.length && t >= stagger * fired - 1e-9) { if (!fired) for (const a of along) ctx.stage.commit(a); ctx.stage.commit(keys[fired++]); }
     },
     end(ctx) { ctx.stage.commitAll(); ctx.nav.setFootprints(ctx.stage.footprints()); },
   };

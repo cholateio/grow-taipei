@@ -303,7 +303,7 @@ export const script = {
       const { B } = ctx;
       return [
         B.bubble(owner, '……', 0.9), B.bubble(owner, { icon: 'islet' }, 1.0), B.focus(FOREST, { zoom: ISLAND_ZOOM }),
-        B.apply(e, { only: ['sat.forestShop', 'sat.forest'] }), B.apply(e), levelUpAtShop(B),
+        B.apply(e, { only: ['sat.forestShop', 'sat.forest', 'sat.forest.stage1'] }), B.apply(e), levelUpAtShop(B),   // 茶屋桌椅（離島三段，tagAlong）跟分店一起閃
       ];
     },
     // ★ 旗艦店：鏡頭到燈塔島（zoom 0.8）→ 小船載著兩個觀光客在珍奶格東岸外閃白出現、開到燈塔島（SAIL 秒）→ 兩人跳上岸 →
@@ -314,7 +314,7 @@ export const script = {
       return [
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,
-        sail(), hop, B.home([passenger(0), passenger(1)]),
+        B.together([sail(), B.apply(e, { only: ['sat.lighthouse.stage2'] })]), hop, B.home([passenger(0), passenger(1)]),   // 棧橋（離島三段）在小船開過去時閃白
         B.apply(e), B.together([B.focus('boba'), launch(), B.levelUp('boba')]),
       ];
     },

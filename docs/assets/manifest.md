@@ -74,4 +74,19 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 結局／最終章 | 賽博尾聲 | `finale.car` | `kenney/space/craft_speederA.glb`（第四台飛天車，同代幣 Lv10 的款式；tint 紅 `0xe8322e`，`metalRed` 塗紅；零件 kind `orbit`：從海上飛進來繞 101 一圈、停上黑塔屋頂前緣，沒有 rest；?quality=low 照 orbit 的規矩不畫）。最終章其他東西（紅光、飛彈、水花、UFO、外星生物、母艦、黑塔螢幕）全是程式幾何 | CC0 | 新增（計畫 5） |
 | 共用 | — | 蓋房子動作的工具 | 3.9 程式畫的鋤頭（沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
+## 離島三段（計畫 6 §7，全是程式零件）
+
+每座離島 = 空島（`src/scene/island.js` 的 kit）→ 第一段 → 第二段；觸發固定、兩段各自獨立。零件鍵 `sat.<島>.stage1／stage2`（`src/actors/satellites.js` 的 `STAGE`），
+`footprint: false`、`tagAlong: true`（跟同一拍第一個閃的零件一起閃、不多佔 stagger，劇本時間不變）、`low: false`（?quality=low 不畫，手機 draw call ≤ 150）。
+
+（清單不用表格：上面那張表一級一列，assets.test 數列數）
+
+- **燈塔島**——第一段：燈泡 Lv7 `sat.lighthouse.stage1`：守塔人小屋（白牆、紅四坡頂、門、煙囪；島東北）；第二段：珍奶 Lv6 `sat.lighthouse.stage2`：棧橋碼頭（板面＋橫板＋四根柱子，從西南岸朝 `boba.DOCK` 伸出去、側讓 0.5；珍奶 Lv6 小船開過去時閃白）
+- **風車島**——第一段：燈泡 Lv7 `sat.windmill.stage1`：第二支風機塔身＋電池屋（通電時綠燈條發光）；葉片是 `sat.windmill` 的 `twin` 轉子（同速轉、颱風同樣搖，第一段不跟著重建）；第二段：晶片 Lv6 `sat.windmill.stage2`：變電小站（水泥墊、變壓箱、兩個霓虹藍礙子）
+- **石堆島**——第一段：老鼠 Lv3 `sat.rocks.stage1`：鼠洞（最大石頭鏡頭側）＋曬太陽的石板；第二段：老鼠 Lv5 外星：綠光圈（現有 `sat.rocksRing`）；賽博沒有
+- **階梯丘**——第一段：晶片 Lv3 `sat.pyramid.stage1`：第二頂帳篷（第四層梯田）；第二段：晶片 Lv9 `sat.pyramid.stage2`：觀測站（圓頂淡淡發光＋望遠鏡）
+- **遊樂場島**——第一段：代幣 Lv8 `sat.playground.stage1`：鞦韆（kind `swing`，座位會盪）；第二段：鮮奶 Lv10 `sat.playground.stage2`：旋轉木馬（kind `carousel`，8 秒一圈）
+- **小森林**——第一段：珍奶 Lv5 `sat.forest.stage1`：茶屋兩張圓桌、四張凳；第二段：燈泡 Lv9 `sat.forest.stage2`：燈籠串（兩棵樹之間 6 顆暖黃燈籠；大停電時暗）
+- **寶箱島**——第一段：棒球 Lv6 `sat.chest.stage1`：一隻海鷗停在箱蓋上（開箱後站到箱旁）；第二段：全 MAX `sat.chest.stage2`：金幣噴泉（kind `coins`，6 枚金幣一個 InstancedMesh，2.4 秒一輪）
+
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

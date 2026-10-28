@@ -116,7 +116,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
         if (only && !only.includes(key)) { rest.push(key); continue; }
         const kind = !(key in next) ? 'remove' : key in prev ? 'replace' : 'add';
         swap(key, prev[key], next[key], { hold, deferred });
-        changed.push({ key, at: (next[key] ?? prev[key]).at, kind });
+        changed.push({ key, at: (next[key] ?? prev[key]).at, kind, ...((next[key] ?? prev[key]).tagAlong && { tagAlong: true }) });
         if (key in next) v[key] = next[key]; else delete v[key];
       }
       views[mod.id] = v;

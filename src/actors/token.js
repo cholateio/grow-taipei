@@ -363,7 +363,7 @@ export const script = {
       return [
         B.focus(PLAYGROUND, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['token.shuttle', ...(kids ? ['sat.playground'] : [])], hold: ['sat.playground'] }),
-        B.wait(1.8),   // 車速 1.2，支線約 2.2：開到島那頭
+        B.together([B.wait(1.8), B.apply(e, { only: ['sat.playground.stage1'] })]),   // 車速 1.2，支線約 2.2：開到島那頭；鞦韆（離島三段）在鏡頭裡閃白
         ...(kids ? [
           B.spawn('sat.playground', KID_OFF), B.spawn('sat.playground', offset(KID_OFF, 0.25, 0.15)),
           B.together([0, 1].map(i => B.walk(kid(i), SLIDE[i]))), B.home([kid(0), kid(1)]),

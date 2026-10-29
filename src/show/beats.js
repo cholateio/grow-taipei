@@ -453,6 +453,7 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
         const c = cur; c.beat.end?.(ctx); open(ctx, c.t0 + c.dur);
       }
     },
+    // start 回 false（沒列車、淹水停駛）時時間軸照樣呼叫 end：during 剩下的拍 start → end 一口氣跑完（跳下車的 jump.end 把人放到落點）
     end(ctx) {
       if (trip) ctx.rail.trip = null;
       cur?.beat.end?.(ctx); cur = null;

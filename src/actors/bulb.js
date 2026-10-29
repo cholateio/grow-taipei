@@ -11,7 +11,7 @@ import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
 import { BLINK } from '../show/blink.js';
 import { STATION_A, SPUR_BRAKE } from '../show/beats.js';
-import { DECK_AT, view as tokenView } from './token.js';
+import { DECK_AT, hasTrain, view as tokenView } from './token.js';
 import { C, offset } from './palette.js';
 
 export const id = 'bulb';
@@ -260,9 +260,10 @@ const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7
 // 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
 const SEAT_CAR = 0, SEAT_OFF = -0.2;
 // 搭車那段要有列車在跑（任何在跑的列車都行）。回到 GROW（2026-10-29）之後燈泡 7 是 auto，沒放代幣（< 4 沒有環狀線）或淹水停駛時也會長到 7：
-// 建串時就看（trainLikely），沒車改演不搭車的版本（Task 6a 修正輪裁決：不叫電工，鏡頭到風車島、套用、回全景、LEVEL UP）。
-// 建串時看得到車、演到時車卻停了（萬一）：上車／坐車那幾拍自己跳過（不丟錯、不讓他從海上瞬移），零件由回合補的 apply 套上
-const trainLikely = s => (s.lv?.token ?? 0) >= 4 && !s.flags?.flooded;
+// 建串時就問 token.js 的 hasTrain，沒車改演不搭車的版本（Task 6a 修正輪裁決：見 7 的註解）。
+// 建串時看得到車、演到時車卻停了（萬一，安全網）：上車那拍（board）start 回 false、整拍跳過；坐車那拍（ride）start 回 false 時
+// 時間軸照樣呼叫 trainStop.end，during 剩下的拍 start → end 跑完——跳下車的 jump.end 把他放到開關箱前（SWITCH_FRONT），不丟錯
+const trainLikely = s => hasTrain(s.lv, s.flags);
 // 走到站前 ‖ 列車進站：兩邊同時開始，列車停在站上等他走到（during 先等 wait 秒）再跳上車頂。
 // 拍開始時才知道他要走多久、列車多久到（trainRun 跟 trainStop 同一幀算，數字一樣），所以 together 在 start 才建
 function board(B, who) {
@@ -284,7 +285,8 @@ function board(B, who) {
   };
 }
 // 坐車到風車島：trainStop（支線版、launch）每幀先推列車，再把還坐在車頂上的他擺到座位上；during 第一拍（跳下車）一開始他就不坐了。
-// 列車在島那頭只停 0.1 秒：他一起跳就倒車回環上（跳下車的落點是固定的開關箱前，不跟著車）
+// 列車在島那頭只停 0.1 秒：他一起跳就倒車回環上（跳下車的落點是固定的開關箱前，不跟著車）。
+// 演到時列車停了（安全網，見 trainLikely）：start 回 false，trainStop.end 把 during 跑完、jump.end 把他放到開關箱前
 function ride(B, who, during) {
   let riding = true;
   const [off, ...rest] = during, start = off.start;
@@ -295,6 +297,12 @@ function ride(B, who, during) {
   T.step = (k, dt, c) => { step(k, dt, c); const m = riding ? who(c) : null; if (m) c.roster.setPose(m, { ...B.ridePose(c, SEAT_CAR, SEAT_OFF), walking: false }); };
   return T;
 }
+// 沒車的退路：他閃白換到島上的家（ISLAND_HOME）、在劇本手上站完閃白那 BLINK 秒才回日常（同一幀就放回日常的話，日常那邊看到的是一幀跳 14 公尺）；
+// 藏起來、叫不到就跳過
+const toIsland = who => ({
+  kind: 'relocate', dur: BLINK,
+  start(c) { const m = who(c); if (!m || m.hidden) return false; c.roster.claim(m); c.roster.relocate(m, { ...ISLAND_HOME, yaw: SWITCH_FRONT.yaw }); },
+});
 // 套用的估計長度照真的閃幾個零件算（trainStop 的 during 用估計長度排時間；估短了 LEVEL UP 會被截掉）
 const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK + 0.15 * (n - 1) });
 
@@ -364,14 +372,15 @@ export const script = {
         B.together([B.apply(e), B.bubble(m, '♪', 0.6)]), B.home(m), B.levelUp('bulb'),
       ];
     },
-    // ★◆ 離岸風電啟動（高鐵載電工去：代幣 ≥6）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
+    // ★◆ 離岸風電啟動（列車載電工去：有環狀線（代幣 ≥4）、沒淹水就行，高鐵或地鐵都載）：鏡頭到捷運站 → 電工走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
     //   列車沿環開到支線、開進島上 → 他跳到開關箱前按下開關 → 風車閃白開始轉 → 回全景、燈塔與光束閃白、守塔人出來（列車倒回環上）→ LEVEL UP。
     //   他就留在風車島上（家換成島上的小圈），不再回主島巡路。
     //   代幣還沒到 7（支線還沒通，選擇帶動升級之後賽博正解就是這樣）：鏡頭飛去風車島的同時風車島那條支線從環上長出去
     //   （0.8 s，跟代幣 Lv7 一樣；列車從站前開到支線口比它慢，追不上還沒長好的那一段）
-    //   沒有列車在跑（見 trainLikely）：不叫電工——鏡頭到風車島、風車與燈塔跟著套用閃白、回全景、LEVEL UP（電工的家照 view 搬到島上）
+    //   沒有列車在跑（見 trainLikely；Task 6a 修正輪裁決）：不叫他走去搭車——鏡頭到風車島、風車與燈塔跟著套用閃白、
+    //   他閃白換到島上的家（roster.relocate，裁決 R3：換位置一定閃白）、回日常、回全景、LEVEL UP。之後的燈泡 8 他就在島上的開關箱旁
     7(e, s, ctx) {
-      if (!trainLikely(s)) { const { B } = ctx; return [B.focus(WIND, { zoom: ISLAND_ZOOM }), B.apply(e), B.focus('home'), B.levelUp('bulb')]; }
+      if (!trainLikely(s)) { const { B } = ctx, m = el(ctx); return [B.focus(WIND, { zoom: ISLAND_ZOOM }), B.apply(e), toIsland(m), B.home(m), B.focus('home'), B.levelUp('bulb')]; }
       const { B } = ctx, m = el(ctx), SPUR = 'token.spur.windmill',
         prev = s.prev ?? { lv: { ...s.lv, bulb: 6 }, flags: s.flags };   // 劇本單獨建拍（測試）沒有 prev：當作從 Lv6 長上來
       const lay = tokenView(prev.lv, prev.flags)[SPUR] ? [] : [B.apply(e, { only: [SPUR], blink: false }), B.scaleIn(SPUR, { axis: 'z', dur: 0.8 })];

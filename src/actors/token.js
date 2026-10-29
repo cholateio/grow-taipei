@@ -218,6 +218,8 @@ export const roadsterParts = color => [
   { kind: 'box', pos: [0, DECK_TOP - 0.011, -CAR_L / 2 - 0.004], scale: [CHASSIS_W, 0.012, 0.008], color: C.red, glow: C.red },   // 尾燈條
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, RIDE_H - NOZZLE_DROP + NOZZLE_H / 2, sz * 0.08], scale: [0.035, NOZZLE_H, 0.035], color: C.curb })),   // 噴嘴
 ];
+// 環狀線上有列車在跑（view 的 token.train：代幣 ≥4；淹水時 speed 0 停駛）——別的劇本建串時要知道能不能搭車（燈泡 Lv7）就問這個
+export const hasTrain = (lv, flags = {}) => (lv?.token ?? 0) >= 4 && !flags?.flooded;
 export const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
 // 飛行本身縮短（Task 6a：◆ Lv10 live 8.5 s > 8；不砍全景定格）：繞圈 2.5 → 3.0 rad/s、屋頂＋坡道＋拉高 1.4 → 1.1（坡道 RAMP_T 0.6 照舊）、
 // 下降＋落地 1.0 → 0.8（落地 TOUCH 0.3 照舊）——一趟 4.9 → 4.0 s

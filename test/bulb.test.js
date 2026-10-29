@@ -635,10 +635,46 @@ test('bulb Lv7 with no train running (token never placed) plays the fallback ins
       assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP' && Math.hypot(b.at.x - show.stage.headOf('bulb').x, b.at.z - show.stage.headOf('bulb').z) < 0.3), 'LEVEL UP over bulb');
     }
   }
-  assert.ok(show.stage.partObject('sat.windmill') && show.stage.partKeys().includes('sat.lighthouse'), 'windmill and lighthouse are up');
-  // 劇本本身：沒列車就不叫電工、不上車
-  const beats = bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: 0 }), flags: {} }, { B, roster: { members: () => [] } });
-  assert.deepEqual(beats.map(b => b.kind), ['focus', 'apply', 'focus', 'levelUp']);
-  const flooded = bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: 6 }), flags: { flooded: true } }, { B, roster: { members: () => [] } });
-  assert.deepEqual(flooded.map(b => b.kind), ['focus', 'apply', 'focus', 'levelUp'], 'flooded: the trains are stopped');
+  assert.ok(show.stage.partKeys().includes('sat.lighthouse'), 'the lighthouse is up');
+  // 風車真的在轉（不是只有零件在）：再推 6 幀，葉片轉了
+  const blades = () => show.stage.partObject('sat.windmill')?.children[0].rotation.z ?? 0, z0 = blades();
+  for (let f = 0; f < 6; f++) show.update(1 / 30, 900 + f / 30);
+  assert.ok(Math.abs(blades() - z0) > 1e-6, 'the windmill turns');
+  assert.ok(bulb.view(show.stage.lv, show.stage.flags)['sat.windmill'] === undefined && sat.view(show.stage.lv, show.stage.flags)['sat.windmill'].speed > 0, 'turbine speed > 0');
+  // 劇本本身：沒列車就不叫他走去搭車——套用之後他閃白換到島上的家、回日常（修正輪 2）
+  const kinds = flags => bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: flags.flooded ? 6 : 0 }), flags }, { B, roster: { members: () => [] } }).map(b => b.kind);
+  assert.deepEqual(kinds({}), ['focus', 'apply', 'relocate', 'home', 'focus', 'levelUp']);
+  assert.deepEqual(kinds({ flooded: true }), ['focus', 'apply', 'relocate', 'home', 'focus', 'levelUp'], 'flooded: the trains are stopped');
+});
+// Task 6a 修正輪 2（控制者裁決）：沒車的退路把電工閃白換到風車島上（roster.relocate；換位置一定閃白，裁決 R3），
+// 之後沒合成的燈泡 8 照常演：他在島上的開關箱前一敲、電纜出現。這個放法燈泡第 6 回合 6 → 7（晶片剛放、還不到 4，沒有 6 → 8 跳級）、
+// 第 7 回合 7 → 8，代幣都還沒放；前五回合瞬間演完，第 6、7 回合 live，同一趟查不瞬移、換位置閃白（gameInvariants）
+test('the no-train fallback blinks the electrician onto the windmill island; the following unmerged bulb 8 plays the switch beats there', async () => {
+  const { turnSteps, gameInvariants } = await import('./helpers/show.js');
+  const h = await headlessShow(), { show, run, bubblesLog } = h, inv = gameInvariants(show), order = ['bulb', 'milk', 'boba', 'rat', 'baseball', 'chip', 'typhoon', 'token'];
+  let s = engine.createState(spec), build = 0, watching = false;
+  const update = show.update;
+  show.update = (dt, t) => { update(dt, t); const [m] = show.roster.members('bulb.electrician'); if (watching && m?.walker?.gesture?.kind === 'build') { build++; assert.ok(onWindmill(m.pos), 'working on the windmill island'); } };
+  for (const [i, step] of turnSteps(order).slice(0, 7).entries()) {
+    const r = step(s); s = r.state; inv.label(`turn ${i + 1}`);
+    const grows = r.events.filter(e => e.kind === 'grow' && e.item === 'bulb');
+    if (i === 5) assert.deepEqual(grows.map(e => [e.to, !!e.jump]), [[7, false]], 'turn 6: bulb 6 → 7 on its own');
+    if (i === 6) assert.deepEqual(grows.map(e => [e.to, !!e.jump]), [[8, false]], 'turn 7: bulb 7 → 8 on its own');
+    if (i >= 5) assert.equal(s.lv.token, 0, 'no token, no train');
+    const n = bubblesLog.length; watching = i === 6;
+    await run([...r.events, { kind: 'settle' }], { instant: i < 5 });
+    assert.deepEqual(show.stage.lv, s.lv, `turn ${i + 1}: stage levels equal the engine`);
+    if (i === 5) {
+      const [m] = show.roster.members('bulb.electrician');
+      assert.ok(m && onWindmill(m.pos), `after the fallback the electrician is on the windmill island (${m && `${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}`})`);
+    }
+    if (i === 6) {
+      assert.ok(build > 10, `bulb 8: the switch beats play on the island (${build} build frames)`);
+      assert.ok(show.stage.partKeys().includes('chip.cable'), 'the cable is laid');
+      assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP' && Math.hypot(b.at.x - show.stage.headOf('bulb').x, b.at.z - show.stage.headOf('bulb').z) < 0.3), 'LEVEL UP over bulb');
+    }
+  }
+  assert.deepEqual([...inv.pops].slice(0, 10), [], 'every relocation blinks');
+  assert.deepEqual([...inv.jumps].slice(0, 10), [], 'no silent jumps in daily life');
+  assert.deepEqual([...inv.walls].slice(0, 10), []);
 });

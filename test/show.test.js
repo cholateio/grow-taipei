@@ -489,6 +489,28 @@ test('a caused grow\'s script seconds exclude the cause segment, which is measur
   assert.ok(ev.length === segs.length && ev.every(x => x.cause.live >= CAUSE_FLASH && x.cause.live <= CAUSE_CAP + 0.2 && x.cause.helper === x.e.via[0]), JSON.stringify(ev.map(x => x.cause)));
 });
 
+// Task 6a 修正輪（控制者裁決）：劇本永遠不丟錯——沒法照原樣演就演退路（燈泡 Lv7 沒列車那種）。求解器列舉的前 20 個順序加兩局固定的壞結局，
+// 每回合（放置、最後一輪、終局回合）都瞬間演完（instant：每拍照樣 start → end），沒有一個劇本丟錯，舞台等級跟引擎一樣
+test('no script throws: the first 20 enumerated orders and EXAMPLE.hit/deflect play every turn (instant) without an error', async () => {
+  const { EXAMPLE, finaleStep } = await import('./helpers/endings.js');
+  const orders = [...enumerate(spec).slice(0, 20).map(r => r.order), EXAMPLE.hit, EXAMPLE.deflect];
+  const { show, run } = await headlessShow(), bad = [];
+  for (const order of orders) {
+    show.reset();
+    let s = engine.createState(spec), at = '';
+    try {
+      for (const [i, step] of turnSteps(order).entries()) {
+        at = `turn ${i + 1}`; const r = step(s); s = r.state;
+        await run([...r.events, { kind: 'settle' }], { instant: true });
+        if (JSON.stringify(show.stage.lv) !== JSON.stringify(s.lv)) bad.push(`${order.join('>')} ${at}: stage ${JSON.stringify(show.stage.lv)}`);
+      }
+      at = 'finale'; await run(finaleStep(s).events, { finale: true, instant: true });
+    } catch (err) { bad.push(`${order.join('>')} ${at}: ${err.message}`); }
+  }
+  assert.equal(orders.length, 22);
+  assert.deepEqual(bad, []);
+});
+
 // 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。
 // 手機畫質（quality 'low'，裁決 R18：名冊少載模型、零件省 draw call）也演一次——少掉的模型不能讓劇本出錯或卡住
 test('both new solutions play to the end without a script error at every level (high and low quality)', async () => {

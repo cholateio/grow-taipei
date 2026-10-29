@@ -613,3 +613,28 @@ test('bulb rep: the electrician on a main-island bridge counts; on the windmill 
   const [, r2] = at(bulb.ISLAND_HOME); assert.equal(r2, null, 'on the windmill island: nobody');
   const [, r3] = at(anchorWorld('bulb')); assert.ok(r3, 'on a main-island cell: called');
 });
+
+// Task 6a 修正輪（控制者裁決，Critical）：燈泡 7 是 auto，沒放代幣（沒有環狀線）時也會長到 7——以前 Lv7 劇本在沒列車時直接丟錯，
+// 玩家亂放就整局卡死。現在沒列車演不搭車的版本：不叫電工，鏡頭到風車島、套用（風車轉、燈塔亮）、回全景、LEVEL UP。
+// 這個放法第 6 回合燈泡 6 → 8（合成一段演 ◆ Lv7），代幣還沒放；前五回合瞬間演完，第 6 回合 live
+test('bulb Lv7 with no train running (token never placed) plays the fallback instead of throwing: the windmill turns, LEVEL UP on bulb', async () => {
+  const { turnSteps } = await import('./helpers/show.js');
+  const h = await headlessShow(), { show, run, bubblesLog } = h, order = ['bulb', 'milk', 'chip', 'boba', 'rat', 'baseball', 'typhoon', 'token'];
+  let s = engine.createState(spec);
+  for (const [i, step] of turnSteps(order).slice(0, 6).entries()) {
+    const r = step(s); s = r.state;
+    const n = bubblesLog.length;
+    await run([...r.events, { kind: 'settle' }], { instant: i < 5 });
+    assert.deepEqual(show.stage.lv, s.lv, `turn ${i + 1}: stage levels equal the engine`);
+    if (i === 5) {
+      assert.ok(r.events.some(e => e.kind === 'grow' && e.item === 'bulb' && e.to === 7) && s.lv.token === 0, 'bulb reaches 7 with no token on the island');
+      assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP' && Math.hypot(b.at.x - show.stage.headOf('bulb').x, b.at.z - show.stage.headOf('bulb').z) < 0.3), 'LEVEL UP over bulb');
+    }
+  }
+  assert.ok(show.stage.partObject('sat.windmill') && show.stage.partKeys().includes('sat.lighthouse'), 'windmill and lighthouse are up');
+  // 劇本本身：沒列車就不叫電工、不上車
+  const beats = bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: 0 }), flags: {} }, { B, roster: { members: () => [] } });
+  assert.deepEqual(beats.map(b => b.kind), ['focus', 'apply', 'focus', 'levelUp']);
+  const flooded = bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: 6 }), flags: { flooded: true } }, { B, roster: { members: () => [] } });
+  assert.deepEqual(flooded.map(b => b.kind), ['focus', 'apply', 'focus', 'levelUp'], 'flooded: the trains are stopped');
+});

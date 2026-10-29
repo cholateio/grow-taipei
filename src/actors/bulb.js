@@ -259,9 +259,10 @@ const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.s
 const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7;
 // 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
 const SEAT_CAR = 0, SEAT_OFF = -0.2;
-// 沒有列車在跑（沒車、淹水停駛）就演不了：照規則燈泡 Lv7 一定有代幣 ≥6 的高鐵（spec 燈泡 up[7]，選擇帶動升級放寬）——任何在跑的列車都行；
-// 萬一沒有，直接報錯，不讓他從海上瞬移過去
-const needTrain = (B, c) => { if (!B.trainRuns(c)) throw new Error('bulb Lv7 needs a running train (token ≥ 6, not flooded)'); };
+// 搭車那段要有列車在跑（任何在跑的列車都行）。回到 GROW（2026-10-29）之後燈泡 7 是 auto，沒放代幣（< 4 沒有環狀線）或淹水停駛時也會長到 7：
+// 建串時就看（trainLikely），沒車改演不搭車的版本（Task 6a 修正輪裁決：不叫電工，鏡頭到風車島、套用、回全景、LEVEL UP）。
+// 建串時看得到車、演到時車卻停了（萬一）：上車／坐車那幾拍自己跳過（不丟錯、不讓他從海上瞬移），零件由回合補的 apply 套上
+const trainLikely = s => (s.lv?.token ?? 0) >= 4 && !s.flags?.flooded;
 // 走到站前 ‖ 列車進站：兩邊同時開始，列車停在站上等他走到（during 先等 wait 秒）再跳上車頂。
 // 拍開始時才知道他要走多久、列車多久到（trainRun 跟 trainStop 同一幀算，數字一樣），所以 together 在 start 才建
 function board(B, who) {
@@ -269,8 +270,7 @@ function board(B, who) {
   return {
     kind: 'board', dur: c => (inner ? inner.dur(c) : 0),
     start(c) {
-      const m = who(c); if (!m) return false;
-      needTrain(B, c);
+      const m = who(c); if (!m || !B.trainRuns(c)) return false;
       // 列車算的是「within 秒內開到、再花煞車時間停穩」：目標先扣掉 SPUR_BRAKE，停穩的時候才剛好是他走到的時候（加速上限照舊 4.5 倍）
       const walk = B.walk(m, SHORE, { speed: DASH }), wt = walk.estimate(c), within = Math.max(BOARD_WITHIN, wt - SPUR_BRAKE);
       // 倒車回來和往前繞，哪個比較快進站就走哪個（倒車要先煞車再起步，剛開過頭一點才划算；裁決 R17 ◆ ≤ 8 s）
@@ -291,7 +291,7 @@ function ride(B, who, during) {
   off.start = c => { riding = false; return start(c); };
   const T = B.trainStop({ spur: 'windmill', launch: true, arrive: RIDE_WITHIN, spurSpeed: RIDE_SPUR, stop: 0.1, during: [off, ...rest] });
   const begin = T.start, step = T.step;
-  T.start = c => { needTrain(B, c); riding = true; return begin(c); };
+  T.start = c => { if (!B.trainRuns(c)) return false; riding = true; return begin(c); };
   T.step = (k, dt, c) => { step(k, dt, c); const m = riding ? who(c) : null; if (m) c.roster.setPose(m, { ...B.ridePose(c, SEAT_CAR, SEAT_OFF), walking: false }); };
   return T;
 }
@@ -369,7 +369,9 @@ export const script = {
     //   他就留在風車島上（家換成島上的小圈），不再回主島巡路。
     //   代幣還沒到 7（支線還沒通，選擇帶動升級之後賽博正解就是這樣）：鏡頭飛去風車島的同時風車島那條支線從環上長出去
     //   （0.8 s，跟代幣 Lv7 一樣；列車從站前開到支線口比它慢，追不上還沒長好的那一段）
+    //   沒有列車在跑（見 trainLikely）：不叫電工——鏡頭到風車島、風車與燈塔跟著套用閃白、回全景、LEVEL UP（電工的家照 view 搬到島上）
     7(e, s, ctx) {
+      if (!trainLikely(s)) { const { B } = ctx; return [B.focus(WIND, { zoom: ISLAND_ZOOM }), B.apply(e), B.focus('home'), B.levelUp('bulb')]; }
       const { B } = ctx, m = el(ctx), SPUR = 'token.spur.windmill',
         prev = s.prev ?? { lv: { ...s.lv, bulb: 6 }, flags: s.flags };   // 劇本單獨建拍（測試）沒有 prev：當作從 Lv6 長上來
       const lay = tokenView(prev.lv, prev.flags)[SPUR] ? [] : [B.apply(e, { only: [SPUR], blink: false }), B.scaleIn(SPUR, { axis: 'z', dur: 0.8 })];

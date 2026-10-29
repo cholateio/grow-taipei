@@ -14,12 +14,15 @@
 //   設計 §6：60 秒上限在兩條正解與 EXAMPLE 上驗），最後一列「終局 x/12 s」。超過 22／12 都算失敗
 // 撲空（計畫 6 設計 §5、§6）：wait 事件前面的撲空段有自己的 mark（info.miss）——單獨量（事件秒數扣掉物品之間的空拍，含跟走路一起演的平移），
 //   超過 MISS_CAP 3 s 多於 WARN_OVER 只印 ⚠；一回合多於 MISS_PER_TURN 段算失敗。每回合印「撲空 n」（真的演了的段數：代表叫不到時那段 0 秒，不算）
+// 起因段（回到 GROW 設計 §4.2，Task 3 裁決 B）：有起因的升級前面那段（空拍之後平移到幫手、閃白、平移回目標）有自己的 mark（info.cause）——
+//   同撲空單獨量（扣掉空拍），不算進那一級劇本與 ◆ 的秒數；超過 CAUSE_CAP 2 s 多於 WARN_OVER 只印 ⚠。每回合印「起因 x s」（這回合起因段合計）
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
 import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 import { MISS_CAP, MISS_PER_TURN } from '../src/show/visit.js';
+import { CAUSE_CAP } from '../src/show/turn.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
 // 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
@@ -64,7 +67,9 @@ async function playOrder(order, head0, finaleMax) {
     // 撲空段：演了的才算（扣掉空拍還有秒數——代表叫不到時整段 0 秒）
     const missLive = j => span(j)[0] - (marks[j][3]?.gap ?? 0), missed = j => missLive(j) > MISS_SHOWN;
     const misses = marks.filter((m, j) => m[3]?.miss && missed(j)).length;
-    cells.push(`${head} ${s1(secs)}/${cap} s 撲空 ${misses}`);
+    // 起因段（info.cause）：扣掉空拍的秒數，這回合合計
+    const causes = marks.reduce((t, m, j) => t + (m[3]?.cause ? missLive(j) : 0), 0);
+    cells.push(`${head} ${s1(secs)}/${cap} s ◆ ${keys} 撲空 ${misses} 起因 ${s1(causes)}`);
     if (secs < MIN || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < MIN ? `< ${MIN}` : `> ${cap}，◆ ${keys} 個`}）`);
     if (marks.filter(m => m[3]?.miss).length > MISS_PER_TURN) failures.push(`${head0} ${what} 撲空 ${marks.filter(m => m[3]?.miss).length} 段（> ${MISS_PER_TURN}）`);
     // 每個非關鍵劇本 ≤ SCRIPT_MAX、◆ ≤ KEY_MAX——live 秒數看日常裡的人在哪，會差半秒上下，只印警告（⚠，不算失敗）；
@@ -72,6 +77,10 @@ async function playOrder(order, head0, finaleMax) {
     marks.forEach(([e, , , info], j) => {
       if (info?.miss) {
         if (missLive(j) > MISS_CAP + WARN_OVER) warnings.push(`${head0} ${what} 撲空 ${missLabel(e, info)} ${s1(missLive(j))} s（> ${MISS_CAP}）`);
+        return;
+      }
+      if (info?.cause) {
+        if (missLive(j) > CAUSE_CAP + WARN_OVER) warnings.push(`${head0} ${what} 起因 ${info.cause}→${label(e)} ${s1(missLive(j))} s（> ${CAUSE_CAP}）`);
         return;
       }
       const script = span(j)[1];
@@ -88,6 +97,7 @@ async function playOrder(order, head0, finaleMax) {
       const parts = marks.map(([e, , , info], j) => {
         const [t, sc] = span(j);
         if (info?.miss) return `撲空 ${missLabel(e, info)}${missed(j) ? '' : '略'} ${s1(t)}`;
+        if (info?.cause) return `起因 ${info.cause}→${e.item} ${s1(t)}`;
         return `${info?.key ? '◆' : ''}${label(e)} ${s1(t)}${Math.abs(t - sc) > 0.05 ? `（${s1(sc)}）` : ''}`;
       });
       details.push(`  ${head}：${parts.join('、')}`);

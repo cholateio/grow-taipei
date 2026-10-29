@@ -449,6 +449,46 @@ test('both solutions live with merged jumps and cause flashes: invariants clean,
   }
 });
 
+// Task 3 裁決 B（Task 6 落實）：起因段（mark 的 info.cause：空拍、平移到幫手、閃白、平移回目標）自己一個 mark、單獨量——
+// 有起因的升級，劇本秒數（不含 focus 拍、扣掉空拍）跟同一回合把 via 拿掉（沒有起因段）演出來的一樣（差 ≤ 0.2 s：日常的人位置不同）；
+// run() 回的整回合劇本秒數也不含閃白；起因段扣掉空拍 ≥ CAUSE_FLASH、≤ CAUSE_CAP（多 0.2 s 是每拍接下一拍的幀取整）；playLive 把它掛在事件的 cause 上
+test('a caused grow\'s script seconds exclude the cause segment, which is measured on its own (≤ CAUSE_CAP)', async () => {
+  const { CAUSE_FLASH, CAUSE_CAP } = await import('../src/show/turn.js'), { playLive } = await import('./helpers/show.js');
+  const order = SOLUTIONS[0], steps = turnSteps(order);
+  // 第一個有起因段的回合（grow 的 via 不是颱風）
+  let s0 = engine.createState(spec), at = -1;
+  for (const [i, step] of steps.entries()) { const r = step(s0); s0 = r.state; if (r.events.some(e => e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !e.jump)) { at = i; break; } }
+  assert.ok(at >= 0, 'a solution turn has a caused grow');
+  const playTurn = async strip => {
+    const { show, run, scriptElapsed } = await headlessShow();
+    let s = engine.createState(spec), out = null;
+    for (const [i, step] of steps.slice(0, at + 1).entries()) {
+      const r = step(s); s = r.state;
+      const evs = [...r.events.map(e => (strip && e.via ? { ...e, via: [] } : e)), { kind: 'settle' }], marks = [];
+      const secs = await run(evs, { instant: i < at, onMark: (e, info) => marks.push({ e, at: show.elapsed, sc: scriptElapsed(), info }) });
+      if (i === at) out = { secs, marks, endSc: scriptElapsed() };
+    }
+    return out;
+  };
+  const caused = await playTurn(false), plain = await playTurn(true);
+  // 每個事件劇本那一段（不是起因段的 mark）的劇本秒數；拿掉 via 的那次事件是複本，用「種類 物品 級」對（一回合裡不重複）
+  const id = e => `${e.kind} ${e.item} ${e.to}`;
+  const scripts = t => new Map(t.marks.flatMap((m, j) => (m.info?.cause ? [] : [[id(m.e), (t.marks[j + 1]?.sc ?? t.endSc) - m.sc - (m.info?.gap ?? 0)]])));
+  const a = scripts(caused), b = scripts(plain);
+  const segs = caused.marks.flatMap((m, j) => (m.info?.cause ? [[m, caused.marks[j + 1]]] : []));
+  assert.ok(segs.length > 0, 'the turn plays a cause segment');
+  for (const [m, next] of segs) {
+    assert.equal(next.e, m.e, 'the cause segment is followed by its own event\'s mark'); assert.equal(next.info.cause, undefined); assert.equal(next.info.gap, 0);
+    const live = next.at - m.at - (m.info.gap ?? 0), k = id(m.e);
+    assert.ok(live >= CAUSE_FLASH && live <= CAUSE_CAP + 0.2, `${m.e.item} ${m.e.to} cause segment ${live.toFixed(2)} s`);
+    assert.ok(Math.abs(a.get(k) - b.get(k)) <= 0.2, `${m.e.item} ${m.e.to}: script ${a.get(k).toFixed(2)} s with the cause segment, ${b.get(k).toFixed(2)} s without`);
+  }
+  assert.ok(Math.abs(caused.secs - plain.secs) <= 0.3, `run() script seconds ${caused.secs.toFixed(2)} vs ${plain.secs.toFixed(2)} without causes`);
+  // playLive：起因段不另成一筆，掛在事件的 cause 上；事件自己的 live 不含它
+  const ev = (await playLive(order)).filter(x => x.turn === at + 1 && x.cause);
+  assert.ok(ev.length === segs.length && ev.every(x => x.cause.live >= CAUSE_FLASH && x.cause.live <= CAUSE_CAP + 0.2 && x.cause.helper === x.e.via[0]), JSON.stringify(ev.map(x => x.cause)));
+});
+
 // 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。
 // 手機畫質（quality 'low'，裁決 R18：名冊少載模型、零件省 draw call）也演一次——少掉的模型不能讓劇本出錯或卡住
 test('both new solutions play to the end without a script error at every level (high and low quality)', async () => {

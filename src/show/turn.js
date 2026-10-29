@@ -22,7 +22,7 @@
 // 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
 //   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）閃白 CAUSE_FLASH 秒，再照常平移到被升級的那一格。
 //   via 兩個以上只閃第一個（引擎把第一級的幫手排在前面）。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不插。
-//   幫手這一級沒有本體零件（演到才知道）→ 不閃、不停鏡頭，平移照沒有起因時的帳。mark 的 info 加 cause: via[0]（pace 不另量）。
+//   幫手這一級沒有本體零件（演到才知道）→ 不閃、不停鏡頭，平移照沒有起因時的帳。起因段前面另一個 mark（info.cause: via[0]），劇本前面再一個 mark——pace 單獨量起因段（≤ CAUSE_CAP）。
 // 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空照舊（下一段）。
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件裡前 MISS_PER_TURN 個叫得到代表的 waits（照 ORDER）各一段
 //   （叫不叫得到建串時看模組的 script.hasRep(現在的等級)：鮮奶 Lv2 起（Lv2 借最近的島民）、代幣 Lv2 起、燈泡 Lv7 起電工在離島上叫不到、颱風永遠沒有——不佔位子，往後補；最終審稿 3）：
@@ -47,6 +47,9 @@ export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁
 // 起因閃一下（見檔頭）：閃幾秒（beats.js 的 B.flash 預設同一個數）、閃哪個零件（每個演員模組的本體都是 <id>.main）
 export { CAUSE_FLASH };
 export const CAUSE_HELPER_KEY = id => `${id}.main`;
+// 起因段（mark 的 info.cause 到同一個事件下一個 mark：空拍之後平移到幫手 FOCUS_BEAT、閃白 CAUSE_FLASH、平移回目標 FOCUS_BEAT）的上限，
+// pace 與測試單獨量（扣掉空拍）；不算進那一級劇本與 ◆ 的秒數
+export const CAUSE_CAP = 2.0;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['warning', 'missile', 'epilogue']);
 
@@ -285,8 +288,11 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     if (last) away = last.target !== 'home';
     const gap = gapOf ? null : estimateTurn(lead.filter(b => b.kind === 'wait'), ctx);
     const info = gapOf ? { key, get gap() { return gapOf(); } } : { gap, key };
-    if (cause) info.cause = cause;
-    out.push(mark(e, info), ...lead, ...beats, B.apply(e));
+    // 起因段自己一個 mark（Task 3 裁決 B，同撲空的 info.miss）：mark(e, { cause, gap, key: false }) → 空拍、平移到幫手、閃白、平移回目標，
+    // 之後同一個事件再一個 mark(e, { gap: 0, key }) 才是劇本——pace 與測試的 ◆／劇本秒數不含起因段，起因段另外量（≤ CAUSE_CAP）
+    if (cause) out.push(mark(e, { ...(gapOf ? { get gap() { return gapOf(); } } : { gap }), key: false, cause }), ...lead, mark(e, { gap: 0, key }));
+    else out.push(mark(e, info), ...lead);
+    out.push(...beats, B.apply(e));
     if (landsTyphoon(e)) landed = true;
   });
 

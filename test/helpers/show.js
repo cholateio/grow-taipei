@@ -55,12 +55,21 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   show.bubbles.levelUp = (head, opts = {}) => { bubblesLog.push({ text: opts.text ?? 'LEVEL UP', down: !!opts.down, at: head() }); return levelUp(head, opts); };
 
   // 演一回合（onMark 照傳給 show.turn）：instant 包在 reduced-motion 裡瞬間跑完回 0；否則每幀 update(1/30) 到 Promise resolve，
-  // 回傳劇本秒數：不含 focus 拍（回合補的鏡頭平移、回全景，§13.1）；整回合秒數看 show.elapsed。
+  // 回傳劇本秒數：不含 focus 拍（回合補的鏡頭平移、回全景，§13.1）、不含起因段的閃白；整回合秒數看 show.elapsed。
   // scriptElapsed()：這回合到目前為止的劇本秒數（onMark 裡量某一段用）
   let cam = 0;   // 這回合花在 focus 拍的秒數：每幀的 dt 算給這一幀開頭正在演的拍（回合第一幀算給剛拉進來的那拍）
-  const scriptElapsed = () => show.elapsed - cam;
-  async function run(events, { finale = false, instant = false, onMark } = {}) {
-    cam = 0;
+  // 起因段（mark 的 info.cause 到同一個事件下一個 mark，Task 3 裁決 B）不算劇本秒數：下一個 mark 一到，就把這段不含 focus 拍、
+  // 扣掉空拍的秒數（閃白那 0.4 s）記進 cause——空拍照舊算（跟沒有起因的事件一樣）。onMark 拿到的 scriptElapsed() 已經扣掉了
+  let cause = 0, causeAt = null;
+  const scriptElapsed = () => show.elapsed - cam - cause;
+  const trackCause = onMark => (e, info) => {
+    if (causeAt) { cause += scriptElapsed() - causeAt.sc - (causeAt.info.gap ?? 0); causeAt = null; }   // 空拍演完才知道（撲空之後的 getter）
+    if (info?.cause) causeAt = { sc: scriptElapsed(), info };
+    onMark?.(e, info);
+  };
+  async function run(events, { finale = false, instant = false, onMark: userMark } = {}) {
+    cam = 0; cause = 0; causeAt = null;
+    const onMark = trackCause(userMark);
     if (instant) {
       show.setReducedMotion(true);
       try { await show.turn(events, { finale, onMark }); } finally { show.setReducedMotion(false); }
@@ -239,8 +248,10 @@ export function gameInvariants(show, { cam = null } = {}) {
   };
 }
 
-// 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, closing, e, key, secs, live, script }（closing：最後一輪）——
-// secs：事件秒數（含平移、空拍）；live：扣掉物品之間的空拍；script：不含 focus 拍、扣掉空拍（各物品測試的劇本秒數）
+// 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, closing, e, key, secs, live, script, cause }（closing：最後一輪）——
+// secs：事件秒數（含平移、空拍）；live：扣掉物品之間的空拍；script：不含 focus 拍、扣掉空拍（各物品測試的劇本秒數）。
+// 起因段（mark 的 info.cause 到同一個事件下一個 mark，Task 3 裁決 B）單獨量、不算進那個事件：掛在事件上的 cause = { helper, secs, live, script }
+// （live 扣掉空拍——空拍在起因段的 mark 上；沒有起因段是 null）。撲空段（info.miss）照舊是自己一筆
 export async function playLive(order, { seed = 21 } = {}) {
   const { show, run, scriptElapsed } = await headlessShow({ seed }), out = [];
   let s = engine.createState(spec);
@@ -248,9 +259,12 @@ export async function playLive(order, { seed = 21 } = {}) {
     const r = step(s); s = r.state;
     const closing = i >= order.length, marks = [];
     await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => marks.push([e, show.elapsed, scriptElapsed(), info]) });
+    let cause = null;
     marks.forEach(([e, at, sc, info], j) => {
-      const next = marks[j + 1], secs = (next?.[1] ?? show.elapsed) - at, gap = info?.gap ?? 0;
-      out.push({ turn: i + 1, closing, e, key: !!info?.key, secs, live: secs - gap, script: (next?.[2] ?? scriptElapsed()) - sc - gap });
+      const next = marks[j + 1], secs = (next?.[1] ?? show.elapsed) - at, gap = info?.gap ?? 0, script = (next?.[2] ?? scriptElapsed()) - sc - gap;
+      if (info?.cause) { cause = { e, helper: info.cause, secs, live: secs - gap, script }; return; }
+      const mine = cause?.e === e ? cause : null; cause = null;
+      out.push({ turn: i + 1, closing, e, key: !!info?.key, secs, live: secs - gap, script, cause: mine && { helper: mine.helper, secs: mine.secs, live: mine.live, script: mine.script } });
     });
   }
   return out;

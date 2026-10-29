@@ -334,10 +334,14 @@ const hasFlash = beats => beats.some(b => b.kind === 'flash' || (b.kind === 'tog
 test('cause flash: a grow with via opens with focus(helper cell) + flash(<helper>.main), then the usual pan to the target', () => {
   assert.equal(CAUSE_FLASH, 0.4); assert.equal(CAUSE_HELPER_KEY('milk'), 'milk.main');
   const raw = buildTurn([grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
+  // 起因段自己一個 mark（Task 3 裁決 B：pace 與測試單獨量）：mark { cause } → 平移到幫手、閃白、平移回目標；同一個事件再一個 mark → 劇本
   const seg = between(raw, 0);
-  assert.deepEqual(kindsOf(seg).slice(0, 5), ['focus', 'flash', 'focus', 'wait', 'levelUp']);
+  assert.deepEqual(kindsOf(seg), ['focus', 'flash', 'focus']);
   assert.deepEqual(seg[0].target, cellOf('milk')); assert.equal(seg[1].key, 'milk.main'); assert.equal(seg[1].dur, CAUSE_FLASH); assert.deepEqual(seg[2].target, cellOf('chip'));
-  assert.equal(marksOf(raw)[0].info.cause, 'milk');
+  assert.deepEqual(kindsOf(between(raw, 1)).slice(0, 2), ['wait', 'levelUp'], 'the script follows its own mark');
+  const [m0, m1] = marksOf(raw);
+  assert.equal(m0.info.cause, 'milk'); assert.equal(m0.info.key, false);
+  assert.equal(m1.e, m0.e, 'both marks belong to the same event'); assert.equal(m1.info.cause, undefined); assert.equal(m1.info.gap, 0);
   // 鏡頭已經在幫手那格（上一個事件是鮮奶）：不再平移到鮮奶格，只閃
   const already = buildTurn([grow('milk', 2, []), grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
   assert.deepEqual(kindsOf(between(already, 1)).slice(0, 3), ['wait', 'flash', 'focus']);

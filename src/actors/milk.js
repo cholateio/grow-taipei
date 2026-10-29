@@ -25,6 +25,10 @@ const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike �
 const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
 // 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡
 export const KID_ENTRY = offset(AT, 1.65, 0.1);
+// 名冊一次補三個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——
+// 三個人疊在同一點生出來會被互推推進右柱的外擴角落，從那裡找路會繞到島北（Task 6a：鮮奶節小孩跑去牛奶車量到 7.1 s）。
+// 不往東排：校舍北邊那條東西向的走道太窄，格點連不起來，從橋頭那段出發也會繞到島北
+export const KID_ENTRIES = [KID_ENTRY, offset(AT, 1.65, 0.4), offset(AT, 1.65, 0.7)];
 const MILK = [-1, 0];   // 鏡頭對的格子：校舍
 // 少棒隊只在鐘塔那一級（Lv6）：升格大學後回校園
 const league = lv => lv.milk === 6 && lv.baseball >= 2;
@@ -166,7 +170,7 @@ export function view(lv, flags, meta = {}) {
   if (n >= 3 && !home) {
     v['milk.kids'] = {
       kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n),
-      home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRY },
+      home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRIES },
     };
     // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
     if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: FESTIVAL_HOMES[0], n: FESTIVAL_HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: FESTIVAL_HOMES, r: HOME_R } };
@@ -272,15 +276,15 @@ export const script = {
         B.levelUp('milk'), B.home(allKids),
       ];
     },
-    // ◆ 大學：小孩走到拱門校門的位置（少棒隊從巨蛋旁回來）→ 圖框「學士帽」→ 閃白：兩翼拉長、拱門、鐘塔移到中間、學士帽
+    // ◆ 大學：小孩走到拱門校門的位置（少棒隊從巨蛋旁回來）、路上冒圖框「學士帽」→ 閃白：兩翼拉長、拱門、鐘塔移到中間、學士帽
     //   → 跳起來 → 回全景定格 → LEVEL UP
+    //   （Task 6a，◆ ≤ 8 s：小孩改成大人體型之後走到拱門要 2.9 s，整段 8.9 s——圖框改在走路時冒（不另佔 1.0 s）、全景定格 2.0 → 1.6；走路不加快）
     7(e, s, ctx) {
       const { B } = ctx;
       return [
-        gather(ctx, offset(ARCH, -0.1, 0.55), 0.4),
-        B.bubble(kid(ctx, 0), { icon: 'mortar' }, 1.0),
+        B.together([gather(ctx, offset(ARCH, -0.1, 0.55), 0.4), B.bubble(kid(ctx, 0), { icon: 'mortar' }, 1.0)]),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 2.0 }), B.levelUp('milk'), B.home(allKids),
+        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
     // 研究大樓：左翼閃白換成玻璃研究大樓、大家抬頭看、一個人 ！→ 一個走去校門的 YouBike 站（白袍、車站閃白）♪ → LEVEL UP
@@ -310,11 +314,13 @@ export const script = {
     10(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.apply(e, { only: ['milk.truck'] }),
+        // 小孩一起回來（Task 6a）：兩條正解的鮮奶 10 是最後一輪第一個事件，前一回合颱風登陸、小孩躲在家（meta.landing 到這一刻才清掉）——
+        // 只套牛奶車的話名冊要等後面的 apply 才補人，跑去、♥ 整段沒人演（劇本 2.3 s）
+        B.apply(e, { only: ['milk.truck', 'milk.kids'] }),
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 2.5 }), B.levelUp('milk'), B.home(allKids),
+        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),   // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.2 s，◆ ≤ 8 s）
       ];
     },
   },

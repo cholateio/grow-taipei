@@ -223,7 +223,11 @@ test('milk rosters enter walkable and ≥ 1.5 from every spot at every level (ki
   const nav = createNav(), bad = [];
   for (let n = 1; n <= 10; n++) for (const baseball of [0, 2]) {
     const v = milk.view(lv({ milk: n, baseball }), {});
-    if (v['milk.kids']) { assert.ok(v['milk.kids'].home.entry, `lv${n} entry declared`); assert.deepEqual(cellAt(v['milk.kids'].home.entry.x, v['milk.kids'].home.entry.z), [-1, 0]); assert.ok(v['milk.kids'].home.entry.x > anchorWorld('milk').x + 1.5, 'east side (toward the centre cell)'); }
+    // 三個小孩各一個入口（KID_ENTRIES，Task 6a：疊在同一點生出來會互推進柱子角落）
+    if (v['milk.kids']) {
+      assert.ok(v['milk.kids'].home.entry, `lv${n} entry declared`);
+      for (const q of [].concat(v['milk.kids'].home.entry)) { assert.deepEqual(cellAt(q.x, q.z), [-1, 0]); assert.ok(q.x > anchorWorld('milk').x + 1.5, 'east side (toward the centre cell)'); }
+    }
     nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
     bad.push(...entryProblems(v, nav, `lv${n} baseball ${baseball}`));
   }
@@ -263,7 +267,7 @@ test('the arch gate pillars block walkers (r 0.06 each); the passage between the
     const [a, b] = g.footprint.map(f => ({ x: g.at.x + f.x, z: g.at.z + f.z }));
     assert.ok(!nav.walkable(a.x, a.z) && !nav.walkable(b.x, b.z), `lv${n} pillars`);
     assert.ok(nav.walkable((a.x + b.x) / 2, (a.z + b.z) / 2), `lv${n} passage`);
-    assert.ok(nav.walkable(milk.KID_ENTRY.x, milk.KID_ENTRY.z), `lv${n} entry`);
+    for (const [i, q] of milk.KID_ENTRIES.entries()) assert.ok(nav.walkable(q.x, q.z), `lv${n} entry ${i}`);
   }
 });
 

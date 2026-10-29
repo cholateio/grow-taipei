@@ -7,8 +7,8 @@ import { resolve } from '../../src/rules/endings.js';
 import { finaleEvents } from '../../src/game.js';
 
 export const EXAMPLE = {
-  hit: ['milk', 'chip', 'bulb', 'token', 'rat', 'baseball', 'typhoon', 'boba'],       // 結局 shieldDown（＋鮮奶過期；因果與離島 2026-10-28 重找）
-  deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],   // 結局 flood（＋颱風吹歪、矽盾失守、鮮奶過期；順序沒變，燈泡長得快了躲過大停電）
+  hit: ['milk', 'bulb', 'token', 'rat', 'chip', 'typhoon', 'boba', 'baseball'],       // 結局 shieldDown（＋鮮奶過期：棒球最後放，鮮奶停在 4；回到 GROW 2026-10-29 重找）
+  deflect: ['milk', 'bulb', 'token', 'typhoon', 'chip', 'rat', 'boba', 'baseball'],   // 結局 blackout（＋淹水、颱風吹歪、矽盾失守、鮮奶過期；回到 GROW 2026-10-29 重找）
 };
 
 export function finaleStep(state) {

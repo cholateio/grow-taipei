@@ -65,11 +65,16 @@ test('ENDINGS has ten entries with Chinese titles', () => {
 test('typhoon placed 8th lands in its own turn; the closing turn decides between the rainbow and a deflected missile', async () => {
   const { advance } = await import('../src/rules/engine.js');
   const playTo = order => { let s = createState(spec); for (const id of order) s = place(s, id, spec).state; return s; };
-  const late = playTo([...ORDER.filter(id => id !== 'typhoon'), 'typhoon']);
-  assert.equal(late.lv.typhoon, 2, 'landed in its placement turn');
-  const stuck = advance(late, spec).state;                       // 燈泡還沒到 6（還停電）：抽水站沒電，颱風不走
-  assert.equal(stuck.lv.typhoon, 2); assert.equal(missile(stuck, spec), 'deflect');
-  const cyber = advance(playTo(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon']), spec).state;
+  // 回到 GROW（2026-10-29）重找：列舉裡第一個「颱風第 8 個放、最後燈泡 ≤ 5、飛彈被吹歪」的順序。
+  // 燈泡第 6 個才放，颱風登陸時燈泡 4 → 大停電鎖住燈泡，倒數那回合燈泡還是 4（< 6）：抽水站沒電，颱風不走
+  const late = playTo(['milk', 'token', 'rat', 'boba', 'chip', 'bulb', 'baseball', 'typhoon']);
+  assert.equal(late.lv.typhoon, 2, 'landed in its placement turn'); assert.equal(late.lv.bulb, 4); assert.equal(late.flags.blackout, true);
+  const stuck = advance(late, spec).state;
+  assert.equal(stuck.lv.typhoon, 2); assert.ok(stuck.lv.bulb <= 5); assert.equal(missile(stuck, spec), 'deflect');
+  // 賽博正解：第 8 回合燈泡已經 9（≥ 6）、晶片 8（矽盾測過，大巨蛋的 delay 不成立）→ 倒數那回合就放晴
+  const cyberLate = playTo(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon']);
+  assert.equal(cyberLate.lv.typhoon, 2); assert.ok(cyberLate.lv.bulb >= 6); assert.equal(cyberLate.lv.chip, 8);
+  const cyber = advance(cyberLate, spec).state;
   assert.equal(cyber.lv.typhoon, 3); assert.equal(missile(cyber, spec), 'shield');
 });
 
@@ -113,8 +118,8 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   const all = enumerate(spec);
   // 字面值釘死（規則改了這裡跟 helpers/endings.js 一起換）
   assert.deepEqual(EXAMPLE, {
-    hit: ['milk', 'chip', 'bulb', 'token', 'rat', 'baseball', 'typhoon', 'boba'],
-    deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
+    hit: ['milk', 'bulb', 'token', 'rat', 'chip', 'typhoon', 'boba', 'baseball'],
+    deflect: ['milk', 'bulb', 'token', 'typhoon', 'chip', 'rat', 'boba', 'baseball'],
   });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);

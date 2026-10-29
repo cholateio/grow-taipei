@@ -219,8 +219,10 @@ export const roadsterParts = color => [
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, RIDE_H - NOZZLE_DROP + NOZZLE_H / 2, sz * 0.08], scale: [0.035, NOZZLE_H, 0.035], color: C.curb })),   // 噴嘴
 ];
 export const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
-const ORBIT = { speed: 2.5, legs: [1.4, 1.0], squash: 0.03 }, FLY_STAGGER = 0.3;
-export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（屋頂＋坡道＋拉高 1.4、一圈、下降＋落地 1.0；跟以前的 speeder 一樣長）
+// 飛行本身縮短（Task 6a：◆ Lv10 live 8.5 s > 8；不砍全景定格）：繞圈 2.5 → 3.0 rad/s、屋頂＋坡道＋拉高 1.4 → 1.1（坡道 RAMP_T 0.6 照舊）、
+// 下降＋落地 1.0 → 0.8（落地 TOUCH 0.3 照舊）——一趟 4.9 → 4.0 s
+const ORBIT = { speed: 3.0, legs: [1.1, 0.8], squash: 0.03 }, FLY_STAGGER = 0.3;
+export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（屋頂＋坡道＋拉高 1.1、一圈、下降＋落地 0.8）
 // 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給坡道）；各自車頭朝 101、繞圈的入口（phase）在
 // 101 到停車點的那條線上——坡道、拉高、回程下降都是同一條直線
 const parkOf = i => { const p = offset(AT, (i - 1) * 0.33, 0.1, ROOF_Y); return { ...p, yaw: Math.atan2(TOWER.x - p.x, TOWER.z - p.z) }; };

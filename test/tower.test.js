@@ -235,7 +235,7 @@ test('crane, antenna pulse and lightshow builders animate', () => {
 test('view uses meta.total when given; stage names for the float', () => {
   assert.equal(tiers(tower.view(lvOf(31), {}, { total: 0 })), 1, 'meta.total wins');
   assert.equal(tiers(tower.view(lvOf(31), {})), 10);
-  assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' });
+  assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: null, full: '101 完工', lit: '101 點燈' });
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
 
@@ -249,14 +249,14 @@ const labelOf = beats => {
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 6→7 yields [focus(tower) ‖ walk] + build + focus(home) + apply + levelUp「101 蓋一半」+ home; 6→6 and 7→28 yield nothing', () => {
+test('settle crossing 6→7 yields [focus(tower) ‖ walk] + build + focus(home) + apply + levelUp (bare LEVEL UP) + home; 6→6 and 7→28 yield nothing', () => {
   const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
   const beats = tower.script.settle(e, { total: 7, prevTotal: 6 }, ctx);
   assert.deepEqual(beats.map(b => b.kind), ['together', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
   // 先對著 101 那一格（鏡頭飛的同時他就走，計畫 5b 任務 4）；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
   assert.deepEqual(beats[0].beats.map(b => b.kind), ['focus', 'walk']);
   assert.equal(beats[0].beats[0].target, 'tower'); assert.equal(beats[2].target, 'home'); assert.equal(beats[2].final, false); assert.equal(beats[2].dur, 0.8);
-  assert.equal(labelOf(beats), '101 蓋一半');
+  assert.equal(labelOf(beats), 'LEVEL UP');
   assert.deepEqual(tower.script.settle(e, { total: 6, prevTotal: 6 }, ctx), []);
   assert.deepEqual(tower.script.settle(e, { total: 28, prevTotal: 7 }, ctx), []);
   assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), '101 完工');
@@ -289,13 +289,13 @@ const allHome = show => { for (const k of show.roster.keys()) for (const m of sh
 const nearHead = (show, at) => { const h = show.stage.headOf('tower'); assert.ok(Math.hypot(at.x - h.x, at.z - h.z) < 0.5, 'label over the tower'); };
 
 // 跨進「蓋一半」的那一回合（從總等級曲線找，不寫死回合數）；前一回合不跨
-test('headless: the turn crossing into 蓋一半 ends with the「101 蓋一半」label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
+test('headless: the turn crossing into 蓋一半 ends with the bare LEVEL UP label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
   const h = await headlessShow(), order = SOLUTIONS[0], { totals, at } = towerCrossings(order);
   const before = await liveTurn(h, order, at.half - 1);
   assert.ok(before.settleSecs < 0.05, `no crossing → no time (${before.settleSecs})`);
   h.show.reset();
   const t = await liveTurn(h, order, at.half);
-  assert.equal(t.bubbles.at(-1).text, '101 蓋一半'); nearHead(h.show, t.bubbles.at(-1).at);
+  assert.equal(t.bubbles.at(-1).text, 'LEVEL UP'); nearHead(h.show, t.bubbles.at(-1).at);
   assert.ok(t.settleSecs >= 4 && t.settleSecs <= 8, `settle ${t.settleSecs.toFixed(2)} s`);
   allHome(h.show); assert.equal(h.show.stage.meta.total, totals[at.half - 1]);
 });

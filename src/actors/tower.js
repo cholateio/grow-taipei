@@ -37,7 +37,7 @@ const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
 // 螢幕：1.1 × 0.6、厚 0.08，朝 +z（鏡頭）；底邊在桅杆尖上 SCREEN_UP（天線細桿 0.55 高，留 0.05）
 const SCREEN = [1.1, 0.6, 0.08], SCREEN_UP = 0.6;
 
-export const STAGE_NAMES = { site: '101 工地', half: '101 蓋一半', full: '101 完工', lit: '101 點燈' };
+export const STAGE_NAMES = { site: '101 工地', half: null, full: '101 完工', lit: '101 點燈' };
 
 // 選擇帶動升級（計畫 5b 任務 3）：9 回合（8 次放置＋最後一輪），門檻取在兩條正解總等級曲線的空檔中間——
 //   賽博 2 5 9 14 24 35 45 57 61、外星 2 5 9 15 23 34 45 56 61。
@@ -227,7 +227,7 @@ export const script = {
     // 鏡頭飛去 101 的同時他就出發（計畫 5b 任務 4：外星第 6 回合 ≤ 50 s——跨門檻那回合他常要走 2–3 秒，以前等鏡頭到了才走）
     return [
       B.together([B.focus('tower'), B.walk(hero, front)]), B.gesture(hero, 'build', { at: AT }),
-      B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', { text: STAGE_NAMES[stage] }), B.home(hero),
+      B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', STAGE_NAMES[stage] ? { text: STAGE_NAMES[stage] } : {}), B.home(hero),
     ];
   },
 };

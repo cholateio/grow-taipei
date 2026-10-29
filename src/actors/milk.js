@@ -165,7 +165,7 @@ export function view(lv, flags, meta = {}) {
   }
   if (n >= 3 && !home) {
     v['milk.kids'] = {
-      kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n), scale: n >= 4 ? 1.3 : 1,
+      kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n),
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRY },
     };
     // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
@@ -201,6 +201,14 @@ function spawnKid(ctx) {
 // 三個小孩一起走到 centre 附近各自的位置（slots 半徑 r）
 const gather = (ctx, centre, r, opts) => ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, r)[i], opts?.(i))));
 
+const nearestFree = (roster, p) => {
+  let best = null, bestD = Infinity;
+  for (const m of roster.members('landmarks.islanders')) {
+    if (m.hidden || m.gone || m.mode !== 'home') continue;
+    const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z); if (d < bestD) { bestD = d; best = m; }
+  }
+  return best;
+};
 export const script = {
   // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下的同時 ♥、揮手
   // （一級 3–4.5 s：最近的島民離箱子 0.5–1.6 s 不等，走路那段至少 0.6 s、♥ 跟閃白一起冒——
@@ -311,9 +319,11 @@ export const script = {
     },
   },
   fx: () => null,   // 鮮奶自己沒有 onLevel
+  // 鮮奶 Lv2 的撲空是整個謎題最關鍵的線索，不能因為離得最近的島民正在忙（劇本中、藏起來、走掉）就 0 秒演不出來——
+  // 所以只挑「空著的」（日常 mode === 'home'、沒藏、沒走）裡最近的；一個都沒有才回 null。
   // 代表（撲空找的人）：Lv3 起是第一個露出來的小孩（藏起來躲進門裡的不算）；Lv2 還沒有小孩、早餐店也沒有名冊（不加人，人數預算）——
   // 借離鮮奶格最近的島民（同代幣 placed 劇本的叫法）。回到 GROW 裁決：鮮奶 Lv2 等棒球是整個謎題最重要的線索，撲空一定要演
-  rep: (s, ctx) => ((s?.lv?.milk ?? 0) >= 3 ? ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null : ctx.roster.nearest('landmarks.islanders', AT)),
+  rep: (s, ctx) => ((s?.lv?.milk ?? 0) >= 3 ? ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null : nearestFree(ctx.roster, AT)),
   hasRep: lv => lv >= 2,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：Lv2 借島民、Lv3 起小孩；Lv1 不排（鮮奶 Lv1 不會等）
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）

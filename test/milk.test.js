@@ -87,9 +87,8 @@ test('milk Lv3/7/8 use the school / university / research glb models with the pa
 });
 test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', () => {
   assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
-  for (let n = 3; n <= 10; n++) assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`);
-  assert.equal(views[3]['milk.kids'].scale, 1); assert.equal(views[4]['milk.kids'].scale, 1.3);
-  assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
+  for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
+    assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
   assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
@@ -283,8 +282,19 @@ test('milk rep: Lv2 borrows the nearest islander (hasRep(2) true, hasRep(1) fals
   const ms = milk.script;
   assert.equal(ms.hasRep(1), false); assert.equal(ms.hasRep(2), true); assert.equal(ms.hasRep(3), true);
   const islander = { key: 'landmarks.islanders', i: 0 }, kids = [{ key: 'milk.kids', i: 0, hidden: true }, { key: 'milk.kids', i: 1, hidden: false }], asked = [];
-  const roster = { nearest: (key, p) => { asked.push([key, p]); return islander; }, members: key => (key === 'milk.kids' ? kids : []) };
+  islander.mode = 'home'; islander.pos = { ...anchorWorld('milk') };
+  const roster = { members: key => { asked.push(key); return key === 'milk.kids' ? kids : key === 'landmarks.islanders' ? [islander] : []; } };
   assert.equal(ms.rep({ lv: { milk: 2 }, flags: {} }, { roster }), islander);
-  assert.deepEqual(asked, [['landmarks.islanders', anchorWorld('milk')]], 'asks for the islander nearest the milk anchor');
+  assert.deepEqual(asked, ['landmarks.islanders'], 'asks for the islanders');
   assert.equal(ms.rep({ lv: { milk: 3 }, flags: {} }, { roster }), kids[1], 'Lv3: the first visible kid');
+});
+// 鮮奶 Lv2 的撲空是整個謎題最關鍵的線索，不能因為最近的島民正在忙（劇本中、走出去、藏起來）就 0 秒演不出來——挑最近的「空著的」
+test('milk rep Lv2: skips busy islanders (script mode / hidden / gone) and picks the nearest one in daily mode; null when none', () => {
+  const A = anchorWorld('milk'), at = d => ({ x: A.x + d, y: A.y, z: A.z });
+  const busy = { i: 0, mode: 'script', pos: at(0.1) }, hid = { i: 1, mode: 'home', hidden: true, pos: at(0.2) }, gone = { i: 2, mode: 'home', gone: true, pos: at(0.3) };
+  const far = { i: 3, mode: 'home', pos: at(3) }, farther = { i: 4, mode: 'home', pos: at(5) };
+  const mk = list => ({ members: key => (key === 'landmarks.islanders' ? list : []) });
+  const st = { lv: { milk: 2 }, flags: {} };
+  assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone, farther, far]) }), far);
+  assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone]) }), null);
 });

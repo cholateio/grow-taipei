@@ -225,6 +225,15 @@ async function playMisses(order) {
       const sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = mod(info.item).script.rep(sv, { roster: show.roster, nav: show.nav });
       const usable = !!rep && !rep.hidden && !rep.gone && rep.mode === 'home' && (!!cellAt(rep.pos.x, rep.pos.z) || show.nav.walkable(rep.pos.x, rep.pos.z));
       cur = { e, info, w: e.waits.find(w => w.item === info.item), sv, rep: usable ? rep : null, start: usable ? { ...rep.pos } : null, t: show.elapsed, from: bubblesLog.length };
+      // 目標點與路線長度在這一刻量（miss() 定案時用的是這一刻的 nav；整局演完之後的 footprint 不一樣，路線長短會差——
+      // 2026-10-29：鮮奶 Lv2 借島民之後，第 7 回合走「往門口走一段」那一支，用整局最後的 nav 量反而以為走得到門口）
+      if (usable) {
+        const nav = show.nav, w = cur.w, h = w.for[0], hl = sv.lv[h];
+        const len = to => { const r = nav.route(cur.start, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; };
+        const spotOf = (id, n) => { const sp = n > 0 ? mod(id).visitSpot(n, sv) : null; return sp && cellAt(sp.x, sp.z) ? frontOf(sp, sp.r, nav) : null; };
+        const helperAt = h === 'typhoon' || hl === 0 ? null : spotOf(h, hl), door = spotOf(w.item, sv.lv[w.item]);
+        cur.geo = { helperAt, lot: h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null, door, lenDoor: door ? len(door) : Infinity, lenHelper: helperAt ? len(helperAt) : Infinity };
+      }
       segs.push(cur);
     } });
     close(); inv.turnEnd();
@@ -240,7 +249,7 @@ async function playMisses(order) {
 
 for (const outcome of ['hit', 'deflect']) {
   test(`EXAMPLE.${outcome}: every turn plays ≤ 2 misses at the right places, invariants clean`, async () => {
-    const order = EXAMPLE[outcome], { turns, inv, show, mod } = await playMisses(order), nav = show.nav;
+    const order = EXAMPLE[outcome], { turns, inv, mod } = await playMisses(order);
     let shown = 0;
     const kinds = new Set();
     for (const [i, { events, segs, secs, keys, waitLv }] of turns.entries()) {
@@ -258,20 +267,17 @@ for (const outcome of ['hit', 'deflect']) {
         shown++;
         assert.ok(g.secs >= SIGH - 0.05, `${label}: played (${g.secs.toFixed(2)} s)`);
         // 對的地方：幫手那邊（同格或相鄰、MISS_WALK 秒內走得到）優先，否則自己門口
-        const cap = MISS_WALK * g.rep.speed, h = g.w.for[0], hl = g.sv.lv[h], here = cellAt(g.start.x, g.start.z) ?? cellOf(g.w.item);
-        const len = to => { const r = nav.route(g.start, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; };
-        const spotOf = (id, n) => { const sp = n > 0 ? mod(id).visitSpot(n, g.sv) : null; return sp && cellAt(sp.x, sp.z) ? frontOf(sp, sp.r, nav) : null; };
-        const helperAt = h === 'typhoon' ? null : hl === 0 ? null : spotOf(h, hl), lot = h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null;
-        const door = spotOf(g.w.item, g.sv.lv[g.w.item]);
+        const cap = MISS_WALK * g.rep.speed, here = cellAt(g.start.x, g.start.z) ?? cellOf(g.w.item);
+        const { helperAt, lot, door, lenDoor, lenHelper } = g.geo;
         let kind;
         if (lot && flat(g.end, lot) <= 1.3 && near(cellAt(g.end.x, g.end.z), here)) kind = 'lot';
         else if (helperAt && flat(g.end, helperAt) < 0.2) kind = 'spot';
         else if (door && flat(g.end, door) < 0.2) kind = 'door';
-        else if (door && len(door) > cap && flat(g.end, door) < flat(g.start, door) - Math.min(1, cap / 2)) kind = 'toward door';
+        else if (door && lenDoor > cap && flat(g.end, door) < flat(g.start, door) - Math.min(1, cap / 2)) kind = 'toward door';
         else if (!door) kind = 'here';
         assert.ok(kind, `${label}: ended at (${g.end.x.toFixed(2)}, ${g.end.z.toFixed(2)}) — not the helper, not its door (start ${g.start.x.toFixed(2)}, ${g.start.z.toFixed(2)})`);
         // 幫手那邊走得到又近（同格／相鄰、MISS_WALK 秒內）就一定是去幫手那邊
-        if (helperAt && near(cellAt(helperAt.x, helperAt.z), here) && len(helperAt) <= cap - 0.05) assert.equal(kind, 'spot', `${label}: the helper's stand was within reach`);
+        if (helperAt && near(cellAt(helperAt.x, helperAt.z), here) && lenHelper <= cap - 0.05) assert.equal(kind, 'spot', `${label}: the helper's stand was within reach`);
         if (kind === 'lot' || kind === 'spot') assert.ok(near(cellAt(g.end.x, g.end.z), here), `${label}: helper side only when same / adjacent cell`);
         kinds.add(kind);
       }

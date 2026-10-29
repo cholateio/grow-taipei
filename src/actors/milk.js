@@ -311,8 +311,10 @@ export const script = {
     },
   },
   fx: () => null,   // 鮮奶自己沒有 onLevel
-  rep: (s, ctx) => ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null,   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算
-  hasRep: lv => lv >= 3,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：小孩 Lv3 起才有
+  // 代表（撲空找的人）：Lv3 起是第一個露出來的小孩（藏起來躲進門裡的不算）；Lv2 還沒有小孩、早餐店也沒有名冊（不加人，人數預算）——
+  // 借離鮮奶格最近的島民（同代幣 placed 劇本的叫法）。回到 GROW 裁決：鮮奶 Lv2 等棒球是整個謎題最重要的線索，撲空一定要演
+  rep: (s, ctx) => ((s?.lv?.milk ?? 0) >= 3 ? ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null : ctx.roster.nearest('landmarks.islanders', AT)),
+  hasRep: lv => lv >= 2,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：Lv2 借島民、Lv3 起小孩；Lv1 不排（鮮奶 Lv1 不會等）
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[10].key = true;

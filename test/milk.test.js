@@ -276,3 +276,15 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
+
+// 回到 GROW 裁決（設計 §4.3）：鮮奶 Lv2 等棒球的撲空一定要演——Lv2 還沒有小孩、也不加早餐店的人（人數預算），
+// 代表借離鮮奶格最近的島民（roster.nearest('landmarks.islanders', 鮮奶錨點)）；Lv3 起照舊是第一個露出來的小孩；Lv1 不排撲空
+test('milk rep: Lv2 borrows the nearest islander (hasRep(2) true, hasRep(1) false); Lv3 is the first visible kid', () => {
+  const ms = milk.script;
+  assert.equal(ms.hasRep(1), false); assert.equal(ms.hasRep(2), true); assert.equal(ms.hasRep(3), true);
+  const islander = { key: 'landmarks.islanders', i: 0 }, kids = [{ key: 'milk.kids', i: 0, hidden: true }, { key: 'milk.kids', i: 1, hidden: false }], asked = [];
+  const roster = { nearest: (key, p) => { asked.push([key, p]); return islander; }, members: key => (key === 'milk.kids' ? kids : []) };
+  assert.equal(ms.rep({ lv: { milk: 2 }, flags: {} }, { roster }), islander);
+  assert.deepEqual(asked, [['landmarks.islanders', anchorWorld('milk')]], 'asks for the islander nearest the milk anchor');
+  assert.equal(ms.rep({ lv: { milk: 3 }, flags: {} }, { roster }), kids[1], 'Lv3: the first visible kid');
+});

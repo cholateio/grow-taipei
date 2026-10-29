@@ -229,7 +229,7 @@ export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];
 // 101 到停車點的那條線上——坡道、拉高、回程下降都是同一條直線
 const parkOf = i => { const p = offset(AT, (i - 1) * 0.33, 0.1, ROOF_Y); return { ...p, yaw: Math.atan2(TOWER.x - p.x, TOWER.z - p.z) }; };
 // 三條坡道（一台一條，世界座標）：坡腳在車鼻前 LANE_GAP、朝那台的車頭方向（101）、寬 LANE_W（比車身窄一點，前後輪都壓在坡面上）；
-// 右邊那條離天線（ANTENNA）的距離由測試量。坡道的表面（parts.js rampSurface）跟零件用同一份 LANES
+// 右邊那條離天線（ANTENNA）要 ≥ ANTENNA.r + 0.02（test/token.test.js 量坡道離桅杆的距離）。坡道的表面（parts.js rampSurface）跟零件用同一份 LANES
 export const LANE_W = 0.26, LANE_T = 0.012, LANE_GAP = 0.02;
 export const LANES = [0, 1, 2].map(i => {
   const park = parkOf(i), d = CAR_L / 2 + LANE_GAP;
@@ -462,7 +462,7 @@ export const script = {
     },
   },
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）
-  rep: (s, ctx) => ctx.roster.members('token.staff').find(m => !m.hidden) ?? null,   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算
+  rep: (s, ctx) => ctx.roster.members('token.staff').find(m => !m.hidden) ?? null,   // 代表（撲空找的人）：藏起來的人（躲進門裡）不算
   hasRep: lv => lv >= 2,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：站務員 Lv2 起才有
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這幾級，也演完整劇本（turn.js）。

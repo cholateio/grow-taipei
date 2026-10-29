@@ -209,6 +209,7 @@ function spawnKid(ctx) {
 // 三個小孩一起走到 centre 附近各自的位置（slots 半徑 r）
 const gather = (ctx, centre, r, opts) => ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, r)[i], opts?.(i))));
 
+// 同 roster.nearest，多濾掉忙碌的（不在日常 home、藏著、在劇本手上的）：Lv2 的代表借島民，不能借走正在演的人
 const nearestFree = (roster, p) => {
   let best = null, bestD = Infinity;
   for (const m of roster.members('landmarks.islanders')) {

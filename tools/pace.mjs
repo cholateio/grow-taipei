@@ -24,7 +24,7 @@ import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 import { MISS_CAP, MISS_PER_TURN } from '../src/show/visit.js';
 import { CAUSE_CAP } from '../src/show/turn.js';
 
-// §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
+// §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了，上限留著當餘裕——起因段與撲空另量）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
 // 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
 const MIN = 4, MAX = 60, KEY_EXTRA = 8, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 // 終局回合（選擇帶動升級 §6）：真結局（警告＋飛彈＋尾聲）≤ 22 s、壞結局（警告＋飛彈）≤ 12 s（多了警告約 2.5 s）；

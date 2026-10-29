@@ -89,7 +89,7 @@ test('blockers: exactly the eight of design §3.2; every other up[] is auto', ()
     if (key === 'rat 5') continue;   // 照舊（分岔旗標）
     if (blockers[key]) assert.deepEqual(c, blockers[key], key); else assert.deepEqual(c, { always: true }, `${key} should be auto`);
   }
-  assert.ok(ITEMS.rat.up[5].or?.length === 2);
+  assert.deepEqual(ITEMS.rat.up[5], { or: [{ and: [{ flag: 'ratBranch', is: 'cyber' }, minL('token', 7)] }, { and: [{ flag: 'ratBranch', is: 'alien' }, minL('typhoon', 2)] }] });
 });
 test('jumps: exactly the thirteen of design §3.2', () => {
   assert.deepEqual(ITEMS.bulb.jump, { 5: minL('baseball', 4), 8: minL('chip', 4) });

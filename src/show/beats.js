@@ -364,7 +364,7 @@ export function trainDepart() {
 //   （這段算在拍裡）。during 在車頭到島那頭時才開始演；跳過、中止時 trip 收掉（列車回到環上原本的時鐘）
 // back：車頭剛開過 at 不到 back 弧度就倒車回來（trainRun）；spurSpeed：支線上的車速（預設 SPUR_SPEED）
 // launch：列車原本停著（上一個 trainStop 剛停在站上、拍一結束就接這一拍）——趕路從 0 加速（trainRun），不一幀跳到 k 倍
-// during：到站那一刻才開始依序演的一串拍（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
+// during：到站那一刻才開始依序演的一串拍（turn.js 的 withTwice 會就地換掉 during 裡的 LEVEL UP 元素，所以 during 要留在拍上、不要複製）（站前的人接箱子、再走開），車停 stop 秒照樣開走，這拍演到 during 也演完為止；
 //   長度在 start 時就要給時間軸，所以用每拍的 estimate（walk）或固定 dur 估。跳過或沒有列車時 during 每拍 start → end
 // together（還沒 start，dur 是 0）取子拍估計的最長
 const durOf = (b, ctx) => {

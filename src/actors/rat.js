@@ -319,7 +319,7 @@ export const script = {
     if (!e.delta && !e.flag && s.lv.boba > 0) return crash(e, ctx);
     return null;
   },
-  rep: (s, ctx) => ctx.roster.members(KEY).find(m => !m.hidden) ?? null,   // 代表（拜訪、撲空找的人）：藏起來的人（躲進門裡）不算
+  rep: (s, ctx) => ctx.roster.members(KEY).find(m => !m.hidden) ?? null,   // 代表（撲空找的人）：藏起來的人（躲進門裡）不算
   hasRep: lv => lv >= 1,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：每一級都有老鼠
 };
 // ◆ 關鍵節點（裁決 R11）：分岔與最終型態——跳級的第二級落在這兩級，也演完整劇本（turn.js）

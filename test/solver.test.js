@@ -49,7 +49,7 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
 // 物品 v2（2026-10-26）：兩條正解快照、颱風第 8 個、晶片第 8 個的報告項
 // 選擇帶動升級（2026-10-28 §3）：9 回合下颱風一定第 8、老鼠一定第 7；兩條正解只差第 3、4 個先放燈泡（賽博）還是先放代幣（外星）
 import { chipEighth } from '../src/solver/run.js';
-// 因果與離島（2026-10-28 §3）：Lv3 以上每一級都要有觸發者之後，兩條正解剛好還是這兩條（求解器收到的，見 spec.js 註解）
+// 回到 GROW（2026-10-29 設計 §3.2 的表）之後，兩條正解剛好還是這兩條（求解器收到的，見 spec.js 註解）
 const all = enumerate(spec), st = stats(all, spec);
 test('check passes on the shipped spec: exactly two full orders, one cyber one alien (snapshot the two orders)', () => {
   const c = check(all, spec);
@@ -94,7 +94,7 @@ const LV = {
   cyber: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,2,0,0,0,0,3],[5,0,3,2,0,0,0,4],[6,2,5,4,0,0,0,5],[7,4,6,5,0,0,2,6],[8,6,8,7,0,2,4,7],[9,8,9,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
   alien: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,3,0,0,0,4],[6,2,3,4,0,0,0,5],[7,4,5,5,0,0,2,6],[8,5,6,7,0,2,4,7],[9,7,8,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
 };   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
-// t8 珍奶是 6 不是 5：颱風登陸的外送爆單 delta 4 → 5、再自己長 5 → 6（試作 spike/spec-a.mjs 在舊引擎上逐回合重播也是 6；t9 的 7 只能從 6 來）
+// t8 珍奶是 6 不是 5：颱風登陸的外送爆單 delta 4 → 5、再自己長 5 → 6（設計附錄的表逐回合重播也是 6；t9 的 7 只能從 6 來）
 test('both solutions follow the design §3.3 level table turn by turn', () => {
   for (const r of st.full) {
     let s = createState(spec); const rows = [];

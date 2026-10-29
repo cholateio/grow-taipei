@@ -517,9 +517,9 @@ test('the ◆ key nodes are Lv4 (R6), Lv7 and Lv10 (R11)', () => {
   assert.deepEqual(Object.entries(token.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [4, 7, 10]);
 });
 // 兩個事件以上的回合整段 live 演：Lv4 環狀線的列車從站後面 0.6 rad 駛出
-// Lv4 標 ◆（裁決 R6），跳級的第二級照演完整劇本。計畫 6 任務 1（每一級都有觸發者）之後代幣 Lv3、Lv4 各有條件：
+// Lv4 標 ◆（裁決 R6），跳級的第二級照演完整劇本。回到 GROW（2026-10-29 設計 §3.2）的表之後代幣 Lv3、Lv4 各有條件：
 // 賽博正解 2 → 4 跳級（Lv4 是跳級的第二級），外星正解 3 → 4 一般升級（4 → 5 才跳）——兩種都要演到列車出發，至少一條是跳級（◆ 跳級那條路真的量到）。
-// 照正解演到那回合，整回合原樣 live 演（別的劇本、拜訪在前面，列車的位置跟著時鐘走）
+// 照正解演到那回合，整回合原樣 live 演（前面別的事件的劇本與起因段照演，列車的位置跟著時鐘走）
 test('grow 4 in a full live turn: the ring line rises and the train departs from behind the station', async () => {
   const h = await headlessShow(), { show, run } = h, is4 = e => e.kind === 'grow' && e.item === 'token' && e.to === 4;
   let jumped = 0;

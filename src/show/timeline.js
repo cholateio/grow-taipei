@@ -70,7 +70,7 @@ export function createTimeline({ reducedMotion = false } = {}) {
   }
 
   // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）。跳的期間 ctx.skipping 是 true：
-  // 0 秒、但自己留東西在畫面上活一陣子的拍（拜訪的 ♥）看它決定不冒出來——0 秒拍正常演也是 start → 馬上 end，分不出來
+  // 0 秒、但自己留東西在畫面上活一陣子的拍（拜訪的 ♥；拜訪 2026-10-29 拿掉後目前沒有拍讀它，留著當協定：以後有同類的拍可以直接用）看它決定不冒出來——0 秒拍正常演也是 start → 馬上 end，分不出來
   const skip = guarded(() => {
     if (!busy) return;
     const c = current; current = null;

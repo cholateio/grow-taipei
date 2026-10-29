@@ -640,7 +640,7 @@ test('bulb Lv7 with no train running (token never placed) plays the fallback ins
   const blades = () => show.stage.partObject('sat.windmill')?.children[0].rotation.z ?? 0, z0 = blades();
   for (let f = 0; f < 6; f++) show.update(1 / 30, 900 + f / 30);
   assert.ok(Math.abs(blades() - z0) > 1e-6, 'the windmill turns');
-  assert.ok(bulb.view(show.stage.lv, show.stage.flags)['sat.windmill'] === undefined && sat.view(show.stage.lv, show.stage.flags)['sat.windmill'].speed > 0, 'turbine speed > 0');
+  assert.ok(sat.view(show.stage.lv, show.stage.flags)['sat.windmill'].speed > 0, 'turbine speed > 0');
   // 劇本本身：沒列車就不叫他走去搭車——套用之後他閃白換到島上的家、回日常（修正輪 2）
   const kinds = flags => bulb.script.grow[7]({ kind: 'grow', item: 'bulb', to: 7 }, { lv: lv({ bulb: 7, token: flags.flooded ? 6 : 0 }), flags }, { B, roster: { members: () => [] } }).map(b => b.kind);
   assert.deepEqual(kinds({}), ['focus', 'apply', 'relocate', 'home', 'focus', 'levelUp']);

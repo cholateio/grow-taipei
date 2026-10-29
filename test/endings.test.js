@@ -65,7 +65,7 @@ test('ENDINGS has ten entries with Chinese titles', () => {
 test('typhoon placed 8th lands in its own turn; the closing turn decides between the rainbow and a deflected missile', async () => {
   const { advance } = await import('../src/rules/engine.js');
   const playTo = order => { let s = createState(spec); for (const id of order) s = place(s, id, spec).state; return s; };
-  // 回到 GROW（2026-10-29）重找：列舉裡第一個「颱風第 8 個放、最後燈泡 ≤ 5、飛彈被吹歪」的順序。
+  // 回到 GROW（2026-10-29）重找：「颱風第 8 個放、最後燈泡 ≤ 5、飛彈被吹歪」的一個順序（手挑的，下面的斷言才是守門：登陸當回合 typhoon 2、燈泡 4、停電、倒數後飛彈 deflect）。
   // 燈泡第 6 個才放，颱風登陸時燈泡 4 → 大停電鎖住燈泡，倒數那回合燈泡還是 4（< 6）：抽水站沒電，颱風不走
   const late = playTo(['milk', 'token', 'rat', 'boba', 'chip', 'bulb', 'baseball', 'typhoon']);
   assert.equal(late.lv.typhoon, 2, 'landed in its placement turn'); assert.equal(late.lv.bulb, 4); assert.equal(late.flags.blackout, true);

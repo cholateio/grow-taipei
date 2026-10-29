@@ -37,7 +37,7 @@ export function helperDeps(cond, self, spec = defaultSpec) {
   return spec.ORDER.filter(id => found.has(id));
 }
 
-// 這次真的讓條件成立的幫手（看得見的因果與離島三段 §3、§4：grow 事件的 via，演出層讓 via[0] 走來拜訪）：
+// 這次真的讓條件成立的幫手（看得見的因果與離島三段 §3、§4：grow 事件的 via，演出層讓鏡頭平移到 via[0] 那棟閃一下，turn.js 的起因段）：
 // minLevel／present 成立就算；and 要整條成立才算、列全部；or 只算成立的那幾支（兩支都成立就都列）；
 // maxLevel／absent／flag／age 不是幫手。整條不成立 → []。自己不算，照 ORDER 排序。
 // 跳級的 via 從 spec 寫的 jump[n] 裡挑（turn() 先列第一級 up[n−1] 也成立的幫手）
@@ -201,8 +201,8 @@ function turn(state, id, spec, rules) {
       if (!jump && !(ready(lv + 1) && it.up[lv + 1](s))) continue;
       const to = jump ? lv + 2 : lv + 1;
       // via 在改級之前算（條件是照這一刻的全島狀態成立的）；跳級的兩個事件共用同一份。
-      // 跳級（最終審稿 1）：先列第一級（up[n−1]）成立的幫手、再列只有第二級才有的（各自照 ORDER）——演出層拿 via[0] 去敲第一級的門，
-      // 照 ORDER 混在一起排的話，常常是第二級的幫手跑來敲第一級的門（賽博 21 段拜訪裡 10 段原因錯人）。
+      // 跳級（最終審稿 1）：先列第一級（up[n−1]）成立的幫手、再列只有第二級才有的（各自照 ORDER）——演出層拿 via[0] 當第一級的起因，
+      // 照 ORDER 混在一起排的話，常常是第二級的幫手跑來敲第一級的門（賽博 21 段起因裡 10 段原因錯人）。
       // 都只從整條跳級條件真的成立的那幾支裡挑（spec 寫的 jump[n] 單獨成立時，第一級沒成立的幫手不列）
       const all = satisfiedHelpers(jump ? it.jumpRaw[to] : it.raw[to], s, k, spec);
       const first = jump ? satisfiedHelpers(it.raw[lv + 1], s, k, spec).filter(h => all.includes(h)) : all;

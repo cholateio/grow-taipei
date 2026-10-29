@@ -270,8 +270,8 @@ export async function playLive(order, { seed = 21 } = {}) {
   return out;
 }
 
-// 拜訪點（計畫 6 設計 §4、§5）：照兩條正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
-// 在演之前（拜訪：走過去、敲門都在 apply 之前，舞台還是上一級）與演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）各問一次
+// 拜訪點（計畫 6 設計 §4、§5；拜訪本身 2026-10-29 拿掉了，只剩撲空用它）：照兩條正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
+// 在演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）問一次
 // visitSpot(n, { lv, flags })——spot 要有 y（＝那一格的 cellTop）、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
 // 拉回來不超過 tol。回傳 { bad, seen }：seen 是問到非 null 的「級」（排序過的數字陣列），測試寫死，少一級、多一級都看得到
 export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6 }) {

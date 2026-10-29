@@ -497,7 +497,8 @@ test('a caused grow\'s script seconds exclude the cause segment, which is measur
 // 並且取樣的局裡真的有燈泡到 7 時沒有列車（代幣 < 4）的——守門真的守到它要守的那一類
 test('no script throws: an even stride over the enumeration, the no-train order and EXAMPLE.hit/deflect play every turn (instant) without an error', async () => {
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js');
-  const all = enumerate(spec), STRIDE = 2000, strided = all.filter((_, k) => k % STRIDE === 0).map(r => r.order);
+  const all = enumerate(spec), STRIDE = 2000,   // 列舉是 8! = 40320 局，每 2000 個取一個 ≈ 21 局：每局 9 回合都要瞬間演完、跑得完；又散在整份列舉裡（不像前 20 個全是同一種開頭）。取樣裡有沒列車的局由下面的斷言守
+   strided = all.filter((_, k) => k % STRIDE === 0).map(r => r.order);
   const NO_TRAIN = ['bulb', 'milk', 'chip', 'boba', 'rat', 'baseball', 'typhoon', 'token'];
   const orders = [...strided, NO_TRAIN, EXAMPLE.hit, EXAMPLE.deflect];
   const { show, run } = await headlessShow(), bad = [], noTrain = new Set();

@@ -282,7 +282,8 @@ export const script = {
         B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1),
         // …… 0.7 → 0.5（2026-10-28 列車加大、搭車置中之後列車到溫泉那側要多趕 0.1 s，整段貼著 ◆ 8 s 的上限）
         B.walk(r0, MUTANT), B.bubble(r0, '……', 0.5),
-        ...transform, B.home(r0), B.wait(0.2), B.together([B.bubble(r0, '？', 0.8), B.levelUp('rat')]),   // 裁決 R17 ◆ ≤ 8 s：？ 跟 LEVEL UP 一起
+        // 裁決 R17 ◆ ≤ 8 s：？ 跟 LEVEL UP 一起；Task 6a 修正輪：變身後的停頓 0.2 → 0（列車趕到溫泉那側的秒數看它在哪，外星第 8 回合 live 量到 8.4 s）
+        ...transform, B.home(r0), B.together([B.bubble(r0, '？', 0.8), B.levelUp('rat')]),
       ];
     },
     // ◆ 最終型態：回全景定格再 LEVEL UP

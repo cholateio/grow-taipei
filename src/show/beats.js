@@ -192,15 +192,38 @@ export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
   };
 }
 
-export function levelUp(target, { text = 'LEVEL UP', down = false } = {}) {
-  let handle = null;
+// LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：拍長 1.3 s，第二個字樣在 TWICE_AFTER 秒後冒、多抬高 TWICE_DY——
+// 沒有「×2」、沒有別的字。target／text／down／twice 留在拍上（turn.js 把跳級劇本裡的 LEVEL UP 換成彈兩次的要讀）。
+// 跳過、reduced-motion（不 step）只冒第一個
+export const TWICE_AFTER = 0.3, TWICE_DY = 0.25;
+export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false } = {}) {
+  let handles = [], head = null, t = 0;
+  const pop = (ctx, extra = {}) => handles.push(ctx.bubbles.levelUp(head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...extra, ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) }));
   return {
-    kind: 'levelUp', dur: 1.0, down,
+    kind: 'levelUp', dur: twice ? 1.3 : 1.0, target, text, down, twice,
     start(ctx) {
       const r = resolveTarget(target, ctx); if (!r) return false;
-      handle = ctx.bubbles.levelUp(r.head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) });
+      handles = []; head = r.head; t = 0; pop(ctx);
     },
-    end() { handle?.cancel(); handle = null; },
+    step(k, dt, ctx) {
+      t += dt;
+      if (twice && handles.length === 1 && t >= TWICE_AFTER - 1e-9) pop(ctx, { dy: TWICE_DY });
+    },
+    end() { for (const h of handles) h?.cancel(); handles = []; },
+  };
+}
+
+// 起因閃一下（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟閃白 dur 秒（同升級用的材質閃白）。
+// 這一級沒有那個零件（被鎖、淹水換了站體……）或瞬間演（跳過、reduced-motion）→ 0 秒、不閃
+export const CAUSE_FLASH = 0.4;
+export function flash(key, dur = CAUSE_FLASH) {
+  return {
+    kind: 'flash', key, dur,
+    start(ctx) {
+      if (ctx.instant) return false;
+      const o = ctx.stage.partObject?.(key); if (!o) return false;
+      ctx.blink.part(o, dur);
+    },
   };
 }
 
@@ -454,5 +477,5 @@ export function jump(who, target, dur = 0.5) {
 
 export const B = {
   spawn, walk, bubble, gesture, apply, levelUp, focus, world, worldNow, wait, home, together, move, scaleIn, replay,
-  hideParts, showParts, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
+  hideParts, showParts, flash, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
 };

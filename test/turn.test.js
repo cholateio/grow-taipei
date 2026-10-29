@@ -5,7 +5,7 @@ import * as spec from '../src/rules/spec.js';
 import { installFakeDom } from './helpers/fakedom.js';
 installFakeDom();
 const turnModule = await import('../src/show/turn.js');
-const { buildTurn, estimateTurn, GAP } = turnModule;
+const { buildTurn, estimateTurn, GAP, CAUSE_FLASH, CAUSE_HELPER_KEY } = turnModule;
 const { B } = await import('../src/show/beats.js');
 const { cellOf } = await import('../src/actors/anchors.js');
 const finale = await import('../src/actors/finale.js');
@@ -228,35 +228,46 @@ test('an event with no cell neither pans nor counts as a change of item', () => 
   assert.deepEqual(focusTargets(beats), [[-1, 0], 'home']);
 });
 
-// 物品 v2 跳級（§3、§6）：同一物品一回合連兩個 grow、第二個 jump: true——第二個 LEVEL UP 緊接著出，不重走路、不平移、不空拍、不查劇本
+// 跳級（回到 GROW 設計 §4.2）：同一物品一回合連兩個 grow、第二個 jump: true——合成一段：第一級只有 mark（0 秒），
+// 第二級照一般事件演 n 級的劇本、LEVEL UP 彈兩次，它的 apply 一次套兩級的零件
 const between = (raw, k) => { const at = raw.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return raw.slice(at[k] + 1, at[k + 1] ?? raw.length - 3); };
 // 假模組：幫手（有代表、Lv2 劇本一拍）、晶片（沒有代表、Lv2／Lv3 劇本各一拍＋LEVEL UP）；grow 事件；一串拍裡每個 mark 的 info（start 一次就知道）
 const helperLike = id => ({ id, view() {}, script: { rep: () => walker, grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
 const chipLike = () => ({ id: 'chip', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], 3: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')] } } });
 const grow = (item, to, via, extra = {}) => ({ kind: 'grow', item, from: to - 1, to, via, ...extra });
 const marksOf = raw => raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = { e, info }; } }); return got; });
-test('two consecutive grow events of one item in a turn: the second plays only apply + LEVEL UP, no focus, no gap (review focus 2)', () => {
-  const asked = [];
+test('a jump: the first grow plays only a mark (0 s), the second plays level n script with LEVEL UP twice and one apply covering both levels', () => {
+  const asked = [], prevs = [];
   const chip = { id: 'chip', view() {}, script: { grow: {
     4: (e, s, c) => { asked.push(e.to); return [c.B.wait(1), c.B.levelUp('chip')]; },
-    5: (e, s, c) => { asked.push(e.to); return [c.B.wait(2), c.B.levelUp('chip')]; },
+    5: (e, s, c) => { asked.push(e.to); prevs.push([s.prev.lv.chip, s.lv.chip, s.prev.lv.milk]); return [c.B.wait(2), c.B.levelUp('chip')]; },
   } } };
   const jump = { kind: 'grow', item: 'chip', from: 4, to: 5, jump: true };
   const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 3, to: 4 }, jump, { kind: 'settle' }];
   const raw = buildTurn(events, base([quietTower, chip]), fakeCtx());
-  assert.deepEqual(asked, [4], 'the second level of a jump asks no script');
-  // 第一級照常：換物品空 GAP、平移到晶片格、劇本、補的 apply
-  assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
-  // 第二級：只有 apply + LEVEL UP（+ 每個事件補的 apply）
+  assert.deepEqual(asked, [5], 'only the second level asks its script (level n−1 is not played)');
+  // 「這次升級前」跟舞台一致：第一級沒套，s.prev 的晶片是 n−2（別的物品照這回合到這裡的狀態）
+  assert.deepEqual(prevs, [[3, 5, 1]], 's.prev of the merged level is n − 2');
+  // 第一級：只有 mark（0 秒）——不套、不閃、不平移
+  assert.deepEqual(between(raw, 1), [], 'the first level: a mark only');
+  assert.deepEqual(marksOf(raw)[1].info, { gap: 0, key: false, skipped: true });
+  // 第二級：照一般事件演（換物品空 GAP、平移到晶片格、n 級劇本、補的 apply），LEVEL UP 彈兩次
   const second = between(raw, 2);
-  assert.deepEqual(second.map(b => b.kind), ['apply', 'levelUp', 'apply']);
-  assert.notEqual(second[0].blink, false, 'the jump level blinks its parts');
-  // 只看 e.jump：中間被別的事件隔開（第一級的 fx 插進來）也一樣只演 apply + LEVEL UP
+  assert.deepEqual(second.map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
+  assert.equal(second[3].twice, true, 'LEVEL UP pops twice');
+  // 整回合的 apply：鮮奶放置 2、跳級 1（第二級那一個一次套兩級）、settle 1——第一級沒有自己的 apply
+  assert.equal(raw.filter(b => b.kind === 'apply').length, 4);
+  // 中間被別的事件隔開（第一級的 fx、別的物品）也一樣：第一級只有 mark，第二級合成一段
   const apart = buildTurn([{ kind: 'grow', item: 'chip', from: 3, to: 4 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, jump], base([quietTower, chip]), fakeCtx());
-  assert.deepEqual(between(apart, 2).map(b => b.kind), ['apply', 'levelUp', 'apply']);
+  assert.deepEqual(between(apart, 0), [], 'apart: the first level is a mark only');
+  const merged = between(apart, 2);
+  assert.deepEqual(merged.map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']); assert.equal(merged[3].twice, true);
+  // 同物品中間又長了一級（不是接著的那一級）就不算跳級的第一級
+  const notFirst = buildTurn([{ kind: 'grow', item: 'chip', from: 2, to: 3 }, jump], base([quietTower, chip]), fakeCtx());
+  assert.notDeepEqual(between(notFirst, 0), [], 'from must match: chip 3 is not the first level of the 4 → 5 jump');
 });
 
-// 裁決 R11：◆ 關鍵節點（劇本函數帶 key: true）在正解裡也要看得到——跳級的第二級落在關鍵級就演完整劇本（第一級照常演自己的），
+// 裁決 R11：◆ 關鍵節點（劇本函數帶 key: true）在正解裡也要看得到——跳級的第二級落在關鍵級就演完整劇本（第一級只有 mark）
 const keyChip = () => {
   const asked = [], five = (e, s, c) => { asked.push(e.to); return [c.B.wait(2), { kind: 'fly', dur: 3 }, c.B.walk(walker, { x: 40, y: 0, z: 0 }), c.B.levelUp('chip')]; };
   five.key = true;
@@ -265,8 +276,12 @@ const keyChip = () => {
 test('R11: the second level of a jump plays its full script when it is a key node', () => {
   const { asked, mod } = keyChip(), jump = { kind: 'grow', item: 'chip', from: 4, to: 5, jump: true };
   const raw = buildTurn([{ kind: 'grow', item: 'chip', from: 3, to: 4 }, jump, { kind: 'settle' }], base([quietTower, mod]), fakeCtx({ nav: navOf(40) }));
-  assert.deepEqual(asked, [4, 5], 'both levels ask their scripts');
-  assert.deepEqual(between(raw, 1).map(b => b.kind), ['wait', 'fly', 'walk', 'levelUp', 'apply'], 'the key script, no extra focus on the same cell');
+  assert.deepEqual(asked, [5], 'only the key level asks its script');
+  assert.deepEqual(between(raw, 0), [], 'the first level: a mark only');
+  const seg = between(raw, 1);
+  assert.deepEqual(seg.map(b => b.kind), ['focus', 'wait', 'fly', 'walk', 'levelUp', 'apply'], 'the key script after the pan to the chip cell');
+  assert.equal(seg[4].twice, true, 'the key script\'s LEVEL UP pops twice too');
+  assert.equal(marksOf(raw)[1].info.key, true);
 });
 // 選擇帶動升級裁決 R6：代幣 Lv4 也標 ◆（2 → 4 一定跳級，環狀線是主線）
 test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 flies the speeders in', async () => {
@@ -287,6 +302,55 @@ test('a grow with via plays no visit: no mark {visit}, nobody walks before the s
   const spotted = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), { ...chipLike(), visitSpot: () => ({ x: 0, y: 0.65, z: 0, r: 0.8 }) }]), fakeCtx());
   assert.ok(marksOf(spotted).every(m => !m.info.visit), 'a level with a visit spot gets no visit either');
   assert.ok(!spotted.some(b => b.kind === 'walk' || b.kind === 'fade' || (b.kind === 'together' && b.beats.some(x => x.kind === 'walk' || x.kind === 'fade'))));
+});
+
+// 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 鏡頭先到 via[0] 那一格、那棟本體閃白 CAUSE_FLASH 秒，
+// 再照常平移到被升級的那一格。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不閃
+const hasFlash = beats => beats.some(b => b.kind === 'flash' || (b.kind === 'together' && hasFlash(b.beats)));
+test('cause flash: a grow with via opens with focus(helper cell) + flash(<helper>.main), then the usual pan to the target', () => {
+  assert.equal(CAUSE_FLASH, 0.4); assert.equal(CAUSE_HELPER_KEY('milk'), 'milk.main');
+  const raw = buildTurn([grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
+  const seg = between(raw, 0);
+  assert.deepEqual(kindsOf(seg).slice(0, 5), ['focus', 'flash', 'focus', 'wait', 'levelUp']);
+  assert.deepEqual(seg[0].target, cellOf('milk')); assert.equal(seg[1].key, 'milk.main'); assert.equal(seg[1].dur, CAUSE_FLASH); assert.deepEqual(seg[2].target, cellOf('chip'));
+  assert.equal(marksOf(raw)[0].info.cause, 'milk');
+  // 鏡頭已經在幫手那格（上一個事件是鮮奶）：不再平移到鮮奶格，只閃
+  const already = buildTurn([grow('milk', 2, []), grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
+  assert.deepEqual(kindsOf(between(already, 1)).slice(0, 3), ['wait', 'flash', 'focus']);
+  // via 兩個以上只閃第一個
+  const two = buildTurn([grow('chip', 2, ['milk', 'bulb'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
+  assert.deepEqual(between(two, 0).filter(b => b.kind === 'flash').map(b => b.key), ['milk.main']);
+});
+test('no cause flash: typhoon as via, after the landing, the first level of a jump, empty via, finale turn', () => {
+  const mods = () => [quietTower, helperLike('milk'), helperLike('typhoon'), chipLike()];
+  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['typhoon'])], base(mods()), fakeCtx())), 'typhoon');
+  const landed = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk'])], base(mods()), fakeCtx());
+  assert.ok(!hasFlash(between(landed, 1)), 'indoors');
+  const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base(mods()), fakeCtx());
+  assert.deepEqual(between(jump, 0), [], 'first level of a jump: mark only'); assert.ok(hasFlash(between(jump, 1)), 'the merged second level carries the flash');
+  assert.ok(!hasFlash(buildTurn([grow('chip', 2, [])], base(mods()), fakeCtx())), 'no via');
+  // 終局旗標走 buildTurn 的第二個參數（同上面 missile／epilogue 的測試）
+  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['milk'])], { ...base(mods()), finale: true }, fakeCtx())), 'finale');
+});
+// 假的颱風登陸劇本跟真的一樣最後回全景（登陸自己回全景；不然下一個 indoors 事件前面會補一拍 focus('home')）
+const landingLike = () => ({ id: 'typhoon', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.focus('home')] } } });
+test('indoors jump: after the landing the merged level plays [apply, levelUp twice, apply]; a key level plays its full script', () => {
+  const key = (e, s, c) => [c.B.wait(2), c.B.levelUp('chip')]; key.key = true;
+  const mod = { ...chipLike(), script: { ...chipLike().script, grow: { 2: chipLike().script.grow[2], 3: chipLike().script.grow[3], 4: key } } };
+  const plain = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), landingLike(), mod]), fakeCtx());
+  assert.deepEqual(between(plain, 1), []); assert.deepEqual(kindsOf(between(plain, 2)), ['apply', 'levelUp', 'apply']); assert.equal(between(plain, 2)[1].twice, true);
+  // ◆ 關鍵級登陸之後照演完整劇本（裁決 R14：照舊有空拍與平移到晶片格），LEVEL UP 也彈兩次；不插起因閃一下
+  const keyed = buildTurn([grow('typhoon', 2, []), grow('chip', 3, ['milk']), grow('chip', 4, ['milk'], { jump: true })], { ...base([quietTower, helperLike('milk'), landingLike(), mod]), lv: { ...zero, chip: 2 } }, fakeCtx());
+  assert.deepEqual(between(keyed, 1), []);
+  assert.deepEqual(kindsOf(between(keyed, 2)), ['wait', 'focus', 'wait', 'levelUp', 'apply']); assert.equal(between(keyed, 2)[3].twice, true);
+  assert.ok(!hasFlash(keyed), 'no cause flash after the landing');
+});
+// LEVEL DOWN（knock-back）不會被換成彈兩次；together 裡的 LEVEL UP 也換
+test('a jump wraps every LEVEL UP of its script, inside together too, but never a LEVEL DOWN', () => {
+  const mod = { ...chipLike(), script: { grow: { 3: (e, s, c) => [c.B.together([c.B.wait(1), c.B.levelUp('chip')]), c.B.levelUp('chip', { down: true })] } } };
+  const raw = buildTurn([grow('chip', 2, []), grow('chip', 3, [], { jump: true })], base([quietTower, mod]), fakeCtx());
+  const seg = between(raw, 1), inner = seg.find(b => b.kind === 'together').beats.find(b => b.kind === 'levelUp'), down = seg.find(b => b.kind === 'levelUp');
+  assert.equal(inner.twice, true); assert.equal(down.down, true); assert.equal(down.twice, false);
 });
 
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段——mark { miss, item }、（換物品空 GAP）、

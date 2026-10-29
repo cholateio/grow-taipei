@@ -117,20 +117,22 @@ test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 
 });
 
 // 事件層級：每個零件第一次出現在鏈上那一節的事件演完時（不是同一回合別的事件帶出來、也不是回合末才補上），之後一直都在
+// 回到 GROW 設計 §4.2：跳級合成一段——第一級沒有自己的 apply，那一級的零件跟第二級一起出現（own：零件屬於哪個事件演完）
 test('island chain, event by event: each chain part first appears with its own event and stays', async () => {
-  for (const [n, { events, grows }] of (await playBoth()).entries()) {
+  for (const [n, { events, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), first = has => events.findIndex(has), idx = tag => events.findIndex(x => x.e === tag);
+    const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/); return jumps.has(`${id}${+lv + 1}`) ? `${id}${+lv + 1}` : tag; };
     const windmill = grows.indexOf('bulb7') < grows.indexOf('token7') ? 'bulb7' : 'token7';   // 風車島支線：燈泡 Lv7 先到就自己鋪
     const PARTS = [['token.spur.windmill', windmill], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
-      ['chip.cable', 'bulb8'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']];
+      ['chip.cable', 'bulb8'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));
       assert.equal(events[i]?.e, tag, `${name}: ${key} first after ${events[i]?.e} (want ${tag})`);
       assert.ok(events.slice(i).every(x => x.keys.has(key)), `${name}: ${key} stays`);
     }
     const lit = first(x => x.cableLit);
-    assert.equal(events[lit]?.e, 'chip6', `${name}: cable lit after ${events[lit]?.e}`); assert.ok(events.slice(lit).every(x => x.cableLit));
-    assert.ok(idx('bulb8') < lit, `${name}: the cable lies dark between bulb 8 and chip 6`);
+    assert.equal(events[lit]?.e, own('chip6'), `${name}: cable lit after ${events[lit]?.e}`); assert.ok(events.slice(lit).every(x => x.cableLit));
+    assert.ok(idx(own('bulb8')) < lit, `${name}: the cable lies dark between bulb 8 and chip 6`);
   }
 });
 

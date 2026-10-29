@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig } from './helpers/show.js';
+import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig, gameInvariants } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
@@ -371,14 +371,17 @@ test('a turn with a stage crossing into 點燈 holds the mid-script focus(home) 
   assert.ok(lit >= 0, 'the turn crosses into 點燈');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
-  const tower = cellCentre([0, 0]);
-  assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
+  // 劇本先飛去 101：登陸回合的 settle 只留套用、LEVEL UP 與回全景（turn.js 的 indoorSettle），那一拍本來就不在——
+  // 回到 GROW 之後點燈落在登陸回合（以前是跳級第一級晶片 7 的劇本剛好飛過 101 才過；跳級合成一段之後 n−1 級的劇本不演）
+  const tower = cellCentre([0, 0]), landing = events.some(engine.landsTyphoon);
+  if (!landing) assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
   // 停 0.8 s（1 倍速：演出時間就是真實秒數）
   assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
   assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');
 });
 
-// 物品 v2（§3、§6）：跳級時跳過，兩級都要落地（第二級的 apply 也在 skip 時套上）
+// 物品 v2（§3、§6）：跳級時跳過，兩級都要落地。回到 GROW 設計 §4.2：跳級合成一段——第一級沒有自己的 apply，
+// 舞台從 n−2 一次套到 n（中間從來不停在 n−1）；套上之後閃白、LEVEL UP 演到一半跳過，兩級都在
 test('skip during a jump lands both levels', async () => {
   const order = SOLUTIONS[0];
   let s = engine.createState(spec), at = -1, r = null;
@@ -393,17 +396,57 @@ test('skip during a jump lands both levels', async () => {
   assert.ok(at >= 0, 'a solution turn has a jump');
   const jump = r.events.find(e => e.jump), events = [...r.events, { kind: 'settle' }];
   await ref.run(events, { instant: true });
-  // live：演到跳級的第二個事件開始後 0.3 s（閃白中）跳過
+  // live：演到跳級合成的那一段把舞台套到 n，再 0.1 s（閃白中）跳過
   let started = null, before = null;
+  const seen = new Set();
   const p = live.show.turn(events, { onMark: e => { if (e === jump) { started = live.show.elapsed; before = live.show.stage.lv[jump.item]; } } });
-  for (let t = 0; started === null || live.show.elapsed < started + 0.3; t += 1 / 30) { live.show.update(1 / 30, t); assert.ok(t < 60, 'reaches the jump'); }
-  assert.equal(before, jump.from, 'the first level was in when the jump started');
-  assert.ok(live.show.busy && live.show.blink.count + live.show.bubbles.count > 0, 'mid-jump: the second level is still showing');
+  for (let t = 0; started === null || live.show.stage.lv[jump.item] !== jump.to; t += 1 / 30) {
+    live.show.update(1 / 30, t); assert.ok(t < 60, 'reaches the jump');
+    if (started !== null) seen.add(live.show.stage.lv[jump.item]);
+  }
+  for (let k = 0; k < 3; k++) live.show.update(1 / 30, 100 + k / 30);
+  assert.equal(before, jump.from - 1, 'the first level never applied on its own: n − 2 when the merged event starts');
+  assert.ok(!seen.has(jump.from), 'the stage goes from n − 2 straight to n');
+  assert.ok(live.show.busy && live.show.blink.count + live.show.bubbles.count > 0, 'mid-jump: the merged level is still showing');
   live.show.skip(); await p;
   assert.equal(live.show.stage.lv[jump.item], jump.to);
   assert.deepEqual(live.show.stage.lv, r.state.lv);
   assert.equal(live.show.stage.pendingKeys().length, 0);
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
+});
+
+// 回到 GROW 設計 §4.2 的整局探針：兩條正解 live 演完（真的鏡頭 rig），跳級合成、起因閃一下之後共用不變式照樣乾淨
+// （不穿牆、不瞬移、換位置閃白、每回合回全景、每個 LEVEL UP 字樣至少一半時間在畫面裡）；
+// 每回合起因閃一下 ≤ 4 段（mark 的 info.cause；真的閃了的看 blink.part 收到 CAUSE_FLASH 秒），
+// LEVEL UP 彈兩次的第二個字樣（bubbles.levelUp 收到 dy）次數 = 引擎這回合 jump: true 的 grow 個數
+test('both solutions live with merged jumps and cause flashes: invariants clean, ≤ 4 cause flashes per turn, one twice LEVEL UP per engine jump', async () => {
+  const { CAUSE_FLASH } = await import('../src/show/turn.js');
+  for (const order of SOLUTIONS) {
+    const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
+    let flashed = 0, seconds = 0, causes = 0, total = 0, lit = 0;
+    const part = show.blink.part, levelUp = show.bubbles.levelUp;
+    show.blink.part = (o, dur, ...rest) => { if (dur === CAUSE_FLASH) flashed++; return part(o, dur, ...rest); };
+    show.bubbles.levelUp = (head, opts = {}) => { if (opts.dy > 0) seconds++; return levelUp(head, opts); };
+    let s = engine.createState(spec);
+    for (const [i, step] of turnSteps(order).entries()) {
+      const r = step(s); s = r.state; flashed = 0; seconds = 0; causes = 0;
+      const what = `${order.join('>')} turn ${i + 1}`;
+      inv.label(what);
+      await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { inv.label(`${what} [${e.kind} ${e.item ?? ''}${e.to ?? ''}]`); if (info?.cause) causes++; } });
+      inv.turnEnd();
+      const jumps = r.events.filter(e => e.kind === 'grow' && e.jump).length;
+      assert.ok(causes <= 4 && flashed <= causes, `${what}: ${causes} cause segments, ${flashed} flashes`);
+      assert.equal(seconds, jumps, `${what}: one twice LEVEL UP per jump (${jumps})`);
+      total += causes; lit += flashed;
+      assert.deepEqual(show.stage.lv, s.lv, `${what}: stage levels equal the engine`);
+    }
+    assert.ok(total > 0 && lit > 0, `${order.join('>')}: some cause flashes play (${lit}/${total})`);
+    assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
+    assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
+    assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);
+    assert.deepEqual(inv.camera, []);
+    assert.deepEqual(inv.labels, []);
+  }
 });
 
 // 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。
@@ -456,10 +499,15 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP 
       assert.ok(flat(seg.get(events[i0])).some(b => b.kind === 'crowd' || b.kind === 'walk'), 'the landing itself still sends people to the doors');
       // 鏡頭：登陸回全景；◆ 關鍵劇本把鏡頭帶走（最後一個 focus 不是全景）之後，下一個 indoors 事件前面補一拍回全景（審稿：外星倒數 1
       // 老鼠 Lv4 對著溫泉，之後珍奶 5、棒球 6 的 LEVEL UP 在畫面外），其他 indoors 事件不平移
-      let away = false, homed = 0;
+      // 跳級合成一段（回到 GROW 設計 §4.2）：第一級只有 mark（這一段沒有拍），第二級的 LEVEL UP 彈兩次
+      const firstOfJump = e => e.kind === 'grow' && events.some((x, k) => k > events.indexOf(e) && x.jump && x.item === e.item && x.from === e.to);
+      let away = false, homed = 0, merged = 0;
       for (const e of events.slice(i0 + 1)) {
         const kinds = flat(seg.get(e)).map(b => b.kind), what = `${e.kind} ${e.item ?? ''} ${e.to ?? e.flag?.name ?? e.story ?? ''}`;
         if (e.kind === 'wait') continue;
+        if (firstOfJump(e)) { assert.deepEqual(kinds, [], `${what}: the first level of a jump is a mark only`); continue; }
+        if (e.jump) { assert.ok(flat(seg.get(e)).filter(b => b.kind === 'levelUp').every(b => b.twice), `${what}: LEVEL UP twice`); merged++; }
+        assert.ok(!kinds.includes('flash'), `${what}: no cause flash after the landing`);
         if (isKey(e)) {
           assert.ok(kinds.some(k => k !== 'apply' && k !== 'levelUp'), `${what}: the key script plays (${kinds})`); assert.ok(kinds.includes('levelUp'), what);
           const focuses = flat(seg.get(e)).filter(b => b.kind === 'focus');
@@ -475,6 +523,7 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP 
         if (e.kind === 'grow') assert.deepEqual(rest.map(b => b.kind), ['apply', 'levelUp', 'apply'], what);
       }
       if (order.indexOf('rat') < order.indexOf('boba')) assert.equal(homed, 1, `${order.join('>')}: one lead home after rat 4 (alien)`);
+      assert.ok(merged >= 1, `${order.join('>')}: a jump lands after the landing (rat 2 → 4)`);
     }
   }
 });

@@ -565,7 +565,8 @@ test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (s
     const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);
     const ev = at(7), five = at(5);
     assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn}: ${ev?.live.toFixed(2)} s`);
-    assert.ok(five && !five.e.jump && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
+    // 跳級合成一段（回到 GROW 設計 §4.2）之後，跳級的第二級也演自己的劇本（兩條正解的燈泡 5 都是 4 → 5 跳級的第二級）
+    assert.ok(five && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
   }
 });
 // 2026-10-28 錄影修正：夜市第二攤不能關掉捷運站與夜市之間的通道——北邊碼頭（珍奶觀光客的入口）走到人龍、

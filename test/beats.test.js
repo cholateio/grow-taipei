@@ -397,3 +397,17 @@ test('gesture sigh: 1.0 s on a walker (walker gesture set, cleared at the end); 
   tl.play([B.gesture(rat, 'sigh')], ctx); tl.update(0); tl.update(0.3); assert.notEqual(rat.holder.rotation.y, 1);
   tl.skip(); assert.equal(rat.holder.rotation.y, 1, 'skip puts the model back on its yaw');
 });
+
+// 回到 GROW 設計 §4.2：跳級合成一段，LEVEL UP 彈兩次（第二次晚 0.3 秒、高一點）；起因那棟本體閃白一下（B.flash）
+const fakeCtx = (extra = {}) => ({ stage: { headOf: () => ({ x: 0, y: 1, z: 0 }) }, ...extra });
+test('levelUp twice: beat lasts 1.3 s, pops the label twice (second after 0.3 s, higher)', () => {
+  const calls = [], ctx = fakeCtx({ bubbles: { levelUp: (head, o) => { calls.push(o); return { cancel() {} }; } } });
+  const b = B.levelUp('chip', { twice: true }); assert.equal(b.dur, 1.3); assert.equal(b.twice, true); assert.equal(b.target, 'chip');
+  b.start(ctx); b.step(0.1, 0.1, ctx); assert.equal(calls.length, 1); b.step(0.35, 0.25, ctx); assert.equal(calls.length, 2);
+  assert.ok((calls[1].dy ?? 0) > (calls[0].dy ?? 0));
+});
+test('flash: blinks the named part for CAUSE_FLASH; missing part → start returns false', () => {
+  const blinked = [], ctx = fakeCtx({ stage: { partObject: k => (k === 'milk.main' ? { id: 1 } : null) }, blink: { part: (o, d) => blinked.push([o, d]) } });
+  assert.equal(B.flash('milk.main', 0.4).start(ctx), undefined); assert.deepEqual(blinked, [[{ id: 1 }, 0.4]]);
+  assert.equal(B.flash('typhoon.main', 0.4).start(ctx), false);
+});

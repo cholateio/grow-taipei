@@ -12,9 +12,16 @@
 //   script[e.kind]，沒有就 [apply]。這三種的劇本自己管鏡頭：不補 focus、不空拍、不算「上一個物品」。
 //   終局回合（finale: true，警告＋飛彈＋尾聲）：不扶正零件、整回合不補 focus／GAP；收尾照舊（回日常、全島效果、回全景）。
 //   ctx.speed 恆為 1（時間軸、beats.js 讀它的換算都保留，預設 1 就是不換算）。
-// 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
-//   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
-// ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）。
+// 跳級 = 一個事件（回到 GROW 設計 §4.2）：引擎照舊記兩個 grow（第二個 jump: true，中間可能夾著跨過那一級的 onLevel fx）。
+//   第一級（同物品後面有 jump: true、from 接著它的 to、中間沒有同物品別的 grow 的那個）只推 mark(e, { gap: 0, key: false, skipped: true })：
+//   不套、不閃、不平移、不查劇本（n−1 級的劇本不演）。第二級照一般事件演 n 級的劇本（沒寫就預設），裡面所有 LEVEL UP 換成彈兩次
+//   （withTwice，together 裡也換；LEVEL DOWN 不換）；它的 apply 一次套兩級的零件（舞台 foldEvent 直接設 lv = e.to，從 n−2 到 n 一次 diff，
+//   兩級的新零件一起閃白出現）。登陸之後（indoors）第二級 [apply, LEVEL UP×2, apply]。第二級劇本拿到的 s.prev 是 n−2（跟舞台一致）。
+// ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
+// 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
+//   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）閃白 CAUSE_FLASH 秒，再照常平移到被升級的那一格。
+//   via 兩個以上只閃第一個（引擎把第一級的幫手排在前面）。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不插。
+//   幫手這一級沒有本體零件（演到才知道）→ 不閃、不停鏡頭，平移照沒有起因時的帳。mark 的 info 加 cause: via[0]（pace 不另量）。
 // 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空照舊（下一段）。
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件裡前 MISS_PER_TURN 個叫得到代表的 waits（照 ORDER）各一段
 //   （叫不叫得到建串時看模組的 script.hasRep(現在的等級)：鮮奶 Lv2 起（Lv2 借最近的島民）、代幣 Lv2 起、燈泡 Lv7 起電工在離島上叫不到、颱風永遠沒有——不佔位子，往後補；最終審稿 3）：
@@ -31,11 +38,14 @@
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
-import { B, together } from './beats.js';
+import { B, together, CAUSE_FLASH } from './beats.js';
 import { BLINK } from './blink.js';
 import { miss, MISS_PER_TURN } from './visit.js';
 
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
+// 起因閃一下（見檔頭）：閃幾秒（beats.js 的 B.flash 預設同一個數）、閃哪個零件（每個演員模組的本體都是 <id>.main）
+export { CAUSE_FLASH };
+export const CAUSE_HELPER_KEY = id => `${id}.main`;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['warning', 'missile', 'epilogue']);
 
@@ -82,6 +92,26 @@ function defaults(e) {
   if (e.delta && e.delta.to > e.delta.from) return [applyOf(e), B.levelUp(e.delta.target)];
   if (e.delta && e.delta.to < e.delta.from) return [applyOf(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })];
   return [B.apply(e, { blink: false })];
+}
+
+// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換
+function withTwice(beats) {
+  return beats.map(b => {
+    if (b.kind === 'together' && b.beats) { const sub = withTwice(b.beats); return sub.some((x, k) => x !== b.beats[k]) ? together(sub) : b; }
+    return b.kind === 'levelUp' && !b.down && !b.twice ? B.levelUp(b.target, { text: b.text, twice: true }) : b;
+  });
+}
+
+// 這回合哪些 grow 是跳級的第一級、哪些是合成的第二級（見檔頭）：第 i 個之後同物品的下一個 grow 是 jump: true 而且接著它（from === to）。
+// 颱風登陸的事件不當第一級（登陸要演；颱風也沒有跳級）
+function jumpPairs(events) {
+  const first = new Set(), second = new Set();
+  events.forEach((e, i) => {
+    if (e.kind !== 'grow' || landsTyphoon(e)) return;
+    const j = events.findIndex((x, k) => k > i && x.kind === 'grow' && x.item === e.item);
+    if (j > i && events[j].jump && events[j].from === e.to) { first.add(i); second.add(j); }
+  });
+  return { first, second };
 }
 
 // 登陸之後的事件（indoors）：升級 → [apply, LEVEL UP]；改級的反應 → [apply, LEVEL UP／DOWN]；其他 → 閃白套用
@@ -136,8 +166,9 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const p = pending; pending = null;
     const prevItem = c => lastShown(p, c)?.item ?? p.item, need = c => { const li = prevItem(c); return !!li && item !== li; };
     const maybe = [p.item, ...p.segs.map(x => x.item)].some(li => li && item !== li), g = maybe ? gapBeat(need) : null;
-    const focus = cell && { ...B.focus(cell), start(c) { if (!lastShown(p, c) && sameCell(cell, p.cell)) return false; return B.focus(cell).start(c); } };
-    return { gap: g?.beat ?? null, gapOf: () => (g ? g.gap() : 0), focus };
+    // 演到才決定的平移（to 預設是這個事件的格子；起因閃一下先平移到幫手那一格也用它）：撲空全沒演、鏡頭本來就在 to 那一格就不動
+    const focusTo = to => to && { ...B.focus(to), start(c) { if (!lastShown(p, c) && sameCell(to, p.cell)) return false; return B.focus(to).start(c); } };
+    return { gap: g?.beat ?? null, gapOf: () => (g ? g.gap() : 0), focus: focusTo(cell), focusTo };
   };
 
   // 撲空段（見檔頭）：wait 事件裡前 MISS_PER_TURN 個「這一級叫得到代表」的 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常。
@@ -161,8 +192,29 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     if (p.segs.length) pending = p;
   };
 
-  events.forEach(e => {
-    const prev = view; view = foldEvent(view, e);
+  // 起因閃一下（見檔頭）：這個事件要不要插、閃誰（null = 不插）
+  const { first: jumpFirst, second: jumpSecond } = jumpPairs(events);
+  const causeOf = (e, i) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !jumpFirst.has(i) && !landed && !finale ? e.via[0] : null);
+  // 起因的拍：toHelper 是平移到幫手那一格的拍（null = 鏡頭已經在那一格）。幫手這一級有沒有本體零件演到才知道（記一次）：
+  // 沒有就不平移過去、也不閃（B.flash 自己回 false）。then(main, fallback)：之後平移到目標格的拍——起因演了照 main（鏡頭在幫手那一格），
+  // 沒演照 fallback（原本的帳）；兩個都是 null 就不用平移
+  const causeBeats = (helper, toHelper) => {
+    const key = CAUSE_HELPER_KEY(helper);
+    let has = null;
+    const shown = c => (has ??= !!c.stage.partObject?.(key));
+    const go = toHelper && { ...toHelper, start(c) { if (!shown(c)) return false; return toHelper.start(c); } };
+    const then = (main, fallback) => {
+      const base = main ?? fallback; if (!base) return null;
+      return { ...base, start(c) { const b = shown(c) ? main : fallback; return b ? b.start(c) : false; } };
+    };
+    return { beats: [...(go ? [go] : []), B.flash(key, CAUSE_FLASH)], then };
+  };
+
+  events.forEach((e, i) => {
+    // 跳級合成的第二級：「這次升級前」是舞台上看得到的樣子——第一級沒有套，物品還在 n−2（中間的 fx 照樣折進去）。
+    // 劇本看 s.prev 判斷升級前的狀態（老鼠 Lv4 看升級前有沒有在車頂上），要跟舞台一致
+    const before = view; view = foldEvent(view, e);
+    const prev = jumpSecond.has(i) ? { ...before, lv: { ...before.lv, [e.item]: e.from - 1 } } : before;
     const total = sum(view.lv);
     // settle 的 prevTotal 是上次結算的總等級（101 看的是結算值，不是事件中途的總和）
     const s = { lv: view.lv, flags: view.flags, prev, total, prevTotal: e.kind === 'settle' ? settled : sum(prev.lv) };
@@ -170,6 +222,9 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
     const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
+    // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 彈兩次、它的 apply 一次套兩級
+    if (jumpFirst.has(i)) { out.push(mark(e, { gap: 0, key: false, skipped: true })); return; }
+    const twice = jumpSecond.has(i), twiced = beats => (twice ? withTwice(beats) : beats);
     // 合成事件（警告、飛彈、尾聲）：finale 劇本整串照演，鏡頭由劇本自己管（不補平移、不空拍、不算上一個物品）
     if (FINALE_KINDS.has(e.kind)) {
       const beats = mod('finale')?.script?.[e.kind]?.(e, s, ctx) ?? [B.apply(e)];
@@ -180,48 +235,51 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
       return;
     }
     if (landed && !key && e.kind !== 'wait' && e.kind !== 'settle') {
-      out.push(mark(e), ...(away ? [B.focus('home')] : []), ...indoors(e), B.apply(e)); away = false;
+      out.push(mark(e), ...(away ? [B.focus('home')] : []), ...twiced(indoors(e)), B.apply(e)); away = false;
       return;
     }
-    // 跳級的第二級：只看 e.jump（引擎只把它標在同物品 +2 的第二個 grow 上；中間插了第一級的 fx 也一樣）
-    const jumped = e.kind === 'grow' && e.jump;
     let beats;
-    if (jumped && !key) {
-      out.push(mark(e), B.apply(e), B.levelUp(e.item), B.apply(e));
-      return;
-    }
     if (e.kind === 'wait') {
       missFirst(e, s);
       beats = [B.apply(e, { blink: false })];
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
       const fn = { placed: sc?.placed, grow: sc?.grow?.[e.to], fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
-      beats = fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e));
+      beats = twiced(fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e)));
       if (landed && e.kind === 'settle') beats = keepOnly(beats, indoorSettle);
     }
     // 鏡頭：等待事件不補平移（撲空段自己平移到代表那一格）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
     let gapOf = null;   // 撲空之後演到才決定的空拍：mark 的 info.gap 演完才知道
+    let cause = null;   // 起因閃一下插了的話是幫手（mark 的 info.cause）
     if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
-      if (cell && pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）
+      const helper = causeOf(e, i), hc = helper ? cellOf(helper) : null;
+      let pan = null;   // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
+      if (cell && pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）；起因的平移也算一次平移（用同一本帳）
         const a = afterMiss(item, cell);
         if (a.gap) { lead.push(a.gap); gapOf = a.gapOf; }
-        if (!opensOnFocus(beats[0])) { lead.push(a.focus); lastCell = cell; }
+        pan = a.focus;
+        if (hc) { const k = causeBeats(helper, a.focusTo(hc)); lead.push(...k.beats); pan = k.then(sameCell(cell, hc) ? null : B.focus(cell), pan); cause = helper; }
         lastItem = item;
       } else if (cell) {
         if (lastItem && item !== lastItem) lead.push(B.wait(GAP));
-        if (!opensOnFocus(beats[0]) && !sameCell(cell, lastCell)) { lead.push(B.focus(cell)); lastCell = cell; }
+        pan = sameCell(cell, lastCell) ? null : B.focus(cell);
+        if (hc) { const k = causeBeats(helper, sameCell(hc, lastCell) ? null : B.focus(hc)); lead.push(...k.beats); pan = k.then(sameCell(cell, hc) ? null : B.focus(cell), pan); cause = helper; }
         lastItem = item;
       }
+      if (cell && !opensOnFocus(beats[0])) { if (pan) lead.push(pan); lastCell = cell; }
+      else if (cause) lastCell = hc;
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }
     const last = focusesOf([...lead, ...beats]).at(-1);
     if (last) away = last.target !== 'home';
     const gap = gapOf ? null : estimateTurn(lead.filter(b => b.kind === 'wait'), ctx);
-    out.push(mark(e, gapOf ? { key, get gap() { return gapOf(); } } : { gap, key }), ...lead, ...beats, B.apply(e));
+    const info = gapOf ? { key, get gap() { return gapOf(); } } : { gap, key };
+    if (cause) info.cause = cause;
+    out.push(mark(e, info), ...lead, ...beats, B.apply(e));
     if (landsTyphoon(e)) landed = true;
   });
 

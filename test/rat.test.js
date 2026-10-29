@@ -159,16 +159,16 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
   // 外星尾聲、沒有尾聲：照舊（繞 101）
   assert.deepEqual(rat.view(L, { ratBranch: 'cyber', epilogue: 'alien' })['rat.pack'], plain['rat.pack']);
 });
-// 審稿：王冠鼠不能坐在停好的飛天車上——代幣 Lv10 三台停在屋頂左中右（車身長 0.3，沿停好的方向）；
-// 王冠鼠離每一台車身（停車點 ± 0.15 沿車頭方向的線段）≥ 0.2，還在屋頂上、離天線 ≥ 0.2
-test('the crown rat sits clear of the three parked speeders on the cyber roof (≥ 0.2 from every car body) and on the roof', async () => {
+// 審稿：王冠鼠不能坐在停好的飛天車上——代幣 Lv10 三台 Roadster 停在屋頂左中右（車身長 = 車身零件的長，沿停好的方向；計畫 8 任務 5）；
+// 王冠鼠離每一台車身（停車點 ± 半個車長、沿車頭方向的線段）≥ 0.2，還在屋頂上、離天線 ≥ 0.2
+test('the crown rat sits clear of the three parked roadsters on the cyber roof (≥ 0.2 from every car body) and on the roof', async () => {
   const token = await import('../src/actors/token.js'), { orbitPose } = await import('../src/actors/parts.js'), st = anchorWorld('token');
   const v = token.view(lv({ token: 10 }), {}), k = rat.kingSpot(10);
   const segDist = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
   for (let i = 0; i < 3; i++) {
-    const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, 1e6), ux = Math.sin(yaw) * 0.15, uz = Math.cos(yaw) * 0.15;
+    const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, 1e6), half = car.model.parts[0].scale[2] / 2, ux = Math.sin(yaw) * half, uz = Math.cos(yaw) * half;
     const d = segDist(k, { x: car.park.x - ux, z: car.park.z - uz }, { x: car.park.x + ux, z: car.park.z + uz });
-    assert.ok(d >= 0.2, `${d.toFixed(2)} from speeder ${i} parked at x ${(car.park.x - st.x).toFixed(2)}`);
+    assert.ok(d >= 0.2, `${d.toFixed(2)} from roadster ${i} parked at x ${(car.park.x - st.x).toFixed(2)}`);
   }
   assert.ok(Math.abs(k.x - st.x) <= 0.5 && Math.abs(k.z - st.z) <= 0.36, 'on the roof (1.1 × 0.82)');
   assert.ok(Math.hypot(k.x - (st.x + 0.42), k.z - (st.z - 0.3)) >= 0.2, 'clear of the roof antenna');

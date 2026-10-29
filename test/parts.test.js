@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
-import { createPartFactory } from '../src/actors/parts.js';
+import { createPartFactory, orbitPose } from '../src/actors/parts.js';
 import { createPathCursor } from '../src/scene/path.js';
 
 const setup = (extra = {}) => {
@@ -203,4 +203,60 @@ test('quality low: glb parts are spawned without glow (one merged mesh per model
   const seen = [], assets = { spawn: async (path, o) => { seen.push(o.glow); return new THREE.Group(); } };
   for (const quality of ['high', 'low']) setup({ quality, assets }).f.build({ kind: 'glb', at, path: 'x.glb', h: 1, glow: { Sign: 0xff3fa0 } });
   await Promise.resolve(); assert.deepEqual(seen, [{ Sign: 0xff3fa0 }, null]);
+});
+
+// ── 飛天車改 Tesla Roadster（設計 §4.6）：屋頂斜坡起飛（ramp）、冷氣體噴嘴冒白煙（puff）、四輪落地壓一下回彈（squash）──
+// 停車點 (5, 1, 0)、圓心原點、phase 0 → 軌道入口 E = (2, 1 + 4, 0) 剛好在斜坡方向（−x）上
+const RAMP_A = 20 * Math.PI / 180;
+const roadsterSpec = () => ({
+  at: { x: 0, y: 0, z: 0 }, r: 2, h: 5, speed: 2.5, phase: 0, legs: [1.4, 1.0], squash: 0.03,
+  park: { x: 5, y: 1, z: 0, yaw: -Math.PI / 2 }, ramp: { x: -0.35 * Math.cos(RAMP_A), y: 0.35 * Math.sin(RAMP_A), z: 0 },
+});
+const total = s => s.legs[0] + 2 * Math.PI / s.speed + s.legs[1];
+test('orbitPose park + ramp: starts at park, climbs along the ramp direction, ends parked (done) with a squash in the last 0.3 s', () => {
+  const s = roadsterSpec(), T = total(s), p0 = orbitPose(s, 0, 'park');
+  assert.ok(Math.hypot(p0.x - 5, p0.y - 1, p0.z) < 1e-9 && Math.abs(p0.yaw - s.park.yaw) < 1e-9 && !p0.done, 'starts at park facing park.yaw');
+  const mid = orbitPose(s, s.legs[0] / 2, 'park');
+  assert.ok(mid.y > s.park.y + 0.05, `higher than park (${mid.y.toFixed(3)})`);
+  assert.ok(Math.abs(mid.z) < 1e-9 && mid.x < s.park.x, 'xz on the ramp line, ahead of park');
+  // 斜坡上：位置在 park 到坡頂那段線段上
+  const onRamp = orbitPose(s, 0.3, 'park'), k = (s.park.x - onRamp.x) / -s.ramp.x;
+  assert.ok(k > 0 && k < 1 && Math.abs(onRamp.y - (s.park.y + s.ramp.y * k)) < 1e-9, 'slides up the ramp');
+  for (const t of [T, T + 5, Infinity]) { const e = orbitPose(s, t, 'park'); assert.deepEqual(e, { x: 5, y: 1, z: 0, yaw: s.park.yaw, done: true }); }
+  for (const t of [T - 0.25, T - 0.15, T - 0.05]) {
+    const p = orbitPose(s, t, 'park');
+    assert.ok(p.squash > 0 && p.squash <= s.squash + 1e-9, `t ${t.toFixed(2)} squash ${p.squash}`);
+    assert.ok(Math.hypot(p.x - 5, p.y - 1, p.z) < 1e-9 && Math.abs(p.yaw - s.park.yaw) < 1e-9, 'wheels on the roof, facing park.yaw');
+  }
+  assert.ok(!(orbitPose(s, T - 0.4, 'park').squash > 0), 'no squash before touchdown');
+});
+test('orbitPose puff: on the ramp (0.6 s before lift-off) and 0.3 s before touchdown, nowhere else; no puff/squash on specs without ramp/squash', () => {
+  const s = roadsterSpec(), T = total(s), puff = t => orbitPose(s, t, 'park').puff;
+  for (const t of [0, 0.3, 0.55]) assert.ok(puff(t) >= 0 && puff(t) < 1, `t ${t} puffing (${puff(t)})`);
+  for (const t of [T - 0.55, T - 0.4]) assert.ok(puff(t) >= 0 && puff(t) < 1, `t ${t.toFixed(2)} puffing before touchdown`);
+  for (const t of [0.65, 1.0, 2.5, T - 0.7, T - 0.2, T + 1]) assert.equal(puff(t) ?? null, null, `t ${t.toFixed(2)} no puff`);
+  const plain = { at: { x: 0, y: 0, z: 0 }, r: 2, h: 4, speed: 2.5, legs: [1.2, 0.8], from: { x: 9, y: 3, z: 9 }, park: { x: 2, y: 1, z: 3 } };
+  for (const t of [0, 0.3, total(plain) - 0.1]) { const p = orbitPose(plain, t); assert.equal(p.puff ?? null, null); assert.ok(!(p.squash > 0)); }
+});
+test('orbit with model.parts: built from primitives (no glb spawned, one mesh); puffs show on the ramp and hide once flying and after land()', () => {
+  const { f, loaded } = setup(), s = { kind: 'orbit', ...roadsterSpec(), model: { parts: [
+    { kind: 'box', pos: [0, 0.08, 0], scale: [0.27, 0.07, 0.54], color: 0xdb6a41 },
+    { kind: 'cylinder', pos: [0.12, 0.04, 0.17], scale: [0.08, 0.035, 0.08], rot: [0, 0, Math.PI / 2], color: 0x211d1d },
+  ] } };
+  const p = f.build(s), car = p.object.children[0], meshes = o => { const n = []; o.traverse(x => { if (x.isMesh || x.isInstancedMesh) n.push(x); }); return n; };
+  assert.equal(loaded.length, 0, 'no glb');
+  const puffs = meshes(car).filter(m => m.isInstancedMesh), body = meshes(car).filter(m => !m.isInstancedMesh);
+  assert.equal(body.length, 1, 'one merged clay mesh'); assert.equal(puffs.length, 1); assert.equal(puffs[0].count, 3, 'three puffs');
+  assert.ok(!puffs[0].visible, 'parked: no puffs');
+  p.object.userData.fly(); p.update(0.2, 0.2);
+  assert.ok(Math.hypot(car.position.x - 5, car.position.z) < 0.35 && puffs[0].visible, 'on the ramp, puffing');
+  p.update(1.0, 1.2); assert.ok(!puffs[0].visible, 'climbing: no puffs');
+  p.object.userData.fly(); p.update(0.2, 0.2); p.object.userData.land(); assert.ok(!puffs[0].visible, 'land() hides the puffs');
+  // 落地壓一下：最後 0.3 s 車身 y 方向壓扁、輪底（模型原點）還在停車點
+  p.object.userData.fly(); p.update(total(s) - 0.15, 9);
+  const m = body[0].parent === car ? body[0] : body[0].parent;
+  assert.ok(Math.hypot(car.position.x - 5, car.position.y - 1, car.position.z) < 1e-9, 'on the roof');
+  assert.ok(m.scale.y < 1, `squashed (scale.y ${m.scale.y.toFixed(3)})`);
+  p.update(0.2, 9.2); assert.equal(m.scale.y, 1, 'springs back');
+  p.dispose();
 });

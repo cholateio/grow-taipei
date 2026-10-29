@@ -1,7 +1,7 @@
 // 動態零件工廠：把 view 裡的 partSpec 做成 three.js 物件。
 //   compound：kit 零件合併成「一個黏土 mesh + 每種發光色一個 mesh」，演員再多 draw call 也壓得住（§10 ≤ 150）
 //   people：在共用的小人系統裡生 n 個；glb：CC0 模型（可沿路徑走）；smoke：循環冒煙；
-//   orbit：一個 glb 從 from 飛進來、繞圓心 at 一圈（高 h、半徑 r、車頭朝切線）、停到 park（飛天車）
+//   orbit：一台車（kit 零件拼的 model 或 glb）從 from 飛進來或從停車點（斜坡）起飛、繞圓心 at 一圈（高 h、半徑 r、車頭朝切線）、停到 park（飛天車）
 //   shield：矽盾罩（半球、半透明淡藍、六角格紋）；cable：沿路徑的管子（海底電纜，通電時多一條發光管）
 // 物品模組可以用 ctx.builders 加自己的 kind。每個零件 = { object, update?(dt, t), dispose?() }。
 import { makeGeometry } from '../scene/kit.js';
@@ -12,20 +12,43 @@ const ease = k => k * k * (3 - 2 * k);
 const lerp = (a, b, k) => a + (b - a) * k;
 // orbit 的一趟飛行（純函式）：t 秒時的位置與車頭方向。start 'from'（從 spec.from 飛進來）或 'park'（從停車點起飛）；
 //   legs = [飛到圓上幾秒, 從圓上飛回停車點幾秒]；圓上那一圈從角 phase 逆時針繞一圈（2π / speed 秒），車頭朝切線（同列車的 yaw）；
-//   飛完 done = true、停在 park，車頭朝最後一段的方向（停好不再轉）。
+//   飛完 done = true、停在 park，車頭朝 park.yaw（有給的話：Roadster 停好朝 101），不然朝最後一段的方向（停好不再轉）。
 //   每一段開頭車頭從上一段結束的方向轉過來（最短轉角，每秒最多 TURN_RATE、至少 TURN_MIN 秒），交界不瞬間轉向
+// 計畫 8 任務 5（Tesla Roadster，設計 §4.6）的兩個選項，沒給就是上面的老飛法（無人機、尾聲的紅色跑車照舊）：
+//   ramp（從 park 到坡頂的位移，長 0.35、仰角 20°）：從停車點起飛時，前 RAMP_T 秒從 park 沿斜坡加速滑上坡頂（車頭仰起 pitch），
+//     再一條拋物線（水平等速、高度 1 − (1 − k)² 先快後慢）拉到圓上入口，整段 legs[0] 秒；滑坡那 RAMP_T 秒車底噴氣（puff 0 → 1）
+//   squash（壓下去的深度）：回停車點那段提早 TOUCH 秒落地，最後 TOUCH 秒車身壓下去再回彈（squash = 深度 · sin(π·u/TOUCH)），
+//     落地前 TOUCH 秒噴氣；回程車頭從切線一路轉到 park.yaw（落地時剛好轉好）
+//   puff：噴氣那段的進度 0..1（其餘時候沒有這個欄位）；pitch：仰角（只有 ramp 才有）
+export const RAMP_T = 0.6, TOUCH = 0.3;
 const TURN_RATE = 3.3, TURN_MIN = 0.3;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const turnIn = (prev, cur, u) => { const d = wrap(prev - cur), T = Math.max(TURN_MIN, Math.abs(d) / TURN_RATE); return cur + d * Math.max(0, 1 - u / T); };
 export function orbitPose(spec, t, start = 'from') {
-  const { at, r, h, speed, phase = 0, legs: [tin, tout] = [1, 1], park } = spec, from = start === 'park' ? park : spec.from;
+  const { at, r, h, speed, phase = 0, legs: [tin, tout] = [1, 1], park, ramp, squash = 0 } = spec, from = start === 'park' ? park : spec.from ?? park;
   const lap = 2 * Math.PI / speed, E = { x: at.x + Math.cos(phase) * r, y: at.y + h, z: at.z + Math.sin(phase) * r };
   const head = (a, b) => Math.atan2(b.x - a.x, b.z - a.z), tangent = a => Math.atan2(-Math.sin(a), Math.cos(a));
-  const hIn = head(from, E), hOut = head(E, park), hPark = hOut;
+  const launch = start === 'park' && ramp, R = launch ? { x: park.x + ramp.x, y: park.y + ramp.y, z: park.z + ramp.z } : from;
+  const hIn = head(R, E), hOut = head(E, park), hPark = park.yaw ?? hOut, land = squash > 0 ? TOUCH : 0, fly = tout - land;
   const leg = (a, b, k, yaw) => ({ x: lerp(a.x, b.x, ease(k)), y: lerp(a.y, b.y, ease(k)), z: lerp(a.z, b.z, ease(k)), yaw, done: false });
+  if (launch && t < RAMP_T) {   // 斜坡：從靜止加速（s = k²），車頭朝 park.yaw、跟著滑上去的進度仰起來（仰角 ∝ s：車尾繞原點往下掉的量
+    // 半車長 · sin(仰角) 一直小於升高的 ramp.y · s，車尾不會插進屋頂——車長 ≤ 0.68 都成立）
+    const k = t / RAMP_T, s = k * k, pitch = Math.atan2(ramp.y, Math.hypot(ramp.x, ramp.z)) * s;
+    return { x: park.x + ramp.x * s, y: park.y + ramp.y * s, z: park.z + ramp.z * s, yaw: hPark, pitch, puff: k, done: false };
+  }
+  if (launch && t < tin) {   // 拋物線拉高到圓上入口，車頭放平
+    const k = (t - RAMP_T) / (tin - RAMP_T), pitch = Math.atan2(ramp.y, Math.hypot(ramp.x, ramp.z)) * (1 - ease(k));
+    return { x: lerp(R.x, E.x, k), y: R.y + (E.y - R.y) * (1 - (1 - k) ** 2), z: lerp(R.z, E.z, k), yaw: turnIn(hPark, hIn, t - RAMP_T), pitch, done: false };
+  }
   if (t < tin) return leg(from, E, t / tin, start === 'park' ? turnIn(hPark, hIn, t) : hIn);
   if (t < tin + lap) { const u = t - tin, a = phase + u * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: turnIn(hIn, tangent(a), u), done: false }; }
-  if (t < tin + lap + tout) { const u = t - tin - lap; return leg(E, park, u / tout, turnIn(tangent(phase), hOut, u)); }
+  if (t < tin + lap + fly) {
+    const u = t - tin - lap, k = u / fly;
+    if (!land) return leg(E, park, k, turnIn(tangent(phase), hOut, u));
+    const p = leg(E, park, k, tangent(phase) + wrap(hPark - tangent(phase)) * ease(k));
+    return u >= fly - TOUCH ? { ...p, puff: (u - fly + TOUCH) / TOUCH } : p;
+  }
+  if (t < tin + lap + tout) { const u = t - tin - lap - fly; return { x: park.x, y: park.y, z: park.z, yaw: hPark, squash: squash * Math.sin(Math.PI * u / land), done: false }; }
   return { x: park.x, y: park.y, z: park.z, yaw: hPark, done: true };
 }
 
@@ -165,19 +188,43 @@ export function createPartFactory(THREE, ctx) {
     };
   }
 
-  // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 從 from 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，現在恆為 1），land() 立刻停好（跳過）；
-  // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。模型在 at 底下，位置相對 at
+  // 飛天車：平常停在 park；object.userData.fly({ delay, speed }) 飛一趟（劇本的拍叫它；delay 與飛行照 speed 倍速，現在恆為 1）——
+  // 有 from 從 from 飛進來，沒有就從停車點起飛（Roadster：屋頂斜坡）；land() 立刻停好（跳過）；
+  // 有 rest 的話停滿 rest 秒自己從停車點起飛再繞一圈（全島長滿時天上一直有車在動）。
+  // 模型：model: { parts }（kit 零件拼的車，一個 compound，原點在輪底）或 path（glb：無人機、尾聲的紅色跑車）。
+  // 車（object.children[0]）在 at 底下，位置相對 at；轉向 YXZ（先仰角 pitch 再轉車頭 yaw）。
+  // squash：模型 y 方向壓扁，輪底（原點）不離地、車頂壓下 squash；puff：車底三顆白色小球往外散、變大、淡出（一個 InstancedMesh，
+  // 只在 orbitPose 給 puff 的那幾段看得到——跳過（land）就藏起來）
+  const PUFF_AT = [[-0.07, 0.1], [0.07, 0.1], [0, -0.12]];
   function orbit(spec) {
     // ?quality=low（手機，裁決 R18 draw call ≤ 150）：飛天車、無人機不畫；fly／land 留著給劇本叫
     if (ctx.quality === 'low') { const object = new THREE.Group(); object.userData.fly = () => {}; object.userData.land = () => {}; return { object, update() {}, dispose() {} }; }
-    const object = new THREE.Group(), at = spec.at;
-    const model = glb({ path: spec.path, h: spec.size, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 });
-    object.add(model.object);
-    let flying = false, start = 'from', t = 0, idle = 0, rate = 1;
-    const put = p => { model.object.position.set(p.x - at.x, p.y - at.y, p.z - at.z); model.object.rotation.y = p.yaw; };
+    const object = new THREE.Group(), at = spec.at, car = new THREE.Group(); car.rotation.order = 'YXZ'; object.add(car);
+    const model = spec.model ? compound({ parts: spec.model.parts }) : glb({ path: spec.path, h: spec.size, tint: spec.tint, glow: spec.glow, ry: spec.ry ?? 0 });
+    car.add(model.object);
+    const top = spec.model ? new THREE.Box3().setFromObject(model.object).max.y : 1;
+    let puffs = null;
+    if (spec.ramp || spec.squash) {
+      puffs = new THREE.InstancedMesh(puffGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }), PUFF_AT.length);
+      puffs.castShadow = puffs.receiveShadow = false; puffs.frustumCulled = false; puffs.visible = false; car.add(puffs);
+    }
+    const pm = new THREE.Matrix4(), pq = new THREE.Quaternion(), pv = new THREE.Vector3(), ps = new THREE.Vector3();
+    const puffAt = k => {
+      PUFF_AT.forEach(([x, z], i) => {
+        const u = (k * 2 + i / PUFF_AT.length) % 1, d = Math.hypot(x, z);
+        puffs.setMatrixAt(i, pm.compose(pv.set(x + x / d * 0.12 * u, 0.025 - 0.02 * u, z + z / d * 0.12 * u), pq, ps.setScalar(0.025 + 0.045 * u)));
+      });
+      puffs.instanceMatrix.needsUpdate = true; puffs.material.opacity = 0.85 * (1 - k * k) + 0.05;
+    };
+    const put = p => {
+      car.position.set(p.x - at.x, p.y - at.y, p.z - at.z); car.rotation.y = p.yaw; car.rotation.x = -(p.pitch ?? 0);
+      model.object.scale.y = p.squash > 0 ? 1 - p.squash / top : 1;
+      if (puffs) { puffs.visible = p.puff != null; if (puffs.visible) puffAt(p.puff); }
+    };
+    let flying = false, start = 'park', t = 0, idle = 0, rate = 1;
     const land = () => { flying = false; idle = 0; put(orbitPose(spec, Infinity)); };
     land();
-    object.userData.fly = ({ delay = 0, speed = 1 } = {}) => { flying = true; start = 'from'; t = -delay; rate = speed; put(orbitPose(spec, 0, 'from')); };
+    object.userData.fly = ({ delay = 0, speed = 1 } = {}) => { flying = true; start = spec.from ? 'from' : 'park'; t = -delay; rate = speed; put(orbitPose(spec, 0, start)); };
     object.userData.land = land;
     return {
       object,
@@ -186,7 +233,7 @@ export function createPartFactory(THREE, ctx) {
         t += dt * rate; const p = orbitPose(spec, Math.max(0, t), start); put(p);
         if (p.done) land();
       },
-      dispose: model.dispose,
+      dispose() { model.dispose(); puffs?.material.dispose(); },
     };
   }
 

@@ -27,10 +27,11 @@ const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時�
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客改站池子北側、離牠 ≥ 1.9（landmarks.js BATHERS_NORTH，2026-10-28）
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 老鼠在這裡變身）
-// 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（飛天車停在中線 z 0.02 的左中右、車身沿 ±z 長 0.3，牠坐空著的左後角、
-// 面向站前廣場；天線在右後角）；之前是大車站圓頂外的簷角
+// 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（代幣 Lv10 三台 Roadster 停在 z 0.1 的左中右、車頭朝 101（−z）、車身長 0.54，
+// 牠坐空著的左後角、身體沿著後緣（面向 +x，側身對鏡頭——面向廣場的話身體會伸進左邊那台的車頭；計畫 8 任務 5）；天線在右後角）；
+// 之前是大車站圓頂外的簷角
 const STATION = anchorWorld('token'), CORNICE_Y = 0.605;
-export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.48, -0.32, ROOF_Y), yaw: 0.8 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
+export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.46, -0.355, ROOF_Y), yaw: Math.PI / 2 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
 
 // 黑塔屋頂上的站位（世界座標）：屋頂面高度、兩排各 5 隻（x 間距 0.26 ≥ 名冊的 0.25，不會被 separateStanding 推開），
 // 前排 z +0.1、後排 z −0.26（離後緣的桅杆 0.36）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）

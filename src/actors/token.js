@@ -1,8 +1,8 @@
 // 代幣（物品 v2 §4.1，max 10）：站牌＋小月台 → 小站（售票亭、站務員）→ 大車站（站體、站前廣場）→ 環狀線 3 節通勤車 → 5 節
 //   → 高鐵（白底橘線）→ ★◆ 支線通到風車島與遊樂場島（列車開過去）→ 離島接駁車 → 豪華賽博站（霓虹站體、懸浮月台）
-//   → ◆ 飛天車（三台繞 101 一圈、停在車站屋頂）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
+//   → ◆ 飛天車（Tesla Roadster 三台從屋頂斜坡起飛、繞 101 一圈、落回車站屋頂）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
 // 列車用 Kenney Train Kit（subway／bullet，車頭、中間車、車尾），賽博站用 Quaternius Cyberpunk Kit（月台、欄杆、招牌），
-//   飛天車用 Kenney Space Kit 的 speeder（零件 kind 'orbit'，parts.js），都經載入器 tint 重上色票。
+//   都經載入器 tint 重上色票；飛天車是 kit 零件拼的 Roadster（零件 kind 'orbit' 的 model.parts，parts.js）。
 // TRACK 與 trainPose 也給老鼠用（老鼠坐在車頂上）。ctx.rail 是共用的列車時鐘：offset 讓列車從站出發、停站；
 //   trip（trainStop 的支線版在演時才有）＝列車正開在支線上：車頭在 trip.path 上第 s 公尺，後面的車廂還在環上。
 // 劇本（§6）：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、最後回全景定格。
@@ -179,22 +179,46 @@ const DECK_MODELS = [
 ];
 const DECK_RISE = 0.65;   // Lv9 劇本：懸浮月台從地面浮上來的高度
 
-// ── 飛天車（Lv10）：Kenney Space Kit 三款 speeder，一款一台、寬 0.3；從海上飛進來繞 101 一圈、停在賽博站屋頂（左中右）。
-// 停好之後每台各自隔 rest 秒再起飛繞一圈（錯開，天上常常有一台在飛）
-const SPEEDERS = [
-  { path: 'kenney/space/craft_speederA.glb', size: [2.0, 0.8], accent: C.coral },
-  { path: 'kenney/space/craft_speederB.glb', size: [2.0, 0.6], accent: C.blue },
-  { path: 'kenney/space/craft_speederC.glb', size: [2.8, 0.6], accent: C.yellow },
+// ── 飛天車（Lv10）：致敬 2026-10-16 在 SpaceX McGregor 發表的 Tesla Roadster（設計 §4.6）——kit 零件拼的低扁車身、整片玻璃座艙、
+// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡）；紅、白、石墨灰三台停在賽博站屋頂（左中右）、車頭朝 101。
+// 起飛：沿屋頂斜坡（token.ramp：長 RAMP_LEN 0.35、仰角 RAMP_ANGLE 20°、朝 101）滑上去、車底噴白煙、拋物線拉高、繞 101 一圈、回屋頂四輪落地壓一下回彈
+// （orbit 零件的 ramp／squash，parts.js orbitPose）。停好之後每台各自隔 rest 秒再飛一趟（錯開，天上常常有一台在飛）。
+// 尺寸（§7 留給實作者）：車身 0.27 × 0.54（設計寫 0.3 × 0.6 的九成）——三台並排、各自車頭朝 101（彼此差約 4°），
+// 0.3 × 0.6 在 1.1 × 0.82 的屋頂上會碰在一起、壓到後緣的天線；九成時車與車之間留 3 公分、離天線 11 公分
+const ROADSTERS = [{ color: C.coral }, { color: C.white }, { color: C.ink }];
+const CAR_W = 0.27, CAR_L = 0.54, WHEEL_R = 0.04;
+const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
+const ORBIT = { speed: 2.5, legs: [1.4, 1.0], squash: 0.03 }, FLY_STAGGER = 0.3;
+export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（斜坡＋拉高 1.4、一圈、下降＋落地 1.0；跟以前的 speeder 一樣長）
+// 車的零件（車頭朝 +z、原點在輪底＝屋頂面）：車身、座艙在車身上後段、四輪（軸朝 x）、車底四個噴嘴（錐口朝下）
+const roadsterParts = color => [
+  { kind: 'box', pos: [0, 0.08, 0], scale: [CAR_W, 0.07, CAR_L], color },
+  { kind: 'box', pos: [0, 0.14, -0.06], scale: [0.2, 0.05, 0.27], color: C.glass },
+  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * (CAR_W / 2 - 0.015), WHEEL_R, sz * 0.17], scale: [WHEEL_R * 2, 0.035, WHEEL_R * 2], rot: [0, 0, Math.PI / 2], color: C.ink })),
+  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, 0.03, sz * 0.1], scale: [0.035, 0.03, 0.035], color: C.curb })),
 ];
-const ORBIT = { speed: 2.5, legs: [1.4, 1.0] }, FLY_STAGGER = 0.3;
-export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒
-function speeder(i) {
-  const m = SPEEDERS[i], phase = Math.atan2(AT.z - TOWER.z, AT.x - TOWER.x), sea = 0.26 + i * 0.35;   // 繞完從朝車站那側離開；從右前方的海上飛進來
+// 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給斜坡與王冠鼠）；各自車頭朝 101、繞圈的入口（phase）在
+// 101 到停車點的那條線上——斜坡、拉高、回程下降都是同一條直線
+const parkOf = i => { const p = offset(AT, (i - 1) * 0.33, 0.1, ROOF_Y); return { ...p, yaw: Math.atan2(TOWER.x - p.x, TOWER.z - p.z) }; };
+function roadster(i) {
+  const park = parkOf(i), dx = Math.sin(park.yaw), dz = Math.cos(park.yaw), run = RAMP_LEN * Math.cos(RAMP_ANGLE);
   return {
-    kind: 'orbit', at: TOWER, r: 1.7 + 0.3 * i, h: 3.4 + 0.6 * i, phase, ...ORBIT,
-    from: { x: Math.cos(sea) * 14, y: 3.5, z: Math.sin(sea) * 14 }, park: offset(AT, (i - 1) * 0.33, 0.02, ROOF_Y),   // 停好朝最後一段的方向（從 101 那側飛過來）
-    path: m.path, size: 0.3 * m.size[1] / m.size[0], ry: Math.PI, rest: 16 + 6 * i, footprint: false,   // 模型機頭朝 −z：轉半圈才朝前進方向
-    tint: { '^metalRed$': m.accent, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink },
+    kind: 'orbit', at: TOWER, r: 1.7 + 0.3 * i, h: 3.4 + 0.6 * i, phase: Math.atan2(park.z - TOWER.z, park.x - TOWER.x), ...ORBIT,
+    park, ramp: { x: dx * run, y: RAMP_LEN * Math.sin(RAMP_ANGLE), z: dz * run },
+    model: { parts: roadsterParts(ROADSTERS[i].color) }, rest: 16 + 6 * i, footprint: false,
+  };
+}
+// 屋頂斜坡（Lv10，一個零件 kind 'ramp'）：中間那台的車頭前、朝 101，坡面長 0.35、仰角 20°（高端伸出屋頂後緣一點），兩根支柱撐在屋頂上。
+// 本地 +z 沿坡往上，零件轉到 bearing；手機（low: false）不畫——飛天車也不畫
+function rampSpec() {
+  const mid = parkOf(1), b = mid.yaw, foot = CAR_L / 2;
+  const deck = RAMP_LEN / 2, strut = 0.22, sh = strut * Math.tan(RAMP_ANGLE);
+  return {
+    kind: 'ramp', at: { x: mid.x + Math.sin(b) * foot, y: mid.y, z: mid.z + Math.cos(b) * foot }, bearing: b, footprint: false, low: false,
+    parts: [
+      { kind: 'box', pos: [0, deck * Math.sin(RAMP_ANGLE), deck * Math.cos(RAMP_ANGLE)], scale: [0.3, 0.015, RAMP_LEN], rot: [-RAMP_ANGLE, 0, 0], color: C.curb },
+      ...[-0.13, 0.13].map(x => ({ kind: 'box', pos: [x, sh / 2, strut], scale: [0.02, sh, 0.02], color: C.ink })),
+    ],
   };
 }
 
@@ -229,7 +253,7 @@ export function view(lv, flags) {
     const bullet = n >= 6;
     v['token.train'] = { kind: 'train', at: origin, models: trainModels(bullet ? 'bullet' : 'subway', trainCars(n)), h: CAR_H, tint: bullet ? BULLET_TINT : SUBWAY_TINT, speed: flags.flooded ? 0 : 0.35, footprint: false };
   }
-  if (n >= 10) for (let i = 0; i < 3; i++) v[`token.cars.${i}`] = speeder(i);
+  if (n >= 10) { for (let i = 0; i < 3; i++) v[`token.cars.${i}`] = roadster(i); v['token.ramp'] = rampSpec(); }
   return v;
 }
 
@@ -260,12 +284,15 @@ export const builders = {
     return { object, dispose() { for (const p of subs) p.dispose(); } };
   },
   // 支線：一個 compound 轉到 bearing（本地 +z 沿徑向往外），scaleIn 沿 z 就是從環上長出去
-  spur(THREE, spec, ctx) {
-    const inner = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts }), object = new THREE.Group();
-    object.add(inner.object); object.rotation.y = spec.bearing;
-    return { object, dispose: inner.dispose };
-  },
+  spur: turned,
+  // 屋頂斜坡（Lv10）：同樣是一個 compound 轉到 bearing（本地 +z 沿坡往上、朝 101）
+  ramp: turned,
 };
+function turned(THREE, spec, ctx) {
+  const inner = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts }), object = new THREE.Group();
+  object.add(inner.object); object.rotation.y = spec.bearing;
+  return { object, dispose: inner.dispose };
+}
 
 // ── 劇本（§6）──
 // 角色都是演到那一拍才找（還沒出來就回 null，那拍跳過）；once 找到第一次就記住，整段劇本同一個人。
@@ -282,7 +309,7 @@ const SLIDE = [offset(PLAYGROUND, 0.1, 1.1), offset(PLAYGROUND, 0.5, 1.1)];
 const ISLAND_ZOOM = 0.8;
 const levelUpAtStation = B => [B.focus('token'), B.levelUp('token')];
 const CAR_KEYS = [0, 1, 2].map(i => `token.cars.${i}`);
-// 飛天車起飛：三台錯開 FLY_STAGGER 秒從海上飛進來（零件的 userData.fly）；跳過時 land 立刻停好
+// 飛天車起飛：三台錯開 FLY_STAGGER 秒從屋頂斜坡起飛、繞 101 一圈、落回屋頂（零件的 userData.fly）；跳過時 land 立刻停好
 const fly = () => ({
   kind: 'fly', dur: FLIGHT + FLY_STAGGER * (CAR_KEYS.length - 1),
   start(c) { CAR_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * FLY_STAGGER, speed: c.speed ?? 1 })); },
@@ -383,10 +410,11 @@ export const script = {
         B.apply(e), B.levelUp('token'), B.home(st),
       ];
     },
-    // ◆ 飛天車：回全景 → 三台懸浮車從海上飛進來、繞 101 一圈、停到車站屋頂 → 全景定格 → LEVEL UP
+    // ◆ 飛天車（Tesla Roadster）：回全景 → 三台和屋頂斜坡一起出現（不閃白：一出現就是停好的樣子）→ 沿斜坡起飛、繞 101 一圈、
+    //   四輪落回屋頂 → 全景定格 → LEVEL UP
     10(e, s, ctx) {
       const { B } = ctx;
-      return [B.focus('home'), B.apply(e, { only: CAR_KEYS, blink: false }), fly(), B.apply(e), B.focus('home', { hold: 1.2 }), B.levelUp('token')];   // 停 2.0 → 1.2（裁決 R17 ◆ ≤ 8 s）
+      return [B.focus('home'), B.apply(e, { only: [...CAR_KEYS, 'token.ramp'], blink: false }), fly(), B.apply(e), B.focus('home', { hold: 1.2 }), B.levelUp('token')];   // 停 2.0 → 1.2（裁決 R17 ◆ ≤ 8 s）
     },
   },
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）

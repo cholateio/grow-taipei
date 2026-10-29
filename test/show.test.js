@@ -491,25 +491,33 @@ test('a caused grow\'s script seconds exclude the cause segment, which is measur
   assert.ok(ev.length === segs.length && ev.every(x => x.cause.live >= CAUSE_FLASH && x.cause.live <= CAUSE_CAP + 0.2 && x.cause.helper === x.e.via[0]), JSON.stringify(ev.map(x => x.cause)));
 });
 
-// Task 6a 修正輪（控制者裁決）：劇本永遠不丟錯——沒法照原樣演就演退路（燈泡 Lv7 沒列車那種）。求解器列舉的前 20 個順序加兩局固定的壞結局，
-// 每回合（放置、最後一輪、終局回合）都瞬間演完（instant：每拍照樣 start → end），沒有一個劇本丟錯，舞台等級跟引擎一樣
-test('no script throws: the first 20 enumerated orders and EXAMPLE.hit/deflect play every turn (instant) without an error', async () => {
+// Task 6a 修正輪（控制者裁決）：劇本永遠不丟錯——沒法照原樣演就演退路（燈泡 Lv7 沒列車那種）。修正輪 2：列舉的前 20 個太像（都是鮮奶、晶片、燈泡開頭，
+// 沒有一局燈泡在沒列車時到 7），改成整份列舉每隔 STRIDE 個取一個，加上明確的沒車放法、兩局固定的壞結局。
+// 每回合（放置、最後一輪、終局回合）都瞬間演完（instant：每拍照樣 start → end），沒有一個劇本丟錯，舞台等級跟引擎一樣；
+// 並且取樣的局裡真的有燈泡到 7 時沒有列車（代幣 < 4）的——守門真的守到它要守的那一類
+test('no script throws: an even stride over the enumeration, the no-train order and EXAMPLE.hit/deflect play every turn (instant) without an error', async () => {
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js');
-  const orders = [...enumerate(spec).slice(0, 20).map(r => r.order), EXAMPLE.hit, EXAMPLE.deflect];
-  const { show, run } = await headlessShow(), bad = [];
+  const all = enumerate(spec), STRIDE = 2000, strided = all.filter((_, k) => k % STRIDE === 0).map(r => r.order);
+  const NO_TRAIN = ['bulb', 'milk', 'chip', 'boba', 'rat', 'baseball', 'typhoon', 'token'];
+  const orders = [...strided, NO_TRAIN, EXAMPLE.hit, EXAMPLE.deflect];
+  const { show, run } = await headlessShow(), bad = [], noTrain = new Set();
   for (const order of orders) {
     show.reset();
     let s = engine.createState(spec), at = '';
     try {
       for (const [i, step] of turnSteps(order).entries()) {
         at = `turn ${i + 1}`; const r = step(s); s = r.state;
+        // 燈泡這回合長到（或跨過）7、回合結束代幣還 < 4：演的時候一定沒有環狀線
+        if (r.events.some(e => e.kind === 'grow' && e.item === 'bulb' && e.from <= 7 && e.to >= 7) && s.lv.token < 4) noTrain.add(order.join('>'));
         await run([...r.events, { kind: 'settle' }], { instant: true });
         if (JSON.stringify(show.stage.lv) !== JSON.stringify(s.lv)) bad.push(`${order.join('>')} ${at}: stage ${JSON.stringify(show.stage.lv)}`);
       }
       at = 'finale'; await run(finaleStep(s).events, { finale: true, instant: true });
     } catch (err) { bad.push(`${order.join('>')} ${at}: ${err.message}`); }
   }
-  assert.equal(orders.length, 22);
+  assert.ok(strided.length >= 20, `${strided.length} strided orders`);
+  assert.ok(noTrain.has(NO_TRAIN.join('>')), 'the explicit order reaches bulb 7 with no train');
+  assert.ok(strided.some(o => noTrain.has(o.join('>'))), `the stride itself covers bulb 7 with no train (${noTrain.size} orders of ${orders.length})`);
   assert.deepEqual(bad, []);
 });
 

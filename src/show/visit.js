@@ -3,12 +3,14 @@
 //
 // 撲空（設計 §5，miss）：引擎的 wait 事件列出每個等不到幫手的物品（w.item）與它缺的幫手（w.for，照 ORDER）。一段撲空 =
 //   [走到目標點, 失望 sigh SIGH 秒, 回日常]——沒有泡泡、沒有圖框（設計 §5、反目標：不用泡泡提示原因）。鏡頭由 turn.js 補（平移到代表那一格，跟走路一起演）。
-//   代表 = 等待物品的 script.rep(s, ctx)，演到第一拍才找、找到就記住；找不到、藏起來、在劇本手上、不在主島上 → 整段每一拍都跳過（0 秒）。
+//   代表 = 等待物品的 script.rep(s, ctx, w.for[0])（第三個參數是缺的幫手，鮮奶 Lv2 用它挑離幫手最近的島民），演到第一拍才找、找到就記住；
+//   找不到、藏起來、在劇本手上、不在主島上 → 整段每一拍都跳過（0 秒）。
 //   目標點（缺的幫手 = w.for[0]）：
-//     還沒放（等級 0）→ 那個幫手錨點旁的空地：可走、離建築本身至少 MISS_CLEAR 公尺的點（從錨點往鏡頭側一圈一圈找；找不到退回 nearestWalkable）；
-//     放了但不夠高 → 那個建築這一級的門口 frontOf(visitSpot(幫手, 等級), r, nav)（visitSpot：各模組這一級建築的正面）；
-//     兩種都只在目標點那一格跟代表現在那一格同一格或相鄰、而且走得到、路線 ≤ MISS_WALK 秒才走；
-//     否則（太遠、幫手是颱風、幫手這一級在離島上、主島上沒有 visitSpot）→ 走到自己門口 frontOf(visitSpot(物品, 現在的等級), r, nav)；
+//     還沒放（等級 0）→ 那個幫手錨點旁的空地：可走、離建築本身至少 MISS_CLEAR 公尺的點（從錨點往鏡頭側一圈一圈找；找不到退回 nearestWalkable）——
+//       不管遠近一定往這裡走：路線 > MISS_WALK 秒就沿路走 MISS_WALK 秒、在路上失望（short）；走不過去就原地失望（here）。都面向空地（最終修正 1）；
+//     放了但不夠高 → 那個建築這一級的門口 frontOf(visitSpot(幫手, 等級), r, nav)（visitSpot：各模組這一級建築的正面）：
+//       只在門口那一格跟代表現在那一格同一格或相鄰、而且走得到、路線 ≤ MISS_WALK 秒才走；
+//     否則（幫手放了但太遠、幫手是颱風、幫手這一級在離島上、主島上沒有 visitSpot）→ 走到自己門口 frontOf(visitSpot(物品, 現在的等級), r, nav)；
 //     自己門口也超過 MISS_WALK 秒 → 往門口走 MISS_WALK 秒、在路上失望（short）；自己這一級沒有主島上的門口、走不過去 → 原地失望（here）。
 //     撲空不換位置、不閃白。
 //   失望之前面向目標（幫手的錨點／建築；原地的話面向缺的那個幫手的錨點）。
@@ -37,6 +39,14 @@ function pointAt(route, s, nav) {
   return { ...route[0] };
 }
 
+// 沿 route 走 MISS_WALK 秒那麼遠的點（short）：B.walk 會從代表現在的位置重新找路到這一點，那條路可能比 route 的前段長
+// （格點 A* 繞的路不一樣）——量一次，超過上限就把點往回收 0.1 公尺再量，走路一定 ≤ MISS_WALK 秒
+function cutAt(m, route, nav) {
+  const cap = MISS_WALK * m.speed;
+  for (let d = cap; d > 0; d -= 0.1) { const p = pointAt(route, d, nav); if (nav.routeLength(nav.route(m.pos, p)) <= cap) return p; }
+  return { ...m.pos };
+}
+
 // 撲空（見檔頭）：w = { item, for }（引擎 wait 事件的一項）；s：turn.js 給劇本的 { lv, flags, … }；item／helper：等待物品、缺的幫手（w.for[0]）的模組。
 // 回 [走過去, 失望, 回日常]；等待物品沒有代表劇本（或是颱風）→ []。
 // 走過去那拍另外帶 ready(c)（找代表、定目標，第一次問就定案；回有沒有人要演）、cell(c)（代表現在那一格：turn.js 的平移目標）、
@@ -55,22 +65,32 @@ export function miss(w, s, ctx, { item, helper } = {}) {
   const ready = c => {
     if (asked) return !!who;
     asked = true;
-    const m = item.script.rep(s, c), nav = c.nav;
+    const m = item.script.rep(s, c, w.for?.[0]), nav = c.nav;   // 第三個參數：缺的幫手（鮮奶 Lv2 借離它錨點最近的島民）
     if (!m || m.hidden || m.gone || m.mode !== 'home' || !onIsland(m, nav)) return false;
     const here = cellAt(m.pos.x, m.pos.z) ?? cellOf(item.id);
-    let pick = null;
+    let pick = null, lot = null;
     if (helper && helper.id !== 'typhoon') {
       const n = lvOf(helper.id), at = anchorWorld(helper.id);
-      const d = n === 0 ? null : door(helper, n, nav), t = n === 0 ? { kind: 'lot', to: clearNear(at, nav), look: at } : d && { kind: 'spot', ...d };
-      const cell = t && cellAt(t.to.x, t.to.z);
-      if (cell && near(cell, here) && reach(m, t.to, nav)) pick = t;
+      if (n === 0) {
+        // 還沒放：一定往那塊空地走（不看相鄰）——走路上限照 MISS_WALK 秒，走不到就沿路走那麼遠、在路上失望（short）；
+        // 被 footprint 隔斷到不了就原地失望。都面向空地，缺幫手時不會面向自己的建築（最終修正 1：鮮奶 Lv2 等棒球）
+        lot = at;
+        const to = clearNear(at, nav), route = nav.route(m.pos, to), end = route.at(-1);
+        if (end && Math.hypot(end.x - to.x, end.z - to.z) <= REACH) {
+          const len = nav.routeLength(route), cap = MISS_WALK * m.speed;
+          pick = len <= cap ? { kind: 'lot', to, look: at } : { kind: 'lot', to: cutAt(m, route, nav), look: at, short: true };
+        }
+      } else {
+        const d = door(helper, n, nav), cell = d && cellAt(d.to.x, d.to.z);
+        if (cell && near(cell, here) && reach(m, d.to, nav)) pick = { kind: 'spot', ...d };
+      }
     }
-    if (!pick) {
+    if (!pick && !lot) {
       // 自己門口：路線太長就走 MISS_WALK 秒那麼遠（往門口走、走不到門口就在路上失望；不換位置）
       const d = door(item, lvOf(item.id), nav), route = d && nav.route(m.pos, d.to), end = route?.at(-1);
       if (end && Math.hypot(end.x - d.to.x, end.z - d.to.z) <= REACH) {
         const len = nav.routeLength(route), cap = MISS_WALK * m.speed;
-        pick = len <= cap ? { kind: 'door', ...d } : { kind: 'door', to: pointAt(route, cap, nav), look: d.look, short: true };
+        pick = len <= cap ? { kind: 'door', ...d } : { kind: 'door', to: cutAt(m, route, nav), look: d.look, short: true };
       }
     }
     if (!pick) pick = { kind: 'here', to: { ...m.pos }, look: helper && helper.id !== 'typhoon' ? anchorWorld(helper.id) : null };

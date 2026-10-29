@@ -311,3 +311,12 @@ test('milk rep Lv2: skips busy islanders (script mode / hidden / gone) and picks
   assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone, farther, far]) }), far);
   assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone]) }), null);
 });
+// 最終修正（整支分支審稿 1）：鮮奶 Lv2 等棒球的撲空要看得出「在等球場」——代表挑離缺的幫手（rep 的第三個參數）錨點最近的空著的島民；
+// 沒給幫手照舊挑離鮮奶錨點最近的
+test('milk rep Lv2 with a helper id: the free islander nearest to that helper anchor; without one, nearest to the milk anchor', () => {
+  const M = anchorWorld('milk'), H = anchorWorld('baseball');
+  const byMilk = { i: 0, mode: 'home', pos: { ...M } }, byLot = { i: 1, mode: 'home', pos: { ...H } }, busy = { i: 2, mode: 'script', pos: { ...H } };
+  const roster = { members: key => (key === 'landmarks.islanders' ? [byMilk, busy, byLot] : []) }, st = { lv: { milk: 2 }, flags: {} };
+  assert.equal(milk.script.rep(st, { roster }, 'baseball'), byLot);
+  assert.equal(milk.script.rep(st, { roster }), byMilk);
+});

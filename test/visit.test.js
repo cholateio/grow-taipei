@@ -27,15 +27,16 @@ async function liveMiss(order, waits, { prep } = {}) {
   const e = { kind: 'wait', item: waits[0].item, waits };
   const segs = [], update = show.update;
   let cur = null;
-  show.update = (dt, t) => { update(dt, t); if (cur?.rep?.walker?.gesture?.kind === 'sigh') cur.sigh = true; if (cur?.rep) cur.frames.push({ ...cur.rep.pos }); };
+  show.update = (dt, t) => { update(dt, t); if (cur?.rep?.walker?.gesture?.kind === 'sigh') { cur.sigh = true; cur.sighAt = { ...cur.rep.pos, yaw: cur.rep.yaw }; } if (cur?.rep) cur.frames.push({ ...cur.rep.pos }); };
   const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; cur.mode = cur.rep?.mode; cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
   let script = null;
   await prep?.(show);   // 測試要的起點（例如把代表挪遠一點）：wait 事件演之前
   await run([e], { onMark: (x, info) => {
     close();
     if (!info?.miss) { script = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.mode === 'script').length; return; }
-    const item = mod(info.item), sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = item.script.rep(sv, { roster: show.roster, nav: show.nav });
+    // 代表照 miss() 的問法：第三個參數是缺的幫手（鮮奶 Lv2 借離幫手錨點最近的島民）
     const w = x.waits.find(y => y.item === info.item);
+    const item = mod(info.item), sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = item.script.rep(sv, { roster: show.roster, nav: show.nav }, w.for?.[0]);
     cur = { w, info, rep, sv, start: rep && { ...rep.pos }, startMode: rep?.mode, t: show.elapsed, from: bubblesLog.length, sigh: false, frames: [] };
     segs.push(cur);
   } });
@@ -71,6 +72,29 @@ test('miss live: helper absent → rep walks to a walkable point near the helper
   assert.ok(v.show.nav.walkable(g.end.x, g.end.z));
 });
 
+// 最終修正（整支分支審稿 1，設計 §3.4 #2、§4.3、R2）：鮮奶 Lv2 等棒球是謎題最關鍵的線索——借來的島民（離棒球錨點最近的空著的）
+// 往棒球那塊空地走（走路上限 MISS_WALK 秒，走不到就走那麼遠）、失望時面向空地；缺幫手的時候絕不面向自己的早餐店
+test('miss live: milk Lv2 waiting for the baseball lot → the borrowed islander walks toward the sandlot and sighs facing it, never its own shop', async () => {
+  const v = await liveMiss(['milk'], [{ item: 'milk', for: ['baseball'] }]), [g] = v.segs, what = 'milk2<baseball0';
+  assert.equal(v.segs.length, 1); assert.equal(g.sv.lv.milk, 2); assert.equal(g.sv.lv.baseball, 0);
+  common(v, g, what);
+  const lot = anchorWorld('baseball'), shop = mod('milk').visitSpot(2, g.sv);
+  assert.ok(dist(g.end, lot) < dist(g.start, lot) - 0.05, `${what}: walked toward the lot (${dist(g.start, lot).toFixed(2)} → ${dist(g.end, lot).toFixed(2)})`);
+  const face = (p, to) => Math.atan2(to.x - p.x, to.z - p.z), diff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  assert.ok(g.sighAt && diff(g.sighAt.yaw, face(g.sighAt, lot)) < 0.05, `${what}: sighs facing the baseball anchor`);
+  assert.ok(diff(g.sighAt.yaw, face(g.sighAt, shop)) > 0.3, `${what}: not facing its own breakfast shop`);
+  // 定案的目標：look 就是棒球錨點，是空地那一支（lot），不是自己門口
+  const h = await headlessShow(); let s = engine.createState(spec);
+  { const r = engine.place(s, 'milk', spec); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const sv = { lv: { ...h.show.stage.lv }, flags: h.show.stage.flags }, [walk] = miss({ item: 'milk', for: ['baseball'] }, sv, { B }, { item: mod('milk'), helper: mod('baseball') });
+  const c = { roster: h.show.roster, nav: h.show.nav }, who = mod('milk').script.rep(sv, c, 'baseball');
+  assert.ok(walk.ready(c), `${what}: somebody to send`);
+  const goal = walk.goal();
+  assert.equal(goal.kind, 'lot'); assert.deepEqual(goal.look, lot, `${what}: looks at the baseball anchor`);
+  assert.ok(dist(goal.at, lot) < dist(goal.from, lot), `${what}: the goal is nearer the lot than the start`);
+  assert.ok(h.show.nav.routeLength(h.show.nav.route(goal.from, goal.at)) <= MISS_WALK * who.speed + 0.05, `${what}: the walk stays within MISS_WALK`);
+});
+
 test('miss live: helper placed but too low → rep walks to frontOf(its visitSpot); sigh; home; ≤ 3 s', async () => {
   // 捷運站 Lv1、珍奶 Lv1：老闆走到捷運站這一級的拜訪點正面（同一格）
   const v = await liveMiss(['token', 'boba'], [{ item: 'boba', for: ['token'] }]), [g] = v.segs, what = 'boba<token1';
@@ -80,17 +104,20 @@ test('miss live: helper placed but too low → rep walks to frontOf(its visitSpo
   assert.ok(dist(g.end, doorOf(v.show, 'boba', g.sv)) > 1 && dist(g.end, anchorWorld('token')) > 0.3, `${what}: not its own door, not the empty-lot point`);
 });
 
-test('miss live: too far → own door (helper not adjacent; adjacent but over MISS_WALK); door further than MISS_WALK → walks MISS_WALK toward it; ≤ 2 segments in ORDER', async () => {
+test('miss live: helper absent but far → walks toward its lot; helper placed but over MISS_WALK → own door; door further than MISS_WALK → walks MISS_WALK toward it; ≤ 2 segments in ORDER', async () => {
   // 回到 GROW（2026-10-29）之後這幾種等待在真的局裡已經不會發生（只剩 8 條阻擋），改成放完那幾個物品後合成 waits（同上面兩個測試）：
   // 撲空走哪一支只看兩邊的格子與路線，跟等待從哪條規則來無關。
   // 代幣 Lv3、珍奶 Lv2，waits [鮮奶 < 棒球, 代幣 < 鮮奶, 珍奶 < 代幣]：鮮奶還沒放（沒有代表，不佔位子，最終審稿 3），演代幣、珍奶兩段；
-  // 代幣在 [0,1]、鮮奶在 [-1,0]，不相鄰：站務員走回自己的站門口
+  // 代幣在 [0,1]、鮮奶在 [-1,0]，不相鄰；鮮奶還沒放：站務員照樣往鮮奶那塊空地走（最終修正 1：缺的幫手沒放就一定往空地走），面向空地
   const v = await liveMiss(['token', 'boba'], [{ item: 'milk', for: ['baseball'] }, { item: 'token', for: ['milk'] }, { item: 'boba', for: ['token'] }]);
   const want = v.e.waits.filter(w => mod(w.item).script.hasRep(v.show.stage.lv[w.item])).slice(0, MISS_PER_TURN).map(w => w.item);
   assert.deepEqual(want, ['token', 'boba'], 'precondition: milk has nobody to send');
   assert.deepEqual(v.segs.map(g => g.w.item), want, 'the first two waits with a rep, in ORDER');
   const t = v.segs.find(g => g.w.item === 'token');
-  common(v, t, 'token<milk'); assert.ok(dist(t.end, doorOf(v.show, 'token', t.sv)) < 0.15, `token<milk: at its own door (${dist(t.end, doorOf(v.show, 'token', t.sv)).toFixed(2)})`);
+  common(v, t, 'token<milk');
+  const milkLot = anchorWorld('milk');
+  assert.ok(dist(t.end, milkLot) < dist(t.start, milkLot) - 0.05, `token<milk: walked toward the milk lot (${dist(t.start, milkLot).toFixed(2)} → ${dist(t.end, milkLot).toFixed(2)})`);
+  assert.ok(dist(t.end, doorOf(v.show, 'token', t.sv)) > 0.3, `token<milk: not at its own door`);
   // 燈泡 Lv3、晶片 Lv2：晶片 < 燈泡（相鄰格），工程師走過去超過 MISS_WALK 秒 → 回自己門口
   const n = await liveMiss(['bulb', 'chip'], [{ item: 'chip', for: ['bulb'] }]), c = n.segs.find(g => g.w.item === 'chip');
   common(n, c, 'chip<bulb3');

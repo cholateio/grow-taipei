@@ -234,9 +234,10 @@ async function playMisses(order) {
       close(); inv.label(`${turn} [${e.kind}${e.item ? ` ${e.item}` : ''}]`);
       if (info?.key) keys++;
       if (!info?.miss) return;
-      const sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = mod(info.item).script.rep(sv, { roster: show.roster, nav: show.nav });
+      // 代表照 miss() 的問法：第三個參數是缺的幫手（鮮奶 Lv2 借離棒球錨點最近的島民）
+      const w0 = e.waits.find(w => w.item === info.item), sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = mod(info.item).script.rep(sv, { roster: show.roster, nav: show.nav }, w0.for?.[0]);
       const usable = !!rep && !rep.hidden && !rep.gone && rep.mode === 'home' && (!!cellAt(rep.pos.x, rep.pos.z) || show.nav.walkable(rep.pos.x, rep.pos.z));
-      cur = { e, info, w: e.waits.find(w => w.item === info.item), sv, rep: usable ? rep : null, start: usable ? { ...rep.pos } : null, t: show.elapsed, from: bubblesLog.length };
+      cur = { e, info, w: w0, sv, rep: usable ? rep : null, start: usable ? { ...rep.pos } : null, t: show.elapsed, from: bubblesLog.length };
       // 目標點與路線長度在這一刻量（miss() 定案時用的是這一刻的 nav；整局演完之後的 footprint 不一樣，路線長短會差——
       // 2026-10-29：鮮奶 Lv2 借島民之後，第 7 回合走「往門口走一段」那一支，用整局最後的 nav 量反而以為走得到門口）
       if (usable) {
@@ -263,7 +264,7 @@ for (const outcome of ['hit', 'deflect']) {
   test(`EXAMPLE.${outcome}: every turn plays ≤ 2 misses at the right places, invariants clean`, async () => {
     const order = EXAMPLE[outcome], { turns, inv, mod } = await playMisses(order);
     let shown = 0;
-    const kinds = new Set();
+    const kinds = new Set(), milkLot = [];   // 鮮奶 Lv2 等棒球那幾段演成哪一支（最終修正 1：EXAMPLE.hit 一定要有往棒球空地走的）
     for (const [i, { events, segs, secs, keys, waitLv }] of turns.entries()) {
       const what = `${outcome} turn ${i + 1}`, wait = events.find(e => e.kind === 'wait');
       const landed = wait && events.slice(0, events.indexOf(wait)).some(e => engine.landsTyphoon(e));
@@ -282,7 +283,9 @@ for (const outcome of ['hit', 'deflect']) {
         const cap = MISS_WALK * g.rep.speed, here = cellAt(g.start.x, g.start.z) ?? cellOf(g.w.item);
         const { helperAt, lot, door, lenDoor, lenHelper } = g.geo;
         let kind;
-        if (lot && flat(g.end, lot) <= 1.3 && near(cellAt(g.end.x, g.end.z), here)) kind = 'lot';
+        // 幫手還沒放（最終修正 1）：一定往那塊空地走——到了（錨點 1.3 公尺內）是 lot，走不到就是往空地走了一段（toward lot）
+        if (lot && flat(g.end, lot) <= 1.3) kind = 'lot';
+        else if (lot && flat(g.end, lot) < flat(g.start, lot) - 0.05) kind = 'toward lot';
         else if (helperAt && flat(g.end, helperAt) < 0.2) kind = 'spot';
         else if (door && flat(g.end, door) < 0.2) kind = 'door';
         else if (door && lenDoor > cap && flat(g.end, door) < flat(g.start, door) - Math.min(1, cap / 2)) kind = 'toward door';
@@ -290,13 +293,16 @@ for (const outcome of ['hit', 'deflect']) {
         assert.ok(kind, `${label}: ended at (${g.end.x.toFixed(2)}, ${g.end.z.toFixed(2)}) — not the helper, not its door (start ${g.start.x.toFixed(2)}, ${g.start.z.toFixed(2)})`);
         // 幫手那邊走得到又近（同格／相鄰、MISS_WALK 秒內）就一定是去幫手那邊
         if (helperAt && near(cellAt(helperAt.x, helperAt.z), here) && lenHelper <= cap - 0.05) assert.equal(kind, 'spot', `${label}: the helper's stand was within reach`);
-        if (kind === 'lot' || kind === 'spot') assert.ok(near(cellAt(g.end.x, g.end.z), here), `${label}: helper side only when same / adjacent cell`);
+        if (lot) assert.ok(kind === 'lot' || kind === 'toward lot', `${label}: helper not placed → toward its lot, never its own door (${kind})`);
+        if (kind === 'spot') assert.ok(near(cellAt(g.end.x, g.end.z), here), `${label}: helper's stand only when same / adjacent cell`);
         kinds.add(kind);
+        if (g.w.item === 'milk' && g.w.for[0] === 'baseball') milkLot.push(`turn ${i + 1}: ${kind}`);
       }
       // 回合上限（設計 §6：60 秒上限在兩條正解與 EXAMPLE 上驗）：60 + 8 × max(0, ◆ − 1)
       assert.ok(secs <= 60 + 8 * Math.max(0, keys - 1), `${what}: ${secs.toFixed(1)} s (◆ ${keys})`);
     }
-    console.log(`# EXAMPLE.${outcome}: ${shown} misses played (${[...kinds].join(', ')})`);
+    console.log(`# EXAMPLE.${outcome}: ${shown} misses played (${[...kinds].join(', ')}); milk<baseball: ${milkLot.join(', ') || 'none'}`);
+    if (outcome === 'hit') assert.ok(milkLot.some(k => k.endsWith('lot')), `hit: milk<baseball walks toward the sandlot (${milkLot.join(', ')})`);
     assert.ok(shown >= 3, `${outcome}: misses actually play (${shown})`);
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);

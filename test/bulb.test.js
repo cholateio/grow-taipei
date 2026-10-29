@@ -563,8 +563,10 @@ test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (s
   const { playLive, KEY_MAX, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {
     const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);
-    const ev = at(7), five = at(5);
-    assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn}: ${ev?.live.toFixed(2)} s`);
+    // 兩條正解的燈泡都是 6 → 8 跳級：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決：風車島不能消失），量的是那個合成的燈泡 8 事件。
+    // 這個秒數暫時含起因閃一下那段（平移到幫手＋閃白，Task 6 會像撲空一樣拆出去單獨量）
+    const ev = at(8)?.e.jump ? at(8) : at(7), five = at(5);
+    assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn} bulb ${ev?.e.to}${ev?.e.jump ? ' (merged jump)' : ''}: ${ev?.live.toFixed(2)} s`);
     // 跳級合成一段（回到 GROW 設計 §4.2）之後，跳級的第二級也演自己的劇本（兩條正解的燈泡 5 都是 4 → 5 跳級的第二級）
     assert.ok(five && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
   }

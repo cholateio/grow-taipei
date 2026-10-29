@@ -283,6 +283,30 @@ test('R11: the second level of a jump plays its full script when it is a key nod
   assert.equal(seg[4].twice, true, 'the key script\'s LEVEL UP pops twice too');
   assert.equal(marksOf(raw)[1].info.key, true);
 });
+// 協調者裁決（2026-10-29）：跳級合成時演 {n−1, n} 裡最高的 ◆——n 不是 ◆、n−1 是 ◆ 就演 n−1 的 ◆ 劇本（燈泡 Lv7 風車島不能從正解裡消失），
+// mark 標 key；n 是 ◆ 就照演 n（n−1 是不是 ◆ 都一樣）
+test('a merged jump plays the highest key level among n−1 and n: n−1 key, n plain → the n−1 key script; n key → n', () => {
+  const make = keys => {
+    const asked = [], fn = n => { const f = (e, s, c) => { asked.push(n); return [c.B.wait(2), c.B.levelUp('chip')]; }; f.key = keys.includes(n); return f; };
+    return { asked, mod: { id: 'chip', view() {}, script: { grow: { 3: fn(3), 4: fn(4) } } } };
+  };
+  const events = [grow('chip', 3, []), grow('chip', 4, [], { jump: true })];
+  const low = make([3]), raw = buildTurn(events, base([quietTower, low.mod]), fakeCtx());
+  assert.deepEqual(low.asked, [3], 'n−1 is the key level: its script plays with the merged event');
+  assert.deepEqual(between(raw, 0), []);
+  const seg = between(raw, 1);
+  assert.deepEqual(seg.map(b => b.kind), ['focus', 'wait', 'levelUp', 'apply']); assert.equal(seg[2].twice, true);
+  assert.equal(marksOf(raw)[1].info.key, true, 'the merged event counts as a key event');
+  for (const keys of [[4], [3, 4]]) {
+    const hi = make(keys), r = buildTurn(events, base([quietTower, hi.mod]), fakeCtx());
+    assert.deepEqual(hi.asked, [4], `keys ${keys}: n is the key level → n`); assert.equal(marksOf(r)[1].info.key, true);
+  }
+  const none = make([]), r0 = buildTurn(events, base([quietTower, none.mod]), fakeCtx());
+  assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
+  // 登陸之後也一樣：n−1 是 ◆ 就照演完整劇本（不是 [apply, LEVEL UP×2, apply]）
+  const indoor = make([3]), ri = buildTurn([grow('typhoon', 2, []), ...events], base([quietTower, landingLike(), indoor.mod]), fakeCtx());
+  assert.deepEqual(indoor.asked, [3]); assert.ok(between(ri, 2).some(b => b.kind === 'wait' && b.dur === 2), 'the key script plays indoors');
+});
 // 選擇帶動升級裁決 R6：代幣 Lv4 也標 ◆（2 → 4 一定跳級，環狀線是主線）
 test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 flies the speeders in', async () => {
   const token = await import('../src/actors/token.js'), milkMod = await import('../src/actors/milk.js');
@@ -351,6 +375,10 @@ test('a jump wraps every LEVEL UP of its script, inside together too, but never 
   const raw = buildTurn([grow('chip', 2, []), grow('chip', 3, [], { jump: true })], base([quietTower, mod]), fakeCtx());
   const seg = between(raw, 1), inner = seg.find(b => b.kind === 'together').beats.find(b => b.kind === 'levelUp'), down = seg.find(b => b.kind === 'levelUp');
   assert.equal(inner.twice, true); assert.equal(down.down, true); assert.equal(down.twice, false);
+  // 列車進站拍的 during 裡也換（燈泡 Lv7：LEVEL UP 在列車停靠的 during 裡）
+  const stop = { ...chipLike(), script: { grow: { 3: (e, s, c) => [c.B.trainStop({ during: [c.B.wait(0.5), c.B.together([c.B.levelUp('chip')])] })] } } };
+  const t = between(buildTurn([grow('chip', 2, []), grow('chip', 3, [], { jump: true })], base([quietTower, stop]), fakeCtx()), 1).find(b => b.kind === 'trainStop');
+  assert.equal(t.during[1].beats[0].twice, true, 'inside trainStop.during');
 });
 
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段——mark { miss, item }、（換物品空 GAP）、

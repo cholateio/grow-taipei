@@ -14,10 +14,11 @@
 //   ctx.speed 恆為 1（時間軸、beats.js 讀它的換算都保留，預設 1 就是不換算）。
 // 跳級 = 一個事件（回到 GROW 設計 §4.2）：引擎照舊記兩個 grow（第二個 jump: true，中間可能夾著跨過那一級的 onLevel fx）。
 //   第一級（同物品後面有 jump: true、from 接著它的 to、中間沒有同物品別的 grow 的那個）只推 mark(e, { gap: 0, key: false, skipped: true })：
-//   不套、不閃、不平移、不查劇本（n−1 級的劇本不演）。第二級照一般事件演 n 級的劇本（沒寫就預設），裡面所有 LEVEL UP 換成彈兩次
+//   不套、不閃、不平移、不查劇本。第二級照一般事件演 n 級的劇本（沒寫就預設；n−1 是 ◆、n 不是時演 n−1 的，見下面 ◆），裡面所有 LEVEL UP 換成彈兩次
 //   （withTwice，together 裡也換；LEVEL DOWN 不換）；它的 apply 一次套兩級的零件（舞台 foldEvent 直接設 lv = e.to，從 n−2 到 n 一次 diff，
 //   兩級的新零件一起閃白出現）。登陸之後（indoors）第二級 [apply, LEVEL UP×2, apply]。第二級劇本拿到的 s.prev 是 n−2（跟舞台一致）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
+//   跳級合成時演 {n−1, n} 裡最高的 ◆：n 不是 ◆、n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決 2026-10-29：燈泡 Lv7 的風車島不能消失），mark 標 key。
 // 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
 //   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）閃白 CAUSE_FLASH 秒，再照常平移到被升級的那一格。
 //   via 兩個以上只閃第一個（引擎把第一級的幫手排在前面）。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不插。
@@ -94,10 +95,12 @@ function defaults(e) {
   return [B.apply(e, { blink: false })];
 }
 
-// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換
+// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換。
+// 列車進站拍（trainStop）的 during 也換：拍上的 during 就是它裡面依序演的那個陣列，就地換掉元素（燈泡 Lv7 的 LEVEL UP 在列車停靠的 during 裡）
 function withTwice(beats) {
   return beats.map(b => {
     if (b.kind === 'together' && b.beats) { const sub = withTwice(b.beats); return sub.some((x, k) => x !== b.beats[k]) ? together(sub) : b; }
+    if (b.kind === 'trainStop' && Array.isArray(b.during)) { withTwice(b.during).forEach((x, k) => { b.during[k] = x; }); return b; }
     return b.kind === 'levelUp' && !b.down && !b.twice ? B.levelUp(b.target, { text: b.text, twice: true }) : b;
   });
 }
@@ -221,7 +224,11 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     if (e.kind === 'settle') settled = total;
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
-    const keyFn = e.kind === 'grow' ? mod(e.item)?.script?.grow?.[e.to] : null, key = !!keyFn?.key;
+    // 這個 grow 演哪一級的劇本：一般是 script.grow[to]；跳級合成的第二級演 {n−1, n} 裡最高的 ◆——n 是 ◆ 演 n，
+    // 不然 n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決：燈泡 Lv7 風車島這種大場面不能從正解裡消失；它的 apply 落在 n 級事件上，
+    // n 級的零件跟補的 apply 一起出現），都不是就演 n
+    const grows = e.kind === 'grow' ? mod(e.item)?.script?.grow : null;
+    const keyFn = grows && (jumpSecond.has(i) && !grows[e.to]?.key && grows[e.to - 1]?.key ? grows[e.to - 1] : grows[e.to]), key = !!keyFn?.key;
     // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 彈兩次、它的 apply 一次套兩級
     if (jumpFirst.has(i)) { out.push(mark(e, { gap: 0, key: false, skipped: true })); return; }
     const twice = jumpSecond.has(i), twiced = beats => (twice ? withTwice(beats) : beats);
@@ -244,7 +251,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
       beats = [B.apply(e, { blink: false })];
     } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
-      const fn = { placed: sc?.placed, grow: sc?.grow?.[e.to], fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
+      const fn = { placed: sc?.placed, grow: keyFn, fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = twiced(fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e)));
       if (landed && e.kind === 'settle') beats = keepOnly(beats, indoorSettle);
     }

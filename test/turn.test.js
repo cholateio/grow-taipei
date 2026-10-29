@@ -297,15 +297,29 @@ test('a merged jump plays the highest key level among n−1 and n: n−1 key, n 
   const seg = between(raw, 1);
   assert.deepEqual(seg.map(b => b.kind), ['focus', 'wait', 'levelUp', 'apply']); assert.equal(seg[2].twice, true);
   assert.equal(marksOf(raw)[1].info.key, true, 'the merged event counts as a key event');
-  for (const keys of [[4], [3, 4]]) {
-    const hi = make(keys), r = buildTurn(events, base([quietTower, hi.mod]), fakeCtx());
-    assert.deepEqual(hi.asked, [4], `keys ${keys}: n is the key level → n`); assert.equal(marksOf(r)[1].info.key, true);
-  }
+  // n 是 ◆、n−1 不是：演 n（兩級都是 ◆ 就不合成，見下一個測試）
+  const hi = make([4]), rh = buildTurn(events, base([quietTower, hi.mod]), fakeCtx());
+  assert.deepEqual(hi.asked, [4], 'n is the key level → n'); assert.equal(marksOf(rh)[1].info.key, true);
   const none = make([]), r0 = buildTurn(events, base([quietTower, none.mod]), fakeCtx());
   assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
   // 登陸之後也一樣：n−1 是 ◆ 就照演完整劇本（不是 [apply, LEVEL UP×2, apply]）
   const indoor = make([3]), ri = buildTurn([grow('typhoon', 2, []), ...events], base([quietTower, landingLike(), indoor.mod]), fakeCtx());
   assert.deepEqual(indoor.asked, [3]); assert.ok(between(ri, 2).some(b => b.kind === 'wait' && b.dur === 2), 'the key script plays indoors');
+});
+// Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：矽盾測試不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
+// 各演自己的 ◆ 劇本、各一個（不是彈兩次的）LEVEL UP、各自一個 apply；起因閃一下只在第一級前面（第二級帶著 jump 和 via 也不插）
+test('a jump between two key levels is not merged: both levels play their own key script with a single LEVEL UP, the cause flash only before the first', () => {
+  const asked = [], fn = n => { const f = (e, s, c) => { asked.push(n); return [c.B.wait(2), c.B.levelUp('chip')]; }; f.key = true; return f; };
+  const mod = { id: 'chip', view() {}, script: { grow: { 8: fn(8), 9: fn(9) } } };
+  const raw = buildTurn([grow('chip', 8, ['milk']), grow('chip', 9, ['milk'], { jump: true })], { ...base([quietTower, helperLike('milk'), mod]), lv: { ...zero, chip: 7 } }, fakeCtx());
+  assert.deepEqual(asked, [8, 9], 'both key scripts are asked');
+  const marks = marksOf(raw);
+  assert.deepEqual(marks.map(m => [m.e.to, !!m.info.cause, m.info.key, !!m.info.skipped]), [[8, true, false, false], [8, false, true, false], [9, false, true, false]]);
+  const first = between(raw, 1), second = between(raw, 2);
+  assert.deepEqual(kindsOf(first), ['wait', 'levelUp', 'apply']); assert.equal(first[1].twice, false, 'a single LEVEL UP');
+  assert.deepEqual(kindsOf(second), ['wait', 'levelUp', 'apply'], 'no cause flash, no pan (same cell) before the second'); assert.equal(second[1].twice, false);
+  assert.ok(!hasFlash(second));
+  // 只有一級是 ◆ 的照舊合成（上一個測試）
 });
 // 選擇帶動升級裁決 R6：代幣 Lv4 也標 ◆（2 → 4 一定跳級，環狀線是主線）
 test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 only; token Lv10 flies the speeders in', async () => {

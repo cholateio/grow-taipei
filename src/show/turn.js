@@ -19,6 +19,7 @@
 //   兩級的新零件一起閃白出現）。登陸之後（indoors）第二級 [apply, LEVEL UP×2, apply]。第二級劇本拿到的 s.prev 是 n−2（跟舞台一致）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
 //   跳級合成時演 {n−1, n} 裡最高的 ◆：n 不是 ◆、n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決 2026-10-29：燈泡 Lv7 的風車島不能消失），mark 標 key。
+//   n−1 和 n 都是 ◆ 就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 的矽盾測試）：兩級照一般事件接著演、各自的 ◆ 劇本、各一個 LEVEL UP，起因只在第一級前面。
 // 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
 //   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）閃白 CAUSE_FLASH 秒，再照常平移到被升級的那一格。
 //   via 兩個以上只閃第一個（引擎把第一級的幫手排在前面）。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不插。
@@ -109,15 +110,19 @@ function withTwice(beats) {
 }
 
 // 這回合哪些 grow 是跳級的第一級、哪些是合成的第二級（見檔頭）：第 i 個之後同物品的下一個 grow 是 jump: true 而且接著它（from === to）。
-// 颱風登陸的事件不當第一級（登陸要演；颱風也沒有跳級）
-function jumpPairs(events) {
-  const first = new Set(), second = new Set();
+// 颱風登陸的事件不當第一級（登陸要演；颱風也沒有跳級）。
+// 兩級都是 ◆（isKey(物品, 級)）就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 不能把矽盾測試吃掉）：兩個 grow 照一般事件接著演，
+// 各演自己的 ◆ 劇本、各一個 LEVEL UP；起因閃一下只在第一個前面（apart 記第二個，causeOf 不插）
+function jumpPairs(events, isKey = () => false) {
+  const first = new Set(), second = new Set(), apart = new Set();
   events.forEach((e, i) => {
     if (e.kind !== 'grow' || landsTyphoon(e)) return;
     const j = events.findIndex((x, k) => k > i && x.kind === 'grow' && x.item === e.item);
-    if (j > i && events[j].jump && events[j].from === e.to) { first.add(i); second.add(j); }
+    if (!(j > i && events[j].jump && events[j].from === e.to)) return;
+    if (isKey(e.item, e.to) && isKey(e.item, events[j].to)) { apart.add(j); return; }
+    first.add(i); second.add(j);
   });
-  return { first, second };
+  return { first, second, apart };
 }
 
 // 登陸之後的事件（indoors）：升級 → [apply, LEVEL UP]；改級的反應 → [apply, LEVEL UP／DOWN]；其他 → 閃白套用
@@ -199,8 +204,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   };
 
   // 起因閃一下（見檔頭）：這個事件要不要插、閃誰（null = 不插）
-  const { first: jumpFirst, second: jumpSecond } = jumpPairs(events);
-  const causeOf = (e, i) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !jumpFirst.has(i) && !landed && !finale ? e.via[0] : null);
+  const { first: jumpFirst, second: jumpSecond, apart: jumpApart } = jumpPairs(events, (id, n) => !!mod(id)?.script?.grow?.[n]?.key);
+  const causeOf = (e, i) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !jumpFirst.has(i) && !jumpApart.has(i) && !landed && !finale ? e.via[0] : null);
   // 起因的拍：toHelper 是平移到幫手那一格的拍（null = 鏡頭已經在那一格）。幫手這一級有沒有本體零件演到才知道（記一次）：
   // 沒有就不平移過去、也不閃（B.flash 自己回 false）。then(main, fallback)：之後平移到目標格的拍——起因演了照 main（鏡頭在幫手那一格），
   // 沒演照 fallback（原本的帳）；兩個都是 null 就不用平移

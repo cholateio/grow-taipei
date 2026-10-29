@@ -111,11 +111,10 @@ test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 →
     // 晶片 Lv7 天線；Lv8 那回合測試閃三下（其他回合不閃）、演完收起來；Lv9 起罩子常駐
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
     assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
-    // 選擇帶動升級裁決 R6：Lv8 標 ◆，是跳級的第二級時（賽博：晶片 6 → 8）也演完整的測試、閃三下；其他回合都不閃
-    // 晶片 8 是 8 → 9 跳級的第一級時（外星最後一輪）合成一段演 {8, 9} 裡最高的 ◆——Lv9 待命，沒有測試的三下（協調者裁決 2026-10-29）
+    // 選擇帶動升級裁決 R6：Lv8 標 ◆，演完整的測試、閃三下；其他回合都不閃。兩條正解的晶片 8 都在 ◆ 跟 ◆ 之間的跳級裡（賽博 7 → 8、外星 8 → 9），
+    // Task 6a 修正輪裁決：這種跳級不合成，兩級各演自己的 ◆——外星也看得到測試
     if (jumps.has('chip8')) jumped8 = true;
-    const tested = !jumps.has('chip9');
-    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 && tested ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
+    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
     assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
     turns.forEach((t, i) => assert.equal(t.shieldOut, i >= c9, `${name} turn ${i + 1}: standby shield out only from chip 9 (turn ${c9 + 1})`));
     // 一回合最多 +2：相鄰兩節可以同一回合（跳級），隔一節的一定分在不同回合
@@ -129,7 +128,9 @@ test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 →
 test('island chain, event by event: each chain part first appears with its own event and stays', async () => {
   for (const [n, { events, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), first = has => events.findIndex(has), idx = tag => events.findIndex(x => x.e === tag);
-    const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/); return jumps.has(`${id}${+lv + 1}`) ? `${id}${+lv + 1}` : tag; };
+    // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決：賽博晶片 7 → 8、外星 8 → 9），第一級照樣有自己的 apply
+    const key = (id, n) => !!ALL.find(m => m.id === id)?.script?.grow?.[n]?.key;
+    const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/), n = +lv; return jumps.has(`${id}${n + 1}`) && !(key(id, n) && key(id, n + 1)) ? `${id}${n + 1}` : tag; };
     const windmill = grows.indexOf('bulb7') < grows.indexOf('token7') ? 'bulb7' : 'token7';   // 風車島支線：燈泡 Lv7 先到就自己鋪
     const PARTS = [['token.spur.windmill', windmill], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
       ['chip.cable', 'chip6'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）

@@ -434,7 +434,9 @@ test('both solutions live with merged jumps and cause flashes: invariants clean,
       inv.label(what);
       await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { inv.label(`${what} [${e.kind} ${e.item ?? ''}${e.to ?? ''}]`); if (info?.cause) causes++; } });
       inv.turnEnd();
-      const jumps = r.events.filter(e => e.kind === 'grow' && e.jump).length;
+      // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決）：各一個 LEVEL UP，不算
+      const isKey = e => !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
+      const jumps = r.events.filter(e => e.kind === 'grow' && e.jump && !(isKey(e) && isKey({ ...e, to: e.to - 1 }))).length;
       assert.ok(causes <= 4 && flashed <= causes, `${what}: ${causes} cause segments, ${flashed} flashes`);
       assert.equal(seconds, jumps, `${what}: one twice LEVEL UP per jump (${jumps})`);
       total += causes; lit += flashed;

@@ -10,10 +10,14 @@ import { createState } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { cellAt, SPACING, R } from '../src/scene/hex.js';
 import { headlessShow, turnSteps, gameInvariants } from './helpers/show.js';
+import { cellOf } from '../src/actors/anchors.js';
 import { finaleStep, EXAMPLE } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const TOTAL_MAX = 30, CELL_MAX = 8, SMALL = ['rat.pack'];
+// 每格上限的例外（Task 6a 修正輪，控制者裁決）：球場格（巨蛋，最大的一格）11——棒球 Lv5 起、鮮奶 ≥6 時球員 2＋少棒隊小孩 3＋觀眾 4＋草皮觀眾 1
+// 是刻意的場面（回到 GROW 之後兩條正解第 5 回合正是這樣），再留一個路過的人；其他格照舊 8，不是整體放寬
+const CELL_MAX_AT = { [String(cellOf('baseball'))]: 11 }, cellMax = cell => CELL_MAX_AT[cell] ?? CELL_MAX;
 const MAIN_REACH = Math.sqrt(3) * SPACING + R;   // 主島最外圈格子的外緣：橋上的人算主島，再外面是離島
 
 // 露出來的成員：{ total：主島上（格子裡或橋上）, away：離島上, cells: { 'q,r': [名冊鍵…] } }
@@ -31,7 +35,7 @@ function census(roster) {
   return out;
 }
 
-test('people budget: every turn end of both solutions, the finale turn included (and 5 s later), shows ≤ 30 roster members, ≤ 8 in any main cell (rats excluded)', async () => {
+test('people budget: every turn end of both solutions, the finale turn included (and 5 s later), shows ≤ 30 roster members, ≤ 8 in any main cell, ≤ 11 in the dome cell (rats excluded)', async () => {
   const bad = [], peak = { total: 0, cell: 0, away: 0 }, pops = [];
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow(), inv = gameInvariants(show);   // 同一趟也查換位置一定閃白（裁決 R3）
@@ -51,7 +55,7 @@ test('people budget: every turn end of both solutions, the finale turn included 
         if (c.total > TOTAL_MAX) bad.push(`${what}: ${c.total} on the island`);
         for (const [cell, keys] of Object.entries(c.cells)) {
           peak.cell = Math.max(peak.cell, keys.length);
-          if (keys.length > CELL_MAX) bad.push(`${what}: ${keys.length} in cell ${cell} (${keys.join(' ')})`);
+          if (keys.length > cellMax(cell)) bad.push(`${what}: ${keys.length} in cell ${cell} (${keys.join(' ')})`);
         }
       }
     }

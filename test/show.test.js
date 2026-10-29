@@ -371,10 +371,10 @@ test('a turn with a stage crossing into 點燈 holds the mid-script focus(home) 
   assert.ok(lit >= 0, 'the turn crosses into 點燈');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
-  // 劇本先飛去 101：登陸回合的 settle 只留套用、LEVEL UP 與回全景（turn.js 的 indoorSettle），那一拍本來就不在——
-  // 回到 GROW 之後點燈落在登陸回合（以前是跳級第一級晶片 7 的劇本剛好飛過 101 才過；跳級合成一段之後 n−1 級的劇本不演）
-  const tower = cellCentre([0, 0]), landing = events.some(engine.landsTyphoon);
-  if (!landing) assert.ok(before.slice(0, mid).some(l => l[0] === 'focus' && Math.hypot(l[2].x - tower.x, l[2].z - tower.z) < 1e-6), 'focus(tower) before the home');
+  // 劇本先飛去 101 那一拍不查：回到 GROW 之後點燈落在颱風登陸回合，登陸回合的 settle 只留套用、LEVEL UP 與回全景（turn.js 的 indoorSettle），
+  // 那一拍本來就不在（以前是跳級第一級晶片 7 的劇本剛好飛過 101 才過；跳級合成一段之後 n−1 級的劇本不演）。
+  // 釘住這個前提（最終修正 3：原本的 if (!landing) 兩條正解都進不去）——點燈哪天搬出登陸回合，這裡會失敗，再把 focus(tower) 的斷言加回來
+  assert.ok(events.some(engine.landsTyphoon), `點燈 falls in the typhoon landing turn (turn ${at.lit})`);
   // 停 0.8 s（1 倍速：演出時間就是真實秒數）
   assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
   assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');

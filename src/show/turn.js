@@ -209,10 +209,10 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     if (p.segs.length) pending = p;
   };
 
-  // 起因閃一下（見檔頭）：這個事件要不要插、閃誰（null = 不插）
+  // 起因閃一下（見檔頭）：這個事件要不要插、閃誰（null = 不插）。跳級的第一級（jumpFirst）在問之前就只推 mark 回去了，這裡不用再查
   const { first: jumpFirst, second: jumpSecond, apart: jumpApart } = jumpPairs(events, (id, n) => !!mod(id)?.script?.grow?.[n]?.key);
   const lockFlag = lockFlags(spec), locked = (id, s) => !!lockFlag[id] && !!s.flags?.[lockFlag[id]];
-  const causeOf = (e, i, s) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !locked(e.via[0], s) && !jumpFirst.has(i) && !jumpApart.has(i) && !landed && !finale ? e.via[0] : null);
+  const causeOf = (e, i, s) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !locked(e.via[0], s) && !jumpApart.has(i) && !landed && !finale ? e.via[0] : null);
   // 起因的拍：toHelper 是平移到幫手那一格的拍（null = 鏡頭已經在那一格）。幫手這一級有沒有本體零件演到才知道（記一次）：
   // 沒有就不平移過去、也不閃（B.flash 自己回 false）。then(main, fallback)：之後平移到目標格的拍——起因演了照 main（鏡頭在幫手那一格），
   // 沒演照 fallback（原本的帳）；兩個都是 null 就不用平移
@@ -278,21 +278,23 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
       const helper = causeOf(e, i, s), hc = helper ? cellOf(helper) : null;
-      let pan = null;   // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
+      let pan = null;        // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
+      let toHelper = null;   // 起因：平移到幫手那一格的拍（null = 鏡頭已經在那一格）
       if (cell && pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）；起因的平移也算一次平移（用同一本帳）
         const a = afterMiss(item, cell);
         if (a.gap) { lead.push(a.gap); gapOf = a.gapOf; }
         pan = a.focus;
-        if (hc) { const k = causeBeats(helper, a.focusTo(hc)); lead.push(...k.beats); pan = k.then(sameCell(cell, hc) ? null : B.focus(cell), pan); cause = helper; }
-        lastItem = item;
+        if (hc) toHelper = a.focusTo(hc);
       } else if (cell) {
         if (lastItem && item !== lastItem) lead.push(B.wait(GAP));
         pan = sameCell(cell, lastCell) ? null : B.focus(cell);
-        if (hc) { const k = causeBeats(helper, sameCell(hc, lastCell) ? null : B.focus(hc)); lead.push(...k.beats); pan = k.then(sameCell(cell, hc) ? null : B.focus(cell), pan); cause = helper; }
-        lastItem = item;
+        if (hc) toHelper = sameCell(hc, lastCell) ? null : B.focus(hc);
       }
+      if (cell) lastItem = item;
+      // 起因的拍接在空拍之後；之後平移到目標格：起因演了從幫手那一格平移，沒演照原本的帳（causeBeats 的 then）
+      if (cell && hc) { const k = causeBeats(helper, toHelper); lead.push(...k.beats); pan = k.then(sameCell(cell, hc) ? null : B.focus(cell), pan); cause = helper; }
+      // 劇本開場自己平移（opensOnFocus）就不補平移；下面那行也會因為劇本有 focus 把 lastCell 清掉
       if (cell && !opensOnFocus(beats[0])) { if (pan) lead.push(pan); lastCell = cell; }
-      else if (cause) lastCell = hc;
       // 劇本自己動了鏡頭（focus 拍）：不知道停在哪，下一個事件一定重新平移
       if (some(beats, b => b.kind === 'focus')) lastCell = null;
     }

@@ -174,10 +174,12 @@ function station(n, lv) {
 // 賽博站的懸浮月台（一個零件 kind 'deck'，裡面三個 Cyberpunk Kit glb，一起閃白、一起浮上來）：站前廣場上空 0.7 的月台（人從底下走）、
 // 月台前緣的欄杆、立在月台上的霓虹招牌。pos 相對 DECK_AT；footprint 不算
 export const DECK_AT = offset(AT, 0, 1.0, 0.7);   // 燈泡 Lv9 的月台霓虹也貼在這裡
+// 月台的尺寸（相對 DECK_AT）：板面寬 w、深 d、頂面高 top；正中的招牌寬 signW；前緣欄杆在 z railZ、寬 railW（王冠鼠的站位讀這些，rat.js）
+export const PLATFORM = { w: 1.4, d: 0.36, top: 0.08, signW: 0.62, railZ: 0.13, railW: 1.2 };
 const DECK_MODELS = [
-  { path: 'quat/cyberpunk/Platform_4x1_Empty.glb', pos: [0, 0, 0], h: 0.224 * 1.4 / 3.863, tint: { '^LightGrey$': C.curb, '^Grey$': C.navy }, glow: { '^Texture_Signs$': C.neonBlue } },
-  { path: 'quat/cyberpunk/Rail_Long.glb', pos: [0, 0.08, 0.13], h: 0.237 * 1.2 / 2.293, glow: { '^Black$': C.neonPink } },
-  { path: 'quat/cyberpunk/Sign_1.glb', pos: [0, 0.08, 0], h: 0.462 * 0.62 / 1.294, tint: { '^Grey$': C.ink }, glow: { '^Texture_Signs$': C.neonPink } },
+  { path: 'quat/cyberpunk/Platform_4x1_Empty.glb', pos: [0, 0, 0], h: 0.224 * PLATFORM.w / 3.863, tint: { '^LightGrey$': C.curb, '^Grey$': C.navy }, glow: { '^Texture_Signs$': C.neonBlue } },
+  { path: 'quat/cyberpunk/Rail_Long.glb', pos: [0, PLATFORM.top, PLATFORM.railZ], h: 0.237 * PLATFORM.railW / 2.293, glow: { '^Black$': C.neonPink } },
+  { path: 'quat/cyberpunk/Sign_1.glb', pos: [0, PLATFORM.top, 0], h: 0.462 * PLATFORM.signW / 1.294, tint: { '^Grey$': C.ink }, glow: { '^Texture_Signs$': C.neonPink } },
 ];
 const DECK_RISE = 0.65;   // Lv9 劇本：懸浮月台從地面浮上來的高度
 

@@ -15,7 +15,7 @@ import { CRATE } from './milk.js';
 import { C, offset } from './palette.js';
 import { ITEMS } from '../rules/spec.js';
 import { compile } from '../rules/conditions.js';
-import { trainCars, ROOF_Y, GAP, TRACK } from './token.js';
+import { trainCars, GAP, TRACK, DECK_AT, PLATFORM } from './token.js';
 import { modelExtras } from '../show/roster.js';
 import { body as towerBody, shipTop } from './tower.js';
 
@@ -27,11 +27,14 @@ const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時�
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客改站池子北側、離牠 ≥ 1.9（landmarks.js BATHERS_NORTH，2026-10-28）
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 老鼠在這裡變身）
-// 王冠鼠坐的站頂：代幣 Lv9 起是賽博站的平屋頂（代幣 Lv10 三台 Roadster 停在 z 0.1 的左中右、車頭朝 101（−z）、車身長 0.54，
-// 牠坐空著的左後角、身體沿著後緣（面向 +x，側身對鏡頭——面向廣場的話身體會伸進左邊那台的車頭；計畫 8 任務 5）；天線在右後角）；
-// 之前是大車站圓頂外的簷角
+// 王冠鼠的站位（看 lv.token）：代幣 Lv9 起坐在賽博站前的懸浮月台上（token.js DECK_AT／PLATFORM：招牌右邊、欄杆後面，身體斜斜面向鏡頭）——
+// 站頂平屋頂 Lv10 停滿三台 Roadster 和三條起飛坡道，沒有牠的位子（計畫 8 任務 5 裁決 (a)）；代幣 Lv9 以前（偏離正解的放法，
+// 賽博 Lv5 可能碰上代幣 7–8）沒有月台也沒有坡道，坐大車站圓頂外的簷角
 const STATION = anchorWorld('token'), CORNICE_Y = 0.605;
-export const kingSpot = token => (token >= 9 ? { ...offset(STATION, -0.46, -0.355, ROOF_Y), yaw: Math.PI / 2 } : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
+export const KING_DECK = { x: (PLATFORM.signW / 2 + PLATFORM.w / 2) / 2 + 0.01, z: -0.03, yaw: 0.5 };   // 相對 DECK_AT；招牌右緣到月台右緣的中間
+export const kingSpot = lv => (lv.token >= 9
+  ? { ...offset(DECK_AT, KING_DECK.x, KING_DECK.z, PLATFORM.top), yaw: KING_DECK.yaw }
+  : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
 
 // 黑塔屋頂上的站位（世界座標）：屋頂面高度、兩排各 5 隻（x 間距 0.26 ≥ 名冊的 0.25，不會被 separateStanding 推開），
 // 前排 z +0.1、後排 z −0.26（離後緣的桅杆 0.36）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）
@@ -78,7 +81,7 @@ export function view(lv, flags) {
     // 賽博尾聲：軍團站上黑塔屋頂（同一個名冊、同一批老鼠，只是家搬了）
     case 'cyber': return lv.rat >= 5
       ? { 'rat.pack': pack(TOWER, 10, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: PARK }, { tint: GREY, antenna: true }),
-        'rat.king': { kind: 'king', at: kingSpot(lv.token), model: { path: RAT, h: 0.2, anim: 'Idle', tint: GREY, antenna: true, crown: true }, footprint: false } }
+        'rat.king': { kind: 'king', at: kingSpot(lv), model: { path: RAT, h: 0.2, anim: 'Idle', tint: GREY, antenna: true, crown: true }, footprint: false } }
       : { 'rat.pack': pack(ENGINEER_ROUTE[0], 5, { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 }, { tint: GREY, antenna: true }) };
     case 'alien': {
       // Lv5 變異鼠加冕（戴王冠）、頭上盤旋一艘小 UFO（鋪外星結局）；石堆島的綠光圈在 satellites.js

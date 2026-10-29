@@ -111,15 +111,22 @@ test('script: placed, grow 2–5, fx and rep exist; ◆ Lv4 and Lv5 are the key 
 // ── 物品 v2 §4.6：Lv5 兩條分岔、人數預算、footprint ──
 const { modelExtras } = await import('../src/show/roster.js');
 const GOLDISH = c => ((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 180 && (c & 255) < 160;
-test('cyber Lv5: ten robot rats round 101 and a crowned robot rat sitting on the station roof (cyber station at token ≥ 9, the dome station cornice before)', async () => {
-  const { ROOF_Y } = await import('../src/actors/token.js');
+test('cyber Lv5: ten robot rats round 101 and a crowned robot rat at the station (on the hovering deck at token ≥ 9, the dome station cornice before)', async () => {
+  const { DECK_AT, PLATFORM } = await import('../src/actors/token.js');
   for (const token of [7, 8, 9, 10]) {
     const v = rat.view(lv({ rat: 5, chip: 8, token }), { ratBranch: 'cyber' }), k = v['rat.king'], st = anchorWorld('token');
     assert.equal(v['rat.pack'].n, 10);
     assert.equal(k.kind, 'king'); assert.equal(k.footprint, false); assert.equal(k.model.path, RAT); assert.ok(k.model.antenna && k.model.crown);
     assert.ok(modelExtras(k.model, k.model.h).some(x => x.parts.some(p => GOLDISH(p.color))), 'a gold crown');
-    assert.ok(near(k.at, st, 0.6), `on the station (token ${token})`);
-    assert.ok(Math.abs(k.at.y - (st.y + (token >= 9 ? ROOF_Y : 0.605))) < 1e-6, `sits on the roof (token ${token}) y ${k.at.y}`);
+    assert.deepEqual(k.at, rat.kingSpot(lv({ rat: 5, chip: 8, token })), 'at kingSpot(lv)');
+    if (token >= 9) {
+      assert.ok(Math.abs(k.at.y - (DECK_AT.y + PLATFORM.top)) < 1e-6, `sits on the hovering deck (token ${token}) y ${k.at.y}`);
+      assert.ok(Math.abs(k.at.x - DECK_AT.x) <= PLATFORM.w / 2 - 0.1 && Math.abs(k.at.z - DECK_AT.z) <= PLATFORM.d / 2 && Math.abs(k.at.x - DECK_AT.x) >= PLATFORM.signW / 2 + 0.1, 'on the deck, beside the sign');
+      assert.ok(k.at.z - DECK_AT.z < PLATFORM.railZ - 0.1, 'behind the front rail');
+    } else {
+      assert.ok(near(k.at, st, 0.6), `on the station (token ${token})`);
+      assert.ok(Math.abs(k.at.y - (st.y + 0.605)) < 1e-6, `sits on the dome station cornice (token ${token}) y ${k.at.y}`);
+    }
   }
   for (const [l, f] of [[{ rat: 4, chip: 8 }, { ratBranch: 'cyber' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 3 }, {}]]) assert.equal(rat.view(lv(l), f)['rat.king'], undefined);
 });
@@ -159,19 +166,25 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
   // 外星尾聲、沒有尾聲：照舊（繞 101）
   assert.deepEqual(rat.view(L, { ratBranch: 'cyber', epilogue: 'alien' })['rat.pack'], plain['rat.pack']);
 });
-// 審稿：王冠鼠不能坐在停好的飛天車上——代幣 Lv10 三台 Roadster 停在屋頂左中右（車身長 = 車身零件的長，沿停好的方向；計畫 8 任務 5）；
-// 王冠鼠離每一台車身（停車點 ± 半個車長、沿車頭方向的線段）≥ 0.2，還在屋頂上、離天線 ≥ 0.2
-test('the crown rat sits clear of the three parked roadsters on the cyber roof (≥ 0.2 from every car body) and on the roof', async () => {
+// 計畫 8 任務 5 裁決 (a)：代幣 Lv10 的站頂停滿三台 Roadster、三條坡道——王冠鼠在懸浮月台上，離每一台車身、每一條坡道、天線 ≥ 0.2，
+// 也不在屋頂上；代幣 8（偏離正解的放法）沒有月台、沒有坡道，坐大車站的簷角
+test('the crown rat: token 8 → the dome station cornice; token 10 → the hovering deck, clear of every parked roadster, lane and the antenna', async () => {
   const token = await import('../src/actors/token.js'), { orbitPose } = await import('../src/actors/parts.js'), st = anchorWorld('token');
-  const v = token.view(lv({ token: 10 }), {}), k = rat.kingSpot(10);
-  const segDist = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  assert.deepEqual(rat.kingSpot(lv({ token: 8 })), { ...offset(st, -0.42, 0.32, 0.605), yaw: 0.6 }, 'token 8: the old cornice spot');
+  const v = token.view(lv({ token: 10 }), {}), k = rat.kingSpot(lv({ token: 10 }));
+  assert.ok(Math.abs(k.y - (token.DECK_AT.y + token.PLATFORM.top)) < 1e-9, 'token 10: on the deck');
+  // 水平投影：點到矩形（中心 c、朝 yaw、半長 hl、半寬 hw）的距離
+  const toRect = (p, c, yaw, hl, hw) => { const dx = Math.sin(yaw), dz = Math.cos(yaw), rx = p.x - c.x, rz = p.z - c.z, a = rx * dx + rz * dz, s = rx * dz - rz * dx; return Math.hypot(Math.max(0, Math.abs(a) - hl), Math.max(0, Math.abs(s) - hw)); };
   for (let i = 0; i < 3; i++) {
-    const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, 1e6), half = car.model.parts[0].scale[2] / 2, ux = Math.sin(yaw) * half, uz = Math.cos(yaw) * half;
-    const d = segDist(k, { x: car.park.x - ux, z: car.park.z - uz }, { x: car.park.x + ux, z: car.park.z + uz });
-    assert.ok(d >= 0.2, `${d.toFixed(2)} from roadster ${i} parked at x ${(car.park.x - st.x).toFixed(2)}`);
+    const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, Infinity), d = toRect(k, car.park, yaw, token.CAR_L / 2, token.CAR_W / 2 + token.WHEEL_OUT);
+    assert.ok(d >= 0.2, `${d.toFixed(2)} from roadster ${i}`);
   }
-  assert.ok(Math.abs(k.x - st.x) <= token.ROOF.w / 2 - 0.05 && Math.abs(k.z - st.z) <= token.ROOF.d / 2 - 0.05, 'on the roof (token.ROOF)');
+  for (const [i, lane] of token.LANES.entries()) {
+    const run = lane.len * Math.cos(lane.angle), c = { x: lane.foot.x + Math.sin(lane.yaw) * run / 2, z: lane.foot.z + Math.cos(lane.yaw) * run / 2 }, d = toRect(k, c, lane.yaw, run / 2, lane.width / 2);
+    assert.ok(d >= 0.2, `${d.toFixed(2)} from lane ${i}`);
+  }
   assert.ok(Math.hypot(k.x - (st.x + token.ANTENNA.x), k.z - (st.z + token.ANTENNA.z)) >= 0.2, 'clear of the roof antenna');
+  assert.ok(Math.abs(k.x - st.x) > token.ROOF.w / 2 || Math.abs(k.z - st.z) > token.ROOF.d / 2, 'not on the roof');
 });
 // 最終章 §7 外星尾聲：變異鼠王（戴王冠、揮手）的站位搬到 101 母艦的碟頂中心（tower.shipTop），頭上的小 UFO 不畫（三台大 UFO 取代它）
 test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower top), rat.ufo not drawn', async () => {

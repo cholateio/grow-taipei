@@ -374,6 +374,17 @@ test('no cause flash: typhoon as via, after the landing, the first level of a ju
   // 終局旗標走 buildTurn 的第二個參數（同上面 missile／epilogue 的測試）
   assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['milk'])], { ...base(mods()), finale: true }, fakeCtx())), 'finale');
 });
+// 最終修正 2：被鎖住的幫手不當起因——淹水的捷運站還有 token.main（游泳池），停電的燈泡還有 bulb.main，閃它們會讀成「游泳池／黑掉的燈讓老鼠長大」。
+// 鎖是規則表裡帶 lock 的那幾條（spec：停電鎖燈泡、淹水鎖代幣），演出層看得到的是它們一起立的旗標；同一回合前面的事件才立旗也算
+test('no cause flash from a locked helper: flooded token, blacked-out bulb (flag from earlier turns or earlier in this turn)', () => {
+  const mods = () => [quietTower, helperLike('token'), helperLike('bulb'), chipLike()];
+  assert.ok(hasFlash(buildTurn([grow('chip', 2, ['token'])], base(mods()), fakeCtx())), 'precondition: a dry token station flashes');
+  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['token'])], { ...base(mods()), flags: { flooded: true } }, fakeCtx())), 'flooded token');
+  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['bulb'])], { ...base(mods()), flags: { blackout: true } }, fakeCtx())), 'blacked-out bulb');
+  assert.ok(hasFlash(buildTurn([grow('chip', 2, ['bulb'])], { ...base(mods()), flags: { flooded: true } }, fakeCtx())), 'the flood only locks the token');
+  const sameTurn = buildTurn([{ kind: 'fx', item: 'turn', cause: 'typhoon', flag: { name: 'flooded', value: true } }, grow('chip', 2, ['token'])], base(mods()), fakeCtx());
+  assert.ok(!hasFlash(sameTurn), 'flooded earlier in the same turn');
+});
 // 假的颱風登陸劇本跟真的一樣最後回全景（登陸自己回全景；不然下一個 indoors 事件前面會補一拍 focus('home')）
 const landingLike = () => ({ id: 'typhoon', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.focus('home')] } } });
 test('indoors jump: after the landing the merged level plays [apply, levelUp twice, apply]; a key level plays its full script', () => {

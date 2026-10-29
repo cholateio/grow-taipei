@@ -48,6 +48,12 @@ export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁
 // 起因閃一下（見檔頭）：閃幾秒（beats.js 的 B.flash 預設同一個數）、閃哪個零件（每個演員模組的本體都是 <id>.main）
 export { CAUSE_FLASH };
 export const CAUSE_HELPER_KEY = id => `${id}.main`;
+// 規則表裡會把物品鎖住的那幾條（停電鎖燈泡、淹水鎖代幣）：{ 被鎖的物品: 同一條立的旗標 }。舞台的 view 只有 lv 與 flags、看不到 locked，
+// 旗標立了就當那個物品鎖住了——被鎖住的幫手不當起因閃（淹水的捷運站還有 token.main，是游泳池；最終修正 2）
+function lockFlags(spec) {
+  const acts = [...Object.values(spec?.ITEMS ?? {}).flatMap(it => [...Object.values(it.onLevel ?? {}).flat(), ...(it.fx ?? []), ...(it.stall ?? [])]), ...(spec?.AFTER_TURN ?? [])];
+  return Object.fromEntries(acts.filter(a => a?.lock && a.flag?.name).map(a => [a.lock, a.flag.name]));
+}
 // 起因段（mark 的 info.cause 到同一個事件下一個 mark：空拍之後平移到幫手 FOCUS_BEAT、閃白 CAUSE_FLASH、平移回目標 FOCUS_BEAT）的上限，
 // pace 與測試單獨量（扣掉空拍）；不算進那一級劇本與 ◆ 的秒數
 export const CAUSE_CAP = 2.0;
@@ -205,7 +211,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
 
   // 起因閃一下（見檔頭）：這個事件要不要插、閃誰（null = 不插）
   const { first: jumpFirst, second: jumpSecond, apart: jumpApart } = jumpPairs(events, (id, n) => !!mod(id)?.script?.grow?.[n]?.key);
-  const causeOf = (e, i) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !jumpFirst.has(i) && !jumpApart.has(i) && !landed && !finale ? e.via[0] : null);
+  const lockFlag = lockFlags(spec), locked = (id, s) => !!lockFlag[id] && !!s.flags?.[lockFlag[id]];
+  const causeOf = (e, i, s) => (e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !locked(e.via[0], s) && !jumpFirst.has(i) && !jumpApart.has(i) && !landed && !finale ? e.via[0] : null);
   // 起因的拍：toHelper 是平移到幫手那一格的拍（null = 鏡頭已經在那一格）。幫手這一級有沒有本體零件演到才知道（記一次）：
   // 沒有就不平移過去、也不閃（B.flash 自己回 false）。then(main, fallback)：之後平移到目標格的拍——起因演了照 main（鏡頭在幫手那一格），
   // 沒演照 fallback（原本的帳）；兩個都是 null 就不用平移
@@ -270,7 +277,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     let cause = null;   // 起因閃一下插了的話是幫手（mark 的 info.cause）
     if (!finale && e.kind !== 'wait' && (!landed || key) && shows(beats)) {
       const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
-      const helper = causeOf(e, i), hc = helper ? cellOf(helper) : null;
+      const helper = causeOf(e, i, s), hc = helper ? cellOf(helper) : null;
       let pan = null;   // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
       if (cell && pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）；起因的平移也算一次平移（用同一本帳）
         const a = afterMiss(item, cell);

@@ -156,14 +156,17 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
     const v = sat.view(lv({ bulb: b }), {}), on = b >= 7;
     assert.deepEqual([!!v['sat.lighthouse'], !!v['sat.beam'], !!v['sat.keeper'], v['sat.windmill'].speed > 0], [on, on, on, on], `bulb ${b}`);
   }
-  // 選擇帶動升級：燈泡 up[7] 代幣 7 → 6（高鐵載電工去）——代幣還沒通車到離島時，風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）
-  assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 6] }, 'the HSR carries the electrician');
-  for (const t of [6, 7]) for (const b of [6, 7]) {
+  // 回到 GROW（2026-10-29 設計 §3.2）：燈泡 7 是 auto（以前 up[7] 要代幣 ≥6），燈泡到 7 時代幣可能還很低——
+  // 有環狀線（代幣 ≥4）但還沒通車到離島時，風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）
+  assert.ok(!spec.ITEMS.bulb.up[7] || spec.ITEMS.bulb.up[7].always, 'bulb 7 is auto');
+  for (const t of [4, 5, 6, 7]) for (const b of [6, 7]) {
     const tv = token.view(lv({ token: t, bulb: b }), {}, {});
     assert.equal(!!tv['token.spur.windmill'], t >= 7 || b >= 7, `token ${t} bulb ${b}: the windmill spur stands once the electrician rides it`);
     assert.equal(!!tv['token.spur.playground'], t >= 7, `token ${t} bulb ${b}: the playground spur waits for token 7`);
   }
-  assert.ok(Object.keys(spec.ITEMS.bulb.jump ?? {}).every(n => +n < 7), 'no jump lands on bulb 7 or later');
+  // 落在燈泡 7 以後的跳級只有 6 → 8（晶片 ≥4）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決 2026-10-29），電工照樣搭車去開風電、燈塔亮
+  assert.deepEqual(Object.keys(spec.ITEMS.bulb.jump ?? {}).filter(n => +n >= 7), ['8'], 'the only jump past bulb 6 is 6 → 8');
+  assert.equal((await import('../src/actors/bulb.js')).script.grow[7].key, true, 'bulb 7 is a key level: the merged 6 → 8 plays it');
   for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stage1'], b >= 5, `boba ${b}`); }
   for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
 });

@@ -201,10 +201,11 @@ async function playLanding(h, evs, opts = {}) {
 }
 // 引擎裡能讓登陸回合觸發最多反應的放法（計畫 6 任務 1「每一級都有觸發者」之後重找：照 ORDER 的子集合排列、颱風最後放，
 // 窮舉到 8 個物品，看登陸那回合 fx 的反應組合）。裁決 R3：颱風放下當回合就登陸。
-//   大停電＋淹水現在可以同一回合（燈泡、代幣長得慢：鮮奶 → 代幣 → 珍奶 → 燈泡 → 颱風，兩個都還 ≤4）；
+//   大停電＋淹水現在可以同一回合（燈泡、代幣晚放：鮮奶 → 珍奶 → 代幣 → 燈泡 → 颱風，兩個都還 ≤4；回到 GROW（2026-10-29）之後
+//   代幣每回合自己長，舊的「鮮奶 → 代幣 → 珍奶 → 燈泡」登陸那回合代幣先長到 5、淹不到，代幣改成倒數第三個放）；
 //   鼠災要老鼠 ≥4（Lv3 要代幣 ≥4），代幣、燈泡都過了 4，跟停電／淹水湊不到同一回合——鼠災另一局（老鼠在登陸當回合到 Lv5、外星分支，
 //   鼠災優先，鼠窩搬到巨蛋門口五隻）。兩局都有珍奶外送與颱風假的故事
-const BLACKOUT_FLOOD = ['milk', 'token', 'boba', 'bulb', 'typhoon'], DOME = ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'boba', 'typhoon'];
+const BLACKOUT_FLOOD = ['milk', 'boba', 'token', 'bulb', 'typhoon'], DOME = ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'boba', 'typhoon'];
 // 大停電（棒球 ≥3 的登陸回合；下面「雲賴在巨蛋」那條用）：燈泡放在颱風前一個
 const BLACKOUT = ['rat', 'milk', 'baseball', 'boba', 'bulb', 'typhoon'];
 for (const [name, order, need] of [['blackout and flood', BLACKOUT_FLOOD, ['blackout', 'flooded']], ['dome rats', DOME, ['domeRats']]]) {

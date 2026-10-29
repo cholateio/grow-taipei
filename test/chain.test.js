@@ -1,5 +1,6 @@
 // test/chain.test.js：離島鏈（物品 v2 §5）整局 live 演完——燈泡 Lv7 風車轉、燈塔亮 → 燈泡 Lv8 海底電纜
 // → 晶片 Lv6 通電 → Lv7 天線 → Lv8 測試閃三下 → Lv9 待命，每個零件在對的回合出現（不早、不晚）；結局接點（§8）讀新的狀態。
+// 回到 GROW（2026-10-29）之後兩條正解的晶片 6 都跳級、跟燈泡 7、8 同一回合而且排在前面：電纜跟著晶片那個事件亮著出現（不再先暗著）。
 // 選擇帶動升級：燈泡 up[7] 要高鐵（代幣 ≥6），代幣 Lv7 通車到離島不一定在前面（賽博正解第 6 回合燈泡 7、第 7 回合代幣 7）——
 // 風車島的支線在兩者先到的那個事件長出來（燈泡 Lv7 自己鋪），遊樂場島的支線跟代幣 Lv7。
 // 兩條正解各演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂、
@@ -80,14 +81,19 @@ async function playChain(order) {
 let played = null;
 const playBoth = () => (played ??= (async () => { const out = []; for (const order of SOLUTIONS) out.push(await playChain(order)); return out; })());
 
-test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 8 → 9 in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
+// 回到 GROW（2026-10-29 設計 §3.2）：晶片 6 是跳級（變電所：燈泡 ≥6），同一回合照 ORDER 晶片排在燈泡前面——兩條正解晶片 6 都在燈泡 7、8
+// 之前（賽博第 7 回合、外星第 8 回合，同一回合），電纜跟著晶片那個事件亮著出現。所以不再查「燈泡 8 → 晶片 6」的先後，只查兩條各自照順序
+test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 → 9 each in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
   let jumped8 = false;   // 至少一條正解的晶片 Lv8 是跳級的第二級（◆ 照演完整劇本的那個情況真的有量到）
   for (const [n, { turns, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), at = (id, lv) => turns.findIndex(t => t.lv[id] >= lv);
     // 事件順序：鏈上每一節的 grow 都在，照順序
     const idx = CHAIN.map(([id, lv]) => grows.indexOf(`${id}${lv}`));
     assert.ok(idx.every(i => i >= 0), `${name}: every chain level grows (${JSON.stringify(idx)})`);
-    assert.deepEqual([...idx].sort((a, b) => a - b), idx, `${name}: chain events in order ${JSON.stringify(idx)}`);
+    for (const id of ['bulb', 'chip']) {
+      const own = idx.filter((_, k) => CHAIN[k][0] === id);
+      assert.deepEqual([...own].sort((a, b) => a - b), own, `${name}: ${id} chain events in order ${JSON.stringify(own)}`);
+    }
     const before = (k, i) => turns.slice(0, i).every(t => !t.keys.has(k)), from = (k, i) => turns.slice(i).every(t => t.keys.has(k));
     // 代幣 Lv7：遊樂場島的支線在代幣到 7 的那一回合長出來；風車島的支線在代幣 7、燈泡 7 先到的那一回合（電工搭高鐵過去，支線一定在）
     const t7 = at('token', 7), b7 = at('bulb', 7), w7 = Math.min(t7, b7);
@@ -106,8 +112,10 @@ test('island chain, both solutions live: bulb 7 → bulb 8 → chip 6 → 7 → 
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
     assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
     // 選擇帶動升級裁決 R6：Lv8 標 ◆，是跳級的第二級時（賽博：晶片 6 → 8）也演完整的測試、閃三下；其他回合都不閃
+    // 晶片 8 是 8 → 9 跳級的第一級時（外星最後一輪）合成一段演 {8, 9} 裡最高的 ◆——Lv9 待命，沒有測試的三下（協調者裁決 2026-10-29）
     if (jumps.has('chip8')) jumped8 = true;
-    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
+    const tested = !jumps.has('chip9');
+    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 && tested ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
     assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
     turns.forEach((t, i) => assert.equal(t.shieldOut, i >= c9, `${name} turn ${i + 1}: standby shield out only from chip 9 (turn ${c9 + 1})`));
     // 一回合最多 +2：相鄰兩節可以同一回合（跳級），隔一節的一定分在不同回合
@@ -124,7 +132,7 @@ test('island chain, event by event: each chain part first appears with its own e
     const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/); return jumps.has(`${id}${+lv + 1}`) ? `${id}${+lv + 1}` : tag; };
     const windmill = grows.indexOf('bulb7') < grows.indexOf('token7') ? 'bulb7' : 'token7';   // 風車島支線：燈泡 Lv7 先到就自己鋪
     const PARTS = [['token.spur.windmill', windmill], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
-      ['chip.cable', 'bulb8'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);
+      ['chip.cable', 'chip6'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));
       assert.equal(events[i]?.e, tag, `${name}: ${key} first after ${events[i]?.e} (want ${tag})`);
@@ -132,7 +140,8 @@ test('island chain, event by event: each chain part first appears with its own e
     }
     const lit = first(x => x.cableLit);
     assert.equal(events[lit]?.e, own('chip6'), `${name}: cable lit after ${events[lit]?.e}`); assert.ok(events.slice(lit).every(x => x.cableLit));
-    assert.ok(idx(own('bulb8')) < lit, `${name}: the cable lies dark between bulb 8 and chip 6`);
+    // 兩條正解晶片 6 都在燈泡 8 之前（見上一個測試）：電纜第一次出現就是亮的，沒有暗著等通電的那段
+    assert.ok(lit >= 0 && lit < idx(own('bulb8')), `${name}: chip 6 lights the cable before bulb 8 (${lit}, ${idx(own('bulb8'))})`);
   }
 });
 

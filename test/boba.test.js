@@ -385,9 +385,10 @@ test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
 });
 // 老鼠撞珍奶（§8.6）：攤車歪了、老闆 ！
 test('a rat knocks the cart: it tilts and the owner ！ over his head', async () => {
-  // 選擇帶動升級：珍奶放下當回合就 Lv2，老鼠那回合珍奶若接著長就重建扶正——挑珍奶那回合不長的放法（燈泡、晶片在前面卡著它）
+  // 老鼠那回合珍奶若接著長就重建扶正——挑珍奶那回合不長的放法。回到 GROW（2026-10-29）之後珍奶沒有阻擋、每回合自己長，
+  // 只有已經到 MAX（7）才不長：珍奶最先放、晶片第二（珍奶 4 跳級），第六回合放老鼠時珍奶 7（鮮奶沒有棒球停在 2，也咬得到）
   const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n, events } = await liveAt(h, ['milk', 'bulb', 'boba', 'chip', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  const { n, events } = await liveAt(h, ['boba', 'chip', 'milk', 'bulb', 'token', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   // 這個放法的前提（審稿）：撞攤車那回合珍奶不長（長了就重建扶正，看不到歪）
   assert.ok(!events.some(e => (e.kind === 'grow' && e.item === 'boba') || (e.kind === 'fx' && e.delta?.target === 'boba')), `boba does not grow in the knock turn: ${events.map(e => `${e.kind} ${e.item ?? e.delta?.target ?? ''}${e.to ?? e.delta?.to ?? ''}`).join(', ')}`);
   const o = show.roster.members('boba.owner')[0];

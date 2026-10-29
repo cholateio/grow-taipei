@@ -388,9 +388,10 @@ export const script = {
     8(e, s, ctx) {
       const { B } = ctx, m = onIsland(ctx);
       return [
-        // 裁決 R15（颱風回合 ≤ 50 s）：一敲 1.0 → 0.8、♪ 1.0 → 0.8
+        // 裁決 R15（颱風回合 ≤ 50 s）：一敲 1.0 → 0.8、♪ 1.0 → 0.8；Task 6a：♪ 0.8 → 1.0——回到 GROW 之後兩條正解的晶片 6 都在燈泡 8 之前
+        //   （同一回合），電纜已經亮著鋪好、這拍沒有東西閃，整級剩 3.0 s（一級 3–4.5 s）；燈泡 8 的回合 54／64 s（上限 84）
         B.focus(WIND, { zoom: ISLAND_ZOOM }), B.walk(m, SWITCH_FRONT), B.gesture(m, 'build', 0.8, { at: SWITCH }),
-        B.apply(e, { only: ['chip.cable'] }), B.bubble(m, '♪', 0.8), B.home(m),
+        B.apply(e, { only: ['chip.cable'] }), B.bubble(m, '♪', 1.0), B.home(m),
         B.focus('home', { hold: 0.6 }), B.levelUp('bulb'),   // 全景停 1.0 → 0.6（裁決 R17，颱風回合 ≤ 50 s）
       ];
     },

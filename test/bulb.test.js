@@ -540,7 +540,11 @@ test('Lv9 live: the neon parts light up one after another within 1.5 s, with one
   for (const order of SOLUTIONS) {
     const first = {}; let t = 0;
     const h = await liveFrames(order, isBulb(9), (hh, dt) => { t += dt; for (const k of NEON) if (first[k] === undefined && hh.show.stage.partObject(k)?.visible) first[k] = t; });
-    const ts = NEON.map(k => first[k]); assert.ok(ts.every(x => x !== undefined), JSON.stringify(first));
+    // 回到 GROW（2026-10-29）：燈泡 9 是 auto（以前要代幣 ≥9），兩條正解燈泡 9 時代幣還是 8——懸浮月台還沒蓋，月台的霓虹等代幣 9 才跟著出現；
+    // 查的是這一刻 view 裡有的霓虹
+    const { lv: L, flags } = h.show.stage, want = NEON.filter(k => bulb.view(L, flags)[k]);
+    assert.equal(want.includes('bulb.neon.station'), L.token >= 9 && !flags.flooded, `${order.join('>')}: platform neon only with the floating platform (token ${L.token})`);
+    const ts = want.map(k => first[k]); assert.ok(want.length >= 2 && ts.every(x => x !== undefined), JSON.stringify(first));
     assert.ok(Math.max(...ts) - Math.min(...ts) <= 1.5, `${order.join('>')} ${JSON.stringify(first)}`);
     const trail = focusTrail(h.rig.log, h.r0);
     assert.deepEqual(trail.slice(0, 2).map(String), ['0,1', 'home'], JSON.stringify(trail));

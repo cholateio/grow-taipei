@@ -132,8 +132,8 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
   assert.equal(pack.n, 10); assert.deepEqual(pack.model, plain['rat.pack'].model, 'the same robot rats');
   assert.equal(pack.home.kind, 'stand'); assert.equal(pack.home.spots.length, 10);
   assert.deepEqual(v['rat.king'], plain['rat.king'], 'the king stays on the station roof');
-  const car = finale.view(L, { missile: 'shield', epilogue: 'cyber' })['finale.car'], { yaw } = orbitPose(car, Infinity);
-  const ux = Math.sin(yaw) * 0.15, uz = Math.cos(yaw) * 0.15;
+  const car = finale.view(L, { missile: 'shield', epilogue: 'cyber' })['finale.car'], { yaw } = orbitPose(car, Infinity), half = car.model.parts[0].scale[2] / 2;   // 同代幣的 Roadster（計畫 8 任務 5）
+  const ux = Math.sin(yaw) * half, uz = Math.cos(yaw) * half;
   const segDist = (p, a, c) => { const dx = c.x - a.x, dz = c.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
   const rows = new Set();
   for (const [i, s] of pack.home.spots.entries()) {

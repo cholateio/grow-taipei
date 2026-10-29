@@ -340,19 +340,23 @@ import { NEON_BOOST } from '../src/actors/world.js';
 import { body as towerBody } from '../src/actors/tower.js';
 const CYBER_ORDER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'cyber').order;
 
-test('view: epilogue cyber draws finale.car (orbit, red tint, from the sea, park on the 101 roof, no rest)', () => {
+test('view: epilogue cyber draws finale.car (the token Roadster model in red, from the sea, park on the 101 roof side-on, no rest)', async () => {
+  const { roadsterParts, CAR_W, CAR_L } = await import('../src/actors/token.js');
   const v = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META), car = v['finale.car'], dark = towerBody('lit', { dark: true });
   assert.ok(car, 'finale.car');
-  assert.equal(car.kind, 'orbit'); assert.equal(car.path, 'kenney/space/craft_speederA.glb');
-  assert.equal(car.tint['^metalRed$'], 0xe8322e); assert.equal(car.footprint, false); assert.equal(car.rest, undefined, 'parks for good');
+  assert.equal(car.kind, 'orbit'); assert.equal(car.path, undefined, 'no glb');
+  assert.deepEqual(car.model.parts, roadsterParts(C.red), 'the same Roadster as token Lv10, in red'); assert.equal(C.red, 0xe8322e);
+  assert.equal(car.squash, 0.03, 'lands on its wheels like the token cars'); assert.equal(car.footprint, false); assert.equal(car.rest, undefined, 'parks for good');
   assert.deepEqual(car.from, { x: 10, y: 3.5, z: 9 }, 'flies in from the sea, camera-right-front');
   assert.deepEqual(car.at, TOWER_AT); assert.equal(car.r, 1.4); assert.equal(car.speed, 2.5); assert.deepEqual(car.legs, [1.2, 0.8]);
   assert.ok(Math.abs(car.h - (towerBody('lit').top + 0.6)) < 1e-9, 'circles just over the 101 top');
   assert.ok(Math.abs(Math.sin(car.phase) - 1) < 1e-9, 'enters and leaves the lap on the camera side');
-  assert.ok(Math.abs(car.size - 0.3 * 0.8 / 2.0) < 1e-9 && car.ry === Math.PI);
   assert.ok(Math.abs(car.park.y - (TOWER_AT.y + dark.roof)) < 1e-9 && Math.abs(car.park.x - TOWER_AT.x) < 1e-9 && car.park.z > TOWER_AT.z, 'parks on the front of the roof');
-  assert.ok(Math.abs(car.park.z - TOWER_AT.z) + 0.15 <= dark.parts.find(p => p.name === 'deck').scale[2] / 2, 'the whole car body on the roof');
-  assert.deepEqual(orbitPose(car, Infinity), { ...car.park, yaw: orbitPose(car, Infinity).yaw, done: true });
+  // 停好側身對鏡頭（車頭朝 −x）：整台車（長 CAR_L 沿 x、寬 CAR_W + 凸出的輪子沿 z）在屋頂上
+  const half = dark.parts.find(p => p.name === 'deck').scale[2] / 2;
+  assert.ok(Math.abs(car.park.yaw + Math.PI / 2) < 1e-9, 'parked side-on, nose to −x');
+  assert.ok(Math.abs(car.park.x - TOWER_AT.x) + CAR_L / 2 <= half && Math.abs(car.park.z - TOWER_AT.z) + CAR_W / 2 + 0.01 <= half, 'the whole car body on the roof');
+  assert.deepEqual(orbitPose(car, Infinity), { ...car.park, done: true });
   assert.ok(Math.abs(CAR_FLIGHT - (1.2 + 2 * Math.PI / 2.5 + 0.8)) < 1e-9);
   for (const flags of [{ missile: 'shield' }, { missile: 'shield', epilogue: 'alien' }]) assert.equal(finale.view(LIT, flags, LIT_META)['finale.car'], undefined);
 });

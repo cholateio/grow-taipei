@@ -22,6 +22,7 @@ import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
+import { roadsterParts } from './token.js';
 
 export const id = 'finale';
 
@@ -61,16 +62,17 @@ const TOWER_HALF = 0.58, BURY_TOWER = 0.3, BURY_POOL = 0.35, TILT = 30 * Math.PI
 const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 
 // ── 賽博尾聲（設計 §7）──
-// 紅色飛天跑車：代幣 Lv10 那三台的同款零件（parts.js orbit；?quality=low 不畫，裁決照舊），Kenney speederA 塗紅、寬 0.3（同代幣的比例）。
+// 紅色飛天跑車：代幣 Lv10 那三台 Tesla Roadster 的同一個模型（token.js roadsterParts，車身 C.red；parts.js orbit；?quality=low 不畫，裁決照舊）。
 // 從鏡頭右前方的海上（CAR_FROM）飛進來，在 101 頂上（點燈的塔頂 + 0.6）半徑 1.4 繞一圈，進出圈都在鏡頭那側（phase π/2，+z），
-// 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是兩排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）
-const CAR_FROM = { x: 10, y: 3.5, z: 9 }, CAR_ORBIT = { r: 1.4, speed: 2.5, legs: [1.2, 0.8] }, CAR_PARK_Z = 0.58, CAR_RED = 0xe8322e;
+// 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是兩排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）。
+// 車長 0.54：停好時車頭朝 −x（park.yaw −π/2，就是離圈那一刻的切線方向，下降時不用轉）、側身對鏡頭——順著 z 停的話車尾會伸出屋頂前緣；
+// 落地同代幣那三台：落地前噴氣、四輪著地壓一下回彈（squash）
+const CAR_FROM = { x: 10, y: 3.5, z: 9 }, CAR_ORBIT = { r: 1.4, speed: 2.5, legs: [1.2, 0.8] }, CAR_PARK_Z = 0.58;
 export const CAR_FLIGHT = CAR_ORBIT.legs[0] + 2 * Math.PI / CAR_ORBIT.speed + CAR_ORBIT.legs[1];   // 一趟幾秒（≈ 4.5）
 const carSpec = () => ({
-  kind: 'orbit', path: 'kenney/space/craft_speederA.glb', size: 0.3 * 0.8 / 2.0, ry: Math.PI,
-  tint: { '^metalRed$': CAR_RED, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink },
+  kind: 'orbit', model: { parts: roadsterParts(C.red) }, squash: 0.03,
   at: TOWER, h: towerBody('lit').top + 0.6, phase: Math.PI / 2, ...CAR_ORBIT, from: CAR_FROM,
-  park: { x: TOWER.x, y: TOWER.y + towerBody('lit', { dark: true }).roof, z: TOWER.z + CAR_PARK_Z }, footprint: false,
+  park: { x: TOWER.x, y: TOWER.y + towerBody('lit', { dark: true }).roof, z: TOWER.z + CAR_PARK_Z, yaw: -Math.PI / 2 }, footprint: false,
 });
 export const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
 // 跑馬燈：起飛後 MARQUEE_AT 秒冒、停 MARQUEE_DUR 秒（跟飛行後半重疊，剛好在車停好時收掉）；最後全景停 END_HOLD 秒

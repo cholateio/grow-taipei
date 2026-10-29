@@ -179,23 +179,34 @@ const DECK_MODELS = [
 ];
 const DECK_RISE = 0.65;   // Lv9 劇本：懸浮月台從地面浮上來的高度
 
-// ── 飛天車（Lv10）：致敬 2026-10-16 在 SpaceX McGregor 發表的 Tesla Roadster（設計 §4.6）——kit 零件拼的低扁車身、整片玻璃座艙、
-// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡）；紅、白、石墨灰三台停在賽博站屋頂（左中右）、車頭朝 101。
+// ── 飛天車（Lv10）：致敬 2026-10-16 在 SpaceX McGregor 發表的 Tesla Roadster（設計 §4.6）——kit 零件拼的低扁楔形車身、一整片玻璃座艙、
+// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡；零件見 roadsterParts）；紅、白、石墨灰三台停在賽博站屋頂（左中右）、車頭朝 101。
 // 起飛：沿屋頂斜坡（token.ramp：長 RAMP_LEN 0.35、仰角 RAMP_ANGLE 20°、朝 101）滑上去、車底噴白煙、拋物線拉高、繞 101 一圈、回屋頂四輪落地壓一下回彈
 // （orbit 零件的 ramp／squash，parts.js orbitPose）。停好之後每台各自隔 rest 秒再飛一趟（錯開，天上常常有一台在飛）。
 // 尺寸（§7 留給實作者）：車身 0.27 × 0.54（設計寫 0.3 × 0.6 的九成）——三台並排、各自車頭朝 101（彼此差約 4°），
 // 0.3 × 0.6 在 1.1 × 0.82 的屋頂上會碰在一起、壓到後緣的天線；九成時車與車之間留 3 公分、離天線 11 公分
 const ROADSTERS = [{ color: C.coral }, { color: C.white }, { color: C.ink }];
-const CAR_W = 0.27, CAR_L = 0.54, WHEEL_R = 0.04;
+export const CAR_W = 0.27, CAR_L = 0.54, WHEEL_R = 0.045;
 const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
 const ORBIT = { speed: 2.5, legs: [1.4, 1.0], squash: 0.03 }, FLY_STAGGER = 0.3;
 export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（斜坡＋拉高 1.4、一圈、下降＋落地 1.0；跟以前的 speeder 一樣長）
-// 車的零件（車頭朝 +z、原點在輪底＝屋頂面）：車身、座艙在車身上後段、四輪（軸朝 x）、車底四個噴嘴（錐口朝下）
-const roadsterParts = color => [
-  { kind: 'box', pos: [0, 0.08, 0], scale: [CAR_W, 0.07, CAR_L], color },
-  { kind: 'box', pos: [0, 0.14, -0.06], scale: [0.2, 0.05, 0.27], color: C.glass },
-  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * (CAR_W / 2 - 0.015), WHEEL_R, sz * 0.17], scale: [WHEEL_R * 2, 0.035, WHEEL_R * 2], rot: [0, 0, Math.PI / 2], color: C.ink })),
-  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, 0.03, sz * 0.1], scale: [0.035, 0.03, 0.035], color: C.curb })),
+// Roadster 的零件（車頭朝 +z、原點在輪底＝地面；尾聲的紅色跑車 finale.car 也用這一份）——楔形：
+//   黑色底盤（全長、離地 0.015）→ 車漆：後半是平的後車廂，前半是往下壓 8° 的引擎蓋（車鼻比後車廂低）→ 後緣一片薄擾流板；
+//   座艙是一顆壓扁的深藍玻璃橢球（往後擺）；四輪 r 0.045 在四角，比車側凸出 0.01、比底盤低 0.015（全景看得到），淺色輪轂；
+//   車鼻兩顆白色小頭燈、車尾一條發光的紅色燈條（一台車只有一種發光色：一台 = 黏土一個 + 紅光一個 draw call）；
+//   車底四個噴嘴（錐口朝下）夾在前後輪之間，比底盤低 0.01
+const HOOD = 8 * Math.PI / 180, WHEEL_X = CAR_W / 2 + 0.01 - 0.0175, WHEEL_Z = 0.17;
+export const roadsterParts = color => [
+  { kind: 'box', pos: [0, 0.0325, 0], scale: [0.22, 0.035, CAR_L], color: C.ink },   // 底盤（暗色車底）
+  { kind: 'box', pos: [0, 0.0725, -0.135], scale: [CAR_W, 0.045, 0.27], color },   // 後車廂
+  { kind: 'box', pos: [0, 0.058, 0.135], scale: [CAR_W, 0.04, 0.28], rot: [HOOD, 0, 0], color },   // 引擎蓋（往前壓低）
+  { kind: 'box', pos: [0, 0.101, -0.255], scale: [CAR_W, 0.012, 0.03], color },   // 擾流板
+  { kind: 'sphere', pos: [0, 0.095, -0.06], scale: [0.17, 0.1, 0.26], color: C.navy },   // 座艙（深色玻璃）
+  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * WHEEL_X, WHEEL_R, sz * WHEEL_Z], scale: [WHEEL_R * 2, 0.035, WHEEL_R * 2], rot: [0, 0, Math.PI / 2], color: C.ink })),
+  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * (WHEEL_X + 0.0185), WHEEL_R, sz * WHEEL_Z], scale: [0.04, 0.004, 0.04], rot: [0, 0, Math.PI / 2], color: C.curb })),   // 輪轂
+  ...[-1, 1].map(sx => ({ kind: 'box', pos: [sx * 0.09, 0.042, CAR_L / 2 + 0.003], scale: [0.045, 0.014, 0.008], color: C.white })),   // 頭燈
+  { kind: 'box', pos: [0, 0.084, -CAR_L / 2 - 0.004], scale: [0.22, 0.012, 0.008], color: C.red, glow: C.red },   // 尾燈條
+  ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, 0.02, sz * 0.08], scale: [0.035, 0.03, 0.035], color: C.curb })),   // 噴嘴（底 y 0.005）
 ];
 // 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給斜坡與王冠鼠）；各自車頭朝 101、繞圈的入口（phase）在
 // 101 到停車點的那條線上——斜坡、拉高、回程下降都是同一條直線
@@ -208,7 +219,7 @@ function roadster(i) {
     model: { parts: roadsterParts(ROADSTERS[i].color) }, rest: 16 + 6 * i, footprint: false,
   };
 }
-// 屋頂斜坡（Lv10，一個零件 kind 'ramp'）：中間那台的車頭前、朝 101，坡面長 0.35、仰角 20°（高端伸出屋頂後緣一點），兩根支柱撐在屋頂上。
+// 屋頂斜坡（Lv10，一個零件 kind 'ramp'）：中間那台的車頭前、朝 101，坡面長 0.35、仰角 20°（高端伸出屋頂後緣一點）、兩側護欄，兩根支柱撐在屋頂上。
 // 本地 +z 沿坡往上，零件轉到 bearing；手機（low: false）不畫——飛天車也不畫
 function rampSpec() {
   const mid = parkOf(1), b = mid.yaw, foot = CAR_L / 2;
@@ -217,6 +228,8 @@ function rampSpec() {
     kind: 'ramp', at: { x: mid.x + Math.sin(b) * foot, y: mid.y, z: mid.z + Math.cos(b) * foot }, bearing: b, footprint: false, low: false,
     parts: [
       { kind: 'box', pos: [0, deck * Math.sin(RAMP_ANGLE), deck * Math.cos(RAMP_ANGLE)], scale: [0.3, 0.015, RAMP_LEN], rot: [-RAMP_ANGLE, 0, 0], color: C.curb },
+      // 兩側護欄：坡面兩邊各一條細條（比坡面高 0.02），看起來是發射坡道
+      ...[-0.15, 0.15].map(x => ({ kind: 'box', pos: [x, deck * Math.sin(RAMP_ANGLE) + 0.0175 * Math.cos(RAMP_ANGLE), deck * Math.cos(RAMP_ANGLE) - 0.0175 * Math.sin(RAMP_ANGLE)], scale: [0.012, 0.02, RAMP_LEN], rot: [-RAMP_ANGLE, 0, 0], color: C.ink })),
       ...[-0.13, 0.13].map(x => ({ kind: 'box', pos: [x, sh / 2, strut], scale: [0.02, sh, 0.02], color: C.ink })),
     ],
   };

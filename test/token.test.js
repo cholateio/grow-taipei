@@ -160,11 +160,11 @@ test('flooded (token ≤ 2): the station is a pool with two swimmers (≤ 3), no
     assert.deepEqual([v['token.swimmers'].kind, v['token.swimmers'].n, v['token.swimmers'].from], ['roster', 2, 'token.staff']);
   }
 });
-// 計畫 8 任務 5：Lv10 多一片屋頂斜坡（token.ramp，一個 compound）→ Lv10 上限 21，其餘照舊 ≤ 20
-test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp ≤ 21)', () => {
+// 計畫 8 任務 5：Lv10 多一片屋頂斜坡（token.ramp，一個 compound）、三台 Roadster 各多一個紅色尾燈的發光 mesh → Lv10 上限 24，其餘照舊 ≤ 20
+test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp and tail lights ≤ 24)', () => {
   for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
     const d = drawCalls(token.view(L({ token: n }), { flooded }));
-    assert.ok(d <= (n === 10 ? 21 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
+    assert.ok(d <= (n === 10 ? 24 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
   }
 });
 test('every token station part and every footprint corner stays inside the token cell (track, spurs, trains and flying cars are on the water / in the sky)', () => {
@@ -398,15 +398,26 @@ test('Lv10 live: the three roadsters take off from the roof ramp, fly a lap roun
 // ── 計畫 8 任務 5：飛天車改 Tesla Roadster（設計 §4.6）──
 const RAMP_A = 20 * Math.PI / 180, toTower = p => Math.atan2(TOWER.x - p.x, TOWER.z - p.z);
 const angErr = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-test('Lv10 roadsters: three primitive cars (red, white, graphite) with 4 wheels and 4 cone nozzles, no glb; parked facing 101', () => {
+test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body, 4 wheels r 0.045, one dark canopy, glowing tail bar, 4 cone nozzles, no glb; parked facing 101', () => {
   const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]);
-  assert.deepEqual(cars.map(c => c.model.parts[0].color), [C.coral, C.white, C.ink], 'red, white, graphite bodies');
+  assert.deepEqual(cars.map(c => c.model.parts[1].color), [C.coral, C.white, C.ink], 'red, white, graphite bodies');
+  assert.deepEqual(cars[0].model.parts, token.roadsterParts(C.coral), 'built from the shared roadsterParts');
   for (const [i, car] of cars.entries()) {
     assert.equal(car.kind, 'orbit'); assert.equal(car.path, undefined, `car ${i}: no glb`); assert.ok(Array.isArray(car.model?.parts), `car ${i}: model.parts`);
-    const kinds = car.model.parts.map(p => p.kind);
-    assert.equal(kinds.filter(k => k === 'cylinder').length, 4, 'four wheels'); assert.equal(kinds.filter(k => k === 'cone').length, 4, 'four nozzles');
-    assert.ok(car.model.parts.filter(p => p.kind === 'cone').every(p => p.color === C.curb), 'nozzles in curb grey');
-    assert.ok(car.model.parts.some(p => p.kind === 'box' && p.color === C.glass), 'a glass cockpit');
+    const ps = car.model.parts, wheels = ps.filter(p => p.kind === 'cylinder' && Math.abs(p.scale[0] - 0.09) < 1e-9);
+    assert.equal(wheels.length, 4, 'four wheels of r 0.045'); assert.ok(wheels.every(w => w.color === C.ink && Math.abs(w.rot[2] - Math.PI / 2) < 1e-9), 'dark tyres, axle along x');
+    const top = p => p.pos[1] + p.scale[1] / 2, bottom = p => p.pos[1] - p.scale[1] / 2, chassis = ps[0];
+    for (const w of wheels) {
+      assert.ok(Math.abs(w.pos[0]) + w.scale[1] / 2 >= token.CAR_W / 2 + 0.01 - 1e-9, 'wheels stick out of the body sides');
+      assert.ok(w.pos[1] - 0.045 < bottom(chassis) - 0.01, 'and below the chassis');
+    }
+    const cones = ps.filter(p => p.kind === 'cone');
+    assert.equal(cones.length, 4, 'four nozzles'); assert.ok(cones.every(p => p.color === C.curb && bottom(p) < bottom(chassis)), 'curb-grey nozzles peeking below the chassis');
+    const canopy = ps.filter(p => p.kind === 'sphere'); assert.equal(canopy.length, 1, 'one canopy'); assert.equal(canopy[0].color, C.navy, 'dark glass');
+    const hood = ps.find(p => p.rot && p.rot[0] > 0.1 && p.kind === 'box'); assert.ok(hood && hood.pos[2] > 0 && top(hood) < top(ps[1]), 'a hood pitched down in front of the rear deck (wedge)');
+    assert.ok(ps.some(p => p.glow === C.red && p.pos[2] < -token.CAR_L / 2), 'a glowing red tail bar');
+    assert.equal(new Set(ps.filter(p => p.glow).map(p => p.glow)).size, 1, 'one glow colour per car (draw calls)');
+    assert.equal(ps.filter(p => p.color === C.white && p.pos[2] > token.CAR_L / 2 - 0.01).length, 2, 'two headlights at the nose');
     for (const p of car.model.parts) assert.ok(PALETTE.has(p.color), `car ${i} ${p.kind} ${p.color.toString(16)}`);
     assert.ok(angErr(car.park.yaw, toTower(car.park)) < 0.05, `car ${i} parked facing 101 (${car.park.yaw.toFixed(3)})`);
     assert.ok(angErr(orbitPose(car, Infinity).yaw, toTower(car.park)) < 0.05, `car ${i} lands facing 101`);
@@ -433,17 +444,24 @@ test('token.ramp: only at Lv10 — a 0.35 ramp at 20° on the roof in front of t
   const fwd = (r.at.x - mid.x) * Math.sin(r.bearing) + (r.at.z - mid.z) * Math.cos(r.bearing);
   assert.ok(fwd > 0.2 && fwd < 0.35, `foot just ahead of the centre car (${fwd.toFixed(2)})`);
   const deck = r.parts[0]; assert.equal(deck.kind, 'box'); assert.equal(deck.scale[2], 0.35); assert.ok(Math.abs(deck.rot[0] + RAMP_A) < 1e-9, 'tilted 20° up');
+  assert.equal(deck.color, C.curb, 'curb grey, not white');
+  const rails = r.parts.filter(p => p !== deck && p.scale[2] === 0.35 && Math.abs(p.rot?.[0] + RAMP_A) < 1e-9);
+  assert.equal(rails.length, 2, 'two side rails'); assert.ok(rails.every(p => Math.abs(Math.abs(p.pos[0]) - deck.scale[0] / 2) < 0.01), 'along both edges');
   const p = factory().build(r); assert.ok(Math.abs(p.object.rotation.y - r.bearing) < 1e-9, 'turned to its bearing'); p.dispose();
 });
 test('parked roadsters do not overlap each other, stay on the 1.1 × 0.82 roof and clear the roof antenna', () => {
-  const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]), body = cars[0].model.parts[0], [W, , Lc] = body.scale;
-  const rect = c => { const { yaw } = orbitPose(c, Infinity), f = [Math.sin(yaw), Math.cos(yaw)], r = [f[1], -f[0]], p = c.park;
+  const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]), Lc = token.CAR_L;
+  // 車身 CAR_W；連凸出車側 0.01 的輪子算寬 CAR_W + 0.02（保守：當成整條車長都有輪子）
+  const rect = (c, W = token.CAR_W) => { const { yaw } = orbitPose(c, Infinity), f = [Math.sin(yaw), Math.cos(yaw)], r = [f[1], -f[0]], p = c.park;
     return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [p.x + f[0] * a * Lc / 2 + r[0] * b * W / 2 - AT.x, p.z + f[1] * a * Lc / 2 + r[1] * b * W / 2 - AT.z]); };
   const gap = (A, Bq) => { let best = -Infinity; for (const P of [A, Bq]) for (let i = 0; i < 4; i++) {
     const p = P[i], q = P[(i + 1) % 4], n = [q[1] - p[1], p[0] - q[0]], l = Math.hypot(...n), pa = A.map(v => (v[0] * n[0] + v[1] * n[1]) / l), pb = Bq.map(v => (v[0] * n[0] + v[1] * n[1]) / l);
     best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb)); } return best; };
-  const R = cars.map(rect);
-  for (const [i, j] of [[0, 1], [1, 2], [0, 2]]) assert.ok(gap(R[i], R[j]) >= 0.02, `cars ${i}/${j} gap ${gap(R[i], R[j]).toFixed(3)}`);
+  const B = cars.map(c => rect(c)), R = cars.map(c => rect(c, token.CAR_W + 0.02));
+  for (const [i, j] of [[0, 1], [1, 2], [0, 2]]) {
+    assert.ok(gap(B[i], B[j]) >= 0.02, `cars ${i}/${j} body gap ${gap(B[i], B[j]).toFixed(3)}`);
+    assert.ok(gap(R[i], R[j]) >= 0.01, `cars ${i}/${j} wheel gap ${gap(R[i], R[j]).toFixed(3)}`);
+  }
   for (const [i, c] of R.entries()) for (const [x, z] of c) assert.ok(Math.abs(x) <= 0.55 && Math.abs(z) <= 0.41, `car ${i} corner (${x.toFixed(2)}, ${z.toFixed(2)}) on the roof`);
   const seg = (x, z, [a, b]) => { const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); };
   for (const [i, c] of R.entries()) { const d = Math.min(...c.map((p, k) => seg(0.42, -0.3, [p, c[(k + 1) % 4]]))); assert.ok(d >= 0.05, `car ${i} ${d.toFixed(3)} from the antenna`); }

@@ -230,6 +230,11 @@ test('an event with no cell neither pans nor counts as a change of item', () => 
 
 // 物品 v2 跳級（§3、§6）：同一物品一回合連兩個 grow、第二個 jump: true——第二個 LEVEL UP 緊接著出，不重走路、不平移、不空拍、不查劇本
 const between = (raw, k) => { const at = raw.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return raw.slice(at[k] + 1, at[k + 1] ?? raw.length - 3); };
+// 假模組：幫手（有代表、Lv2 劇本一拍）、晶片（沒有代表、Lv2／Lv3 劇本各一拍＋LEVEL UP）；grow 事件；一串拍裡每個 mark 的 info（start 一次就知道）
+const helperLike = id => ({ id, view() {}, script: { rep: () => walker, grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
+const chipLike = () => ({ id: 'chip', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], 3: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')] } } });
+const grow = (item, to, via, extra = {}) => ({ kind: 'grow', item, from: to - 1, to, via, ...extra });
+const marksOf = raw => raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = { e, info }; } }); return got; });
 test('two consecutive grow events of one item in a turn: the second plays only apply + LEVEL UP, no focus, no gap (review focus 2)', () => {
   const asked = [];
   const chip = { id: 'chip', view() {}, script: { grow: {
@@ -272,83 +277,16 @@ test('R11: key nodes are flagged on token Lv4 (R6)/Lv7/Lv10 and milk Lv7/Lv10 on
   assert.ok(beats.some(b => b.kind === 'fly'), 'the speeders fly in');
 });
 
-// ── 拜訪（計畫 6 設計 §4，show/visit.js）──
-// grow 事件 via 非空：劇本前面插一段拜訪——mark { visit: true }、（換物品空 GAP）、平移到拜訪點那一格跟走過去一起演、轉身、
-// 敲門＋被升級物品的代表揮手、♥、回日常；之後照舊 mark + 那一級的劇本
-const { VISIT_MAX_PER_HELPER, VISIT_KNOCK, VISIT_LOVE, visit } = await import('../src/show/visit.js');
-const { createTimeline } = await import('../src/show/timeline.js');
-const { anchorWorld } = await import('../src/actors/anchors.js');
-const visitMods = () => {
-  const spotOf = id => ({ ...anchorWorld(id), r: 0.8 });
-  const helper = id => ({ id, view() {}, visitSpot: () => spotOf(id), script: { rep: () => walker, grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
-  const two = (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], four = (e, s, c) => [c.B.wait(2), c.B.levelUp('chip')];
-  four.key = true;
-  const chip = { id: 'chip', view() {}, visitSpot: () => spotOf('chip'), script: { rep: () => null, grow: { 2: two, 3: two, 4: four, 5: two } } };
-  const typhoon = { id: 'typhoon', view() {}, visitSpot: () => null, script: { rep: () => null, grow: { 2: () => null } } };
-  const satellite = { id: 'boba', view() {}, visitSpot: () => null, script: { rep: () => walker, grow: { 5: (e, s, c) => [c.B.wait(1)] } } };   // 離島上的級：沒有拜訪點
-  return [quietTower, helper('milk'), helper('bulb'), helper('token'), chip, typhoon, satellite];
-};
-// 一串拍裡每個 mark 的 info（start 一次就知道）
-const marksOf = raw => raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = { e, info }; } }); return got; });
-const grow = (item, to, via, extra = {}) => ({ kind: 'grow', item, from: to - 1, to, via, ...extra });
-test('a grow with via gets a visit before its script: mark {visit}, focus, walk/knock/♥/home; jump second level and indoors events get none; ◆ levels do get one', () => {
-  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, grow('chip', 2, ['milk'])], base(visitMods()), fakeCtx());
-  const marks = marksOf(raw);
-  assert.deepEqual(marks.map(m => [m.e.kind, !!m.info.visit]), [['placed', false], ['grow', true], ['grow', false]], 'one visit mark before the script mark');
-  assert.ok(Math.abs(marks[1].info.gap - GAP) < 1e-9, 'the visit opens the new item: GAP before it');
-  assert.equal(marks[1].info.key, false); assert.equal(marks[2].info.gap, 0, 'no second GAP before the script');
-  // 拜訪段：together(空拍, 原處閃白)（裁決 R4：閃白跟空拍一起演）、together(平移到晶片格, 走過去)、轉身、together(敲門 0.8, 揮手 0.8)、
-  // ♥（0 秒拍，泡泡活 0.6 s：轉身要走時冒出來，不擋後面，裁決 R4）、回日常；劇本前不再平移（同一格）
-  const seg = between(raw, 1);
-  assert.deepEqual(seg.map(b => b.kind), ['together', 'together', 'face', 'together', 'bubble', 'home']);
-  assert.deepEqual(seg[0].beats.map(b => [b.kind, typeof b.dur === 'number' ? b.dur : 'fn']), [['wait', GAP], ['fade', 'fn']]);
-  assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.deepEqual(seg[1].beats[0].target, cellOf('chip'));
-  assert.deepEqual(seg[3].beats.map(b => [b.kind, b.dur]), [['gesture', VISIT_KNOCK], ['gesture', VISIT_KNOCK]]);
-  assert.equal(seg[4].dur, 0, 'the ♥ does not hold the timeline'); assert.equal(seg[4].love, VISIT_LOVE);
-  // ♥ 正常演：冒一個活 VISIT_LOVE 秒的泡泡；跳過（timeline 的 ctx.skipping）：不冒（0 秒拍沒辦法在 end 收掉）
-  {
-    const rep = { pos: { x: 0, y: 0, z: 0 }, speed: 1, mode: 'home', head: () => ({ x: 0, y: 1, z: 0 }) }, mods = visitMods();
-    const loveOf = () => visit(grow('chip', 2, ['milk']), { lv: { ...zero, milk: 1, chip: 2 }, flags: {} }, {}, { helper: { ...mods[1], script: { rep: () => rep } }, target: mods[4] }).find(b => b.love);
-    const shown = [], ctx = fakeCtx({ bubbles: { show: (head, kind, dur) => { shown.push([kind, dur]); return { cancel() {} }; } }, nav: { walkable: () => true } });
-    const tl = createTimeline(); tl.play([loveOf()], ctx); tl.update(0.016);
-    assert.deepEqual(shown, [['♥', VISIT_LOVE]], 'played: the ♥ pops');
-    tl.play([B.wait(1), loveOf()], ctx); tl.update(0.016); tl.skip();
-    assert.equal(shown.length, 1, 'skipped: no ♥'); assert.ok(!ctx.skipping, 'the flag is only up during the skip');
-  }
-  assert.deepEqual(kindsOf(between(raw, 2)), ['wait', 'levelUp', 'apply'], 'the level script right after, no pan');
-  // 跳級的第二級（同幫手、第一級已經拜訪過）不插；◆ 關鍵級照插
-  const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true }), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
-  assert.deepEqual(marksOf(jump).map(m => [m.e.to, !!m.info.visit, !!m.info.key]), [[2, true, false], [2, false, false], [3, false, false], [4, true, false], [4, false, true]]);
-  // 颱風登陸之後（indoors）、颱風當幫手、被升級的這一級沒有拜訪點、via 空：都不插
-  const after = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk']), grow('chip', 4, ['bulb'])], base(visitMods()), fakeCtx());
-  assert.ok(marksOf(after).every(m => !m.info.visit), 'nobody visits after the landing (◆ included: everyone is indoors)');
-  const none = buildTurn([grow('chip', 2, ['typhoon']), grow('boba', 5, ['milk']), grow('chip', 3, [])], base(visitMods()), fakeCtx());
-  assert.ok(marksOf(none).every(m => !m.info.visit), 'typhoon never visits; off-island levels and causeless grows get none');
-  // via[0] 是幫手：via 有兩個時只有第一個來
-  const two = buildTurn([grow('chip', 2, ['bulb', 'milk'])], base(visitMods()), fakeCtx());
-  assert.deepEqual(marksOf(two).filter(m => m.info.visit).map(m => m.e.via[0]), ['bulb']);
-});
-test('the same helper visits at most VISIT_MAX_PER_HELPER times per turn; later caused grows play only their script (counted when a visit plays)', () => {
-  // 建拍時每個有原因的升級都插拜訪段；演到才數（裁決 R3）：同一個幫手第三段起只剩平移。代表叫不到而略過的那段不算數
-  const events = [grow('chip', 2, ['milk']), grow('chip', 3, ['milk']), grow('chip', 4, ['milk']), grow('chip', 5, ['milk']), grow('milk', 2, ['bulb'])];
-  const raw = buildTurn(events, base(visitMods()), fakeCtx()), marks = marksOf(raw);
-  assert.equal(VISIT_MAX_PER_HELPER, 2, 'ruling R2: a third visit by the same helper is repetitive');
-  assert.equal(marks.filter(m => m.info.visit).length, 5, 'every caused grow gets a visit segment at build time');
-  assert.equal(marks.filter(m => !m.info.visit).length, events.length, 'every grow still plays its own script');
-  // 照順序演每段拜訪的第一拍（走過去）：代表就在旁邊（不換位置）
-  const rep = { ...walker, mode: 'home' }, roster = { claim() {}, setPose() {}, flash() {}, relocate() {}, members: () => [], keys: () => [] };
-  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, groundY: () => 0, version: 0 };
-  // 一段拜訪照順序 start 原處閃白（決定要不要走、算配額）與走過去；回走過去有沒有演
-  const play = (beats, c) => { const flat = beats.flatMap(b => (b.kind === 'together' ? b.beats : [b])); flat.find(b => b.kind === 'fade').start(c); return [flat.find(b => b.kind === 'walk').start(c) !== false]; };
-  const walks = raw2 => { const at = raw2.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return at.map((i, k) => raw2.slice(i + 1, at[k + 1])); };
-  const near = buildTurn(events, base(visitMods().map(m => (m.script?.rep && m.id !== 'chip' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') } }) } } : m))), fakeCtx());
-  const c = fakeCtx({ roster, nav });
-  const played = walks(near).filter((seg, k) => marksOf(near)[k].info.visit).map(seg => play(seg, c)[0]);
-  assert.deepEqual(played, [true, true, false, false, true], 'milk plays twice, then only the pan; bulb still comes');
-  // 代表叫不到（在劇本手上）的那段不算數：後面兩段照樣演
-  let n = 0;
-  const flaky = buildTurn(events.slice(0, 3), base(visitMods().map(m => (m.id === 'milk' ? { ...m, script: { ...m.script, rep: () => ({ ...rep, pos: { ...anchorWorld('chip') }, mode: n++ === 0 ? 'script' : 'home' }) } } : m))), fakeCtx());
-  assert.deepEqual(walks(flaky).filter((seg, k) => marksOf(flaky)[k].info.visit).map(seg => play(seg, c)[0]), [false, true, true], 'a skipped visit does not use up the quota');
+// ── 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）──
+// 有原因的升級（grow 的 via 非空）不再先演一段幫手走來敲門：建串時不插 mark { visit }、也沒有走路、閃白的拍
+test('a grow with via plays no visit: no mark {visit}, nobody walks before the script', () => {
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
+  assert.ok(marksOf(raw).every(m => !m.info.visit));
+  assert.ok(!raw.some(b => b.kind === 'walk' || b.kind === 'fade'));
+  // 被升級的這一級有拜訪點（以前插拜訪段的條件）也一樣：沒有拜訪
+  const spotted = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), { ...chipLike(), visitSpot: () => ({ x: 0, y: 0.65, z: 0, r: 0.8 }) }]), fakeCtx());
+  assert.ok(marksOf(spotted).every(m => !m.info.visit), 'a level with a visit spot gets no visit either');
+  assert.ok(!spotted.some(b => b.kind === 'walk' || b.kind === 'fade' || (b.kind === 'together' && b.beats.some(x => x.kind === 'walk' || x.kind === 'fade'))));
 });
 
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段——mark { miss, item }、（換物品空 GAP）、
@@ -405,10 +343,18 @@ test('miss slots go to the first MISS_PER_TURN waits whose item has a rep at its
   for (const id of ['chip', 'rat', 'boba', 'baseball']) assert.equal(real[id](1), true, `${id} Lv1 has a rep`);
 });
 
-test('miss beats: the rep is found once at beat time; nobody (hidden, busy, away) → every beat skipped, the GAP too', () => {
+// 審查重點 4（回到 GROW 計畫 8）：等待只剩阻擋——鮮奶 Lv2 等棒球時還沒有小孩（hasRep(2) 假），那一項不佔撲空的位子、照 ORDER 往後補
+test('milk at Lv2 waiting for baseball has no rep (hasRep(2) false): its wait takes no miss slot, the next wait in ORDER plays', async () => {
+  const milkMod = await import('../src/actors/milk.js');
+  assert.equal(milkMod.script.hasRep(2), false); assert.equal(milkMod.script.hasRep(3), true);
+  const raw = buildTurn([{ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }, { item: 'chip', for: ['milk'] }] }], { ...base([quietTower, milkMod, ...repMods()]), lv: { ...zero, milk: 2, chip: 2 } }, fakeCtx());
+  assert.deepEqual(marksOf(raw).filter(m => m.info.miss).map(m => m.info.item), ['chip']);
+});
+
+test('miss beats: the rep is found once at beat time; nobody (hidden, busy, walking out) → every beat skipped, the GAP too', () => {
   const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
   const claimed = [], homed = [], roster = { claim: m => claimed.push(m), home: m => homed.push(m), setPose() {}, setFocus() {}, members: () => [], keys: () => [] };
-  for (const mode of ['script', 'away']) {
+  for (const mode of ['script', 'exit']) {   // 劇本手上、正走出去（退場）的人都不是日常
     const busy = { ...walker, mode }, raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip')], base([tower, ...repMods(() => busy)]), fakeCtx());
     const seg = between(raw, 1), c = fakeCtx({ roster, nav, rig: { grabbed: false, focus: () => true } });
     assert.equal(seg[0].start(c), false, `${mode}: the GAP is skipped`);

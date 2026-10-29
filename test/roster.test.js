@@ -947,18 +947,3 @@ test('every member carries a radius: people 0.125, models 0.65 × h clamped to 0
   roster.declare('r', { kind: 'roster', at: C, n: 1, model: { path: 'rat.glb', h: 0.5 }, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
   assert.ok(Math.abs(r('r') - 0.325) < 1e-9, 'remodelled rat grows its radius');
 });
-
-// 最終審稿 4：拜訪完正走回去（'away'）的幫手，自己的家在同一回合搬了——換回去的那一點跟著搬到新家（不是舊家的站位），之後走回新的 spot
-test('an away member whose home moves in the same turn re-homes its away.back to the new home spot', () => {
-  const { roster, nav } = setup(); roster.declare('k', queue(2)); roster.flush(); run(roster, 300);
-  const [a] = roster.members('k'), far = centre([1, 0]);
-  roster.claim(a); roster.relocate(a, far);
-  roster.leave(a, nav.route(a.pos, nav.nearestWalkable({ ...far, x: far.x + 0.4 })), { ...QSPOTS[0] });
-  assert.equal(a.mode, 'away'); assert.ok(gap(a.away.back, QSPOTS[0]) < 1e-9);
-  const S = centre([0, -1]), moved = [{ x: S.x - 0.2, y: S.y, z: S.z, yaw: 0 }, { x: S.x + 0.2, y: S.y, z: S.z, yaw: 0 }];
-  roster.declare('k', { ...queue(2), at: S, home: { kind: 'stand', spots: moved, entry: QENTRY } }); roster.flush();
-  assert.equal(a.mode, 'away', 'still walking back (not snatched home)');
-  assert.ok(gap(a.away.back, moved[0]) < 1e-6, `back follows the new home (${a.away.back.x.toFixed(2)}, ${a.away.back.z.toFixed(2)})`);
-  run(roster, 600, 20);
-  assert.equal(a.mode, 'home'); assert.ok(gap(a.pos, moved[0]) < 0.3, `ends at the new spot (${a.pos.x.toFixed(2)}, ${a.pos.z.toFixed(2)})`);
-});

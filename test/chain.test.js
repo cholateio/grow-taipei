@@ -12,7 +12,7 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { missile, resolve } from '../src/rules/endings.js';
 import { headlessShow, turnSteps, overviewRig, gameInvariants, ALL } from './helpers/show.js';
 import { finaleStep, EXAMPLE } from './helpers/endings.js';
-import { VISIT_CAP, VISIT_MAX_PER_HELPER, MISS_CAP, MISS_WALK, MISS_PER_TURN, SIGH } from '../src/show/visit.js';
+import { MISS_CAP, MISS_WALK, MISS_PER_TURN, SIGH } from '../src/show/visit.js';
 import { cellAt, NEIGHBORS } from '../src/scene/hex.js';
 import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 
@@ -26,15 +26,10 @@ const CHAIN = [['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], 
 // 最後一輪照一般回合演（選擇帶動升級 §4：沒有倒數字）；演完再演終局回合（警告＋飛彈＋尾聲，finale: true），
 // 終局回合演到一半玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：收尾照樣回全景）；不變式一路查到終局回合演完。
 // finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, kinds（整局演到的事件種類）, flags, keys, script（演完還在劇本手上的人數）}
-// 拜訪（計畫 6 設計 §4）：每回合記下每個 mark（info、開演那一刻的秒數、到那一刻的 ♥ 數），拜訪段另外記開演那一刻幫手的代表叫不叫得到
-// （有、露出來、不在劇本手上、在主島上——同 show/visit.js 的條件；叫不到的那段只剩平移）。回合秒數與 ◆ 個數給回合上限查
-const usableRep = (show, e) => {
-  const st = show.stage, rep = ALL.find(m => m.id === e.via[0])?.script?.rep?.({ lv: { ...st.lv, [e.item]: e.to }, flags: st.flags }, { roster: show.roster, nav: show.nav });
-  return !!rep && !rep.hidden && !rep.gone && (rep.mode === 'home' || rep.mode === 'away') && (!!cellAt(rep.pos.x, rep.pos.z) || show.nav.walkable(rep.pos.x, rep.pos.z));
-};
+// 每回合記下每個 mark（info、開演那一刻的秒數）：撲空段的秒數、回合秒數與 ◆ 個數給回合上限查（拜訪 2026-10-29 拿掉了，查沒有 info.visit）
 async function playChain(order) {
-  const cam = overviewRig(), { show, run, bubblesLog } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), update = show.update;
-  const hearts = () => bubblesLog.filter(b => b.kind === '♥').length, paced = [];   // paced：每回合 { events, marks, secs }
+  const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), update = show.update;
+  const paced = [];   // paced：每回合 { events, marks, secs }
   let flashes = 0, high = false;
   show.update = (dt, t) => {
     update(dt, t);
@@ -58,9 +53,9 @@ async function playChain(order) {
     const marks = [];
     await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => {
       done(); prev = e; inv.label(`${turn} [${tag(e)}]`); kinds.add(e.kind);
-      marks.push({ e, info, t: show.elapsed, hearts: hearts(), usable: info?.visit ? usableRep(show, e) : null, lv: { ...show.stage.lv }, flags: show.stage.flags });
+      marks.push({ e, info, t: show.elapsed });
     } });
-    paced.push({ events: r.events, marks, secs: show.elapsed, end: hearts() });
+    paced.push({ events: r.events, marks, secs: show.elapsed });
     done(); inv.turnEnd();
     const z0 = blades(); for (let f = 0; f < 6; f++) show.update(1 / 30, 2000 + f / 30);
     const shield = show.stage.partObject('tower.shield')?.children[0];
@@ -186,45 +181,21 @@ test('both solutions live: every LEVEL UP label and bubble is on screen for at l
   assert.deepEqual((await playBoth()).flatMap(({ inv }) => inv.labels), []);
 });
 
-// 拜訪（計畫 6 設計 §4、§6、§8）：兩條正解每一個有原因的升級（via 非空、不是跳級的第二級、登陸之後不算、幫手與被升級的都不是颱風、
-// 這一級有拜訪點）都插了拜訪段；幫手的代表叫得到、這回合還沒真的來過 VISIT_MAX_PER_HELPER 次（裁決 R2：2；演到才算，R3）的那幾段真的演了
-// （段裡冒了 ♥），其他的只剩平移；
-// 每段 ≤ VISIT_CAP（事件秒數扣掉物品之間的空拍）；放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
-test('both solutions: every grow with via (not jump-second, not indoors) played a visit; visits ≤ 3.5 s; turns within 60 + 8 × (◆ − 1)', async () => {
+// 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）：兩條正解沒有任何一段拜訪（mark 沒有 info.visit）；
+// 撲空（設計 §5）：正解幾乎沒有 wait，一樣每回合 ≤ MISS_PER_TURN 段、每段 ≤ MISS_CAP（事件秒數扣掉物品之間的空拍）；
+// 放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
+test('both solutions: no grow plays a visit; misses ≤ 2 per turn and ≤ 3 s; turns within 60 + 8 × (◆ − 1)', async () => {
   for (const [n, { paced }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
-    let played = 0, skipped = [];
-    for (const [i, { events, marks, secs, end }] of paced.entries()) {
-      const what = `${name} turn ${i + 1}`, count = new Map();   // count：這回合每個幫手真的拜訪了幾次（演到才算，裁決 R3）
-      let landed = false;
-      const expected = [];
-      for (const e of events) {
-        if (e.kind === 'grow' && e.via?.length && !e.jump && !landed && e.via[0] !== 'typhoon' && e.item !== 'typhoon') {
-          const m = marks.find(x => x.e === e), target = ALL.find(x => x.id === e.item);
-          if (target.visitSpot(e.to, { lv: { ...m.lv, [e.item]: e.to }, flags: m.flags })) expected.push(e);
-        }
-        if (engine.landsTyphoon(e)) landed = true;
-      }
-      const visits = marks.map((m, j) => ({ ...m, next: marks[j + 1] })).filter(m => m.info?.visit);
-      assert.deepEqual(visits.map(v => `${v.e.via[0]}→${v.e.item}${v.e.to}`), expected.map(e => `${e.via[0]}→${e.item}${e.to}`), `${what}: visits`);
-      for (const v of visits) {
-        const label = `${what} ${v.e.via[0]}→${v.e.item}${v.e.to}`, live = (v.next?.t ?? secs) - v.t - (v.info.gap ?? 0), shown = (v.next?.hearts ?? end) > v.hearts;
-        assert.equal(v.next?.e, v.e, `${label}: the level's own script follows its visit`);
-        const k = count.get(v.e.via[0]) ?? 0, due = v.usable && k < VISIT_MAX_PER_HELPER;
-        assert.equal(shown, due, `${label}: ${due ? 'the helper rep was there but the visit did not play' : v.usable ? `played a ${k + 1}th time` : 'played without a usable rep'}`);
-        if (shown) count.set(v.e.via[0], k + 1);
-        assert.ok(live <= VISIT_CAP, `${label}: visit ${live.toFixed(2)} s`);
-        if (shown) played++; else skipped.push(label);
-      }
+    for (const [i, { marks, secs }] of paced.entries()) {
+      const what = `${name} turn ${i + 1}`;
+      assert.deepEqual(marks.filter(m => m.info?.visit).map(m => `${m.e.item}${m.e.to}`), [], `${what}: no visit marks`);
       const keys = marks.filter(m => m.info?.key).length, cap = 60 + 8 * Math.max(0, keys - 1);
       assert.ok(secs <= cap, `${what}: ${secs.toFixed(1)} s > ${cap} (◆ ${keys})`);
-      // 撲空（設計 §5）：正解幾乎沒有 wait（兩條各一回合、各一項），一樣每回合 ≤ MISS_PER_TURN 段、每段 ≤ MISS_CAP
       const misses = marks.map((m, j) => ({ ...m, next: marks[j + 1] })).filter(m => m.info?.miss);
       assert.ok(misses.length <= MISS_PER_TURN, `${what}: ${misses.length} misses`);
       for (const m of misses) assert.ok((m.next?.t ?? secs) - m.t - m.info.gap <= MISS_CAP, `${what}: miss ${m.info.item} ${((m.next?.t ?? secs) - m.t - m.info.gap).toFixed(2)} s`);
     }
-    // 叫不到的只能是少數（燈泡 Lv7 起電工在風車島上、代幣 Lv1 沒有站務員、正被別的劇本拿著）；大部分都真的演了
-    assert.ok(played >= 20 && skipped.length <= 8, `${name}: ${played} visits played, skipped ${skipped.join(', ')}`);
   }
 });
 

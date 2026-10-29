@@ -5,7 +5,7 @@
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開；折線先 nav.ground 貼地，過拱橋不陷進橋面）、follow 跟在另一個名冊最近的成員旁邊。
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
-// 'away' 模式（leave，計畫 6 拜訪）：拜訪完的幫手沿給的路線走回他閃白出現的那一點、到了閃白換回被叫來之前的位置再回日常（見 leave）。
+// （計畫 6 拜訪用的 'away' 模式與 leave 2026-10-29 跟拜訪一起拿掉了。）
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
@@ -35,7 +35,6 @@ import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf, radiusOf } from './nav.js';
-import { BLINK } from './blink.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 // ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
@@ -201,8 +200,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 換位置的閃白（計畫 6 裁決 R3）：小人閃整個實例、模型閃 holder（holder 還沒到就不閃——還沒畫出來，也看不到他跳）
   function flash(m) { if (!blink) return; if (m.walker) blink.walker(m.walker); else if (m.holder) blink.part(m.holder); }
-  // relocate：瞬間換到 p（劇本手上、'away' 的人；拜訪換到路上那一點、走回去之後換回原處）——新位置那一幀閃白，不靜靜地放下。
-  //   原處那一下由呼叫端先閃（flash，閃完 BLINK 才換位置）
+  // relocate：瞬間換到 p（劇本手上的人）——新位置那一幀閃白，不靜靜地放下。
+  //   要在原處先閃一下的話由呼叫端先 flash
   function relocate(m, p) { if (out(m)) return; setPose(m, { ...p, yaw: p.yaw ?? m.yaw, walking: false }); flash(m); }
   // 換裝閃白（§13.2）：小人整個實例閃白；模型閃 holder——換了模型、新 holder 還沒到就記著，到了再閃
   function glint(m) {
@@ -283,11 +282,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     while (g.members.length > spec.n) g.leaving.push(g.members.pop());
     const moved = prev && !same(prev.home, spec.home);
     // 家搬了：留下來的人走過去（當成走回家：走路速度、焦點不限制）；劇本手上的人不搶。
-    // 拜訪完正走回去的人（'away'）照走，但換回去的那一點改成新家的位置（最終審稿 4：不然閃白換回舊家的站位，再從那裡走過去）
     g.members.forEach((m, i) => {
       m.i = i; restyle(m, spec, i);
       if (moved && m.mode === 'home') { home(m); m.arriving = spec.home?.kind !== 'ride'; }
-      else if (moved && m.mode === 'away' && m.away) m.away.back = { ...homePose(spec, i, m) };
     });
     const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
     while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
@@ -328,7 +325,6 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 退場：藏起來的人（躲進門裡）、沒有入口（衛星島、ride）、走不到入口的直接拿掉；其他人走回入口（update 走到了才拿掉）
   function depart(m, spec) {
-    m.away = null;
     const e = !m.hidden && spec ? entryOf(spec, m.i) : null;
     if (e) { still(m); m.mode = 'exit'; m.cursor = null; m.arriving = false; m.settled = null; go(m, nav.route(m.pos, e)); }
     if (m.trip) exits.push(m); else destroy(m);
@@ -360,45 +356,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 走出去的人（mode 'exit'）、已經拿掉的人不歸劇本：claim／home／setPose 不算數（劇本 once() 快取的人可能已經在退場）
   const out = m => m.mode === 'exit' || m.gone;
-  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; m.away = null; }
-  // hurry（計畫 6 拜訪、撲空）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
+  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; }
+  // hurry（計畫 6 撲空）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
   //   不在別人的格子裡站著等焦點回來、回合結束後再用散步速度慢慢晃回去（擠在別格、壓過那一格的人數預算）
   function home(m, { hurry = false } = {}) {
     if (out(m)) return;
-    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null; m.away = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
+    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path 的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
-  }
-  // 拜訪完離開（計畫 6 設計 §4、裁決 R3）：從遠處叫來拜訪的幫手（拜訪時在路上閃白出現的那種）沿 route 用走路速度走回他出現的那一點，
-  //   在那裡閃白 BLINK 秒、換回 back（他被叫來之前站的地方）再閃白一下、回日常——不在日常裡橫越半個島
-  //   （用走路速度在走的人每幀已經走滿不瞬移的限速，推不開沿路散步的鼠窩老鼠）。
-  //   mode 'away'：不過日常、不被推也不推別人（同劇本手上的人；別人走路照樣讓他）；footprint 變了從現在的位置重新找路到同一個終點；
-  //   劇本 claim 他就不走了（照劇本演）、home／snap 直接回日常；藏起來（颱風登陸）就當場換回 back；躺平（命中）時停著
-  function leave(m, route, back) {
-    if (out(m)) return;
-    still(m); m.mode = 'away'; m.trip = null; m.cursor = null; m.arriving = false; m.settled = null;
-    const cursor = route.length > 1 ? createPathCursor(route, { loop: false }) : null;
-    m.away = { cursor, left: cursor?.total ?? 0, end: route.at(-1), back: { ...back }, planned: nav.version, fade: -1 };
-  }
-  function awayStep(m, dt) {
-    const a = m.away;
-    if (!a) { home(m); return; }
-    if (!m.hidden && a.fade < 0) {
-      if (nav.version !== a.planned && a.left > 1e-6) {
-        a.planned = nav.version;
-        const r = nav.route(m.pos, a.end); a.cursor = r.length > 1 ? createPathCursor(r, { loop: false }) : null; a.left = a.cursor?.total ?? 0;
-      }
-      if (a.cursor && a.left > 1e-6) {
-        const ds = Math.min(m.speed * dt, a.left); a.left -= ds; a.cursor.advance(ds);
-        setPose(m, { ...a.cursor.locate(), walking: true });
-        if (a.left > 1e-6) return;
-      }
-      setPose(m, { ...m.pos, walking: false }); flash(m); a.fade = 0; return;   // 走到了：原處閃白
-    }
-    if (!m.hidden && (a.fade += dt) < BLINK - 1e-9) return;
-    if (m.hidden) setPose(m, { ...a.back, yaw: m.yaw, walking: false }); else relocate(m, a.back);   // 閃完：換回原本的地方、再閃一下（藏著的看不到，不閃）
-    home(m);
   }
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
   function hide(m) { m.hidden = true; place(m); }
@@ -425,7 +391,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null; m.away = null;   // 跳過：晚到的模型不再補閃
+        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
         m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
@@ -568,7 +534,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function still(m) { if (m.fidgeting) { m.walker.gesture = null; m.fidgeting = false; } }
 
   // path：不在折線上（剛被劇本放回來）就先走到折線上最近的一點，再從那裡沿線來回
-  // 剛走進來（arriving === true）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方；拜訪、撲空完趕回家的（'hurry'）走到最近的那一點
+  // 剛走進來（arriving === true）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方；撲空完趕回家的（'hurry'）走到最近的那一點
   function onPath(m, h, dt, spec) {
     if (m.cursor) { m.cursor.advance(h.speed * dt); setPose(m, { ...m.cursor.locate(), walking: true }); return; }
     if (m.trip) { walk(m, dt); if (m.trip) return; }
@@ -650,8 +616,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        if (m.mode === 'away') { if (!lying) awayStep(m, dt); }   // 拜訪完走回出現的那一點（leave）：到了閃白、換回原處那一幀就回日常，下一幀才照日常走
-        else if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
+        if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）
@@ -710,7 +675,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function setFocus(cells) { focus = cells ? cells.map(c => [c[0], c[1]]) : null; }
 
   const api = {
-    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, leave, relocate, flash, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
+    group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, relocate, flash, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
     // visible：藏起來的人（颱風登陸躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {

@@ -15,17 +15,11 @@
 // 跳級（物品 v2 §3、§6）：同一物品連兩個 grow、第二個 jump: true——帶 jump 的那個只演 [apply, LEVEL UP]：不平移、不空拍、不查劇本，
 //   兩個 LEVEL UP 連著出（跳過時兩級的 apply 都照樣套上）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本（不是只有 apply + LEVEL UP）。
-// 拜訪（計畫 6 設計 §4，show/visit.js）：grow 事件 via 非空、不是跳級的第二級、颱風還沒登陸（登陸後大家躲著，indoors 照舊）——
-//   劇本前面先插一段拜訪：mark(e, { visit: true, gap }) → （不同物品先空 GAP，幫手在原處閃白跟它一起演）→ 平移到拜訪點那一格、跟走過去一起演 →
-//   拜訪的拍；之後照舊 mark(e, { gap: 0, key }) + 這一級的劇本（◆ 關鍵級也插：原因才是重點，◆ 劇本自己仍另外量）。
-//   幫手 = via[0] 的模組；同一回合同一個幫手最多真的拜訪 VISIT_MAX_PER_HELPER 次（裁決 R2：2；演到才算——代表不在而略過的不算；
-//   之後的拜訪段只剩平移，有原因的升級照演自己的劇本）。
-//   幫手沒有代表、代表藏著或正被別的劇本拿著（演到才知道）→ 拜訪的拍全部 0 秒（不找替身，不搶人）；被升級物品這一級沒有拜訪點（離島上的級）→ 不插。
-//   pace 看 mark 的 info.visit 把拜訪當獨立一段量（≤ VISIT_CAP），不算進那一級自己劇本的秒數。
+// 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空照舊（下一段）。
 // 撲空（計畫 6 設計 §5，show/visit.js 的 miss；取代舊的等待圖框——沒有泡泡、沒有圖框）：wait 事件裡前 MISS_PER_TURN 個叫得到代表的 waits（照 ORDER）各一段
 //   （叫不叫得到建串時看模組的 script.hasRep(現在的等級)：鮮奶 Lv3 起、代幣 Lv2 起、燈泡 Lv7 起電工在離島上叫不到、颱風永遠沒有——不佔位子，往後補；最終審稿 3）：
 //   mark(e, { miss: true, item, gap }) → （不同物品先空 GAP；代表叫不到這拍也跳過）→ 平移到代表那一格、跟走過去一起演 → 失望 → 回日常。
-//   等待物品沒有代表劇本、這一級沒有代表（hasRep 假）→ 那一項不插、照 ORDER 往後補。代表演到才叫不到（藏著、在劇本手上、拜訪完正走回去）→ 整段 0 秒（不再往後補）。
+//   等待物品沒有代表劇本、這一級沒有代表（hasRep 假）→ 那一項不插、照 ORDER 往後補。代表演到才叫不到（藏著、在劇本手上）→ 整段 0 秒（不再往後補）。
 //   颱風登陸之後（大家躲在屋裡）、終局回合不插。之後 wait 事件自己照舊 mark + 不閃白的 apply（沒有別的拍）。
 //   pace 看 mark 的 info.miss 把撲空當獨立一段量（≤ MISS_CAP）。
 // 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
@@ -39,8 +33,7 @@ import { cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
 import { BLINK } from './blink.js';
-import { visit, miss, MISS_PER_TURN } from './visit.js';
-import { cellAt } from '../scene/hex.js';
+import { miss, MISS_PER_TURN } from './visit.js';
 
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
@@ -131,7 +124,6 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
   let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
   const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
-  const visits = new Map();   // 這回合每個幫手真的拜訪過幾次（拜訪的拍演到、確定會走才 +1，show/visit.js）
   // 撲空演到才知道有沒有人演（代表叫不到、在劇本手上……整段 0 秒）：missFirst 記下撲空之前的帳（上一個物品、鏡頭對著的格）與
   // 每段撲空演了沒有（played）。之後第一個有東西演的事件，空拍與平移包成演到才決定的拍（afterMiss）：撲空全沒演就照撲空之前的帳——
   // 不多空一拍、鏡頭本來就在那一格就不再平移一次（審稿：collapsed 的撲空不動鏡頭的帳）
@@ -146,29 +138,6 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const maybe = [p.item, ...p.segs.map(x => x.item)].some(li => li && item !== li), g = maybe ? gapBeat(need) : null;
     const focus = cell && { ...B.focus(cell), start(c) { if (!lastShown(p, c) && sameCell(cell, p.cell)) return false; return B.focus(cell).start(c); } };
     return { gap: g?.beat ?? null, gapOf: () => (g ? g.gap() : 0), focus };
-  };
-
-  // 拜訪段（見檔頭）：插得上就把 mark＋平移＋拜訪的拍推進 out、回 true
-  const visitFirst = (e, s) => {
-    if (finale || landed || e.kind !== 'grow' || e.jump || !e.via?.length) return false;
-    const id = e.via[0], target = mod(e.item), spot = target?.visitSpot?.(e.to, s), cell = spot && cellAt(spot.x, spot.z);
-    const beats = cell ? visit(e, s, ctx, { helper: mod(id), target, quota: visits }) : [];
-    if (!beats.length) return false;
-    // 第一拍（原處閃白，0 或 BLINK 秒）跟物品之間的空拍一起演（裁決 R4）；第二拍（走過去）跟平移一起演
-    const [fade, walk, ...rest] = beats;
-    if (pending) {   // 撲空之後：空拍、平移演到才決定（見 pending）
-      const a = afterMiss(e.item, cell), info = { key: false, visit: true, get gap() { return a.gapOf(); } };
-      lastCell = cell; away = true; lastItem = e.item;
-      out.push(mark(e, info), ...(a.gap ? [together([a.gap, fade])] : [fade]), together([a.focus, walk]), ...rest);
-      return true;
-    }
-    const gap = lastItem && e.item !== lastItem ? GAP : 0;
-    const lead = gap ? [together([B.wait(gap), fade])] : [fade];
-    const go = sameCell(cell, lastCell) ? walk : together([B.focus(cell), walk]);
-    if (!sameCell(cell, lastCell)) { lastCell = cell; away = true; }
-    lastItem = e.item;
-    out.push(mark(e, { gap, key: false, visit: true }), ...lead, go, ...rest);
-    return true;
   };
 
   // 撲空段（見檔頭）：wait 事件裡前 MISS_PER_TURN 個「這一級叫得到代表」的 waits 各一段 mark＋（空拍）＋平移跟走過去一起演＋失望＋回日常。
@@ -221,7 +190,6 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
       out.push(mark(e), B.apply(e), B.levelUp(e.item), B.apply(e));
       return;
     }
-    visitFirst(e, s);
     if (e.kind === 'wait') {
       missFirst(e, s);
       beats = [B.apply(e, { blink: false })];

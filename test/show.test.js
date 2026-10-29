@@ -201,15 +201,16 @@ test('on the opening screen no islander stands inside a building and no blink is
 test('a landing turn plays no miss and no icon bubble; hidden owners stay hidden', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  // 選擇帶動升級：颱風放下當回合就長到 Lv2 登陸——珍奶、颱風，第二回合就是登陸回合（珍奶等晶片）
-  for (const id of ['boba']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  // 選擇帶動升級：颱風放下當回合就長到 Lv2 登陸。回到 GROW（2026-10-29）之後等待只剩 8 條阻擋：
+  // 燈泡、棒球、颱風——第三回合就是登陸回合（棒球 Lv1 等鮮奶，球員是代表）
+  for (const id of ['bulb', 'baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
   const r = place(s, 'typhoon');
   assert.ok(r.events.some(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2), 'placing the typhoon is the landing turn');
   const w = r.events.filter(e => e.kind === 'wait').at(-1)?.waits?.[0];
-  assert.equal(w?.item, 'boba', 'boba waits on the landing turn');
+  assert.equal(w?.item, 'baseball', 'baseball waits on the landing turn');
   bubblesLog.length = 0;
-  const marks = [], owners = () => show.roster.members('boba.owner');
-  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().every(m => m.hidden), 'the owner is indoors'); } });
+  const marks = [], owners = () => show.roster.members('baseball.players');
+  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().length && owners().every(m => m.hidden), 'the players are indoors'); } });
   assert.ok(!marks.some(i => i?.miss), 'no miss segment after the landing');
   assert.deepEqual(bubblesLog.filter(b => typeof b.kind === 'object'), [], 'no icon bubble');
 });

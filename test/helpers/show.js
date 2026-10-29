@@ -86,8 +86,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
 // 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），
 // 單獨測那一級自己的劇本要當一般事件。計畫 5b 之後跳級很多（例：燈泡 4／6／8、晶片 4、珍奶 4、棒球 7 在兩條正解裡都是跳級的第二級），正式演出時不演劇本；
 // 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測。
-// via 也拿掉（計畫 6 設計 §4）：有原因的升級在回合裡前面會插一段拜訪，拜訪單獨量（≤ VISIT_CAP，visit.test／chain.test），
-// 不算進那一級自己劇本的秒數——單獨測一級的劇本就只演劇本
+// via 也拿掉：via 是演出層看的原因（計畫 6 的拜訪 2026-10-29 拿掉了），不算進那一級自己劇本的秒數——單獨測一級的劇本就只演劇本
 export const solo = ({ jump, via, ...e }) => e;
 
 // 照 order 放完一局、再長 CLOSING_TURNS 回合（最後一輪）：itemId 的 placed／grow 事件單獨 live 演並呼叫
@@ -160,7 +159,7 @@ export function overviewRig() {
 //          ——飛行的內插在 rig.update 裡（正常最大一幀約 2.8，那是飛，不算）；最終審稿 2：天際線在全景裡重算原本一幀跳 5.66
 //   labels（有 cam 才查）：每個 LEVEL UP 字樣與頭頂泡泡（bubbles.levelUp／show）活著的那幾秒（dur），頭上的點投影在 NDC [-1, 1] 裡的幀數
 //          要 ≥ LABEL_ON（一半）——鏡頭沒跟上、演出的那一刻在畫面外（審稿：颱風登陸後的 LEVEL UP、101 頭上的字、撞攤車的 ！、等待圖框）
-//   pops（計畫 6 裁決 R3）：劇本手上（'script'）或拜訪完正走回去（'away'）的人（這一幀或上一幀；走回去走到底換回原處那一幀模式已經是 home）
+//   pops（計畫 6 裁決 R3）：劇本手上（'script'）的人（這一幀或上一幀；劇本放回日常那一幀模式已經是 home）
 //          一幀突然跳開超過 POP_MAX——那一幀他一定在閃白
 //          （show.blink 正閃著他的小人實例或模型 holder），或藏著、還沒畫出來（模型 holder 還沒到）；不准靜靜地瞬移。
 //          「突然」＝這一幀的位移跟上一幀的位移差超過 POP_MAX：坐在趕路的列車車頂（一幀 0.44）是連續的快，不是換位置
@@ -203,8 +202,8 @@ export function gameInvariants(show, { cam = null } = {}) {
       if (daily) last.set(m, { ...m.pos }); else last.delete(m);
       const was = seen.get(m), step = was ? { x: m.pos.x - was.p.x, z: m.pos.z - was.p.z } : { x: 0, z: 0 };
       seen.set(m, { p: { ...m.pos }, step, mode: m.mode });
-      // 上一幀的模式也算：走回去走到底那一刻換回原處、模式同一幀翻成 home——看這一幀的模式會漏掉那次換位置
-      const acting = mode => mode === 'script' || mode === 'away';
+      // 上一幀的模式也算：劇本放回日常那一刻模式同一幀翻成 home——看這一幀的模式會漏掉那一幀的換位置
+      const acting = mode => mode === 'script';
       if (was && !m.hidden && !m.gone && (acting(m.mode) || acting(was.mode)) && (m.walker || m.holder)) {
         const jerk = Math.hypot(step.x - was.step.x, step.z - was.step.z);
         if (jerk > POP_MAX && !show.blink.has(m.walker ?? m.holder)) pops.add(`${what} jumped ${Math.hypot(step.x, step.z).toFixed(2)} without a blink`);

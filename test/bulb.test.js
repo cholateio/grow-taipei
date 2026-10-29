@@ -504,11 +504,15 @@ test('Lv7 with the train badly placed (just left the station / just past the bac
   }
 });
 // 沒有列車在跑就不演（照規則不會發生）：直接報錯，不讓他從海上瞬移過去
-test('Lv7 without a running train throws instead of teleporting the electrician', () => {
+// Task 6a 修正輪裁決：以前沒列車就丟錯（不讓他從海上瞬移過去）；現在建串時看得到車、演到時車卻停了（萬一），上車那拍自己跳過——
+// 不丟錯，也不瞬移（他沒被拿到劇本手上、位置不動）。建串時就沒車的退路另一個測試量（「no train running」）
+test('Lv7 whose train is gone at beat time skips the boarding: no throw, the electrician is not moved', () => {
   const m = { pos: { x: 0, y: 0.65, z: 2 }, head: () => m.pos };
-  const ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [m] : []), claim() {} }, stage: { partObject: () => null, flags: {} }, nav: { route: (a, b) => [a, b], routeLength: () => 1, nearestWalkable: p => p }, now: 0, rail: { offset: 0 } };
+  let claimed = 0;
+  const ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [m] : []), claim() { claimed++; } }, stage: { partObject: () => null, flags: {} }, nav: { route: (a, b) => [a, b], routeLength: () => 1, nearestWalkable: p => p }, now: 0, rail: { offset: 0 } };
   const beats = bulb.script.grow[7](E(7), { lv: atLv(7), flags: {} }, ctx), board = beats[0].beats.find(b => b.kind === 'board');
-  assert.throws(() => board.start(ctx), /running train/);
+  assert.equal(board.start(ctx), false, 'skipped');
+  assert.equal(claimed, 0); assert.deepEqual(m.pos, { x: 0, y: 0.65, z: 2 });
 });
 // 坐車那段列車不超速、不瞬移：環上每幀轉的角度 ≤ 原速 4.5 倍；從站上出發（launch）是慢慢加速的
 test('Lv7: every frame the train moves at most 4.5× normal speed, and it eases out of the station', async () => {

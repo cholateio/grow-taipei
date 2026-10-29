@@ -17,6 +17,10 @@ const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 export const FESTIVAL_HOMES = [[-1, 0], [1, 0], [1, -1]].map(cellCentre);   // 鮮奶節多的三個小孩：鮮奶格、晶片格、溫泉格（裁決 R16）
+// 溫泉格那個小孩的家往格子西北移（−0.4, −1.0）、散步半徑 1.0（其他兩個照島民的 HOME_R）：外星結局的變異鼠（半徑 0.325）站在池子正前方，
+// 原本的圈（格心、1.8）把牠整個圈在裡面，散步路線會穿過牠（Task 6a：外星最後一輪量到 0.03 遠、貼著超過 0.5 s）；新圈的邊離牠 1.25
+FESTIVAL_HOMES[2] = offset(FESTIVAL_HOMES[2], -0.4, -1.0);
+export const FESTIVAL_R = [HOME_R, HOME_R, 1.0];
 // 籃球架（Lv5）：站在操場東緣（原本旗桿的位置，2026-10-28 錄影修正：拿掉所有旗子），籃板與籃框朝西、對著操場；
 // 沒有 footprint（同 YouBike，小東西不擋往橋頭的路）。投籃的小學生站在操場上、籃框西南邊 SHOT
 const HOOP = offset(AT, 0.75, 0.95), SHOT = offset(HOOP, -0.55, 0.1);
@@ -173,7 +177,7 @@ export function view(lv, flags, meta = {}) {
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRIES },
     };
     // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
-    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: FESTIVAL_HOMES[0], n: FESTIVAL_HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: FESTIVAL_HOMES, r: HOME_R } };
+    if (n >= 10) v['milk.extraKids'] = { kind: 'roster', at: FESTIVAL_HOMES[0], n: FESTIVAL_HOMES.length, shirt: C.yellow, accessory: 'cap', home: { kind: 'wander', at: FESTIVAL_HOMES, r: FESTIVAL_R } };
   }
   return v;
 }

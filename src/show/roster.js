@@ -123,9 +123,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const toSpot = m => { const g = groups.get(m.key); return !!m.trip && m.mode === 'home' && !!g && current(g)?.home?.kind === 'stand'; };
 
   // ── 家的位置 ──
+  // r 也可以是陣列（依 i 輪流，同 at）：鮮奶節溫泉格的小孩散步圈比較小、避開池邊的變異鼠（Task 6a）
   function wanderHome(spec, i) {
     const h = spec.home, at = Array.isArray(h.at) ? h.at[i % h.at.length] : (h.at ?? spec.at);
-    return { at, r: h.r ?? 0.5 };
+    return { at, r: (Array.isArray(h.r) ? h.r[i % h.r.length] : h.r) ?? 0.5 };
   }
   // 衛星島上的家：nav 只有主島，wander 會把人拉回主島，所以改成沿家周圍的圓圈慢慢繞（同 path 日常，閉合）
   function ringHome(spec, i) {

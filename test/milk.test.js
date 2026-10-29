@@ -85,16 +85,24 @@ test('milk Lv3/7/8 use the school / university / research glb models with the pa
   assert.ok(width(7) >= 1.8 * width(3), `university ${width(7).toFixed(2)} vs school ${width(3).toFixed(2)}`);
   assert.ok(tallest(8) >= 1.8 * tallest(7) && tallest(7) <= 1.1 * tallest(3), 'the research building towers over the low wings');
 });
-test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', () => {
+test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', async () => {
   assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
   for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
     assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
   assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
-  assert.equal(x.n, 3); assert.deepEqual(x.home.at, milk.FESTIVAL_HOMES); assert.equal(x.home.r, landmarks.view()['landmarks.islanders'].home.r, 'the islanders\' wander radius');
+  assert.equal(x.n, 3); assert.deepEqual(x.home.at, milk.FESTIVAL_HOMES);
+  // 鮮奶格、晶片格照島民的散步半徑；溫泉格的圈小一點、避開變異鼠（Task 6a）
+  assert.deepEqual(x.home.r, [...Array(2).fill(landmarks.view()['landmarks.islanders'].home.r), 1.0], 'the islanders\' wander radius (spring cell 1.0)');
   assert.deepEqual(cells, ['-1,0', '1,0', '1,-1'], 'one kid each on the milk, chip and spring cells');
-  x.home.at.forEach(p => { const c = cellAt(p.x, p.z); const w = axialToWorld(...c); assert.ok(Math.hypot(p.x - w.x, p.z - w.z) < 1e-9, 'cell centre'); });
+  // 鮮奶格、晶片格在格心；溫泉格往西北移 (−0.4, −1.0)，散步圈的邊離變異鼠的站位 ≥ 1.0（Task 6a）
+  const { MUTANT } = await import('../src/actors/rat.js');
+  x.home.at.forEach((p, k) => {
+    const c = cellAt(p.x, p.z), w = axialToWorld(...c), [dx, dz] = k === 2 ? [-0.4, -1.0] : [0, 0];
+    assert.ok(Math.hypot(p.x - w.x - dx, p.z - w.z - dz) < 1e-9, `home ${k} at the cell centre + (${dx}, ${dz})`);
+  });
+  assert.ok(Math.hypot(x.home.at[2].x - MUTANT.x, x.home.at[2].z - MUTANT.z) - x.home.r[2] >= 1.0, 'the spring kid keeps clear of the mutant rat');
   assert.equal(milk.view(lv({ milk: 10, typhoon: 2 }), {}, { landing: true })['milk.extraKids'], undefined, 'the festival kids hide on the landing turn too');
 });
 test('milk draw calls stay ≤ 12 for the whole cell at every level (glb parts merged; lit windows included)', () => {
@@ -244,10 +252,11 @@ test('festival kids: every home\'s wander disk is ≥ 30% walkable at the end of
     for (const step of steps) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
     assert.equal(show.stage.lv.milk, 10);
     const home = milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.extraKids'].home;
-    for (const c of home.at) {
+    for (const [k, c] of home.at.entries()) {
       let ok = 0, all = 0;
+      const r = [].concat(home.r)[k % [].concat(home.r).length];
       for (let i = -10; i <= 10; i++) for (let j = -10; j <= 10; j++) {
-        const dx = i / 10 * home.r, dz = j / 10 * home.r; if (Math.hypot(dx, dz) > home.r) continue;
+        const dx = i / 10 * r, dz = j / 10 * r; if (Math.hypot(dx, dz) > r) continue;
         all++; if (show.nav.walkable(c.x + dx, c.z + dz)) ok++;
       }
       assert.ok(ok / all >= 0.3, `${order.join('>')} home ${cellAt(c.x, c.z)}: ${(100 * ok / all).toFixed(0)}% walkable`);

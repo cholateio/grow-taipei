@@ -170,8 +170,8 @@ test('the crown rat sits clear of the three parked roadsters on the cyber roof (
     const d = segDist(k, { x: car.park.x - ux, z: car.park.z - uz }, { x: car.park.x + ux, z: car.park.z + uz });
     assert.ok(d >= 0.2, `${d.toFixed(2)} from roadster ${i} parked at x ${(car.park.x - st.x).toFixed(2)}`);
   }
-  assert.ok(Math.abs(k.x - st.x) <= 0.5 && Math.abs(k.z - st.z) <= 0.36, 'on the roof (1.1 × 0.82)');
-  assert.ok(Math.hypot(k.x - (st.x + 0.42), k.z - (st.z - 0.3)) >= 0.2, 'clear of the roof antenna');
+  assert.ok(Math.abs(k.x - st.x) <= token.ROOF.w / 2 - 0.05 && Math.abs(k.z - st.z) <= token.ROOF.d / 2 - 0.05, 'on the roof (token.ROOF)');
+  assert.ok(Math.hypot(k.x - (st.x + token.ANTENNA.x), k.z - (st.z + token.ANTENNA.z)) >= 0.2, 'clear of the roof antenna');
 });
 // 最終章 §7 外星尾聲：變異鼠王（戴王冠、揮手）的站位搬到 101 母艦的碟頂中心（tower.shipTop），頭上的小 UFO 不畫（三台大 UFO 取代它）
 test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower top), rat.ufo not drawn', async () => {

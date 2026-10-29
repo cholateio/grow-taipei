@@ -14,41 +14,81 @@ const lerp = (a, b, k) => a + (b - a) * k;
 //   legs = [飛到圓上幾秒, 從圓上飛回停車點幾秒]；圓上那一圈從角 phase 逆時針繞一圈（2π / speed 秒），車頭朝切線（同列車的 yaw）；
 //   飛完 done = true、停在 park，車頭朝 park.yaw（有給的話：Roadster 停好朝 101），不然朝最後一段的方向（停好不再轉）。
 //   每一段開頭車頭從上一段結束的方向轉過來（最短轉角，每秒最多 TURN_RATE、至少 TURN_MIN 秒），交界不瞬間轉向
-// 計畫 8 任務 5（Tesla Roadster，設計 §4.6）的兩個選項，沒給就是上面的老飛法（無人機、尾聲的紅色跑車照舊）：
-//   ramp（從 park 到坡頂的位移，長 0.35、仰角 20°）：從停車點起飛時，前 RAMP_T 秒從 park 沿斜坡加速滑上坡頂（車頭仰起 pitch），
-//     再一條拋物線（水平等速、高度 1 − (1 − k)² 先快後慢）拉到圓上入口，整段 legs[0] 秒；滑坡那 RAMP_T 秒車底噴氣（puff 0 → 1）
+// 計畫 8 任務 5（Tesla Roadster，設計 §4.6）的兩個選項，沒給就是上面的老飛法（無人機、尾聲的紅色跑車只用 squash）：
+//   ramp = { foot, yaw, len, angle, points }：停車點前方屋頂上的一條坡道（坡腳 foot、朝 yaw、坡面長 len、仰角 angle），
+//     points 是車身底下會碰地的點 [沿車頭方向, 離輪底高]（後保險桿底、後輪、前輪、車鼻底；原點在輪底）。
+//     從停車點起飛時前 RAMP_T 秒：車順著 yaw 加速（離坡腳的水平距離 c = c0 + (c1 − c0)·k²）往前開，每一刻的車身是
+//     「放在屋頂＋坡面上、所有 points 都不低於表面、原點最低」的那個姿勢（rampRest：先在屋頂上平開，車鼻碰到坡、前輪上坡、
+//     車尾保險桿擦著屋頂、一路仰起來），前輪到坡頂（c1）那一刻離開坡道；車鼻過了坡腳才噴氣（puff）。
+//     之後一條拋物線（水平等速、高度 1 − (1 − k)² 先快後慢、仰角放平）從離坡那一點拉到圓上入口，整段 legs[0] 秒
 //   squash（壓下去的深度）：回停車點那段提早 TOUCH 秒落地，最後 TOUCH 秒車身壓下去再回彈（squash = 深度 · sin(π·u/TOUCH)），
-//     落地前 TOUCH 秒噴氣；回程車頭從切線一路轉到 park.yaw（落地時剛好轉好）
+//     落地前 TOUCH 秒噴氣；回程車頭從切線一路轉到 park.yaw（落地時剛好轉好；Roadster 車頭朝 101 倒車入位）
 //   puff：噴氣那段的進度 0..1（其餘時候沒有這個欄位）；pitch：仰角（只有 ramp 才有）
 export const RAMP_T = 0.6, TOUCH = 0.3;
 const TURN_RATE = 3.3, TURN_MIN = 0.3;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const turnIn = (prev, cur, u) => { const d = wrap(prev - cur), T = Math.max(TURN_MIN, Math.abs(d) / TURN_RATE); return cur + d * Math.max(0, 1 - u / T); };
+// 坡道的剖面（沿車頭方向、離坡腳的水平距離 x → 表面高，相對坡腳）：坡腳以前是屋頂（0）、坡上 x·tan(angle)、坡頂以外沒有東西
+export const rampSurface = (ramp, x) => { const run = ramp.len * Math.cos(ramp.angle); return x < 0 ? 0 : x <= run + 1e-12 ? x * Math.tan(ramp.angle) : -Infinity; };
+// 車在剖面上的靜止姿勢：原點離坡腳水平 c 時，仰角 th ∈ [0, angle] 裡讓「所有 points 都不低於表面」的原點高 y0 最低的那個
+export function rampRest(ramp, c) {
+  const y0 = th => {
+    const sn = Math.sin(th), cs = Math.cos(th);
+    let m = -Infinity;
+    for (const [a, u] of ramp.points) m = Math.max(m, rampSurface(ramp, c + a * cs - u * sn) - (a * sn + u * cs));
+    return m;
+  };
+  const N = 48, A = ramp.angle;
+  let best = 0;
+  for (let i = 1; i <= N; i++) if (y0(A * i / N) < y0(A * best / N)) best = i;
+  let lo = A * Math.max(0, best - 1) / N, hi = A * Math.min(N, best + 1) / N;
+  for (let i = 0; i < 40; i++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (y0(m1) <= y0(m2)) hi = m2; else lo = m1; }
+  const th = y0(0) <= y0((lo + hi) / 2) + 1e-12 ? 0 : (lo + hi) / 2;   // 平的時候剛好 0
+  return { th, y0: y0(th) };
+}
+// 一條坡道的起飛常數（純看 spec，算一次記住）：c0 停車點離坡腳、c1 前輪到坡頂、cNose 車鼻到坡腳（之後噴氣）、離坡那一刻的姿勢
+const launchCache = new WeakMap();
+function launchOf(ramp, park) {
+  if (launchCache.has(ramp)) return launchCache.get(ramp);
+  const dx = Math.sin(ramp.yaw), dz = Math.cos(ramp.yaw), run = ramp.len * Math.cos(ramp.angle);
+  const front = Math.max(...ramp.points.filter(([, u]) => u === 0).map(([a]) => a)), nose = Math.max(...ramp.points.map(([a]) => a));
+  const c0 = (park.x - ramp.foot.x) * dx + (park.z - ramp.foot.z) * dz;
+  let lo = c0, hi = run;   // 前輪的水平位置 c + front·cos(th) 隨 c 遞增：二分找到坡頂
+  for (let i = 0; i < 50; i++) { const m = (lo + hi) / 2; if (m + front * Math.cos(rampRest(ramp, m).th) < run) lo = m; else hi = m; }
+  const c1 = lo, end = rampRest(ramp, c1);   // lo：前輪還在坡上的最後一點（再過去前輪懸空，rampRest 會讓車平躺回去）
+  const L = { dx, dz, c0, c1, cNose: -nose, at: c => ({ x: ramp.foot.x + dx * c, z: ramp.foot.z + dz * c }) };
+  L.lift = { ...L.at(c1), y: ramp.foot.y + end.y0, pitch: end.th };
+  launchCache.set(ramp, L);
+  return L;
+}
 export function orbitPose(spec, t, start = 'from') {
   const { at, r, h, speed, phase = 0, legs: [tin, tout] = [1, 1], park, ramp, squash = 0 } = spec, from = start === 'park' ? park : spec.from ?? park;
+  const name = () => `orbit spec (park ${park.x.toFixed(2)}, ${park.z.toFixed(2)})`;
+  if (ramp && tin <= RAMP_T) throw new Error(`${name()}: legs[0] ${tin} must be longer than the ramp (${RAMP_T} s)`);
+  if (squash > 0 && tout <= TOUCH) throw new Error(`${name()}: legs[1] ${tout} must be longer than the touchdown (${TOUCH} s)`);
   const lap = 2 * Math.PI / speed, E = { x: at.x + Math.cos(phase) * r, y: at.y + h, z: at.z + Math.sin(phase) * r };
   const head = (a, b) => Math.atan2(b.x - a.x, b.z - a.z), tangent = a => Math.atan2(-Math.sin(a), Math.cos(a));
-  const launch = start === 'park' && ramp, R = launch ? { x: park.x + ramp.x, y: park.y + ramp.y, z: park.z + ramp.z } : from;
-  const hIn = head(R, E), hOut = head(E, park), hPark = park.yaw ?? hOut, land = squash > 0 ? TOUCH : 0, fly = tout - land;
+  const L = start === 'park' && ramp ? launchOf(ramp, park) : null, R = L ? L.lift : from;
+  const hIn = head(R, E), hOut = head(E, park), hPark = park.yaw ?? hOut, touchT = squash > 0 ? TOUCH : 0, descentT = tout - touchT;
   const leg = (a, b, k, yaw) => ({ x: lerp(a.x, b.x, ease(k)), y: lerp(a.y, b.y, ease(k)), z: lerp(a.z, b.z, ease(k)), yaw, done: false });
-  if (launch && t < RAMP_T) {   // 斜坡：從靜止加速（s = k²），車頭朝 park.yaw、跟著滑上去的進度仰起來（仰角 ∝ s：車尾繞原點往下掉的量
-    // 半車長 · sin(仰角) 一直小於升高的 ramp.y · s，車尾不會插進屋頂——車長 ≤ 0.68 都成立）
-    const k = t / RAMP_T, s = k * k, pitch = Math.atan2(ramp.y, Math.hypot(ramp.x, ramp.z)) * s;
-    return { x: park.x + ramp.x * s, y: park.y + ramp.y * s, z: park.z + ramp.z * s, yaw: hPark, pitch, puff: k, done: false };
+  if (L && t < RAMP_T) {   // 屋頂上開過去、上坡道：從靜止加速，姿勢由 rampRest 決定
+    const k = Math.max(0, t) / RAMP_T, c = L.c0 + (L.c1 - L.c0) * k * k, rest = rampRest(ramp, c), p = L.at(c);
+    const pose = { x: p.x, y: ramp.foot.y + rest.y0, z: p.z, yaw: hPark, pitch: rest.th, done: false };
+    return c > L.cNose ? { ...pose, puff: (c - L.cNose) / (L.c1 - L.cNose) } : pose;
   }
-  if (launch && t < tin) {   // 拋物線拉高到圓上入口，車頭放平
-    const k = (t - RAMP_T) / (tin - RAMP_T), pitch = Math.atan2(ramp.y, Math.hypot(ramp.x, ramp.z)) * (1 - ease(k));
-    return { x: lerp(R.x, E.x, k), y: R.y + (E.y - R.y) * (1 - (1 - k) ** 2), z: lerp(R.z, E.z, k), yaw: turnIn(hPark, hIn, t - RAMP_T), pitch, done: false };
+  if (L && t < tin) {   // 拋物線：離坡那一點拉高到圓上入口，車頭放平
+    const k = (t - RAMP_T) / (tin - RAMP_T);
+    return { x: lerp(R.x, E.x, k), y: R.y + (E.y - R.y) * (1 - (1 - k) ** 2), z: lerp(R.z, E.z, k), yaw: turnIn(hPark, hIn, t - RAMP_T), pitch: R.pitch * (1 - ease(k)), done: false };
   }
   if (t < tin) return leg(from, E, t / tin, start === 'park' ? turnIn(hPark, hIn, t) : hIn);
   if (t < tin + lap) { const u = t - tin, a = phase + u * speed; return { x: at.x + Math.cos(a) * r, y: at.y + h, z: at.z + Math.sin(a) * r, yaw: turnIn(hIn, tangent(a), u), done: false }; }
-  if (t < tin + lap + fly) {
-    const u = t - tin - lap, k = u / fly;
-    if (!land) return leg(E, park, k, turnIn(tangent(phase), hOut, u));
+  if (t < tin + lap + descentT) {
+    const u = t - tin - lap, k = u / descentT;
+    if (!touchT) return leg(E, park, k, turnIn(tangent(phase), hOut, u));
     const p = leg(E, park, k, tangent(phase) + wrap(hPark - tangent(phase)) * ease(k));
-    return u >= fly - TOUCH ? { ...p, puff: (u - fly + TOUCH) / TOUCH } : p;
+    return u >= descentT - TOUCH ? { ...p, puff: (u - descentT + TOUCH) / TOUCH } : p;
   }
-  if (t < tin + lap + tout) { const u = t - tin - lap - fly; return { x: park.x, y: park.y, z: park.z, yaw: hPark, squash: squash * Math.sin(Math.PI * u / land), done: false }; }
+  if (t < tin + lap + tout) { const u = t - tin - lap - descentT; return { x: park.x, y: park.y, z: park.z, yaw: hPark, squash: squash * Math.sin(Math.PI * u / touchT), done: false }; }
   return { x: park.x, y: park.y, z: park.z, yaw: hPark, done: true };
 }
 
@@ -224,13 +264,13 @@ export function createPartFactory(THREE, ctx) {
     let flying = false, start = 'park', t = 0, idle = 0, rate = 1;
     const land = () => { flying = false; idle = 0; put(orbitPose(spec, Infinity)); };
     land();
-    object.userData.fly = ({ delay = 0, speed = 1 } = {}) => { flying = true; start = spec.from ? 'from' : 'park'; t = -delay; rate = speed; put(orbitPose(spec, 0, start)); };
+    object.userData.fly = ({ delay = 0, speed = 1 } = {}) => { flying = true; start = spec.from ? 'from' : 'park'; t = -delay; rate = speed; const p = orbitPose(spec, 0, start); put(t < 0 ? { ...p, puff: undefined } : p); };
     object.userData.land = land;
     return {
       object,
       update(dt) {
         if (!flying) { if (spec.rest == null || (idle += dt) < spec.rest) return; flying = true; start = 'park'; t = 0; rate = 1; }
-        t += dt * rate; const p = orbitPose(spec, Math.max(0, t), start); put(p);
+        t += dt * rate; const p = orbitPose(spec, Math.max(0, t), start); put(t < 0 ? { ...p, puff: undefined } : p);   // 錯開起飛的等待（t < 0）不噴氣
         if (p.done) land();
       },
       dispose() { model.dispose(); puffs?.material.dispose(); },

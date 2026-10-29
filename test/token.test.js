@@ -36,7 +36,8 @@ const fakeCtx = { B, roster: { members: () => [], nearest: () => null } };
 function drawCalls(v) {
   const glb = m => 1 + (m.glow ? 1 : 0), compound = parts => 1 + new Set(parts.filter(x => x.glow).map(x => x.glow)).size;
   return Object.values(v).reduce((t, p) => t + (
-    p.kind === 'compound' || p.kind === 'spur' || p.kind === 'ramp' ? compound(p.parts)
+    p.kind === 'compound' || p.kind === 'spur' ? compound(p.parts)
+      : p.kind === 'ramp' ? 1
       : p.kind === 'orbit' && p.model ? compound(p.model.parts)
       : p.kind === 'glb' || p.kind === 'orbit' ? glb(p)
         : p.kind === 'train' ? p.models.length
@@ -421,35 +422,74 @@ test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body
     for (const p of car.model.parts) assert.ok(PALETTE.has(p.color), `car ${i} ${p.kind} ${p.color.toString(16)}`);
     assert.ok(angErr(car.park.yaw, toTower(car.park)) < 0.05, `car ${i} parked facing 101 (${car.park.yaw.toFixed(3)})`);
     assert.ok(angErr(orbitPose(car, Infinity).yaw, toTower(car.park)) < 0.05, `car ${i} lands facing 101`);
-    assert.ok(car.ramp && angErr(Math.atan2(car.ramp.x, car.ramp.z), toTower(car.park)) < 0.05, `car ${i} launches along a ramp pointing at 101`);
-    assert.ok(Math.abs(Math.hypot(car.ramp.x, car.ramp.y, car.ramp.z) - 0.35) < 1e-9 && Math.abs(Math.atan2(car.ramp.y, Math.hypot(car.ramp.x, car.ramp.z)) - RAMP_A) < 1e-9, 'ramp 0.35 long, 20° up');
+    assert.deepEqual(car.ramp, { ...token.LANES[i], points: token.CAR_CONTACTS }, `car ${i} launches from its own lane`);
+    assert.ok(angErr(car.ramp.yaw, toTower(car.park)) < 0.05 && car.ramp.len === 0.35 && Math.abs(car.ramp.angle - RAMP_A) < 1e-12, 'lane 0.35 long, 20° up, pointing at 101');
   }
 });
-test('roadster take-off: the tail never dips into the roof while the car pitches up the ramp; level again on the orbit', () => {
+// 坡道起飛（fix round 2）：軌跡跟坡道的幾何綁在一起——表面用 token.LANES 的常數自己算（不借 parts.js 的 rampSurface）
+const laneFrame = (lane, p) => { const dx = Math.sin(lane.yaw), dz = Math.cos(lane.yaw), rx = p.x - lane.foot.x, rz = p.z - lane.foot.z; return { along: rx * dx + rz * dz, side: rx * dz - rz * dx }; };
+const laneTop = lane => lane.len * Math.cos(lane.angle);
+const laneY = (lane, along) => lane.foot.y + (along < 0 ? 0 : along * Math.tan(lane.angle));   // 坡腳以前是屋頂
+const contactsWorld = p => token.CAR_CONTACTS.map(([a, u]) => {
+  const th = p.pitch ?? 0, fa = a * Math.cos(th) - u * Math.sin(th);
+  return { x: p.x + Math.sin(p.yaw) * fa, y: p.y + a * Math.sin(th) + u * Math.cos(th), z: p.z + Math.cos(p.yaw) * fa };
+});
+test('roadster take-off rides its lane: rolls flat on the roof, then while the nose is between lane foot and top the underside sits on the lane (≤ 0.01 above, never below); wheels within the lane width', () => {
+  assert.ok(token.CAR_W / 2 + token.WHEEL_OUT - token.WHEEL_W / 2 <= token.LANE_W / 2, 'wheel centres inside the lane width');
   for (let i = 0; i < 3; i++) {
-    const car = views[10][`token.cars.${i}`], half = car.model.parts[0].scale[2] / 2;
-    for (let t = 0; t <= car.legs[0]; t += 0.02) {
-      const p = orbitPose(car, t, 'park'), tail = p.y - half * Math.sin(p.pitch ?? 0);
-      assert.ok(tail >= car.park.y - 1e-9, `car ${i} t ${t.toFixed(2)}: tail ${(tail - car.park.y).toFixed(3)} below the roof`);
+    const car = views[10][`token.cars.${i}`], lane = token.LANES[i], top = laneTop(lane);
+    let onLane = 0, flatFrames = 0;
+    for (let t = 0; t < 0.6; t += 0.01) {
+      const p = orbitPose(car, t, 'park'), cs = contactsWorld(p).map(c => ({ ...c, ...laneFrame(lane, c) })), nose = cs[3];
+      for (const c of cs) {
+        assert.ok(Math.abs(c.side) < 1e-6, `car ${i}: on the lane centre line`);
+        if (c.along <= top) assert.ok(c.y >= laneY(lane, c.along) - 1e-6, `car ${i} t ${t.toFixed(2)}: a contact ${(laneY(lane, c.along) - c.y).toFixed(4)} below the roof/lane`);
+      }
+      if (nose.along < 0) { flatFrames++; assert.ok(Math.abs(p.y - lane.foot.y) < 1e-6 && !(p.pitch > 0), `car ${i}: flat on the roof before the nose reaches the foot`); }
+      if (nose.along >= 0.05 && nose.along <= top) {
+        onLane++;
+        const under = Math.min(...cs.filter(c => c.along >= 0 && c.along <= top).map(c => c.y - laneY(lane, c.along)));
+        assert.ok(under >= -1e-6 && under <= 0.01, `car ${i} t ${t.toFixed(2)}: underside ${under.toFixed(4)} above the lane`);
+      }
     }
+    assert.ok(flatFrames >= 3 && onLane >= 10, `car ${i}: ${flatFrames} frames rolling on the roof, ${onLane} on the lane`);
+    const lift = orbitPose(car, 0.6 - 1e-9, 'park'), front = laneFrame(lane, contactsWorld(lift)[2]);
+    assert.ok(Math.abs(front.along - top) < 0.01, `car ${i}: front wheels leave at the lane top (${front.along.toFixed(3)} / ${top.toFixed(3)})`);
     assert.ok(!(orbitPose(car, car.legs[0] + 0.5, 'park').pitch > 0), 'flat on the orbit');
   }
 });
-test('token.ramp: only at Lv10 — a 0.35 ramp at 20° on the roof in front of the centre car, pointing at 101, no footprint, not on the phone', () => {
+test('token.ramp: only at Lv10 — three lanes (one per car, 0.35 at 20°, pointing at 101) in one mesh, clear of each other and of the antenna; no footprint, not on the phone', () => {
   for (let n = 1; n <= 9; n++) assert.equal(views[n]['token.ramp'], undefined, `lv${n}`);
-  const r = views[10]['token.ramp'], mid = views[10]['token.cars.1'].park;
+  const r = views[10]['token.ramp'];
   assert.equal(r.kind, 'ramp'); assert.equal(r.footprint, false); assert.equal(r.low, false, 'phone draws no cars, so no ramp either');
-  assert.ok(Math.abs(r.at.y - (AT.y + token.ROOF_Y)) < 1e-9, 'on the roof');
-  assert.ok(angErr(r.bearing, toTower(mid)) < 0.05, 'points at 101');
-  const fwd = (r.at.x - mid.x) * Math.sin(r.bearing) + (r.at.z - mid.z) * Math.cos(r.bearing);
-  assert.ok(fwd > 0.2 && fwd < 0.35, `foot just ahead of the centre car (${fwd.toFixed(2)})`);
-  const deck = r.parts[0]; assert.equal(deck.kind, 'box'); assert.equal(deck.scale[2], 0.35); assert.ok(Math.abs(deck.rot[0] + RAMP_A) < 1e-9, 'tilted 20° up');
-  assert.equal(deck.color, C.curb, 'curb grey, not white');
-  const rails = r.parts.filter(p => p !== deck && p.scale[2] === 0.35 && Math.abs(p.rot?.[0] + RAMP_A) < 1e-9);
-  assert.equal(rails.length, 2, 'two side rails'); assert.ok(rails.every(p => Math.abs(Math.abs(p.pos[0]) - deck.scale[0] / 2) < 0.01), 'along both edges');
-  const p = factory().build(r); assert.ok(Math.abs(p.object.rotation.y - r.bearing) < 1e-9, 'turned to its bearing'); p.dispose();
+  assert.ok(Math.abs(r.at.y - (AT.y + token.ROOF_Y)) < 1e-9, 'on the roof'); assert.equal(r.lanes, token.LANES); assert.equal(r.lanes.length, 3);
+  for (const [i, lane] of r.lanes.entries()) {
+    const park = views[10][`token.cars.${i}`].park, f = laneFrame(lane, park);
+    assert.ok(angErr(lane.yaw, toTower(lane.foot)) < 0.05 && Math.abs(lane.yaw - park.yaw) < 1e-12, `lane ${i} points at 101 along its car`);
+    assert.ok(Math.abs(-f.along - (token.CAR_L / 2 + token.LANE_GAP)) < 1e-9 && Math.abs(f.side) < 1e-9, `lane ${i} foot just ahead of its car's nose`);
+    assert.ok(Math.abs(lane.foot.y - park.y) < 1e-12, 'foot on the roof');
+  }
+  const parts = token.laneParts(r.lanes[0]), deck = parts[0];
+  assert.equal(deck.kind, 'box'); assert.equal(deck.scale[2], 0.35); assert.ok(Math.abs(deck.rot[0] + RAMP_A) < 1e-9, 'tilted 20° up'); assert.equal(deck.color, C.curb);
+  // 坡面頂面＝表面：頂面中線在坡腳高 0、坡頂高 len·sin
+  const topAt = s => deck.pos[1] + deck.scale[1] / 2 * Math.cos(RAMP_A) + (s - 0.5) * deck.scale[2] * Math.sin(RAMP_A);
+  assert.ok(Math.abs(topAt(0)) < 1e-9 && Math.abs(topAt(1) - 0.35 * Math.sin(RAMP_A)) < 1e-9, 'deck top face is the lane surface');
+  // 一個 mesh（一個 draw call）
+  let meshes = 0; const p = factory().build(r); p.object.traverse(x => { if (x.isMesh) meshes++; }); assert.equal(meshes, 1, 'three lanes, one mesh'); p.dispose();
+  // 水平投影的矩形：彼此不重疊、離天線 ≥ 2 公分
+  const rect = l => { const dx = Math.sin(l.yaw), dz = Math.cos(l.yaw), w = l.width / 2, top = laneTop(l); return [[0, -w], [top, -w], [top, w], [0, w]].map(([a, s]) => [l.foot.x + dx * a + dz * s, l.foot.z + dz * a - dx * s]); };
+  const gap = (A, Bq) => { let best = -Infinity; for (const P of [A, Bq]) for (let i = 0; i < 4; i++) {
+    const p1 = P[i], q = P[(i + 1) % 4], n = [q[1] - p1[1], p1[0] - q[0]], l = Math.hypot(...n), pa = A.map(v => (v[0] * n[0] + v[1] * n[1]) / l), pb = Bq.map(v => (v[0] * n[0] + v[1] * n[1]) / l);
+    best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb)); } return best; };
+  const R = r.lanes.map(rect);
+  for (const [i, j] of [[0, 1], [1, 2]]) assert.ok(gap(R[i], R[j]) >= 0, `lanes ${i}/${j} overlap (${gap(R[i], R[j]).toFixed(3)})`);
+  const ant = { x: AT.x + token.ANTENNA.x, z: AT.z + token.ANTENNA.z };
+  for (const [i, lane] of r.lanes.entries()) {
+    const f = laneFrame(lane, ant), a = Math.max(0, Math.min(laneTop(lane), f.along)), d = Math.hypot(f.along - a, Math.max(0, Math.abs(f.side) - lane.width / 2));
+    assert.ok(d >= token.ANTENNA.r + 0.02, `lane ${i} ${d.toFixed(3)} from the antenna`);
+  }
 });
-test('parked roadsters do not overlap each other, stay on the 1.1 × 0.82 roof and clear the roof antenna', () => {
+test('parked roadsters do not overlap each other, stay on the roof (token.ROOF) and clear the roof antenna (token.ANTENNA)', () => {
   const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]), Lc = token.CAR_L;
   // 車身 CAR_W；連凸出車側 0.01 的輪子算寬 CAR_W + 0.02（保守：當成整條車長都有輪子）
   const rect = (c, W = token.CAR_W) => { const { yaw } = orbitPose(c, Infinity), f = [Math.sin(yaw), Math.cos(yaw)], r = [f[1], -f[0]], p = c.park;
@@ -462,9 +502,9 @@ test('parked roadsters do not overlap each other, stay on the 1.1 × 0.82 roof a
     assert.ok(gap(B[i], B[j]) >= 0.02, `cars ${i}/${j} body gap ${gap(B[i], B[j]).toFixed(3)}`);
     assert.ok(gap(R[i], R[j]) >= 0.01, `cars ${i}/${j} wheel gap ${gap(R[i], R[j]).toFixed(3)}`);
   }
-  for (const [i, c] of R.entries()) for (const [x, z] of c) assert.ok(Math.abs(x) <= 0.55 && Math.abs(z) <= 0.41, `car ${i} corner (${x.toFixed(2)}, ${z.toFixed(2)}) on the roof`);
+  for (const [i, c] of R.entries()) for (const [x, z] of c) assert.ok(Math.abs(x) <= token.ROOF.w / 2 && Math.abs(z) <= token.ROOF.d / 2, `car ${i} corner (${x.toFixed(2)}, ${z.toFixed(2)}) on the roof`);
   const seg = (x, z, [a, b]) => { const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); };
-  for (const [i, c] of R.entries()) { const d = Math.min(...c.map((p, k) => seg(0.42, -0.3, [p, c[(k + 1) % 4]]))); assert.ok(d >= 0.05, `car ${i} ${d.toFixed(3)} from the antenna`); }
+  for (const [i, c] of R.entries()) { const d = Math.min(...c.map((p, k) => seg(token.ANTENNA.x, token.ANTENNA.z, [p, c[(k + 1) % 4]]))); assert.ok(d >= 0.05, `car ${i} ${d.toFixed(3)} from the antenna`); }
 });
 test('quality low: Lv10 live draws no roadsters (empty Groups) and no ramp, and still plays through', async () => {
   const h = await headlessShow({ quality: 'low' }), done = !!await liveAt(h, SOLUTIONS[0], 10);

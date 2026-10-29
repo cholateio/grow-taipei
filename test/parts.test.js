@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
-import { createPartFactory, orbitPose } from '../src/actors/parts.js';
+import { createPartFactory, orbitPose, rampRest, rampSurface, RAMP_T } from '../src/actors/parts.js';
 import { createPathCursor } from '../src/scene/path.js';
 
 const setup = (extra = {}) => {
@@ -208,20 +208,26 @@ test('quality low: glb parts are spawned without glow (one merged mesh per model
 // ── 飛天車改 Tesla Roadster（設計 §4.6）：屋頂斜坡起飛（ramp）、冷氣體噴嘴冒白煙（puff）、四輪落地壓一下回彈（squash）──
 // 停車點 (5, 1, 0)、圓心原點、phase 0 → 軌道入口 E = (2, 1 + 4, 0) 剛好在斜坡方向（−x）上
 const RAMP_A = 20 * Math.PI / 180;
+// 停車點 (5, 1, 0) 車頭朝 −x；坡腳在車鼻前 0.02（離原點 0.29）；圓心原點、phase 0 → 軌道入口 E = (2, 5, 0) 剛好在坡道方向上
+const POINTS = [[-0.27, 0.015], [-0.17, 0], [0.17, 0], [0.27, 0.015]];
 const roadsterSpec = () => ({
   at: { x: 0, y: 0, z: 0 }, r: 2, h: 5, speed: 2.5, phase: 0, legs: [1.4, 1.0], squash: 0.03,
-  park: { x: 5, y: 1, z: 0, yaw: -Math.PI / 2 }, ramp: { x: -0.35 * Math.cos(RAMP_A), y: 0.35 * Math.sin(RAMP_A), z: 0 },
+  park: { x: 5, y: 1, z: 0, yaw: -Math.PI / 2 }, ramp: { foot: { x: 4.71, y: 1, z: 0 }, yaw: -Math.PI / 2, len: 0.35, angle: RAMP_A, points: POINTS },
 });
 const total = s => s.legs[0] + 2 * Math.PI / s.speed + s.legs[1];
-test('orbitPose park + ramp: starts at park, climbs along the ramp direction, ends parked (done) with a squash in the last 0.3 s', () => {
+// 車身在 pose 下各接觸點的世界位置（YXZ：先仰 pitch 再轉 yaw），換成離坡腳的水平距離 x、高 y
+const contactsOf = (s, p) => POINTS.map(([a, u]) => {
+  const th = p.pitch ?? 0, fa = a * Math.cos(th) - u * Math.sin(th), fy = a * Math.sin(th) + u * Math.cos(th);
+  const wx = p.x + Math.sin(p.yaw) * fa, wz = p.z + Math.cos(p.yaw) * fa, r = s.ramp;
+  return { x: (wx - r.foot.x) * Math.sin(r.yaw) + (wz - r.foot.z) * Math.cos(r.yaw), y: p.y + fy - r.foot.y, side: (wx - r.foot.x) * Math.cos(r.yaw) - (wz - r.foot.z) * Math.sin(r.yaw) };
+});
+test('orbitPose park + ramp: drives flat on the roof, climbs the ramp, then up the line to the orbit; ends parked (done) with a squash in the last 0.3 s', () => {
   const s = roadsterSpec(), T = total(s), p0 = orbitPose(s, 0, 'park');
-  assert.ok(Math.hypot(p0.x - 5, p0.y - 1, p0.z) < 1e-9 && Math.abs(p0.yaw - s.park.yaw) < 1e-9 && !p0.done, 'starts at park facing park.yaw');
+  assert.ok(Math.hypot(p0.x - 5, p0.y - 1, p0.z) < 1e-9 && Math.abs(p0.yaw - s.park.yaw) < 1e-9 && !p0.done && !(p0.pitch > 0), 'starts at park facing park.yaw, level');
+  const flat = orbitPose(s, 0.05, 'park'); assert.ok(flat.x < 5 && Math.abs(flat.y - 1) < 1e-9 && !(flat.pitch > 0), 'rolls forward flat on the roof first');
   const mid = orbitPose(s, s.legs[0] / 2, 'park');
   assert.ok(mid.y > s.park.y + 0.05, `higher than park (${mid.y.toFixed(3)})`);
   assert.ok(Math.abs(mid.z) < 1e-9 && mid.x < s.park.x, 'xz on the ramp line, ahead of park');
-  // 斜坡上：位置在 park 到坡頂那段線段上
-  const onRamp = orbitPose(s, 0.3, 'park'), k = (s.park.x - onRamp.x) / -s.ramp.x;
-  assert.ok(k > 0 && k < 1 && Math.abs(onRamp.y - (s.park.y + s.ramp.y * k)) < 1e-9, 'slides up the ramp');
   for (const t of [T, T + 5, Infinity]) { const e = orbitPose(s, t, 'park'); assert.deepEqual(e, { x: 5, y: 1, z: 0, yaw: s.park.yaw, done: true }); }
   for (const t of [T - 0.25, T - 0.15, T - 0.05]) {
     const p = orbitPose(s, t, 'park');
@@ -230,13 +236,37 @@ test('orbitPose park + ramp: starts at park, climbs along the ramp direction, en
   }
   assert.ok(!(orbitPose(s, T - 0.4, 'park').squash > 0), 'no squash before touchdown');
 });
-test('orbitPose puff: on the ramp (0.6 s before lift-off) and 0.3 s before touchdown, nowhere else; no puff/squash on specs without ramp/squash', () => {
+test('orbitPose ramp leg rides the profile: no contact point below roof/ramp, one touching while the nose is on the ramp, pitch rising to lift-off; the climb starts where the ramp leg ends', () => {
+  const s = roadsterSpec(), run = 0.35 * Math.cos(RAMP_A), surf = x => (x < 0 ? 0 : x * Math.tan(RAMP_A));
+  let onRamp = 0, prevPitch = 0;
+  for (let t = 0; t < RAMP_T; t += 0.01) {
+    const p = orbitPose(s, t, 'park'), cs = contactsOf(s, p), nose = cs[3];
+    for (const c of cs) if (c.x <= run) assert.ok(c.y >= surf(c.x) - 1e-6, `t ${t.toFixed(2)}: contact at x ${c.x.toFixed(3)} is ${(c.y - surf(c.x)).toFixed(4)} below the surface`);
+    if (nose.x >= 0.05 && nose.x <= run) {
+      onRamp++;
+      const gap = Math.min(...cs.filter(c => c.x >= 0 && c.x <= run).map(c => c.y - surf(c.x)));
+      assert.ok(gap <= 0.01, `t ${t.toFixed(2)}: underside ${gap.toFixed(4)} above the ramp`);
+    }
+    assert.ok((p.pitch ?? 0) >= prevPitch - 1e-6, 'pitch only rises on the way up'); prevPitch = p.pitch ?? 0;
+  }
+  assert.ok(onRamp >= 10, `the nose spends frames on the ramp (${onRamp})`);
+  const end = orbitPose(s, RAMP_T - 1e-9, 'park'), climb = orbitPose(s, RAMP_T, 'park');
+  assert.ok(Math.hypot(end.x - climb.x, end.y - climb.y, end.z - climb.z) < 0.01 && Math.abs(end.pitch - climb.pitch) < 0.01, 'no jump at lift-off');
+  assert.ok(end.pitch > 0.1, `pitched up at lift-off (${end.pitch.toFixed(3)} rad)`);
+  const front = contactsOf(s, end)[2]; assert.ok(Math.abs(front.x - run) < 0.01, 'front wheels at the top of the ramp when it lifts off');
+  const r0 = rampRest(s.ramp, -0.4); assert.ok(r0.th === 0 && Math.abs(r0.y0) < 1e-9, 'level on the flat roof');
+  assert.equal(rampSurface(s.ramp, run + 0.01), -Infinity, 'nothing beyond the top');
+});
+test('orbitPose puff: once the nose is over the ramp and 0.3 s before touchdown, nowhere else; no puff/squash on specs without ramp/squash; bad legs throw', () => {
   const s = roadsterSpec(), T = total(s), puff = t => orbitPose(s, t, 'park').puff;
-  for (const t of [0, 0.3, 0.55]) assert.ok(puff(t) >= 0 && puff(t) < 1, `t ${t} puffing (${puff(t)})`);
+  for (const t of [0, 0.05]) assert.equal(puff(t) ?? null, null, `t ${t}: still rolling on the roof`);
+  for (const t of [0.3, 0.55]) assert.ok(puff(t) >= 0 && puff(t) < 1, `t ${t} puffing (${puff(t)})`);
   for (const t of [T - 0.55, T - 0.4]) assert.ok(puff(t) >= 0 && puff(t) < 1, `t ${t.toFixed(2)} puffing before touchdown`);
   for (const t of [0.65, 1.0, 2.5, T - 0.7, T - 0.2, T + 1]) assert.equal(puff(t) ?? null, null, `t ${t.toFixed(2)} no puff`);
   const plain = { at: { x: 0, y: 0, z: 0 }, r: 2, h: 4, speed: 2.5, legs: [1.2, 0.8], from: { x: 9, y: 3, z: 9 }, park: { x: 2, y: 1, z: 3 } };
   for (const t of [0, 0.3, total(plain) - 0.1]) { const p = orbitPose(plain, t); assert.equal(p.puff ?? null, null); assert.ok(!(p.squash > 0)); }
+  assert.throws(() => orbitPose({ ...s, legs: [0.5, 1] }, 0, 'park'), /park 5\.00, 0\.00.*legs\[0\]/);
+  assert.throws(() => orbitPose({ ...s, legs: [1.4, 0.3] }, 0, 'park'), /legs\[1\]/);
 });
 test('orbit with model.parts: built from primitives (no glb spawned, one mesh); puffs show on the ramp and hide once flying and after land()', () => {
   const { f, loaded } = setup(), s = { kind: 'orbit', ...roadsterSpec(), model: { parts: [
@@ -248,10 +278,11 @@ test('orbit with model.parts: built from primitives (no glb spawned, one mesh); 
   const puffs = meshes(car).filter(m => m.isInstancedMesh), body = meshes(car).filter(m => !m.isInstancedMesh);
   assert.equal(body.length, 1, 'one merged clay mesh'); assert.equal(puffs.length, 1); assert.equal(puffs[0].count, 3, 'three puffs');
   assert.ok(!puffs[0].visible, 'parked: no puffs');
-  p.object.userData.fly(); p.update(0.2, 0.2);
-  assert.ok(Math.hypot(car.position.x - 5, car.position.z) < 0.35 && puffs[0].visible, 'on the ramp, puffing');
+  p.object.userData.fly({ delay: 0.2 }); p.update(0.1, 0.1); assert.ok(!puffs[0].visible, 'waiting for its stagger: no puffs');
+  p.object.userData.fly(); p.update(0.3, 0.3);
+  assert.ok(Math.hypot(car.position.x - 5, car.position.z) < 0.6 && puffs[0].visible, 'on the ramp, puffing');
   p.update(1.0, 1.2); assert.ok(!puffs[0].visible, 'climbing: no puffs');
-  p.object.userData.fly(); p.update(0.2, 0.2); p.object.userData.land(); assert.ok(!puffs[0].visible, 'land() hides the puffs');
+  p.object.userData.fly(); p.update(0.3, 0.3); p.object.userData.land(); assert.ok(!puffs[0].visible, 'land() hides the puffs');
   // 落地壓一下：最後 0.3 s 車身 y 方向壓扁、輪底（模型原點）還在停車點
   p.object.userData.fly(); p.update(total(s) - 0.15, 9);
   const m = body[0].parent === car ? body[0] : body[0].parent;

@@ -7,15 +7,19 @@ test('eight items in fixed order with spec max levels', () => {
   assert.deepEqual(ORDER, ['milk','chip','bulb','token','typhoon','rat','boba','baseball']);
   assert.deepEqual(ORDER.map(id => ITEMS[id].name), ['鮮奶','晶片','燈泡','代幣','颱風','老鼠','珍奶','棒球']);
 });
-// 物品 v2（2026-10-26 §2、§4）：級數分層，合計 61 級；跳級六個、每物品最多一個
-test('maxes are milk 10, token 10, chip 9, bulb 9, baseball 8, boba 7, rat 5, typhoon 3; exactly six jumps, at most one per item', () => {
+// 物品 v2（2026-10-26 §2、§4）：級數分層，合計 61 級；回到 GROW（2026-10-29 設計 §3.2）：跳級 13 條，只在燈泡／代幣／晶片／老鼠／珍奶，每物品最多 5 條
+test('maxes are milk 10, token 10, chip 9, bulb 9, baseball 8, boba 7, rat 5, typhoon 3; exactly 13 jumps on bulb/token/chip/rat/boba; at most 5 per item', () => {
   const maxes = Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max]));
   assert.deepEqual(maxes, { milk: 10, chip: 9, bulb: 9, token: 10, typhoon: 3, rat: 5, boba: 7, baseball: 8 });
   assert.equal(ORDER.reduce((n, id) => n + ITEMS[id].max, 0), 61);
   const jumps = ORDER.flatMap(id => Object.keys(ITEMS[id].jump || {}).map(n => [id, +n]));
-  assert.equal(jumps.length, 6);
-  for (const id of ORDER) assert.ok(Object.keys(ITEMS[id].jump || {}).length <= 1, `${id} has more than one jump`);
-  assert.deepEqual(jumps.map(([id]) => id).sort(), ['baseball', 'boba', 'bulb', 'chip', 'milk', 'token']);
+  assert.equal(jumps.length, 13);
+  const keys = { bulb: [5, 8], token: [4, 7, 10], chip: [4, 6, 7, 8, 9], rat: [4], boba: [4, 6] };
+  for (const id of ORDER) {
+    const got = Object.keys(ITEMS[id].jump || {}).map(Number).sort((a, b) => a - b);
+    assert.deepEqual(got, keys[id] ?? [], `${id} jump keys`);
+    assert.ok(got.length <= 5, `${id} has more than five jumps`);
+  }
   for (const [id, n] of jumps) assert.ok(n >= 3 && n <= ITEMS[id].max, `${id} jump[${n}] out of range`);
 });
 test('every up/jump condition references a level the other item can reach', () => {
@@ -67,31 +71,33 @@ test('rat Lv4 branches on chip >= 8; the bite is a placement reaction while milk
 test('every item has a placed story and a story per level', () => {
   for (const id of ORDER) { assert.ok(STORIES.placed[id]); for (let n = 2; n <= ITEMS[id].max; n++) assert.ok(STORIES.grow[id][n], `${id} story ${n}`); }
 });
-// 計畫 5b（設計 2026-10-28 §3）：最後只長一輪；鮮奶不連跳（使用者：學校一下升太多級很突兀）
+// 計畫 5b（設計 2026-10-28 §3）：最後只長一輪；回到 GROW（2026-10-29 §3.1）：引擎沒有預設跳級，steady 旗標跟著拿掉
 import { CLOSING_TURNS } from '../src/rules/spec.js';
-test('CLOSING_TURNS is 1 and milk is steady', () => {
+import { helperDeps } from '../src/rules/engine.js';
+test('CLOSING_TURNS is 1 and no item is steady', () => {
   assert.equal(CLOSING_TURNS, 1);
-  assert.equal(ITEMS.milk.steady, true);
-  assert.deepEqual(ORDER.filter(id => ITEMS[id].steady), ['milk']);
+  assert.ok(ORDER.every(id => !('steady' in ITEMS[id])));
 });
 
-// 看得見的因果與離島三段（2026-10-28 設計 §2、§3）：Lv3 以上沒有「自己長」——每一級的條件都提到至少一個別的物品（minLevel／present），
-// 條件裡任何地方都不能藏 always（or(auto, …) 等於自己長）。Lv2 可以自己長（剛放下那一回合的小成長）；颱風例外（天氣不是被誰觸發的）
-import { helperDeps } from '../src/rules/engine.js';
-test('no auto up[] from Lv3 on except typhoon; every condition from Lv3, and every or-branch in it, names at least one helper (minLevel/present)', () => {
-  const hasAlways = c => !!c && typeof c === 'object' && (c.always || [...(c.and || []), ...(c.or || [])].some(hasAlways));
-  for (const id of ORDER) {
-    if (id === 'typhoon') continue;
-    for (const kind of ['up', 'jump']) for (const n in ITEMS[id][kind] || {}) {
-      if (+n < 3) continue;
-      const c = ITEMS[id][kind][n];
-      assert.ok(!hasAlways(c), `${id} ${kind}[${n}] grows by itself`);
-      assert.ok(helperDeps(c, id).length > 0, `${id} ${kind}[${n}] names no helper: ${JSON.stringify(c)}`);
-      // or 的每一支也要提到幫手：只有一支有幫手的話，另一支成立時就是「自己長」（via 會是空的，演不出拜訪）
-      const ors = x => !x || typeof x !== 'object' ? [] : [...(x.or ? [x] : []), ...[...(x.and || []), ...(x.or || [])].flatMap(ors)];
-      for (const o of ors(c)) for (const alt of o.or) assert.ok(helperDeps(alt, id).length > 0, `${id} ${kind}[${n}] has an or-branch without a helper: ${JSON.stringify(alt)}`);
-    }
+// 回到 GROW（2026-10-29 設計 §3.2）：預設自己長；阻擋與跳級都少量、一字不差
+const minL = (id, n) => ({ minLevel: [id, n] }), maxL = (id, n) => ({ maxLevel: [id, n] }), pres = id => ({ present: id });
+test('blockers: exactly the eight of design §3.2; every other up[] is auto', () => {
+  const blockers = { 'milk 3': pres('baseball'), 'baseball 2': minL('milk', 3), 'baseball 3': { and: [maxL('token', 7), minL('milk', 3)] },
+    'rat 3': minL('token', 4), 'rat 4': { or: [minL('chip', 3), minL('typhoon', 2)] }, 'typhoon 3': minL('bulb', 6), 'chip 9': minL('typhoon', 2) };
+  for (const id of ORDER) for (let n = 2; n <= ITEMS[id].max; n++) {
+    const key = `${id} ${n}`, c = ITEMS[id].up[n];
+    if (key === 'rat 5') continue;   // 照舊（分岔旗標）
+    if (blockers[key]) assert.deepEqual(c, blockers[key], key); else assert.deepEqual(c, { always: true }, `${key} should be auto`);
   }
+  assert.ok(ITEMS.rat.up[5].or?.length === 2);
+});
+test('jumps: exactly the thirteen of design §3.2', () => {
+  assert.deepEqual(ITEMS.bulb.jump, { 5: minL('baseball', 4), 8: minL('chip', 4) });
+  assert.deepEqual(ITEMS.token.jump, { 4: pres('chip'), 7: minL('bulb', 6), 10: minL('chip', 7) });
+  assert.deepEqual(ITEMS.chip.jump, { 4: minL('milk', 4), 6: minL('bulb', 6), 7: minL('token', 7), 8: minL('token', 7), 9: minL('typhoon', 2) });
+  assert.deepEqual(ITEMS.rat.jump, { 4: { and: [minL('token', 4), { or: [minL('chip', 3), minL('typhoon', 2)] }] } });
+  assert.deepEqual(ITEMS.boba.jump, { 4: minL('chip', 2), 6: minL('token', 7) });
+  for (const id of ['milk', 'typhoon', 'baseball']) assert.deepEqual(ITEMS[id].jump ?? {}, {}, id);
 });
 test('baseball Lv3 (the dome) needs the milk Little League: min(milk, 3) alongside the token cap', () => {
   assert.ok(helperDeps(ITEMS.baseball.up[3], 'baseball').includes('milk'));

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { enumerate, stats, check, greedyOrder, playOrder } from '../src/solver/run.js';
 import * as spec from '../src/rules/spec.js';
+import { createState, place, advance } from '../src/rules/engine.js';
 
 test('enumerate visits all 40320 orders without throwing', () => {
   const r = enumerate(spec); assert.equal(r.length, 40320);
@@ -25,20 +26,19 @@ test('playOrder of a fixed order is deterministic', () => {
   assert.deepEqual(a.state, b.state); assert.equal(a.ending.id, b.ending.id);
 });
 import { pacing } from '../src/solver/run.js';
-// 節奏（主規格 §6.5 #6，物品 v2 裁決 R3 放寬）：同一回合到 MAX ≤ 4 個、有物品到 MAX 的回合 ≥ 3 個；倒數回合也算
+// 節奏（回到 GROW 2026-10-29 設計 §5）：有物品到 MAX 的回合 ≥ 2；同一回合到 MAX 不設上限（GROW 的收尾是最後一回合大家到 MAX）；倒數回合也算
 const late = {
   ORDER: ['a', 'b', 'c'], CLOSING_TURNS: 2,
   ITEMS: { a: { name: 'A', max: 2, up: { 2: { age: ['a', 3] } } }, b: { name: 'B', max: 2, up: { 2: { age: ['b', 2] } } }, c: { name: 'C', max: 2, up: { 2: { age: ['c', 1] } } } },
   AFTER_TURN: [], STORIES: { placed: { a: '', b: '', c: '' }, grow: { a: { 2: '' }, b: { 2: '' }, c: { 2: '' } } },
 };
-test('pacing check rejects a solution whose MAXes all land in the closing turns', () => {
+test('pacing check rejects a solution whose MAXes all land in one turn', () => {
   const p = pacing([{ order: ['a', 'b', 'c'] }], late);
-  assert.equal(p.ok, false); assert.equal(p.maxTurns, 1); assert.ok(p.failures.some(f => /MAX/.test(f)));
+  assert.equal(p.ok, false); assert.equal(p.maxTurns, 1); assert.ok(p.failures.some(f => /至少 2/.test(f)));
 });
-test('pacing counts closing turns as turns, and three items maxing together is within the limit', () => {
+test('pacing counts closing turns as turns and still reports maxMaxesPerTurn', () => {
   const p = pacing([{ order: ['a', 'b', 'c'] }], late);
   assert.equal(p.maxGrowsPerTurn, 3, 'all three grow in turn 4, the first closing turn'); assert.equal(p.maxMaxesPerTurn, 3);
-  assert.ok(!p.failures.some(f => /同時到 MAX/.test(f)), 'three at once is allowed');
   assert.ok(pacing([{ order: ['a', 'b', 'c'] }], { ...late, CLOSING_TURNS: 0 }).maxGrowsPerTurn === 0);
 });
 test('check #6 is wired: a spec failing pacing fails check', () => {
@@ -59,9 +59,12 @@ test('check passes on the shipped spec: exactly two full orders, one cyber one a
     ['milk,baseball,token,bulb,chip,boba,rat,typhoon', 'alien'],
   ]);
 });
-// 裁決 R3（PACING 照舊 ≤4／≥3）：9 回合裡 MAX 落在第 7、8、9 回合（棒球；鮮奶、燈泡、代幣；晶片、颱風、老鼠、珍奶），最後一輪剛好 4 個
-test('both full orders spread MAX over turns 7–9 with at most 4 in the last turn', () => {
-  for (const r of st.full) { const p = pacing([r], spec); assert.ok(p.ok, p.failures.join('\n')); assert.equal(p.maxMaxesPerTurn, 4); assert.equal(p.maxTurns, 3); }
+// 回到 GROW（2026-10-29 §5）：賽博 t8 棒球、燈泡到 MAX，t9 其餘六個；外星 t8 棒球，t9 其餘七個
+test('both full orders: MAX lands in ≥ 2 turns; cyber maxes baseball+bulb in t8 and the other six in t9, alien baseball in t8 and seven in t9', () => {
+  for (const r of st.full) {
+    const p = pacing([r], spec); assert.ok(p.ok, p.failures.join('\n')); assert.equal(p.maxTurns, 2);
+    assert.equal(p.maxMaxesPerTurn, r.ending.id === 'cyber' ? 6 : 7, r.ending.id);
+  }
 });
 test('a typhoon-eighth order is among the full orders (review focus 3)', () => {
   assert.ok(st.full.some(r => r.order[7] === 'typhoon'));
@@ -86,11 +89,16 @@ test('story: true solutions carry no disaster extras; typhoonDeflect and milkExp
   assert.deepEqual(storyGoals(all, st), []);
 });
 
-// 因果與離島（2026-10-28 §2、§3）：兩條正解裡 Lv3 以上的每個升級（颱風除外）都有 via——演出層靠它演拜訪；
-// （via 只列真的成立的幫手——那一半由 engine.test 的 satisfiedHelpers 測試管，這裡只看非空）
-test('both solutions: every grow to Lv3+ (typhoon aside) carries a non-empty via', () => {
+// 設計 §3.3：兩條正解逐回合的級數（跳級算一步）
+const LV = {
+  cyber: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,2,0,0,0,0,3],[5,0,3,2,0,0,0,4],[6,2,5,4,0,0,0,5],[7,4,6,5,0,0,2,6],[8,6,8,7,0,2,4,7],[9,8,9,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
+  alien: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,3,0,0,0,4],[6,2,3,4,0,0,0,5],[7,4,5,5,0,0,2,6],[8,5,6,7,0,2,4,7],[9,7,8,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
+};   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
+// t8 珍奶是 6 不是 5：颱風登陸的外送爆單 delta 4 → 5、再自己長 5 → 6（試作 spike/spec-a.mjs 在舊引擎上逐回合重播也是 6；t9 的 7 只能從 6 來）
+test('both solutions follow the design §3.3 level table turn by turn', () => {
   for (const r of st.full) {
-    const { events } = playOrder(r.order, spec);
-    for (const e of events) if (e.kind === 'grow' && e.to >= 3 && e.item !== 'typhoon') assert.ok(e.via.length > 0, `${r.order.join(',')}: ${e.item} ${e.from}→${e.to} has no via`);
+    let s = createState(spec); const rows = [];
+    for (const step of [...r.order.map(id => x => place(x, id, spec)), x => advance(x, spec)]) { s = step(s).state; rows.push(spec.ORDER.map(id => s.lv[id])); }
+    assert.deepEqual(rows, LV[r.ending.id], r.ending.id);
   }
 });

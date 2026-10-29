@@ -69,12 +69,11 @@ export function greedyOrder(spec = defaultSpec) {
   return order;
 }
 
-// 節奏（§6.5 #6，使用者 2026-10-25「末期統一升等很突然」）：正解逐回合重播（含倒數），
-// 同一回合到 MAX 的物品 ≤ 4 個，且「有物品到 MAX」的回合至少 3 個不同回合。
-// 物品 v2（裁決 R3，2026-10-26）從 3／4 放寬：61 級擠在 11 回合裡，鮮奶、晶片、棒球和第 7 個放的都是零餘裕，
-// 最後一回合一定有 4 個到 MAX——那就是 GROW 的收尾；舊數字是 41 級時定的。
-// （每回合「升級」數不設限：每個物品每回合自己長一級，中盤六七個一起長正是熱鬧的地方）
-export const PACING = { maxMaxesPerTurn: 4, minMaxTurns: 3 };
+// 節奏（§6.5 #6，使用者 2026-10-25「末期統一升等很突然」）：正解逐回合重播（含倒數），「有物品到 MAX」的回合至少 2 個不同回合。
+// 回到 GROW（2026-10-29 設計 §5）：GROW 的收尾就是最後一回合大家到 MAX，同一回合到 MAX 的個數不再設上限（maxMaxesPerTurn 照樣回報）；
+// 舊的「≤ 4 個／≥ 3 回合」是 41 級時代的數字。
+// （每回合「升級」數不設限：中盤六七個一起長正是熱鬧的地方）
+export const PACING = { minMaxTurns: 2 };
 export function pacing(full, spec = defaultSpec) {
   let maxGrowsPerTurn = 0, maxMaxesPerTurn = 0, maxTurns = Infinity;
   const failures = [];
@@ -91,7 +90,6 @@ export function pacing(full, spec = defaultSpec) {
     });
     maxGrowsPerTurn = Math.max(maxGrowsPerTurn, worstGrows); maxMaxesPerTurn = Math.max(maxMaxesPerTurn, worstMaxes); maxTurns = Math.min(maxTurns, turnsWithMax.size);
     const name = r.order.join(',');
-    if (worstMaxes > PACING.maxMaxesPerTurn) failures.push(`節奏：${name} 有一回合 ${worstMaxes} 個物品同時到 MAX（上限 ${PACING.maxMaxesPerTurn}）`);
     if (turnsWithMax.size < PACING.minMaxTurns) failures.push(`節奏：${name} 只有 ${turnsWithMax.size} 個回合出現 MAX（至少 ${PACING.minMaxTurns}）`);
   }
   if (!full.length) maxTurns = 0;

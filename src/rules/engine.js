@@ -2,8 +2,8 @@
 // 語意見設計文件 §6.2、物品 v2 §3、選擇帶動升級（2026-10-28）§3：放置 → 放置反應 → 反覆掃描升級到不動為止
 // （每物品每回合一步：+1 或跳級 +2；連 delta 最多比回合開始高 2 級；剛放下的物品也參加，回合開始它是 0 級所以最多到 Lv2）
 // → 被 delay 擋住的記 stall → 等待 → 回合結束反應。
-// 跳級：每個物品每一級 n ≥ 3 預設都有 jump[n] = up[n−1] ∧ up[n]（spec 寫的 jump[n] 是另一條，兩條其一成立就跳）；
-// steady 的物品（鮮奶）不加預設跳級，只用 spec 寫的。
+// 跳級：只有 spec 寫的 jump[n] 會跳（在 n−2 且條件成立就一回合 +2）。回到 GROW（2026-10-29 設計 §3.1）：
+// 沒有預設跳級（舊的 up[n−1] ∧ up[n] 拿掉），steady 旗標也不存在——所有物品一視同仁。
 import * as defaultSpec from './spec.js';
 import { compile } from './conditions.js';
 
@@ -40,7 +40,7 @@ export function helperDeps(cond, self, spec = defaultSpec) {
 // 這次真的讓條件成立的幫手（看得見的因果與離島三段 §3、§4：grow 事件的 via，演出層讓 via[0] 走來拜訪）：
 // minLevel／present 成立就算；and 要整條成立才算、列全部；or 只算成立的那幾支（兩支都成立就都列）；
 // maxLevel／absent／flag／age 不是幫手。整條不成立 → []。自己不算，照 ORDER 排序。
-// 跳級的條件本身就是 up[n−1] ∧ up[n]（或再 or 上 spec 寫的那條），所以跳級的 via 自然是兩級的聯集
+// 跳級的 via 從 spec 寫的 jump[n] 裡挑（turn() 先列第一級 up[n−1] 也成立的幫手）
 const holdsCache = new WeakMap();
 const holds = (c, s) => { let f = holdsCache.get(c); if (!f) { f = compile(c, {}); holdsCache.set(c, f); } return f(s); };
 export function satisfiedHelpers(cond, s, self, spec = defaultSpec) {
@@ -77,13 +77,9 @@ function rulesOf(spec) {
     const it = spec.ITEMS[id];
     const up = {}, jump = {}, jumpRaw = {}, delay = {};
     for (const n in it.up) up[n] = compile(it.up[n], ctx);
-    // 預設跳級（選擇帶動升級 §3）：在 n−2、第 n−1 與第 n 級的條件同時成立就一回合 +2；spec 寫的 jump[n] 是另一條（or）。
-    // jumpRaw 留著整條條件，升級事件的 via 在決定的那一刻用 satisfiedHelpers 算
-    for (let n = 3; n <= it.max; n++) {
-      const explicit = it.jump?.[n], auto = it.steady || !it.up[n - 1] || !it.up[n] ? null : { and: [it.up[n - 1], it.up[n]] };
-      const cond = explicit && auto ? { or: [explicit, auto] } : explicit || auto;
-      if (cond) { jump[n] = compile(cond, ctx); jumpRaw[n] = cond; }
-    }
+    // 跳級只編譯 spec 寫的 jump[n]（回到 GROW 2026-10-29 §3.1：沒有預設跳級）。
+    // jumpRaw 留著原條件，升級事件的 via 在決定的那一刻用 satisfiedHelpers 算
+    for (let n = 3; n <= it.max; n++) if (it.jump?.[n]) { jump[n] = compile(it.jump[n], ctx); jumpRaw[n] = it.jump[n]; }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
@@ -182,7 +178,7 @@ function turn(state, id, spec, rules) {
   }
 
   // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5、選擇帶動升級 §3）：每回合每個物品只走一步——在 n−2 且 jump[n]
-  // 成立就跳（+2；每一級都有預設跳級 up[n−1] ∧ up[n]，steady 的除外），否則 up 成立就 +1；連 delta 在內一回合最多比回合開始高 2 級。
+  // 成立就跳（+2；只有 spec 寫的 jump[n]，沒有預設跳級），否則 up 成立就 +1；連 delta 在內一回合最多比回合開始高 2 級。
   // 剛放下的物品當回合也參加掃描（使用者 2026-10-28：要看得出「因為我現在放了 X」）：回合開始它是 0 級，所以放下當回合最多到 Lv2。
   // 照 ORDER 反覆掃到不動為止（A 升了讓 B 升的連鎖還在），掃到誰就當場決定，不為了等跳級延後 +1。
   // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。

@@ -758,7 +758,10 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
 });
 // 所有老鼠對小人（簡報 D 的驗收，2026-10-28 第二輪裁決拆三條）：
 // (a) 鼠窩的老鼠（老鼠 Lv1–2，繞錨點散步）對任何人——錨點搬到巨蛋正東，離門口觀眾 ≥ 1.09
-test('live, both solutions: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', async () => {
+// Task 6a 修正輪（控制者裁決）：標 todo，門檻不放寬、不刪。回到 GROW 之後兩條正解第 7 回合同時放老鼠（鼠窩 Lv2）、棒球長到 7（第 5 個觀眾進場）：
+// 觀眾從捷運站那座橋下來（落點約 (−0.6, 4.3)）直線走到門口西端 (−4.15, 4.73)，路線在 x −1.19 離窩心 (−1.19, 4.14) 只有 0.23 m，
+// 穿過老鼠散步圈（r 0.7）——量到 25 幀、最近 0.01 m（要 0.255）。錨點往南移 0.8 試過，改撞草皮觀眾與球員，已還原。留給延後的多輪人群那一輪（R10）
+test('live, both solutions: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '回到 GROW 後第 7 回合第 5 個觀眾從捷運站橋下來，路線離鼠窩心 0.23 m（25 幀、最近 0.01 m）——延後的多輪人群那一輪' }, async () => {
   const { nestNear, nestFrames } = await livePlay();
   assert.ok(nestFrames > 300, `${nestFrames} nest-rat–person frames`);
   assert.deepEqual([...nestNear].slice(0, 20), [], `${nestNear.size} frames too close`);

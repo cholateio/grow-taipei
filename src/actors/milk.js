@@ -324,7 +324,7 @@ export const script = {
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),   // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.2 s，◆ ≤ 8 s）
+        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),   // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.1–8.3 s → 7.0–7.4 s，◆ ≤ 8 s）
       ];
     },
   },

@@ -65,10 +65,11 @@ async function playOrder(order, head0, finaleMax) {
     // 放置回合與最後一輪同一套門檻（選擇帶動升級 §6：最後一輪就是一般回合）
     const keys = marks.filter(m => m[3]?.key).length, cap = MAX + KEY_EXTRA * Math.max(0, keys - 1);
     // 撲空段：演了的才算（扣掉空拍還有秒數——代表叫不到時整段 0 秒）
-    const missLive = j => span(j)[0] - (marks[j][3]?.gap ?? 0), missed = j => missLive(j) > MISS_SHOWN;
+    // 獨立量的段（撲空、起因）：事件秒數扣掉空拍
+    const segLive = j => span(j)[0] - (marks[j][3]?.gap ?? 0), missed = j => segLive(j) > MISS_SHOWN;
     const misses = marks.filter((m, j) => m[3]?.miss && missed(j)).length;
     // 起因段（info.cause）：扣掉空拍的秒數，這回合合計
-    const causes = marks.reduce((t, m, j) => t + (m[3]?.cause ? missLive(j) : 0), 0);
+    const causes = marks.reduce((t, m, j) => t + (m[3]?.cause ? segLive(j) : 0), 0);
     cells.push(`${head} ${s1(secs)}/${cap} s ◆ ${keys} 撲空 ${misses} 起因 ${s1(causes)}`);
     if (secs < MIN || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < MIN ? `< ${MIN}` : `> ${cap}，◆ ${keys} 個`}）`);
     if (marks.filter(m => m[3]?.miss).length > MISS_PER_TURN) failures.push(`${head0} ${what} 撲空 ${marks.filter(m => m[3]?.miss).length} 段（> ${MISS_PER_TURN}）`);
@@ -76,11 +77,11 @@ async function playOrder(order, head0, finaleMax) {
     // 劇本本身的上限由各物品測試單獨量（test/*.test.js 的 SCRIPT_MAX／KEY_MAX）。回合秒數超過上限才算失敗
     marks.forEach(([e, , , info], j) => {
       if (info?.miss) {
-        if (missLive(j) > MISS_CAP + WARN_OVER) warnings.push(`${head0} ${what} 撲空 ${missLabel(e, info)} ${s1(missLive(j))} s（> ${MISS_CAP}）`);
+        if (segLive(j) > MISS_CAP + WARN_OVER) warnings.push(`${head0} ${what} 撲空 ${missLabel(e, info)} ${s1(segLive(j))} s（> ${MISS_CAP}）`);
         return;
       }
       if (info?.cause) {
-        if (missLive(j) > CAUSE_CAP + WARN_OVER) warnings.push(`${head0} ${what} 起因 ${info.cause}→${label(e)} ${s1(missLive(j))} s（> ${CAUSE_CAP}）`);
+        if (segLive(j) > CAUSE_CAP + WARN_OVER) warnings.push(`${head0} ${what} 起因 ${info.cause}→${label(e)} ${s1(segLive(j))} s（> ${CAUSE_CAP}）`);
         return;
       }
       const script = span(j)[1];

@@ -376,6 +376,26 @@ test('home(m, { hurry }) on a path member rejoins the route at its nearest point
   assert.ok(joined, 'back on the route');
   assert.ok(gap(joined, near) < 0.3, `rejoined ${gap(joined, near).toFixed(2)} from where it stood`);
 });
+// 計畫 9 §5：同一圈閉合折線上的幾個人（晶片 Lv3 起四台 YouBike 繞園區草地）照沿環到前一台多遠放慢——四台擠成一串（相鄰 0.3）接上環，
+// 之後拉開：沿環的速度從不超過 home.speed（只放慢、不加速），25 秒後沿環的間距都 ≥ 等分的一半、兩兩直線距離 ≥ 0.25
+test('riders on one closed loop space themselves out: bunched riders slow down (never speed up) until the gaps are near even', async () => {
+  const { PARK_LOOP } = await import('../src/actors/chip.js'), { measurePath, locateOnPath } = await import('../src/scene/path.js');
+  const { roster, nav } = setup(), n = 4, speed = 0.8, dt = 1 / 30;
+  roster.declare('bikes', { kind: 'roster', at: PARK_LOOP[0], n, accessory: 'bike', home: { kind: 'path', path: PARK_LOOP, loop: true, speed } }); roster.snap();
+  const P = nav.ground(PARK_LOOP, { loop: true }), lens = measurePath(P, true), T = lens.at(-1), ms = roster.members('bikes');
+  ms.forEach((m, i) => { roster.claim(m); roster.setPose(m, { ...locateOnPath(P, lens, 1 + i * 0.3, true), walking: false }); roster.home(m); });
+  let fastest = 0;
+  for (let f = 0; f < 25 / dt; f++) {
+    const before = ms.map(m => m.cursor?.s);
+    roster.update(dt, f * dt);
+    ms.forEach((m, i) => { if (before[i] != null && m.cursor) fastest = Math.max(fastest, (m.cursor.s - before[i]) / dt); });
+  }
+  assert.ok(ms.every(m => m.cursor), 'all on the loop');
+  assert.ok(fastest <= speed + 1e-9, `never faster than the path speed along the loop (${fastest.toFixed(3)})`);
+  const s = ms.map(m => ((m.cursor.s % T) + T) % T).sort((x, y) => x - y), gaps = s.map((x, i) => (i + 1 < n ? s[i + 1] - x : s[0] + T - x));
+  assert.ok(Math.min(...gaps) >= T / n / 2, `gaps ${gaps.map(g => g.toFixed(2)).join(' ')} of ${T.toFixed(2)}`);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(gap(ms[i].pos, ms[j].pos) >= 0.25, `riders ${i}–${j} ${gap(ms[i].pos, ms[j].pos).toFixed(2)} apart`);
+});
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
 // final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
 test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {

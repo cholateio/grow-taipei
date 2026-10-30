@@ -56,12 +56,15 @@ test('chip glb parts (factory, chimney, solar panels) exist and take the palette
   const roof = chip.MODELS.factory.roof * views[5]['chip.main'].models[0].h;
   for (const m of views[5]['chip.solar'].models) assert.ok(Math.abs(m.pos[1] - roof) < 0.02, 'panels sit on the factory roof');
 });
-test('engineers: 2 in coats commute to 101 at Lv2, 4 on bikes from Lv3; rats ≥2 turn one into a detective (people budget: engineers ≤ 4, detective 1, worker 1)', () => {
+test('engineers: 2 in coats commute to 101 at Lv2, 4 on bikes ride the park loop from Lv3; rats ≥2 turn one into a detective (people budget: engineers ≤ 4, detective 1, worker 1)', () => {
   const e2 = chip.view(lv({ chip: 2 }), {})['chip.engineers'];
   assert.deepEqual([e2.kind, e2.n, e2.accessory], ['roster', 2, 'coat']); assert.deepEqual(e2.home, { kind: 'path', path: chip.ENGINEER_ROUTE, loop: false, speed: 0.45, entry: chip.ENGINEER_ENTRY });
   for (let n = 3; n <= 9; n++) {
     const v = chip.view(lv({ chip: n }), {}), vr = chip.view(lv({ chip: n, rat: 3 }), {});   // 老鼠 Lv3 泡溫泉（沒有列車）：跟著老鼠（鼠窩那級站在隔壁格盯著，見下一個測試）
-    assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory, v['chip.engineers'].home.speed], [4, 'bike', 0.8], `lv${n}`);
+    assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory], [4, 'bike'], `lv${n}`);
+    // 計畫 9 §5：騎車的繞園區的閉合環（不再走通勤路線、到 101 腳下的死路折返擠成一坨）
+    assert.deepEqual(v['chip.engineers'].home, { kind: 'path', path: chip.PARK_LOOP, loop: true, speed: 0.8, entry: chip.ENGINEER_ENTRY }, `lv${n}`);
+    assert.equal(vr['chip.engineers'].home.path, chip.PARK_LOOP);
     assert.equal(vr['chip.engineers'].n, 3); const d = vr['chip.detective'];
     assert.deepEqual([d.kind, d.n, d.accessory, d.from], ['roster', 1, 'glass', 'chip.engineers']); assert.deepEqual(d.home, { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: chip.ENGINEER_ENTRY[0] });
     assert.equal(v['chip.worker'], undefined);
@@ -80,6 +83,69 @@ test('detective: follows the rats, but watches the nest from the next cell and w
   const nest = chip.view(lv({ chip: 5, rat: 2, token: 4 }), {})['chip.detective'].home, p = nest.spots[0], at = anchorWorld('rat');
   assert.equal(nest.kind, 'stand'); assert.notDeepEqual(cellAt(p.x, p.z), cellAt(at.x, at.z), 'outside the nest cell');
   assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 2, 'close to the nest'); assert.ok(Math.abs(Math.atan2(at.x - p.x, at.z - p.z) - p.yaw) < 1e-9, 'faces the nest');
+});
+// 計畫 9 §5（控制者裁決 B）：園區草地上的環——廠門前、招牌與總部南邊的橢圓。每個頂點與沿線取樣（含每段中點，閉合的環含接回起點那段）
+// 都在晶片格裡、不在 Lv3–9 任何一級的 footprint（外擴 PAD）裡（有沒有老鼠、電纜鋪好沒），在園區建築的南邊（鏡頭側），
+// 離電工主路 ≥ 0.3、離廠門外的入口（西北的階梯口）≥ 1.5——不經過階梯口、變電站那條縫
+const loopSamples = (P, step = 0.02) => P.flatMap((a, i) => {
+  const b = P[(i + 1) % P.length], n = Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / step);
+  return Array.from({ length: n }, (_, q) => ({ x: a.x + (b.x - a.x) * q / n, z: a.z + (b.z - a.z) * q / n, seg: i, mid: q === n >> 1 }));
+});
+test('PARK_LOOP: a grounded oval on the lawn in front of the park; every vertex, midpoint and sample in the chip cell, outside every padded chip footprint at Lv3–9, clear of the road and the stairs', async () => {
+  const { ROAD } = await import('../src/actors/bulb.js');
+  const P = chip.PARK_LOOP, nav = createNav();
+  assert.ok(P.length >= 8);
+  for (const p of P) assert.ok(Math.abs(p.y - AT.y) < 1e-9, 'on the cell top');
+  const pts = [...P.map((p, i) => ({ ...p, seg: i })), ...loopSamples(P)];
+  assert.equal(pts.filter(p => p.mid).length, P.length, 'every segment has its midpoint sampled');
+  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
+  for (const p of pts) {
+    assert.ok(p.z - AT.z > 1.13, 'south of the campus (the sign\'s padded front edge is at +1.13)');
+    const road = Math.min(...ROAD.map((a, i) => segD(p, a, ROAD[(i + 1) % ROAD.length]))); assert.ok(road >= 0.3, `${road.toFixed(2)} from the electrician's road`);
+    for (const e of chip.ENGINEER_ENTRY) assert.ok(Math.hypot(e.x - p.x, e.z - p.z) >= 1.5, 'clear of the stairs\' foot');
+  }
+  for (let n = 3; n <= 9; n++) for (const extra of [{}, { rat: 2 }, { bulb: 8 }]) {
+    const v = chip.view({ ...at(n), ...extra }, {});
+    nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    for (const p of pts) {
+      const what = `lv${n} ${JSON.stringify(extra)} seg ${p.seg} (${(p.x - AT.x).toFixed(2)}, ${(p.z - AT.z).toFixed(2)})`;
+      assert.deepEqual(cellAt(p.x, p.z), [1, 0], `${what} in the chip cell`);
+      assert.ok(!nav.inFootprint(p.x, p.z), `${what} outside the footprints`);
+    }
+  }
+});
+// 四台（偵防師在時三台）照名冊的 i / n 等距起步：兩兩 ≥ 0.3，起步點都在走路格上（從入口走得到）
+test('PARK_LOOP: the riders start i / n along the loop, pairwise ≥ 0.3 apart and on walkable ground', async () => {
+  const { measurePath, locateOnPath } = await import('../src/scene/path.js');
+  const nav = createNav(), P = nav.ground(chip.PARK_LOOP, { loop: true }), lens = measurePath(P, true), total = lens.at(-1);
+  assert.ok(total > 4, `loop ${total.toFixed(2)} long`);
+  for (const n of [4, 3]) {
+    const v = chip.view({ ...at(5), rat: n === 4 ? 0 : 3 }, {}); assert.equal(v['chip.engineers'].n, n);
+    nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    const s = Array.from({ length: n }, (_, i) => locateOnPath(P, lens, total * i / n, true));
+    for (const p of s) assert.ok(nav.walkable(p.x, p.z), `n ${n} start (${(p.x - AT.x).toFixed(2)}, ${(p.z - AT.z).toFixed(2)}) walkable`);
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(Math.hypot(s[i].x - s[j].x, s[i].z - s[j].z) >= 0.3, `n ${n}: ${i}–${j}`);
+  }
+});
+// 一段 live：晶片 Lv3 演完後，騎車的工程師兩兩 ≥ 0.25（3 秒內；走上環的人被停下讓他的車推開到 0.25，每幀限速的那一截差 0.01 不算）。原本的兩個工程師在劇本手上、
+// 回家時接到環上離他最近的那一點，剛來的兩台各騎到自己的 i / n——名冊照前一台沿環多遠放慢（只放慢），15 秒後沿環的間距都 ≥ 等分的一半
+// （橢圓只有 0.4 寬，兩側對向騎過時直線距離約 0.36，所以看沿環的間距，不看直線距離）
+test('live: after chip grow 3 the bikes ride the park loop spread out (pairwise ≥ 0.25 for 3 s, gaps along the loop ≥ half the even share after 15 s)', async () => {
+  const h = await headlessShow(), { show } = h;
+  await liveAt(h, SOLUTIONS[0], isChip(3));
+  const bikes = () => show.roster.members('chip.engineers').filter(m => !m.hidden);
+  const closest = () => {
+    const b = bikes(); let d = Infinity;
+    assert.ok(b.length >= 3, `${b.length} riders`);
+    for (let i = 0; i < b.length; i++) for (let j = i + 1; j < b.length; j++) d = Math.min(d, Math.hypot(b[i].pos.x - b[j].pos.x, b[i].pos.z - b[j].pos.z));
+    return d;
+  };
+  let t = 0, early = Infinity;
+  for (let f = 0; f < 450; f++) { show.update(1 / 30, t); t += 1 / 30; await Promise.resolve(); if (f < 90) early = Math.min(early, closest()); }
+  assert.ok(early >= 0.24, `closest pair ${early.toFixed(3)} in the first 3 s`);
+  const b = bikes(); assert.ok(b.every(m => m.cursor), 'everyone riding the loop');
+  const T = b[0].cursor.total, s = b.map(m => ((m.cursor.s % T) + T) % T).sort((x, y) => x - y), gaps = s.map((x, i) => (i + 1 < s.length ? s[i + 1] - x : s[0] + T - x));
+  assert.ok(Math.min(...gaps) >= T / b.length / 2, `gaps along the loop ${gaps.map(g => g.toFixed(2)).join(' ')} of ${T.toFixed(2)}`);
 });
 test('ENGINEER_ROUTE starts in the chip cell and ends at the tower foot', () => {
   const r = chip.ENGINEER_ROUTE;
@@ -257,7 +323,8 @@ test('Lv7: the staff takes the box off the train while it is held at the station
     assert.ok(knocks.slice(1).every(d => Math.abs(d) < 1e-9), `train held during the knock (${order.join('>')})`);
     assert.equal(foot.size, 1, 'one engineer brings the box to the 101 foot');
     const box = bubblesLog.slice(n).find(b => b.kind?.icon === 'chip'), [m] = foot;
-    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 2.5, 'carrying the parts (chip icon) near the foot');
+    // 圖框在他出發時冒（同一拍）：計畫 9 §5 起工程師在園區草地上繞圈，離 101 腳下最近的那台也在 3 公尺外（實測 3.0）——上限 2.5 → 3.5
+    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 3.5, 'carrying the parts (chip icon) toward the foot');
     assert.ok(show.stage.partKeys().includes('tower.antenna') && m);
   }
 });

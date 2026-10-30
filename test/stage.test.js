@@ -58,7 +58,7 @@ test('deferred keeps the old part and hides the new until commit; commitAll reve
   stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
   stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
 });
-// §13.2：換零件＝舊的立刻拿掉、新的閃白；新增＝新的閃白；移除＝舊的閃白，閃完才拿掉
+// §13.2：換零件＝舊的立刻拿掉、新的亮一下；新增＝新的亮一下；移除＝舊的亮一下，亮完才拿掉
 test('commit reveals the fresh part and blinks it; the old part is dropped', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
   stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
@@ -76,6 +76,14 @@ test('a removed part blinks first and is dropped when the blink ends', () => {
   assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'a part going away glows but does not pop');
   blink.update(0.1); assert.ok(parts().includes(lamp));
   blink.update(0.06); assert.ok(!parts().includes(lamp), 'dropped after the blink'); assert.equal(blink.count, 0);
+});
+// 計畫 9 任務 4（任務 2 延後的小項）：彈到一半就被拿掉（下一個套用換掉它）——拿掉之前先收掉 pop，物件回到原本的大小（放回模型池的才不會小一號）
+test('a part dropped mid-pop is restored to its own scale before it goes', () => {
+  const { stage, parts, blink } = setup(); stage.apply(placed);
+  stage.apply(grow(3), { deferred: true }); stage.commit('milk.main'); const fresh = stage.partObject('milk.main');
+  blink.update(0.05); assert.ok(fresh.scale.y < 1 && blink.has(fresh), 'mid-pop');
+  stage.apply(drop); assert.ok(!parts().includes(fresh), 'swapped out at once');
+  assert.deepEqual(fresh.scale.toArray(), [1, 1, 1], 'back to its own scale'); assert.equal(blink.has(fresh), false);
 });
 test('commitAll commits without blinking and drops a blinking removal at once, restored first', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');

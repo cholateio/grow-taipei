@@ -46,7 +46,8 @@ async function liveMiss(order, waits, { prep } = {}) {
 const doorOf = (show, id, sv) => { const sp = mod(id).visitSpot(sv.lv[id], sv); return frontOf(sp, sp.r, show.nav); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // 共同的檢查：代表在、做了 sigh、段裡沒有泡泡、≤ MISS_CAP、走的路 ≤ MISS_WALK 秒、沒有換位置（每幀 ≤ 走路速度）、段尾回日常、劇本手上沒人
-function common(v, g, what) {
+// segment：只看撲空那一段（整局演過好幾回合的題目用——bubblesLog 裡有前面回合的圖示泡泡）；common 再加「整局沒有圖示泡泡」
+function segment(v, g, what) {
   assert.ok(g.rep && g.startMode === 'home', `${what}: the waiting item has a rep in daily life`);
   assert.ok(g.sigh || !g.rep.walker, `${what}: sighs`);
   assert.equal(g.bubbles, 0, `${what}: no bubble (design §5)`);
@@ -56,6 +57,9 @@ function common(v, g, what) {
   assert.ok(g.frames.every((p, i) => !i || dist(p, g.frames[i - 1]) <= g.rep.speed / 30 + 1e-6), `${what}: no relocation (misses never blink-jump)`);
   assert.equal(g.mode, 'home', `${what}: back to daily life`);
   assert.equal(v.script, 0, `${what}: nobody left in script mode`);
+}
+function common(v, g, what) {
+  segment(v, g, what);
   assert.equal(v.bubbles.filter(b => b.kind && typeof b.kind === 'object').length, 0, `${what}: no icon bubble`);
 }
 
@@ -180,11 +184,10 @@ test('miss live: cascade — a flooded metro stalls the islet chain: turn 8 list
   assert.equal(v.segs.length, 1);
   assert.equal(g.sv.lv.token, 4, 'the metro is stuck at 4 (flooded)');
   assert.ok(mod('chip').script.hasRep(g.sv.lv.chip) && mod('boba').script.hasRep(g.sv.lv.boba), 'both have a rep at this level');
-  // common() 的「整局沒有圖示泡泡」不適用：前 8 個放置回合的泡泡也在 bubblesLog 裡，這裡只量撲空那一段（g.bubbles）
+  // common() 的「整局沒有圖示泡泡」不適用：前 8 個放置回合的泡泡也在 bubblesLog 裡，這裡只量撲空那一段（segment：段裡沒泡泡、走路 ≤ MISS_WALK、不瞬移）
   const what = 'boba<token4';
-  assert.ok(g.rep && g.startMode === 'home' && g.sigh && g.bubbles === 0, `${what}: rep from daily life sighs, no bubble in the segment`);
-  assert.ok(g.secs <= MISS_CAP && g.secs >= SIGH, `${what}: ${g.secs.toFixed(2)} s`);
-  assert.equal(g.mode, 'home', `${what}: back to daily life`); assert.equal(v.script, 0, `${what}: nobody left in script mode`);
+  segment(v, g, what);
+  assert.ok(g.sigh, `${what}: sighs`);
   assert.ok(dist(g.end, g.start) > 0.3, `${what}: walked`);
   // 目標：spot／door、look 是代幣的拜訪點
   const sp = mod('token').visitSpot(4, g.sv);

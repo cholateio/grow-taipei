@@ -212,11 +212,12 @@ function nearestByRoute(p, nav) {
 // 離夜市最近的兩個看得見的島民（每段劇本自己記一組）
 // 離夜市最近的兩個看得見、在日常裡的人：島民或站務員（夜市在捷運站旁；人數預算裁決 R16 之後代幣／珍奶格不住島民，只找島民要從別格走來）
 // 「最近」照走過去的路有多長（不是直線距離）：直線近的人可能隔著一座橋要繞（計畫 9 任務 3：工程師人數一變，島民散步的位置跟著變，
-//   照直線挑到一個要繞路的，排隊這級 4.6 s 超過 4.5）
-const nearestPair = () => once(c => {
-  const walk = m => c.nav.routeLength(c.nav.route(m.pos, MARKET_FRONT));
+//   照直線挑到一個要繞路的，排隊這級 4.6 s 超過 4.5）。走不到的人（nav.route 到不了就只回起點，路長 0）不算——不然 0 會排第一
+export const nearestPair = () => once(c => {
+  const end = c.nav.nearestWalkable(MARKET_FRONT);
+  const walk = m => { const path = c.nav.route(m.pos, MARKET_FRONT), last = path.at(-1); return last && dist(last, end) < 1e-3 ? c.nav.routeLength(path) : Infinity; };
   return ['landmarks.islanders', 'token.staff'].flatMap(k => c.roster.members(k)).filter(m => !m.hidden && m.mode === 'home')
-    .map(m => [m, walk(m)]).sort((a, b) => a[1] - b[1]).slice(0, 2).map(([m]) => m);
+    .map(m => [m, walk(m)]).filter(([, d]) => d < Infinity).sort((a, b) => a[1] - b[1]).slice(0, 2).map(([m]) => m);
 });
 // 第 k 站電工站的那一格
 export const stopCell = k => { const p = lampApproach(LAMP_STOPS[k][0]); return worldToAxial(p.x, p.z); };

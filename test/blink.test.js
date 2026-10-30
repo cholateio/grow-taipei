@@ -64,6 +64,23 @@ test('a part blinked again while glowing keeps its original materials and restar
   blink.update(0.1); assert.notEqual(meshes()[0].material, a, 'timer restarted');
   blink.update(0.06); assert.deepEqual(meshes().map(m => m.material), [a, b]);
 });
+// 計畫 9 任務 4（任務 2 延後的小項）：巢狀——子零件先亮、父零件再亮（或反過來），後來的跳過正在亮的 mesh，不複製複本；
+// 不管誰先結束，最後每個 mesh 都回到自己的原材質，沒有留著已 dispose 的複本
+test('nested parts: the later blink skips meshes already glowing; whichever ends first, every mesh gets its original back', () => {
+  for (const childFirst of [true, false]) {
+    const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), { g, a, b, meshes } = twoMeshes(), inner = g.children[1];
+    blink.part(childFirst ? inner : g, BLINK);
+    const first = meshes().map(m => m.material);
+    blink.update(0.05);
+    blink.part(childFirst ? g : inner, BLINK);
+    meshes().forEach((m, i) => { if (first[i] !== a && first[i] !== b) assert.equal(m.material, first[i], 'a mesh already glowing keeps the same clone (no clone of a clone)'); });
+    for (let k = 0; k < 10; k++) blink.update(0.05);
+    const [m1, m2] = meshes();
+    assert.equal(m1.material, a, `${childFirst ? 'child first' : 'parent first'}: outer mesh back to its original`);
+    assert.equal(m2.material, b, `${childFirst ? 'child first' : 'parent first'}: inner mesh back to its original`);
+    assert.equal(blink.count, 0);
+  }
+});
 test('pop scales 0.94x -> 1x of the starting scale and ends exactly at the starting scale', () => {
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) });
   for (const start of [[1, 1, 1], [1.2, 0.8, 1.2]]) {

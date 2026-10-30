@@ -357,6 +357,40 @@ test('Lv3 train: all five run to the nest-side shore and hop on together while t
   const nest = Math.atan2(AT.z, AT.x);
   assert.ok(boards.every(b => Math.abs(b.a - nest) < 0.35), 'they board by the nest');
 });
+// 計畫 9 任務 4（任務 3 延後的小項）：一窩 3 隻、同一回合 2 → 3 → 4 合併跳級（整份列舉找的放法）的回歸——
+// 外星：3 → 1 直接變，中間不閃出 5 隻（以前 apply 先套 5 隻的溫泉／搭車再收到 1 隻，0.3 s 冒兩隻）；
+// 賽博：補齊的兩隻從窩門口鑽出來（離窩 ≤ 1），五隻再一起走（以前一隻從格邊走進來、一隻直接出現在橋上的家）
+test('nest of 3, merged rat 2 → 4 in one turn: alien goes 3 → 1 with no flash of 5; cyber fills to 5 from the nest door', async () => {
+  const { turnSteps } = await import('./helpers/show.js');
+  const cases = [['alien', ['baseball', 'boba', 'rat', 'typhoon', 'token', 'bulb', 'chip', 'milk']], ['cyber', ['baseball', 'boba', 'bulb', 'token', 'milk', 'chip', 'typhoon', 'rat']]];
+  for (const [branch, order] of cases) {
+    const h = await headlessShow(), { show, run } = h;
+    let s = engine.createState(spec), played = false;
+    for (const step of turnSteps(order)) {
+      const before = s.lv.rat, r = step(s); s = r.state;
+      const grows = r.events.filter(e => e.kind === 'grow' && e.item === 'rat').map(e => e.to);
+      if (before !== 2 || !grows.includes(4)) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+      assert.deepEqual(grows, [3, 4], `${branch}: 2 → 3 → 4 in one turn`); assert.equal(s.flags.ratBranch, branch);
+      const pre = new Set(show.roster.members(KEYS[0])), first = new Map(), update = show.update;
+      assert.equal(pre.size, 3, 'a nest of three');
+      let most = 0;
+      show.update = (dt, t) => { update(dt, t); const ms = show.roster.members(KEYS[0]); most = Math.max(most, ms.length); for (const m of ms) if (!first.has(m) && !m.hidden) first.set(m, { ...m.pos }); };
+      await run([...r.events, { kind: 'settle' }]);
+      show.update = update; played = true;
+      const fresh = [...first].filter(([m]) => !pre.has(m)).map(([, p]) => p);
+      if (branch === 'alien') {
+        assert.equal(most, 3, 'never more than the nest of three on stage');
+        assert.equal(show.roster.members(KEYS[0]).length, 1, 'alien: one rat');
+      } else {
+        assert.equal(show.roster.members(KEYS[0]).length, 5, 'cyber: five');
+        assert.equal(fresh.length, 2, 'two come out to make five');
+        for (const p of fresh) assert.ok(Math.hypot(p.x - AT.x, p.z - AT.z) <= 1, `first seen ${Math.hypot(p.x - AT.x, p.z - AT.z).toFixed(2)} from the nest`);
+      }
+      break;
+    }
+    assert.ok(played, `${branch}: the merged turn was found`);
+  }
+});
 test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring and ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });

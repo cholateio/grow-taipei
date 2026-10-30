@@ -6,7 +6,7 @@
 //     時間到換回原材質、dispose 複本，再呼叫 onEnd。
 //   pop(object3d, dur)：小彈一下——記下呼叫時的 scale，乘上 0.94 → 1 的 ease-out，結束設回記下的 scale（壓扁過的零件也不會被設成 1）。
 //   walker(w, dur)：小人是 InstancedMesh 的一個實例，改用 people.flashInstance 把整個實例塗白、時間到重塗原色（名冊換位置用，照舊）。
-// 亮到一半再亮同一個東西：計時重來，不再複製一次。clear()：全部立刻回原樣（跳過、RESET）。
+// 亮到一半再亮同一個東西：計時重來，不再複製一次。父子各自 part（巢狀）：後來的那個跳過已經在亮的 mesh（各自換回自己的原材質）。clear()：全部立刻回原樣（跳過、RESET）。
 // stop(object 或 walker)：只把這一個立刻收掉（要拿掉、放回模型池的東西先換回原材質與原大小，複本才不會被帶走）。
 // has(object 或 walker)：這一個現在正在亮或正在彈（測試查「換位置的那一幀有閃」）。count：正在亮／彈／閃的東西有幾個（同一個東西只算一次）。
 export const BLINK = 0.15;
@@ -16,6 +16,7 @@ const easeOut = k => 1 - (1 - k) ** 2;
 
 export function createBlink(THREE, { people }) {
   const parts = new Map();     // object3d → { t, dur, saved: [[mesh, 原材質（或陣列）]], clones: Map(原材質 → 複本), onEnd }
+  const active = new Set();    // 正在用的複本：巢狀的 part（父子各亮一次）跳過已經在亮的 mesh——不然會複製複本，先結束的那個換回去之後另一個再換回已 dispose 的複本
   const pops = new Map();      // object3d → { t, dur, scale: 呼叫時的 scale }
   const walkers = new Map();   // walker → { t, dur }
   const WHITE = new THREE.Color(1, 1, 1);
@@ -34,7 +35,9 @@ export function createBlink(THREE, { people }) {
   function paint(it) {
     const k = GLOW * (1 - easeOut(Math.min(1, it.t / it.dur)));
     for (const [m, c] of it.clones) {
-      c.opacity = m.opacity;   // 零件自己抓著原材質調透明度（淡入淡出）的，亮的期間也跟著
+      // 零件自己抓著原材質調透明度（淡入淡出）的，亮的期間也跟著。每幀抄一次靠 show/index.js 的 update 順序：
+      //   blink.update 在 timeline／stage 前面，抄到的是上一幀拍子設的透明度（慢一幀，看不出來）；改那邊的順序要一起看這裡
+      c.opacity = m.opacity;
       if (c.emissive) {
         if (lit(m)) { c.emissive.copy(m.emissive).multiplyScalar(m.emissiveIntensity); c.emissive.r += k; c.emissive.g += k; c.emissive.b += k; c.emissiveIntensity = 1; }
         else { c.emissive.setRGB(1, 1, 1); c.emissiveIntensity = k; }
@@ -47,17 +50,18 @@ export function createBlink(THREE, { people }) {
     if (was) { was.t = 0; was.dur = dur; if (onEnd) was.onEnd = onEnd; paint(was); return; }
     const saved = [], clones = new Map();
     object.traverse(o => {
-      if (!o.isMesh) return;
+      if (!o.isMesh || [].concat(o.material).some(m => active.has(m))) return;   // 這個 mesh 正被另一個 part 亮著：交給它
       saved.push([o, o.material]);
       o.material = Array.isArray(o.material) ? o.material.map(m => cloneOf(m, clones)) : cloneOf(o.material, clones);
     });
+    for (const c of clones.values()) active.add(c);
     const it = { t: 0, dur, saved, clones, onEnd };
     parts.set(object, it); paint(it);
   }
   function endPart(object, it) {
     parts.delete(object);
     for (const [mesh, material] of it.saved) mesh.material = material;
-    for (const c of it.clones.values()) c.dispose();
+    for (const c of it.clones.values()) { active.delete(c); c.dispose(); }
     it.onEnd?.();
   }
 

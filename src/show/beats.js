@@ -134,7 +134,8 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   return {
     kind: 'gesture', dur,
     start(ctx) {
-      if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; base = obj.scale.clone(); return; }
+      // 零件剛套用（apply 之後緊接著 puff）：小彈一下（blink.pop）可能還差最後一幀——先收掉再記 base，不然 base 是 0.999 倍、演完就一直小一點
+      if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; ctx.blink?.stop(obj); base = obj.scale.clone(); return; }
       m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; }
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
       if (kind === 'wave' && m.holder) m.waving = true;
@@ -161,7 +162,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 }
 
 // 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
-// commit 由舞台自己閃白 BLINK 秒（移除的閃完才拿掉），拍長 BLINK + 0.15·(n−1)。
+// commit 由舞台自己亮一下 BLINK 秒（移除的亮完才拿掉），拍長 BLINK + 0.15·(n−1)。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
 // stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻閃（大停電：電一斷整區一起暗，拍長 BLINK）
 // tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個閃的零件一起閃、不多佔一格 stagger：
@@ -176,7 +177,7 @@ export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
     estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
       const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;
-      // 新建築的 footprint 從套用這一刻就算（閃白期間還藏著也一樣）：不然閃白那 0.15 秒走路格還不知道，走路的人會走進剛長出來的建築
+      // 新建築的 footprint 從套用這一刻就算（亮一下的期間也一樣）：不然那 0.15 秒走路格還不知道，走路的人會走進剛長出來的建築
       if (all.length) ctx.nav.setFootprints(ctx.stage.footprints());
       const pending = new Set(blink ? ctx.stage.pendingKeys() : []);
       const shown = all.filter(c => pending.has(c.key));
@@ -213,7 +214,7 @@ export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false
   };
 }
 
-// 起因閃一下（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟閃白 dur 秒（同升級用的材質閃白）。
+// 起因閃一下（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟亮一下 dur 秒（同升級用的 blink.part，計畫 9 §4）。
 // 這一級沒有那個零件（被鎖、淹水換了站體……）或瞬間演（跳過、reduced-motion）→ 0 秒、不閃
 export const CAUSE_FLASH = 0.4;
 export function flash(key, dur = CAUSE_FLASH) {

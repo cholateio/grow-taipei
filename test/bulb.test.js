@@ -131,6 +131,14 @@ test('grow 2 lights the stops one by one along the road (posts with the first; t
   assert.equal(bulb.WALKED, 3); assert.equal(flat(bulb.script.grow[2](E(2), s, fakeCtx())).filter(b => b.kind === 'walk').length, bulb.WALKED);
   assert.equal(bulb.LIGHTING_SPEED, 2.8);
 });
+// 計畫 9 任務 4（任務 3 延後的小項）：Lv4 去夜市排隊的兩個人照走路的路長挑；走不到的人（route 只回起點，路長 0）不算，不會排第一
+test('nearestPair: the two shortest walks to the market; somebody who cannot get there (route stops at the start) is skipped, not ranked first', () => {
+  const end = { x: 0, y: 0, z: 0 }, m = (x, stuck = false) => ({ pos: { x, y: 0, z: 0 }, hidden: false, mode: 'home', stuck });
+  const people = [m(0.5, true), m(3), m(1), m(2)];
+  const nav = { nearestWalkable: () => end, route: (from) => (people.find(p => p.pos === from).stuck ? [from] : [from, end]), routeLength: path => (path.length < 2 ? 0 : Math.abs(path[0].x)) };
+  const pair = bulb.nearestPair()({ nav, roster: { members: k => (k === 'landmarks.islanders' ? people : []) } });
+  assert.deepEqual(pair.map(p => p.pos.x), [1, 2]);
+});
 test('world beats: Lv3 fades to dusk, Lv5 to night', () => {
   const worlds = n => bulb.script.grow[n](E(n), { lv: lv({ bulb: n }), flags: {} }, fakeCtx()).filter(b => b.kind === 'world').map(b => b.effects);
   assert.deepEqual(worlds(3), [{ time: TIMES.dusk }]); assert.deepEqual(worlds(5), [{ time: TIMES.night }]);
@@ -274,7 +282,7 @@ test('Lv4 never picks hidden islanders', () => {
   const ctx = { B, roster: { members: k => (k === 'landmarks.islanders' ? [hid, vis, vis2] : []) }, nav: { slots: () => [m, m] } };
   const beats = flat(bulb.script.grow[4](E(4), { lv: lv({ bulb: 4 }), flags: {} }, ctx)).filter(b => b.kind === 'walk');
   const who = [];
-  const fakeCtx2 = { ...ctx, roster: { ...ctx.roster, claim: x => who.push(x) }, nav: { route: (a, b) => [a, b], routeLength: () => 0, slots: () => [m, m] } };
+  const fakeCtx2 = { ...ctx, roster: { ...ctx.roster, claim: x => who.push(x) }, nav: { route: (a, b) => [a, b], routeLength: () => 0, nearestWalkable: p => p, slots: () => [m, m] } };
   for (const b of beats) b.start(fakeCtx2);
   assert.ok(!who.includes(hid), 'hidden islander picked'); assert.equal(who.length, 2);
 });

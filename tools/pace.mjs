@@ -1,4 +1,4 @@
-// 節奏報表：無頭模擬兩條正解，一回合一回合（8 次放置 + 最後一輪）演完，印每回合秒數。
+// 節奏報表：無頭模擬唯一正解（與 EXAMPLE 壞局），一回合一回合（8 次放置 + 最後一輪）演完，印每回合秒數。
 //   npm run pace              印表
 //   node tools/pace.mjs --verbose   多印每回合每個事件的秒數（mark 拍之間的 elapsed 差值；括號裡是劇本秒數）
 //   node tools/pace.mjs --check     任一放置回合或最後一輪 < 4 s 或超過那回合的上限、終局超過上限就列出並 exit 1；
@@ -11,7 +11,8 @@
 //   列名「最後一輪」；之後演終局回合（警告＋飛彈＋真結局尾聲，finale: true）一列「終局 x/22 s」，
 //   再印「最後一輪＋終局 x s」（給使用者對照計畫 5 的最終章：外星 70.9、賽博 67.0，不設門檻）；合計含終局。
 //   主迴圈之後另跑兩局固定的壞結局（test/helpers/endings.js 的 EXAMPLE.hit／deflect）：計畫 6 起放置與最後一輪也 live（同樣的回合門檻——
-//   設計 §6：60 秒上限在兩條正解與 EXAMPLE 上驗），最後一列「終局 x/12 s」。超過 22／12 都算失敗
+//   設計 §6：60 秒上限在唯一正解與 EXAMPLE 上驗），最後一列「終局 x/12 s」。超過 22／12 都算失敗。
+//   再跑一局「老鼠跑遠」（FAR_TROUBLE：放下的老鼠跑去最遠的 trouble 門口，唯一正解 §5.2），門檻同壞結局
 // 撲空（計畫 6 設計 §5、§6）：wait 事件前面的撲空段有自己的 mark（info.miss）——單獨量（事件秒數扣掉物品之間的空拍，含跟走路一起演的平移），
 //   超過 MISS_CAP 3 s 多於 WARN_OVER 只印 ⚠；一回合多於 MISS_PER_TURN 段算失敗。每回合印「撲空 n」（真的演了的段數：代表叫不到時那段 0 秒，不算）
 // 起因段（回到 GROW 設計 §4.2，Task 3 裁決 B）：有起因的升級前面那段（空拍之後平移到幫手、閃白、平移回目標）有自己的 mark（info.cause）——
@@ -126,6 +127,16 @@ for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹歪']]) {
   console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
   for (const d of details) console.log(d);
   if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的飛彈是 ${fin.ending.missile}`);
+}
+
+// 老鼠跑遠處的 trouble（唯一正解 §5.2、2026-10-31 Task 5）：放下的老鼠爬上岸直接跑去上一回合出問題的那棟門口聞一聞。
+//   列舉裡 trouble 離上岸點最遠的是晶片 HQ（8.8 m，晶片在等燈泡）：這一局第 8 回合放老鼠。命中局（EXAMPLE.hit）第 6 回合也是放老鼠，trouble 是早餐店（近的）
+const FAR_TROUBLE = ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'];
+{
+  const head = `老鼠跑遠（${FAR_TROUBLE.map(name).join('、')}）`;
+  const { cells, details, total } = await playOrder(FAR_TROUBLE, '老鼠跑遠', BAD_FINALE_MAX);
+  console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
+  for (const d of details) console.log(d);
 }
 
 // 終局回合 live（finale: true）：回 { secs（整回合真實秒數）, parts（每個事件的秒數，--verbose 印）, ending }

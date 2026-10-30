@@ -98,6 +98,8 @@ export function pacing(full, spec = defaultSpec) {
 
 // 反目標「晶片不能變成樞紐」（物品 v2 §2，報告項、不是驗收）：晶片放第 8 個時，
 // 是否有某一種順序讓其餘七個都到 MAX−1 以上。best = 差最少的那條（short = 沒到 MAX−1 的物品）。
+// 唯一正解（2026-10-31）之後 ok 是 false（最接近的差代幣、珍奶）：晶片放最後時代幣 9、10 與珍奶到不了——
+//   這是報告項，check() 不看它；npm run check 照印，test/solver.test.js 只驗形狀
 export function chipEighth(results, spec = defaultSpec) {
   let best = null, count = 0;
   for (const r of results) {

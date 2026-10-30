@@ -41,9 +41,10 @@ function line([x0, z0], [x1, z1]) {
 // 兩個球員在本壘前面面對面傳接球
 const players = at => [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...offset(at, 0.45, 1.05), yaw: -Math.PI / 2 }];
 // 大巨蛋淹水：兩個球員站上屋頂，背對背面向泳池（釣魚）。hangar_roundA 縮到高 1.0 後，頂上離中心 ±0.33 以內都是平的（頂高 = DOME_H.a）；
-// 沒有巨蛋時站上木看台頂（STAND_H）。站位在 footprint 裡、不帶 rescue（帶了會被拉回地面，同泳客站在泳池裡）
+// 沒有巨蛋時站上木看台頂（STAND_H）。站位在 footprint 裡、不帶 rescue（帶了會被拉回地面，同泳客站在泳池裡）。
+// 巨蛋淹水鎖棒球 ≤3（規則），擴建的高巨蛋（Lv7、DOME_H.b）淹不到——只有 hangar_roundA 的頂（2026-10-31 Task 5 拿掉走不到的分支）
 const roofSpots = (at, n) => (n >= 3
-  ? [{ ...offset(at, -0.2, 0.05, n >= 7 ? DOME_H.b : DOME_H.a), yaw: -Math.PI / 2 }, { ...offset(at, 0.2, 0.05, n >= 7 ? DOME_H.b : DOME_H.a), yaw: Math.PI / 2 }]
+  ? [{ ...offset(at, -0.2, 0.05, DOME_H.a), yaw: -Math.PI / 2 }, { ...offset(at, 0.2, 0.05, DOME_H.a), yaw: Math.PI / 2 }]
   : [-1, 1].map(k => ({ ...offset(at, STANDS.x + k * STANDS_W / 4, STANDS.z, STAND_H), yaw: Math.PI })));
 
 // 入口點（§13.2）：球員從看台後方的格邊走出來，繞過看台到本壘前——看台正後方的格子北角被看台和兩邊的格邊圍住、走不出去，
@@ -194,7 +195,7 @@ const TOURIST_SPEED = 2.8;   // 跨年：珍奶的觀光客快步過來看煙火
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const nearestIslander = (c, p) => c.roster.members('landmarks.islanders').filter(m => !m.hidden && cellAt(m.pos.x, m.pos.z)).sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0] ?? null;
-// 冒泡泡的人跳過藏起來的（颱風登陸回合躲進門裡的人）
+// 冒泡泡的人跳過藏起來的（颱風放下時躲進門裡的人）
 const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const player = i => c => shown('baseball.players')(c)[i] ?? null;
 const fansAll = c => [...shown('baseball.crowd')(c), ...shown('baseball.riders')(c), ...shown('baseball.lawn')(c)];

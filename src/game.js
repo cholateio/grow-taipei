@@ -10,7 +10,7 @@ import { ENDINGS } from './rules/endings.js';
 
 // 飛彈警告（終局回合的第一個事件）：舞台旗標 alarm = 1，紅光出現（finale.js script.warning、view 看它）
 export const WARNING = { kind: 'warning', flag: { name: 'alarm', value: 1 } };
-// 終局回合的事件：警告 → 飛彈（outcome = shield／deflect／hit），真結局（8 個全 MAX）再接尾聲（ending = cyber／alien）
+// 終局回合的事件：警告 → 飛彈（outcome = shield／deflect／hit），真結局再接尾聲（唯一正解 2026-10-31：只有賽博；外星是壞結局、不接尾聲）
 export function finaleEvents(ending) {
   const out = [{ ...WARNING, flag: { ...WARNING.flag } }, {   // 每局一個新物件：舞台用 WeakSet 認事件，共用同一個物件時同一個 show 不 reset 連演兩次終局，第二次紅光不出現（最終審稿）
     kind: 'missile', outcome: ending.missile, flag: { name: 'missile', value: ending.missile } }];

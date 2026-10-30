@@ -26,8 +26,8 @@ test('stageOf thresholds (§5.2)', () => {
   assert.equal(tower.stageOf(28), 'half'); assert.equal(tower.stageOf(29), 'full'); assert.equal(tower.stageOf(50), 'full'); assert.equal(tower.stageOf(51), 'lit');
   assert.equal(tower.stageOf(61), 'lit');
 });
-// 兩條正解的總等級曲線上，四個階段各在不同回合跨過、散在整局（9 回合裡約第 3／6／8 回合），結束前都點燈
-test('both solutions cross the four stages in four different turns, spread through the game, lit by the end', () => {
+// 唯一正解的總等級曲線上，四個階段各在不同回合跨過、散在整局（9 回合裡約第 3／6／8 回合），結束前都點燈
+test('the solution crosses the four stages in four different turns, spread through the game, lit by the end', () => {
   for (const order of SOLUTIONS) {
     const { totals, at } = towerCrossings(order), turns = [at.site, at.half, at.full, at.lit], why = `${order.join('>')} totals ${totals.join(' ')} at ${JSON.stringify(at)}`;
     assert.equal(at.site, 1, why);
@@ -353,9 +353,9 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
     const p = head(); log.push(['levelUp', now, { flying: rig.flying, target: controls.target.clone(), top: new THREE.Vector3(p.x, p.y, p.z).project(camera).y }]);
     return levelUp(head, opts);
   };
-  // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）。唯一正解的完工落在第 6 回合＝颱風放下的回合（大家躲雨，settle 只留套用、
-  // LEVEL UP 與回全景，turn.js 的 indoorSettle）——這裡要看 101 的完整劇本，第 6 回合改放珍奶（非正解，完工照樣在第 6 回合）
-  const ORDER = ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'];
+  // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）：唯一正解的完工落在第 6 回合＝颱風放下的回合。
+  // 修正輪 1 之後放下回合不再只留套用與 LEVEL UP（indoorSettle 拿掉了），101 的完整劇本照演——改回正解（2026-10-31 Task 5）
+  const ORDER = ['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
   const steps = turnSteps(ORDER).slice(0, towerCrossings(ORDER).at.full), events = [];
   let s = engine.createState(spec);
   for (const [i, step] of steps.entries()) {

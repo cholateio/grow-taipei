@@ -10,7 +10,7 @@ import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
 import { createCameraRig, overviewDistance } from '../src/scene/camera.js';
 import { cellCentre } from '../src/actors/anchors.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
 // 舞台與名冊的最終狀態：零件鍵、每個名冊的人數與配件
@@ -21,7 +21,7 @@ const snapshot = show => ({
 });
 const place = (s, id) => engine.place(s, id, spec);
 
-test('both solutions play through headlessly: every turn ends with stage levels equal to the engine, no pending parts, members home', async () => {
+test('the solution plays through headlessly: every turn ends with stage levels equal to the engine, no pending parts, members home', async () => {
   const { show, run, worldLog } = await headlessShow();
   for (const order of SOLUTIONS) {
     let s = engine.createState(spec);
@@ -301,8 +301,8 @@ test('after the player grabs the camera, no focus moves the rig for the rest of 
   assert.ok(cam.calls.some(c => c[0] === 'focus'), 'a grab between turns does not stop the next turn');
 });
 
-// §14.3 人分散：兩條正解整局 live 演完，最後沒有哪一格主島的格子站了超過所有露出來的人（主島上）的 40%
-test('live both solutions: at the end no main cell has more than 40% of all visible members (spread check)', async () => {
+// §14.3 人分散：唯一正解整局 live 演完，最後沒有哪一格主島的格子站了超過所有露出來的人（主島上）的 40%
+test('live, the solution: at the end no main cell has more than 40% of all visible members (spread check)', async () => {
   const { cellAt } = await import('../src/scene/hex.js');
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow();
@@ -371,8 +371,8 @@ test('a turn with a stage crossing into 點燈 holds the mid-script focus(home) 
   assert.ok(lit >= 0, 'the turn crosses into 點燈');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
-  // 唯一正解 2026-10-31：點燈落在第 8 回合（颱風移到巨蛋），不是放下的回合（第 6 回合，indoors 的 settle 只留套用、LEVEL UP 與回全景）——
-  // 101 的劇本照演：回全景之前先飛去 101（釘住前提：點燈哪天又落進放下的回合，這裡會失敗）
+  // 唯一正解 2026-10-31：點燈落在第 8 回合（颱風移到巨蛋），不是放下的回合（第 6 回合）——101 的劇本照演：回全景之前先飛去 101。
+  // （修正輪 1 之後放下的回合也照演，不再只留套用與 LEVEL UP；這條只釘住正解點燈的回合）
   assert.ok(!events.some(engine.landsTyphoon), `點燈 is not in the typhoon placement turn (turn ${at.lit})`);
   assert.ok(before.slice(0, mid).some(l => l[0] === 'focus'), 'the 101 script flies to 101 before the mid-script home');
   // 停 0.8 s（1 倍速：演出時間就是真實秒數）
@@ -417,11 +417,11 @@ test('skip during a jump lands both levels', async () => {
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
 });
 
-// 回到 GROW 設計 §4.2 的整局探針：兩條正解 live 演完（真的鏡頭 rig），跳級合成、起因閃一下之後共用不變式照樣乾淨
+// 回到 GROW 設計 §4.2 的整局探針：唯一正解 live 演完（真的鏡頭 rig），跳級合成、起因閃一下之後共用不變式照樣乾淨
 // （不穿牆、不瞬移、換位置閃白、每回合回全景、每個 LEVEL UP 字樣至少一半時間在畫面裡）；
 // 每回合起因閃一下 ≤ 4 段（mark 的 info.cause；真的閃了的看 blink.part 收到 CAUSE_FLASH 秒），
 // LEVEL UP 彈兩次的第二個字樣（bubbles.levelUp 收到 dy）次數 = 引擎這回合 jump: true 的 grow 個數
-test('both solutions live with merged jumps and cause flashes: invariants clean, ≤ 6 cause flashes per turn, one twice LEVEL UP per engine jump', async () => {
+test('the solution live with merged jumps and cause flashes: invariants clean, ≤ 6 cause flashes per turn, one twice LEVEL UP per engine jump', async () => {
   const { CAUSE_FLASH } = await import('../src/show/turn.js');
   for (const order of SOLUTIONS) {
     const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
@@ -539,7 +539,7 @@ test('no script throws: an even stride over the enumeration and EXAMPLE.hit/defl
   assert.deepEqual(bad, []);
 });
 
-// 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。
+// 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；唯一正解 live 演完，每一級都有 LEVEL UP、最後全滿。
 // 手機畫質（quality 'low'，裁決 R18：名冊少載模型、零件省 draw call）也演一次——少掉的模型不能讓劇本出錯或卡住
 test('both new solutions play to the end without a script error at every level (high and low quality)', async () => {
   const top = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));
@@ -680,10 +680,10 @@ test('turn(events, { finale: true }) runs at speed 1 and ends on the overview wi
 });
 
 // 選擇帶動升級 §4（計畫 5b 任務 3）：放下的物品當回合就長到 Lv2——一般回合裡先演 placed 劇本、再演它自己的 grow[2] 劇本（同一回合）。
-// 兩條正解的每一個放置回合都 live 演一次：placed 的 mark 在 grow 2 前面、grow[2] 劇本真的有建（不是預設的 apply + LEVEL UP）、
+// 唯一正解的每一個放置回合都 live 演一次：placed 的 mark 在 grow 2 前面、grow[2] 劇本真的有建（不是預設的 apply + LEVEL UP）、
 // 演完沒有人留在劇本手上、舞台等級等於引擎；同一回合再演一次，演到 grow[2] 劇本中途按跳過：一樣沒人留在劇本手上，
 // 舞台的等級、零件鍵都跟整回合瞬間演完的一樣（跳過到得了引擎的狀態）
-test('placed + grow[2] in the same turn: the placed script then the grow script, roster members not left in script mode, skip reaches the engine state (each item, both solutions)', async () => {
+test('placed + grow[2] in the same turn: the placed script then the grow script, roster members not left in script mode, skip reaches the engine state (each item, the solution)', async () => {
   const scripted = m => m.roster.keys().flatMap(k => m.roster.members(k).filter(x => x.mode === 'script').map(() => k));
   for (const order of SOLUTIONS) for (let n = 0; n < order.length; n++) {
     const id = order[n], what = `${order.join('>')} turn ${n + 1} (${id})`, steps = turnSteps(order).slice(0, n + 1);
@@ -749,7 +749,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
         await run([...r.events, { kind: 'settle' }]);
         inv.turnEnd();
         const st = show.stage, mode = rat.ratMode(st.lv, st.flags);
-        log.push({ turn: i + 1, mode, trouble: st.meta.trouble, sniffs: [...sniffs] });
+        log.push({ turn: i + 1, mode, trouble: st.meta.trouble, lv: { ...st.lv }, flags: { ...st.flags }, sniffs: [...sniffs] });
         if (mode !== 'one' && mode !== 'nest') continue;
         const goal = st.meta.troubleAt ?? NEST, r0 = st.meta.troubleAt ? rat.TROUBLE_R : 0.7;
         const rats = () => show.roster.members('rat.pack'), there = () => rats().every(m => m.mode === 'home' && gap(m.pos, goal) <= r0 + 0.35);
@@ -770,8 +770,9 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   assert.equal(u8.sniffs.length, 2, 'turn 7 settled no trouble: the landing keeps the old sniff + look at the dome');
   assert.equal(at('user1030', 9).mode, 'alien');
   const { frontOf } = await import('../src/actors/anchors.js');
-  const l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(3, { lv: { token: 3 }, flags: {} }), front = frontOf(sp, sp.r);
-  assert.equal(at('levels', 6).trouble, 'token');
+  // 放下劇本讀的是上一回合（第 6 回合）結算的 troubleAt：車站照那一刻的代幣級（2026-10-31 Task 5：原本寫死代幣 3）
+  const l6 = at('levels', 6), l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(l6.lv.token, { lv: l6.lv, flags: l6.flags }), front = frontOf(sp, sp.r);
+  assert.equal(l6.trouble, 'token');
   assert.deepEqual([l7.mode, l7.trouble], ['nest', null], 'turn 7 clears: back to the nest');
   assert.equal(l7.sniffs.length, 1, 'the landing rat sniffs once (at the station)');
   assert.ok(gap(l7.sniffs[0], front) <= 0.5, `sniffed in front of the station (${l7.sniffs[0].x.toFixed(2)}, ${l7.sniffs[0].z.toFixed(2)})`);

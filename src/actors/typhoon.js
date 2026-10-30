@@ -163,16 +163,18 @@ export const script = {
   // 躲著的時候船消失、風車被吹得搖、外送機車出來（剩下的零件一次閃白）→ 從門口走出來（淋著雨，用走路速度走回家；走回去是背景，不佔劇本秒數）。
   // ◆ ≤ 8 s live（§5.3）：飄進來與舊的登陸併成一段，鼓脹、！、走去門口一起演。放下事件沒有 LEVEL UP（同所有物品的放下）
   placed(e, s, ctx) {
-    const { B } = ctx, cast = once(c => everyone(c));
+    // 主島上的人（演到 ！ 那一拍才查、整段同一批）：衛星島上的人不走（走路格只有主島），也不被這段劇本放回日常——
+    //   2026-10-31 Task 5：以前 comeOut 放回的是全島名單，衛星島上繞圈的人沒被叫過也被 home() 一次，走到一半的那一圈被打斷
+    const { B } = ctx, cast = once(c => everyone(c).filter(m => cellAt(m.pos.x, m.pos.z)));
     // 走出來：躲著的人露出來（就在門口，不閃）、交回日常並標 hurry（走路速度、不等焦點），其他被叫去的人一樣放回日常
     const comeOut = { kind: 'home', dur: 0, start(c) { for (const m of cast(c) ?? []) { if (m.hidden) c.roster.show(m); c.roster.home(m, { hurry: true }); } } };
-    const shelter = crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m)));   // 衛星島上的人不走（走路格只有主島）
+    const shelter = crowd(B, c => cast(c).map(m => toDoor(B, m)));
     return [
       cloudFocus(B, STOPS[1]), B.apply(e, { only: ['typhoon.main'], blink: false }),
       B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 2.5 }),   // 飄進來 3 → 2.5 s（裁決 R17）
       B.focus('home'), B.apply(e, { only: ['typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
       // ！ 跟放晴的 ♪ 一樣只給主島上的人：衛星島最外圈的人在全景邊上（選擇帶動升級裁決 R6）
-      B.together([B.gesture('typhoon.main', 'puff'), crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '！', 0.8))), shelter]),
+      B.together([B.gesture('typhoon.main', 'puff'), crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))), shelter]),
       // 躲著的時候剩下的零件一起閃白（船消失、風車搖、外送機車；◆ ≤ 8 s：不另外排一拍），之後走出來
       B.together([B.wait(HUDDLE), B.apply(e)]), comeOut,
     ];

@@ -370,14 +370,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
     // 同一條折線上 ≥ 2 人（晶片工程師、機器鼠）：劇本放回來（含撲空趕回）一律走回自己錯開的那一點（i / n），同剛走進來的人（見檔頭）。
-    // 躲在門裡的（颱風登陸）不標：他不動，下一回合 showAll({ walk }) 出來時才標 arriving
+    // 躲在門裡的（颱風放下躲一下）不標：他不動，放下劇本的 comeOut 讓他露出來再 home（hurry）；跳過、下一回合開始的 showAll({ walk }) 是保險
     else if (spec?.home?.kind === 'path' && spec.n >= 2) { if (!m.hidden) m.arriving = true; }
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path（n 1）的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
   }
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
   function hide(m) { m.hidden = true; place(m); }
   function show(m) { m.hidden = false; place(m); }
-  // 全部露出來：hidden 只在一回合裡有效（颱風登陸躲進門裡），下一回合開始、跳過、RESET 都收掉。
+  // 全部露出來：hidden 只在颱風放下劇本那一段有效（躲進門裡、comeOut 放出來），保險起見下一回合開始、跳過、RESET 都收掉。
   // walk（下一回合開始，計畫 3.8 Task 6）：躲著的人從藏起來的地方（門口）出來、用走路速度走回家（不閃）；
   // 不帶 walk（跳過、snap）只露出來，snap 自己會讓每個人瞬間到家
   function showAll({ walk = false } = {}) {
@@ -704,7 +704,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const api = {
     group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, relocate, flash, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
-    // visible：藏起來的人（颱風登陸躲進門裡）不算
+    // visible：藏起來的人（颱風放下時躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {
       let best = null, bestD = Infinity;
       for (const m of groups.get(key)?.members ?? []) { if (visible && m.hidden) continue; const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z); if (d < bestD) { bestD = d; best = m; } }

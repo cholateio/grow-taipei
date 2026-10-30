@@ -45,27 +45,19 @@ const fmt = c => `${c.item} up[${c.level}] += ${JSON.stringify(c.cond)}`;
 // 什麼都沒擋、或把正解擋光的子句直接淘汰；目標是剩 1 條（唯一正解 2026-10-31）。
 const SAMPLE = 200;
 function shortlist(spec, cands, full, k) {
-  const groups = ['cyber'].map(id => {
-    const all = full.filter(r => r.ending.id === id).map(r => r.order);
-    const step = Math.max(1, Math.floor(all.length / SAMPLE));
-    const sample = all.filter((_, i) => i % step === 0);
-    return { id, sample, scale: all.length / Math.max(1, sample.length) };
-  });
-  const total = groups.reduce((n, g) => n + g.sample.length, 0);
+  // 只剩一組（賽博的正解）：原本「賽博＋外星各一組」的外殼拿掉（2026-10-31 Task 5）
+  const all = full.filter(r => r.ending.id === 'cyber').map(r => r.order);
+  const step = Math.max(1, Math.floor(all.length / SAMPLE));
+  const sample = all.filter((_, i) => i % step === 0), scale = all.length / Math.max(1, sample.length);
   const ranked = [];
   for (const c of cands) {
     const next = withClause(spec, c);
-    let gap = 0, kept = 0, broken = false;
-    for (const g of groups) {
-      let left = 0;
-      for (const order of g.sample) {
-        try { const r = playOrder(order, next); if (r.maxCount === spec.ORDER.length && r.ending.id === g.id) left++; } catch { broken = true; break; }
-      }
-      if (broken || (g.sample.length && left === 0)) { broken = true; break; }
-      kept += left; gap += Math.abs(left * g.scale - 1);
+    let left = 0, broken = false;
+    for (const order of sample) {
+      try { const r = playOrder(order, next); if (r.maxCount === spec.ORDER.length && r.ending.id === 'cyber') left++; } catch { broken = true; break; }
     }
-    if (broken || kept === total) continue;
-    ranked.push({ c, gap });
+    if (broken || (sample.length && left === 0) || left === sample.length) continue;
+    ranked.push({ c, gap: Math.abs(left * scale - 1) });
   }
   ranked.sort((a, b) => a.gap - b.gap);
   return ranked.slice(0, k).map(r => r.c);

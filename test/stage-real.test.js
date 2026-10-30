@@ -12,7 +12,7 @@ installFakeDom();
 const { createStage } = await import('../src/actors/stage.js');
 const { createRoster } = await import('../src/show/roster.js');
 import { enumerate, stats } from '../src/solver/run.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const modules = await Promise.all(['landmarks', 'tower', 'milk', 'baseball', 'chip', 'rat', 'bulb', 'token', 'boba', 'typhoon'].map(m => import(`../src/actors/${m}.js`)));
 
 // 真模組跑完整一局（賽博與外星兩條解）再 RESET：發光登記表、小人、模型都要回到開局（審查 #1、#2）

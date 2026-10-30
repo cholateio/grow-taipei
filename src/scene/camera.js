@@ -44,8 +44,8 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
       if (flight) { flight.pos = pos; flight.target = target; } else go(pos, target, 0);
     },
     // 全景跟 101 頭頂高度 topY 走（§14.4）：在全景就重算——飛回全景途中只換終點、停在全景就照常飛 1000 ms 過去（玩家拖過就不搶；
-    // reduced-motion 照舊直接到位）。最終審稿 2：颱風登陸那回合 101 的劇本只剩回全景（indoorSettle），回合收尾的 focus('home', { skyline })
-    // 跑的時候鏡頭已經停在全景，原本直接到位就是一幀跳 4–6 公尺。
+    // reduced-motion 照舊直接到位）。最終審稿 2：（當時）颱風登陸那回合 101 的劇本只剩回全景（indoorSettle，唯一正解修正輪 1 拿掉了），
+    // 回合收尾的 focus('home', { skyline }) 跑的時候鏡頭已經停在全景，原本直接到位就是一幀跳 4–6 公尺；只要收尾時鏡頭停在全景就一樣。
     // 在平移／focus 只記下來，下次回全景才用。高度沒變什麼都不做
     setSkyline(topY) {
       const r = Math.max(0, topY - SKYLINE_FLOOR);

@@ -14,7 +14,7 @@ import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helper
 import { B } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 
 // 鏡頭（§13.1、計畫 3.8 Task 5）：照 order 瞬間演到 pred 那個事件，單獨 live 演；回傳這個事件的鏡頭軌跡（格子…、'home'）
 async function trailAt(h, order, pred) {
@@ -178,7 +178,7 @@ test('view: kids are a roster declaration; crate and yard are separate parts; sc
   }
   assert.ok(views[10]['milk.truck'].footprint, 'the truck blocks walkers');
 });
-test('scripts: every milk event in both solutions plays 3–5 s (◆ Lv7 / Lv10 ≤ 10 s), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
+test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 ≤ 10 s), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   const timing = {};
   for (const order of SOLUTIONS) {
@@ -223,7 +223,7 @@ test('lv10 live: the three festival kids walk in, the truck and boat appear, the
   }
 });
 
-// 入口點（§13.2、計畫 3.8 Task 5）：小學生從校門外靠中心格那側的邊上走進來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有少棒隊；兩條正解每一刻的真 footprint）；
+// 入口點（§13.2、計畫 3.8 Task 5）：小學生從校門外靠中心格那側的邊上走進來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有少棒隊；唯一正解每一刻的真 footprint）；
 // 鮮奶節的小孩各自從自己那格的邊上進來
 test('milk rosters enter walkable and ≥ 1.5 from every spot at every level (kids from the gate edge toward the centre cell)', async () => {
   const nav = createNav(), bad = [];
@@ -241,8 +241,8 @@ test('milk rosters enter walkable and ≥ 1.5 from every spot at every level (ki
   assert.deepEqual(bad, []);
 });
 
-// 鮮奶節的小孩（審稿第 1 輪）：每格的散步圈在兩條正解收尾時的真 footprint 下 ≥ 30% 走得到；10 秒內每個人都走動過（不會卡在建築裡不動）
-test('festival kids: every home\'s wander disk is ≥ 30% walkable at the end of both solutions, and every festival kid moves within 10 s', async () => {
+// 鮮奶節的小孩（審稿第 1 輪）：每格的散步圈在唯一正解收尾時的真 footprint 下 ≥ 30% 走得到；10 秒內每個人都走動過（不會卡在建築裡不動）
+test('festival kids: every home\'s wander disk is ≥ 30% walkable at the end of the solution, and every festival kid moves within 10 s', async () => {
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow();
     let s = engine.createState(spec);
@@ -278,7 +278,7 @@ test('the arch gate pillars block walkers (r 0.06 each); the passage between the
   }
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 milk 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：唯一正解每一個 milk 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof milk.visitSpot, 'function');

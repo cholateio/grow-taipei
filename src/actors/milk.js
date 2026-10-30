@@ -200,7 +200,7 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const kid = (ctx, i) => () => ctx.roster.members('milk.kids')[i] ?? null;
 const KIDS = [0, 1, 2];
 const allKids = c => c.roster.members('milk.kids');
-// 從入口（校門外靠中心格那側）放一個小學生出來；小孩這時躲在校舍裡（老鼠咬、颱風登陸）就沒有名冊可放，這拍跳過
+// 從入口（校門外靠中心格那側）放一個小學生出來；小孩這時躲在校舍裡（被老鼠咬的回合）就沒有名冊可放，這拍跳過
 function spawnKid(ctx) {
   const beat = ctx.B.spawn('milk.kids', KID_ENTRY), start = beat.start;
   beat.start = c => (view(c.stage.lv, c.stage.flags, c.stage.meta)['milk.kids'] ? start(c) : false);

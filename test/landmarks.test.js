@@ -38,7 +38,7 @@ test('islanders: n 4, one wander home per cell on the four main cells that are n
   }
 });
 // 審查重點 4：老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時，溫泉客站池邊、老鼠在池裡，10 秒內每一對都 ≥ 0.25。
-// 兩條正解（其實所有放置順序）都到不了泡溫泉（老鼠 3 時代幣都已 ≥2），所以用合成的老鼠事件直接演到那一刻
+// 唯一正解（其實所有放置順序）都到不了泡溫泉（老鼠 3 時代幣都已 ≥2），所以用合成的老鼠事件直接演到那一刻
 test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays ≥ 0.25 apart over 10 s (review focus 4)', async () => {
   const { headlessShow } = await import('./helpers/show.js'), { ratMode } = await import('../src/actors/rat.js');
   const { show, run } = await headlessShow();
@@ -54,8 +54,8 @@ test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays �
   assert.ok(min >= 0.25, `closest bather–rat ${min.toFixed(2)}`);
   bathers().forEach((b, i) => { const s = landmarks.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots[i]; assert.ok(Math.hypot(b.pos.x - s.x, b.pos.z - s.z) < 0.1, `bather ${i} on the pool edge`); });
 });
-// 島民、溫泉客的入口（預設：家那格邊上離家最遠的可走點）兩條正解每一刻都走得到、離站位 ≥ 1.5
-test('islander and bather entries are walkable and ≥ 1.5 from their homes through both solutions', async () => {
+// 島民、溫泉客的入口（預設：家那格邊上離家最遠的可走點）唯一正解每一刻都走得到、離站位 ≥ 1.5
+test('islander and bather entries are walkable and ≥ 1.5 from their homes through the solution', async () => {
   const spec = await import('../src/rules/spec.js'), { enumerate, stats } = await import('../src/solver/run.js'), { entriesThroughSolutions } = await import('./helpers/show.js');
   assert.deepEqual(await entriesThroughSolutions(landmarks, stats(enumerate(spec), spec).full.map(r => r.order)), []);
 });

@@ -222,7 +222,7 @@ async function liveAt(h, order, pred) {
 const isChip = to => e => e.kind === 'grow' && e.item === 'chip' && e.to === to;
 // 鏡頭軌跡（含回合最後的 focus('home')）
 const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home'], 9: ['home', 'home', 'home'] };
-test('scripts: every chip event in both solutions plays 3–5 s (◆ Lv9 6–10 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
+test('scripts: every chip event in the solution plays 3–5 s (◆ Lv9 6–10 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -384,7 +384,7 @@ test('Lv9 live: the standby shield rises and stays as a faint outline; 101 pulse
   assert.ok(show.stage.partKeys().includes('tower.antenna'));
 });
 
-// 入口點（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有老鼠；兩條正解每一刻的真 footprint）
+// 入口點（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有老鼠；唯一正解每一刻的真 footprint）
 test('chip rosters enter from the 101 site and from outside the factory on the bridge side, walkable and ≥ 1.5 from every spot', async () => {
   const nav = createNav(), bad = [];
   for (let n = 1; n <= 9; n++) for (const rat of [0, 2]) {
@@ -425,7 +425,7 @@ test('NEST_WATCH stays ≥ 0.4 from every bridge end and from the electrician\'s
   }
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 chip 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：唯一正解每一個 chip 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof chip.visitSpot, 'function');

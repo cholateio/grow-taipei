@@ -33,7 +33,7 @@
 //   pace 看 mark 的 info.miss 把撲空當獨立一段量（≤ MISS_CAP）。
 // 颱風放下（唯一正解 2026-10-31 修正輪 1 裁決）：舊的「颱風登陸之後同一回合只演 [apply, LEVEL UP]（indoors）」拿掉了——
 //   躲雨是颱風放下劇本裡的一小段（跑到門口躲一下、又走出來淋雨），同一回合後面的事件照一般事件演（人看得到、雨照下）。
-import { foldEvent } from '../rules/engine.js';
+import { foldEvent, lockFlags } from '../rules/engine.js';
 import { cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together, CAUSE_FLASH } from './beats.js';
@@ -44,12 +44,7 @@ export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁
 // 起因閃一下（見檔頭）：閃幾秒（beats.js 的 B.flash 預設同一個數）、閃哪個零件（每個演員模組的本體都是 <id>.main）
 export { CAUSE_FLASH };
 export const CAUSE_HELPER_KEY = id => `${id}.main`;
-// 規則表裡會把物品鎖住的那幾條（停電鎖燈泡、淹水鎖代幣）：{ 被鎖的物品: 同一條立的旗標 }。舞台的 view 只有 lv 與 flags、看不到 locked，
-// 旗標立了就當那個物品鎖住了——被鎖住的幫手不當起因閃（淹水的捷運站還有 token.main，是游泳池；最終修正 2）
-function lockFlags(spec) {
-  const acts = [...Object.values(spec?.ITEMS ?? {}).flatMap(it => [...Object.values(it.onLevel ?? {}).flat(), ...(it.fx ?? []), ...(it.stall ?? [])]), ...(spec?.AFTER_TURN ?? [])];
-  return Object.fromEntries(acts.filter(a => a?.lock && a.flag?.name).map(a => [a.lock, a.flag.name]));
-}
+// 被鎖住的幫手不當起因閃（淹水的捷運站還有 token.main，是游泳池；最終修正 2）：鎖↔旗標的對照是 engine.js 的 lockFlags（stage.js 也用）
 // 起因段（mark 的 info.cause 到同一個事件下一個 mark：空拍之後平移到幫手 FOCUS_BEAT、閃白 CAUSE_FLASH、平移回目標 FOCUS_BEAT）的上限，
 // pace 與測試單獨量（扣掉空拍）；不算進那一級劇本與 ◆ 的秒數
 export const CAUSE_CAP = 2.0;

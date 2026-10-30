@@ -111,6 +111,19 @@ export function landsTyphoon(e) {
   return e.kind === 'placed' && e.item === 'typhoon';
 }
 
+// 規則表裡會把物品鎖住的那幾條：{ 被鎖的物品: 同一條立的旗標 }（停電→燈泡、淹水→代幣、巨蛋淹水→棒球）。
+// 演出層只有 lv 與 flags、看不到 locked，旗標立了就當那個物品鎖住了：turn.js（被鎖住的幫手不當起因閃）與 stage.js（老鼠的 trouble）共用
+// （2026-10-31 Task 5：兩邊原本各寫一份）。每份 spec 算一次
+const LOCK_FLAGS = new WeakMap();
+export function lockFlags(spec = defaultSpec) {
+  if (!spec) return {};
+  if (!LOCK_FLAGS.has(spec)) {
+    const acts = [...Object.values(spec.ITEMS ?? {}).flatMap(it => [...Object.values(it.onLevel ?? {}).flat(), ...(it.fx ?? []), ...(it.stall ?? [])]), ...(spec.AFTER_TURN ?? [])];
+    LOCK_FLAGS.set(spec, Object.fromEntries(acts.filter(a => a?.lock && a.flag?.name).map(a => [a.lock, a.flag.name])));
+  }
+  return LOCK_FLAGS.get(spec);
+}
+
 export const isPlaced = (state, id) => state.lv[id] > 0;
 export const isComplete = state => Object.values(state.lv).every(n => n > 0);
 export const isAllMax = (state, spec = defaultSpec) => spec.ORDER.every(id => state.lv[id] === spec.ITEMS[id].max);

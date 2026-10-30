@@ -1,9 +1,9 @@
 // test/chain.test.js：離島鏈（物品 v2 §5）整局 live 演完——燈泡 Lv7 風車轉、燈塔亮 → 燈泡 Lv8 海底電纜
 // → 晶片 Lv6 通電 → Lv7 天線 → Lv8 測試閃三下 → Lv9 待命，每個零件在對的回合出現（不早、不晚）；結局接點（§8）讀新的狀態。
-// 回到 GROW（2026-10-29）之後兩條正解的晶片 6 都跳級、跟燈泡 7、8 同一回合而且排在前面：電纜跟著晶片那個事件亮著出現（不再先暗著）。
-// 選擇帶動升級：燈泡 up[7] 要高鐵（代幣 ≥6），代幣 Lv7 通車到離島不一定在前面（賽博正解第 6 回合燈泡 7、第 7 回合代幣 7）——
+// 回到 GROW（2026-10-29）之後晶片 6 是跳級：唯一正解（2026-10-31）第 7 回合晶片 6、第 8 回合燈泡 7、8——電纜跟著晶片那個事件亮著出現（不再先暗著）。
+// 代幣 Lv7 通車到離島與燈泡 Lv7 誰先到不一定（正解第 7 回合代幣 7、第 8 回合燈泡 7）——
 // 風車島的支線在兩者先到的那個事件長出來（燈泡 Lv7 自己鋪），遊樂場島的支線跟代幣 Lv7。
-// 兩條正解各演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂、
+// 唯一正解演一次（seed 21、真的鏡頭 rig），同一趟也查共用不變式（gameInvariants：不穿牆、不瞬移、每回合回全景看得到 101 頭頂、
 // 每個 LEVEL UP 與泡泡至少一半的時間在畫面裡）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -81,10 +81,10 @@ async function playChain(order) {
 let played = null;
 const playBoth = () => (played ??= (async () => { const out = []; for (const order of SOLUTIONS) out.push(await playChain(order)); return out; })());
 
-// 回到 GROW（2026-10-29 設計 §3.2）：晶片 6 是跳級（變電所：燈泡 ≥6），同一回合照 ORDER 晶片排在燈泡前面——兩條正解晶片 6 都在燈泡 7、8
-// 之前（賽博第 7 回合、外星第 8 回合，同一回合），電纜跟著晶片那個事件亮著出現。所以不再查「燈泡 8 → 晶片 6」的先後，只查兩條各自照順序
-test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 → 9 each in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
-  let jumped8 = false;   // 至少一條正解的晶片 Lv8 是跳級的第二級（◆ 照演完整劇本的那個情況真的有量到）
+// 回到 GROW（2026-10-29 設計 §3.2）：晶片 6 是跳級（變電所：燈泡 ≥6），同一回合照 ORDER 晶片排在燈泡前面——正解晶片 6 在燈泡 7、8
+// 之前（第 7 回合；燈泡 7、8 在第 8 回合），電纜跟著晶片那個事件亮著出現。所以不再查「燈泡 8 → 晶片 6」的先後，只查各自照順序
+test('island chain, the solution live: bulb 7 → 8 and chip 6 → 7 → 8 → 9 each in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
+  let jumped8 = false;   // 正解的晶片 Lv8 是跳級的第二級（◆ 照演完整劇本的那個情況真的有量到）
   for (const [n, { turns, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), at = (id, lv) => turns.findIndex(t => t.lv[id] >= lv);
     // 事件順序：鏈上每一節的 grow 都在，照順序
@@ -111,8 +111,8 @@ test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 →
     // 晶片 Lv7 天線；Lv8 那回合測試閃三下（其他回合不閃）、演完收起來；Lv9 起罩子常駐
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
     assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
-    // 選擇帶動升級裁決 R6：Lv8 標 ◆，演完整的測試、閃三下；其他回合都不閃。兩條正解的晶片 8 都在 ◆ 跟 ◆ 之間的跳級裡（賽博 7 → 8、外星 8 → 9），
-    // Task 6a 修正輪裁決：這種跳級不合成，兩級各演自己的 ◆——外星也看得到測試
+    // 選擇帶動升級裁決 R6：Lv8 標 ◆，演完整的測試、閃三下；其他回合都不閃。正解的晶片 8 在 ◆ 跟 ◆ 之間的跳級裡（第 8 回合 7 → 8），
+    // Task 6a 修正輪裁決：這種跳級不合成，兩級各演自己的 ◆
     if (jumps.has('chip8')) jumped8 = true;
     turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
     assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
@@ -141,7 +141,7 @@ test('island chain, event by event: each chain part first appears with its own e
     }
     const lit = first(x => x.cableLit);
     assert.equal(events[lit]?.e, own('chip6'), `${name}: cable lit after ${events[lit]?.e}`); assert.ok(events.slice(lit).every(x => x.cableLit));
-    // 兩條正解晶片 6 都在燈泡 8 之前（見上一個測試）：電纜第一次出現就是亮的，沒有暗著等通電的那段
+    // 正解晶片 6 在燈泡 8 之前（見上一個測試）：電纜第一次出現就是亮的，沒有暗著等通電的那段
     assert.ok(lit >= 0 && lit < idx(own('bulb8')), `${name}: chip 6 lights the cable before bulb 8 (${lit}, ${idx(own('bulb8'))})`);
   }
 });
@@ -164,7 +164,7 @@ test('the solution ends on the shield: every item MAX, no disaster flag, the cyb
 
 // 最終章（選擇帶動升級 §4）：最後一輪是一般回合（沒有倒數字），終局回合演警告＋矽盾擋下＋各自的尾聲，演完回全景（turnEnd 查）、
 // 劇本手上沒人；終局中途拖過鏡頭也一樣（不丟錯）。不穿牆、不瞬移、字在畫面裡由下面兩個測試查（不變式掛到終局回合演完）
-test('both solutions live through the finale: one plain closing turn, finale turn [warning, missile, epilogue], game invariants clean, ends on the overview; a camera grab during the finale does not break it', async () => {
+test('the solution live through the finale: one plain closing turn, finale turn [warning, missile, epilogue], game invariants clean, ends on the overview; a camera grab during the finale does not break it', async () => {
   for (const [n, { finale, inv, turns }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
     assert.equal(turns.length, spec.ORDER.length + spec.CLOSING_TURNS, `${name}: 8 placements + ${spec.CLOSING_TURNS} closing turn`);
@@ -179,7 +179,7 @@ test('both solutions live through the finale: one plain closing turn, finale tur
   }
 });
 
-test('both solutions live: nobody stays inside a building > 1.5 s, no daily member teleports, no scripted member relocates without a blink, every turn ends at the overview with the 101 top in frame', async () => {
+test('the solution live: nobody stays inside a building > 1.5 s, no daily member teleports, no scripted member relocates without a blink, every turn ends at the overview with the 101 top in frame', async () => {
   for (const { inv } of await playBoth()) {
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
@@ -190,14 +190,14 @@ test('both solutions live: nobody stays inside a building > 1.5 s, no daily memb
 
 // 審稿（計畫 4 最後一輪）：演出的那一刻要在畫面裡——颱風登陸後的 LEVEL UP、101 頭上的「恭喜畢業」「世界珍奶節」、代幣 Lv8 站上的 LEVEL UP、
 // 老鼠撞攤車時老闆的 ！，鏡頭都要跟上（gameInvariants 的 labels：活著的時間至少一半投影在 NDC [-1, 1] 裡）
-test('both solutions live: every LEVEL UP label and bubble is on screen for at least half its life', async () => {
+test('the solution live: every LEVEL UP label and bubble is on screen for at least half its life', async () => {
   assert.deepEqual((await playBoth()).flatMap(({ inv }) => inv.labels), []);
 });
 
-// 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）：兩條正解沒有任何一段拜訪（mark 沒有 info.visit）；
+// 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）：唯一正解沒有任何一段拜訪（mark 沒有 info.visit）；
 // 撲空（設計 §5）：正解幾乎沒有 wait，一樣每回合 ≤ MISS_PER_TURN 段、每段 ≤ MISS_CAP（事件秒數扣掉物品之間的空拍）；
 // 放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
-test('both solutions: no grow plays a visit; misses ≤ 2 per turn and ≤ 3 s; turns within 60 + 8 × (◆ − 1)', async () => {
+test('the solution: no grow plays a visit; misses ≤ 2 per turn and ≤ 3 s; turns within 60 + 8 × (◆ − 1)', async () => {
   for (const [n, { paced }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
     for (const [i, { marks, secs }] of paced.entries()) {
@@ -301,7 +301,7 @@ for (const outcome of ['hit', 'deflect']) {
         kinds.add(kind);
         if (g.w.item === 'milk' && g.w.for[0] === 'baseball') milkLot.push(`turn ${i + 1}: ${kind}`);
       }
-      // 回合上限（設計 §6：60 秒上限在兩條正解與 EXAMPLE 上驗）：60 + 8 × max(0, ◆ − 1)
+      // 回合上限（設計 §6：60 秒上限在唯一正解與 EXAMPLE 上驗）：60 + 8 × max(0, ◆ − 1)
       assert.ok(secs <= 60 + 8 * Math.max(0, keys - 1), `${what}: ${secs.toFixed(1)} s (◆ ${keys})`);
     }
     console.log(`# EXAMPLE.${outcome}: ${shown} misses played (${[...kinds].join(', ')}); milk<baseball: ${milkLot.join(', ') || 'none'}`);

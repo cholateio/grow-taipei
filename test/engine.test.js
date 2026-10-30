@@ -304,7 +304,7 @@ test('delay[n]: while its condition holds the level waits one extra turn, otherw
   assert.equal(advance(late.state, hop).state.lv.d, 3, 'and then comes');
 });
 
-// 真的 spec（物品 v2）：颱風賴在大巨蛋、老鼠放下就咬、老鼠分岔看晶片
+// 真的 spec（唯一正解 2026-10-31）：颱風四站（放下、車站、巨蛋、放晴）與三個檢查的時機；放下後的反應先於成長掃描
 import * as real from '../src/rules/spec.js';
 const playReal = (order, closing = 0) => {
   let s = createState(real); const lvs = [];
@@ -497,4 +497,12 @@ test('via lists only the helpers that satisfied the condition: or(min chip 3, mi
   const jumps = r.events.filter(e => e.kind === 'grow' && e.item === 'p');
   assert.deepEqual(jumps.map(e => [e.to, !!e.jump]), [[3, false], [4, true]]);
   for (const e of jumps) assert.deepEqual(e.via, ['token', 'milk'], `jump event to ${e.to}: the first level's helpers first, then the second level's`);
+});
+
+// 鎖↔旗標的對照（2026-10-31 Task 5：turn.js 的起因閃與 stage.js 的老鼠 trouble 共用 engine.lockFlags）：照規則資料算，真的 spec 是這三條
+test('lockFlags(spec) reads the lock ↔ flag pairs from the rules: blackout locks the bulb, the flood the token, the dome flood the baseball', async () => {
+  const { lockFlags } = await import('../src/rules/engine.js');
+  assert.deepEqual(lockFlags(real), { bulb: 'blackout', token: 'flooded', baseball: 'domeFlood' });
+  assert.equal(lockFlags(real), lockFlags(real), 'computed once per spec');
+  assert.deepEqual(lockFlags({ ITEMS: { a: { fx: [{ lock: 'b', flag: { name: 'x' } }] } } }), { b: 'x' });
 });

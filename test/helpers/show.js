@@ -93,7 +93,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
 }
 
 // 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），
-// 單獨測那一級自己的劇本要當一般事件。計畫 5b 之後跳級很多（例：燈泡 4／6／8、晶片 4、珍奶 4、棒球 7 在兩條正解裡都是跳級的第二級），正式演出時不演劇本；
+// 單獨測那一級自己的劇本要當一般事件。計畫 5b 之後跳級很多（例：燈泡 4／6／8、晶片 4、珍奶 4、棒球 7 在唯一正解裡都是跳級的第二級），正式演出時不演劇本；
 // 不是正解的放法（+1 一級一級走到這級）才會演，所以單獨測。
 // via 也拿掉：via 是演出層看的原因（計畫 6 的拜訪 2026-10-29 拿掉了），不算進那一級自己劇本的秒數——單獨測一級的劇本就只演劇本
 export const solo = ({ jump, via, ...e }) => e;
@@ -128,7 +128,7 @@ export function towerCrossings(order) {
   return { totals, at };
 }
 
-// 兩條正解（放置 + 最後一輪）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）
+// 唯一正解（放置 + 最後一輪）每個事件瞬間演完後，用舞台當下的 footprint（show.nav）查 mod 的名冊入口（entryProblems）
 export async function entriesThroughSolutions(mod, orders) {
   const { entryProblems } = await import('./actors.js');
   const { show, run } = await headlessShow(), bad = [];
@@ -270,7 +270,7 @@ export async function playLive(order, { seed = 21 } = {}) {
   return out;
 }
 
-// 拜訪點（計畫 6 設計 §4、§5；拜訪本身 2026-10-29 拿掉了，只剩撲空用它）：照兩條正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
+// 拜訪點（計畫 6 設計 §4、§5；拜訪本身 2026-10-29 拿掉了，只剩撲空用它）：照唯一正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
 // 在演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）問一次
 // visitSpot(n, { lv, flags })——spot 要有 y（＝那一格的 cellTop）、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
 // 拉回來不超過 tol。回傳 { bad, seen }：seen 是問到非 null 的「級」（排序過的數字陣列），測試寫死，少一級、多一級都看得到

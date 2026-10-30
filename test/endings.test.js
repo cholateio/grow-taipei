@@ -21,6 +21,8 @@ test('all max with the cyber branch is cyber, extras still listed; alien is a ba
   assert.deepEqual(resolve(full({}, { ratBranch: 'cyber', milkExpired: true }), spec).extras, ['milkExpired']);
   const a = resolve(full({}, { ratBranch: 'alien' }), spec);
   assert.equal(a.id, 'alien'); assert.equal(ENDINGS.alien.kind, 'bad'); assert.equal(ENDINGS.alien.title, '變異鼠稱王');
+  // 標題卡那行（2026-10-31 Task 5）：外星壞局不演母艦尾聲，那行講畫面上看得到的——戴王冠的變異鼠、石堆島的綠光圈
+  assert.equal(ENDINGS.alien.line, '變異老鼠戴上王冠，石堆島亮起綠光'); assert.doesNotMatch(ENDINGS.alien.line, /母艦/);
   assert.equal(resolve(full({ lv: lv({ chip: 4, typhoon: 4 }) }, { ratBranch: 'alien' }), spec).id, 'alien', 'alien titles before the shield');
 });
 test('bad ending priority follows design §4.5: concrete disasters first, deflect and shieldDown last', () => {
@@ -81,8 +83,8 @@ test('typhoon placed 8th is still over the station after the closing turn: the m
   assert.equal(sol.lv.typhoon, 4); assert.equal(missile(sol, spec), 'shield');
 });
 
-// 物品 v2 §8（任務 11）：結局讀新的狀態——兩條正解（引擎演完放置 + 倒數三回合）都是晶片 9 矽盾擋下、全 MAX、沒有災難旗標，
-// 外星正解（ratBranch alien）是外星結局、另一條是賽博；矽盾只看晶片 9：晶片停在 8（測過、沒待命）的一局是矽盾未就緒
+// 物品 v2 §8（任務 11）→ 唯一正解（2026-10-31 §4.5）：結局讀新的狀態——唯一正解（引擎演完放置 + 最後一輪）是晶片 9 矽盾擋下、全 MAX、
+// 沒有災難旗標、老鼠分岔 cyber ⇒ 賽博；外星分岔是壞結局「變異鼠稱王」。矽盾只看晶片 9：晶片停在 8（測過、沒待命）的一局是矽盾未就緒
 import { enumerate, stats } from '../src/solver/run.js';
 import { advance } from '../src/rules/engine.js';
 const playOut = order => {

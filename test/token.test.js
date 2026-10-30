@@ -263,7 +263,7 @@ test('orbit headings turn smoothly: ≤ 0.2 rad per frame through ramp → climb
 const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
 // 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
 const want = (to, order) => (to === 7 ? [String(satCell(islandOf7(order))), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
-test('scripts: every token event in both solutions plays 3–5 s (◆ Lv7 / Lv10 6–10 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
+test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 / Lv10 6–10 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -674,7 +674,7 @@ test('the bigger train (CAR_H 0.42) clears every footprint, bridge deck and isla
   assert.deepEqual([...bad].slice(0, 10), [], `${bad.size} samples hit something`);
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 token 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：唯一正解每一個 token 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof token.visitSpot, 'function');

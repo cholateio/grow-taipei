@@ -17,7 +17,7 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const AT = anchorWorld('baseball'), CELL = cellOf('baseball'), GATE = offset(AT, 0, 1.1);
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
@@ -149,7 +149,7 @@ function checkBall({ show, bubblesLog }, e, secs, n, timing) {
   const v = baseball.view(show.stage.lv, show.stage.flags);
   for (const k of ['baseball.players', 'baseball.crowd', 'baseball.riders', 'baseball.lawn']) assert.equal(show.roster.members(k).length, v[k]?.n ?? 0, `${what} ${k}`);
 }
-test('scripts: every baseball level in both solutions plays 3–5 s (◆ Lv3/Lv8 6–10 s whole), ends with LEVEL UP on baseball, everyone home', async () => {
+test('scripts: every baseball level in the solution plays 3–5 s (◆ Lv3/Lv8 6–10 s whole), ends with LEVEL UP on baseball, everyone home', async () => {
   const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -338,7 +338,7 @@ test('the Lv2 turn plays whole and live: everyone ends at home', async () => {
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
 });
 
-// ── 入口點（§13.2）：球員從看台後方的格邊、觀眾（含 Lv8 坐新線來的）從捷運站前走來；走得到、離站位 ≥ 1.5（每一級、鼠災與否；兩條正解每一刻）──
+// ── 入口點（§13.2）：球員從看台後方的格邊、觀眾（含 Lv8 坐新線來的）從捷運站前走來；走得到、離站位 ≥ 1.5（每一級、鼠災與否；唯一正解每一刻）──
 test('baseball rosters: players enter from behind the stands, the crowd from the station platform; walkable and ≥ 1.5 from every spot', async () => {
   const c = axialToWorld(...CELL), PLATFORM = offset(anchorWorld('token'), 0.9, 0.9);
   for (const p of baseball.PLAYER_ENTRY) {
@@ -411,7 +411,7 @@ test('after the Lv7 and Lv8 scripts the baseball cell never holds more than 8 vi
   }
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 baseball 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：唯一正解每一個 baseball 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof baseball.visitSpot, 'function');

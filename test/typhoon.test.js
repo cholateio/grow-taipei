@@ -346,6 +346,34 @@ test('skip during the door walks: everyone home and visible, world snapped to th
   const [w, instant] = worldLog.at(-1);
   assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.storm, 1);
 });
+// 躲好之後才跳過（2026-10-31 Task 5）：大家都躲進門裡（躲 HUDDLE 秒的那段）才按跳過——一樣全部露出來、回日常，颱風在 Lv1
+test('skip after everyone has hidden: everyone home and visible, typhoon at Lv1', async () => {
+  const h = await headlessShow(), { show, run } = h;
+  const evs = await turnWith(run, SOLUTION, landing);
+  const p = show.turn(evs);
+  let t = 0;
+  const hiding = () => people(show).some(m => m.hidden) && !people(show).some(m => m.mode === 'script' && m.walking);
+  while (!hiding()) { show.update(1 / 30, t); t += 1 / 30; assert.ok(t < 20, 'everyone gets to a door'); }
+  show.skip(); await p;
+  for (const k of show.roster.keys()) for (const m of show.roster.members(k)) { assert.equal(m.mode, 'home', k); assert.equal(m.hidden, false, k); }
+  assert.equal(show.stage.lv.typhoon, 1);
+});
+// comeOut 只放回主島那批（2026-10-31 Task 5）：放下那段劇本 home() 過的人，演到 ！ 那一拍都在主島格上；衛星島上的人不被叫、也不被放回
+//   規則下颱風放下之前衛星島上不會有人（守塔人要燈泡 7、遊樂場小孩要代幣 8、森林島觀光客要珍奶 5，都在颱風之後）——
+//   颱風最後才放的那局（燈泡 6）先瞬間演一個合成的燈泡 6 → 7（守塔人上燈塔島），再演放下那回合
+test('placed: the come-out releases only the main-island people it sent to the doors, never the satellite islanders', async () => {
+  const h = await headlessShow(), { show, run } = h;
+  const evs = await turnWith(run, ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'rat', 'typhoon'], landing);
+  await run([{ kind: 'grow', item: 'bulb', from: 6, to: 7, story: spec.STORIES.grow.bulb[7] }, { kind: 'settle' }], { instant: true });
+  assert.ok(people(show).some(m => !cellAt(m.pos.x, m.pos.z)), 'precondition: somebody on a satellite');
+  const home = show.roster.home, released = [];
+  let inPlaced = false;
+  show.roster.home = (m, o) => { if (inPlaced) released.push({ m, at: { ...m.pos } }); return home(m, o); };
+  try { await run(evs, { onMark: x => { inPlaced = landing(x); } }); } finally { show.roster.home = home; }
+  assert.ok(released.length >= 3, `${released.length} released`);
+  const off = released.filter(({ at }) => !cellAt(at.x, at.z)).map(({ m, at }) => `${m.key}#${m.i} (${at.x.toFixed(2)}, ${at.z.toFixed(2)})`);
+  assert.deepEqual(off, [], 'released off the main island');
+});
 test('placed live: the camera frames the cloud next to 101 (typhoon anchor) at zoom 0.8, then home', async () => {
   const h = await headlessShow(); let n0 = 0, opts = null;
   await playItem(h.show, (evs, o) => { if (!o?.instant) n0 = h.rig.log.length; return h.run(evs, o); }, SOLUTION, 'typhoon', e => {
@@ -416,7 +444,7 @@ test('landing turn with the camera dragged mid-turn: no home before the turn-end
 
 
 // 正解整局 live（真的鏡頭 rig）：共用不變式乾淨（不穿牆、不瞬移、換位置閃白、回全景、標籤在畫面裡）；颱風四段——◆ 放下與放晴 live ≤ 8 s，
-// 移站劇本 ≤ 4.5 s；第 6 回合放下之後的事件 indoors，第 7 回合（Lv2）之後的事件照常（有走路、有泡泡）
+// 移站劇本 ≤ 4.5 s；第 6 回合放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）
 test('the solution live with the real rig: invariants clean; ◆ placed / Lv4 ≤ 8 s live, Lv2 / Lv3 scripts ≤ 4.5 s', async () => {
   const cam = overviewRig(), { show, run, scriptElapsed } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
   let s = engine.createState(spec);

@@ -1,4 +1,4 @@
-// test/budget.test.js：人數預算（使用者要求，計畫 4 任務 12、裁決 R16）——兩條正解整局 live 演完，每回合演完那一刻、再放 5 秒日常之後，
+// test/budget.test.js：人數預算（使用者要求，計畫 4 任務 12、裁決 R16）——唯一正解整局 live 演完，每回合演完那一刻、再放 5 秒日常之後，
 // 露出來的名冊成員（所有名冊；老鼠不算，牠們很小）全島 ≤ 30、任何一格主島格 ≤ 8。
 // 最終章（計畫 5 任務 8；選擇帶動升級改版）：最後一輪照一般回合演，之後演終局回合
 // （finaleStep：警告——全島抬頭看紅光——＋飛彈＋尾聲）多一個點——賽博尾聲的十隻機器鼠站在黑塔屋頂上（rat.pack，本來就不算人）。
@@ -16,7 +16,7 @@ import { finaleStep, EXAMPLE } from './helpers/endings.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const TOTAL_MAX = 30, CELL_MAX = 8, SMALL = ['rat.pack'];
 // 每格上限的例外（Task 6a 修正輪，控制者裁決）：球場格（巨蛋，最大的一格）11——棒球 Lv5 起、鮮奶 ≥6 時球員 2＋少棒隊小孩 3＋觀眾 4＋草皮觀眾 1
-// 是刻意的場面（回到 GROW 之後兩條正解第 5 回合正是這樣），再留一個路過的人；其他格照舊 8，不是整體放寬
+// 是刻意的場面（回到 GROW 之後正解第 5 回合正是這樣），再留一個路過的人；其他格照舊 8，不是整體放寬
 // 11 剛好是量到的最高（外星第 5 回合結束那一刻：這 10 人＋路過的電工）；再多一個就是真的超過，不是這個場面
 const CELL_MAX_AT = { [String(cellOf('baseball'))]: 11 }, cellMax = cell => CELL_MAX_AT[cell] ?? CELL_MAX;
 const MAIN_REACH = Math.sqrt(3) * SPACING + R;   // 主島最外圈格子的外緣：橋上的人算主島，再外面是離島
@@ -36,7 +36,7 @@ function census(roster) {
   return out;
 }
 
-test('people budget: every turn end of both solutions, the finale turn included (and 5 s later), shows ≤ 30 roster members, ≤ 8 in any main cell, ≤ 11 in the dome cell (rats excluded)', async () => {
+test('people budget: every turn end of the solution, the finale turn included (and 5 s later), shows ≤ 30 roster members, ≤ 8 in any main cell, ≤ 11 in the dome cell (rats excluded)', async () => {
   const bad = [], peak = { total: 0, cell: 0, away: 0 }, pops = [];
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow(), inv = gameInvariants(show);   // 同一趟也查換位置一定閃白（裁決 R3）

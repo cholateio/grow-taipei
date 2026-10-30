@@ -4,8 +4,8 @@ import { isAllMax } from './engine.js';
 
 export const ENDINGS = {
   cyber: { id: 'cyber', title: '賽博龐克台北', kind: 'true', line: '矽盾擋下飛彈，飛天跑車停上 101 屋頂' },
-  // 2026-10-31：外星改成壞結局（畫面留著：變異鼠加冕＋UFO，不演母艦尾聲）
-  alien: { id: 'alien', title: '變異鼠稱王', kind: 'bad', line: '變異老鼠戴上王冠，101 變成母艦' },
+  // 2026-10-31：外星改成壞結局（畫面留著：變異鼠加冕＋UFO、石堆島綠光圈，不演母艦尾聲——標題卡那行也不再提母艦）
+  alien: { id: 'alien', title: '變異鼠稱王', kind: 'bad', line: '變異老鼠戴上王冠，石堆島亮起綠光' },
   blackout: { id: 'blackout', title: '大停電', kind: 'bad', line: '全島黑掉，只剩 101 一盞紅燈在閃' },
   flood: { id: 'flood', title: '捷運淹水', kind: 'bad', line: '車站變游泳池，大家划船上班' },
   domeFlood: { id: 'domeFlood', title: '大巨蛋淹水', kind: 'bad', line: '球場變游泳池，球員坐在屋頂釣魚' },

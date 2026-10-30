@@ -6,7 +6,7 @@
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
 import { anchorWorld, frontOf } from './anchors.js';
-import { foldEvent } from '../rules/engine.js';
+import { foldEvent, lockFlags } from '../rules/engine.js';
 import { cellAt } from '../scene/hex.js';
 
 export function diffParts(prev, next) {
@@ -23,20 +23,11 @@ const WIDE = 2.4;   // 自動 footprint：水平邊長超過 WIDE 的不算（�
 // 老鼠咬鮮奶（§8.6 的反應）：鮮奶因老鼠掉級的那個事件
 export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause === 'rat' && e.delta.to < e.delta.from;
 
-// 老鼠當指標（唯一正解 §5.2）：這回合出問題的物品。照 ORDER 第一個被鎖住的（鎖的旗標照規則資料：停電→燈泡、淹水→代幣、
+// 老鼠當指標（唯一正解 §5.2）：這回合出問題的物品。照 ORDER 第一個被鎖住的（鎖的旗標照規則資料 engine.lockFlags：停電→燈泡、淹水→代幣、
 // 巨蛋淹水→棒球）；沒有就這回合 wait 事件裡第一個等幫手的物品（老鼠自己除外）；都沒有就 null
-const lockFlags = new WeakMap();
-function locksOf(spec) {
-  if (!lockFlags.has(spec)) {
-    const map = {};
-    for (const it of Object.values(spec.ITEMS)) for (const a of [...(it.fx ?? []), ...Object.values(it.onLevel ?? {}).flat()]) if (a.lock && a.flag) map[a.lock] = a.flag.name;
-    lockFlags.set(spec, map);
-  }
-  return lockFlags.get(spec);
-}
 export function troubleOf(lv, flags, waits, spec) {
-  const locks = locksOf(spec);
-  const locked = spec.ORDER.find(id => locks[id] && flags[locks[id]] && lv[id] > 0);
+  const locks = lockFlags(spec);
+  const locked = spec.ORDER.find(id => locks[id] && flags[locks[id]]);   // 鎖的旗標只在那個物品放下了才會立（規則：在場才檢查），不用再看 lv
   return locked ?? waits?.find(w => w.item !== 'rat')?.item ?? null;
 }
 // 出問題那棟的門口：那個物品這一級建築的正面（visitSpot 往鏡頭側走 r，同撲空的 door，不落 nav——老鼠的家用它當散步中心）；

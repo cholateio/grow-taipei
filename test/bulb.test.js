@@ -65,7 +65,7 @@ test('lv4 opens a second night-market stall beside the first with a neon sign; l
   }
 });
 
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const near = (a, b, d = 1e-9) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 
 test('view: posts are one part, heads are one part per lighting stop in road order, the electrician is a vest roster patrolling ROAD', () => {
@@ -179,7 +179,7 @@ function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
   assert.equal(onWindmill(els[0].pos), to >= 7, `${what} electrician on the windmill island: ${JSON.stringify(els[0].pos)}`);
   for (const m of show.roster.members('landmarks.islanders')) assert.equal(m.mode, 'home', `${what} islanders`);
 }
-test('scripts: every bulb level in both solutions plays within its budget (3–5 s; Lv2 ≤ 8; ◆ Lv7/Lv9 6–10 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
+test('scripts: every bulb level in the solution plays within its budget (3–5 s; Lv2 ≤ 8; ◆ Lv7/Lv9 6–10 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
@@ -213,7 +213,7 @@ test('Lv4: the two nearest people (islanders or the station staff) queue at the 
   assert.ok(hearts.every(b => Math.hypot(b.at.x - m.x, b.at.z - m.z) < 1.6), `islanders by the market: ${hearts.map(b => Math.hypot(b.at.x - m.x, b.at.z - m.z).toFixed(2))}`);
 });
 // 自動 footprint 是包圍盒 ×0.9（斜放的零件會鼓出去），所以每個 footprint 先內縮 0.25（一個小人的寬）再比
-test('ROAD clears the core of every footprint at the end of both solutions', async () => {
+test('ROAD clears the core of every footprint at the end of the solution', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(); let s = engine.createState(spec);
     for (const id of order) { const r = engine.place(s, id, spec); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
@@ -287,7 +287,7 @@ test('Lv4 never picks hidden islanders', () => {
   assert.ok(!who.includes(hid), 'hidden islander picked'); assert.equal(who.length, 2);
 });
 
-// 入口點（§13.2、計畫 3.8 Task 5）：電工從 101 工地來；入口走得到、離他巡路的起點 ≥ 1.5（每一級；兩條正解每一刻的真 footprint）
+// 入口點（§13.2、計畫 3.8 Task 5）：電工從 101 工地來；入口走得到、離他巡路的起點 ≥ 1.5（每一級；唯一正解每一刻的真 footprint）
 // Lv7 起電工住在風車島上（衛星島的家沒有入口，同 sat.keeper）
 test('bulb.electrician enters from the 101 site, walkable and ≥ 1.5 from his spot at every level (Lv7+ he lives on the windmill island: no entry)', async () => {
   const nav = createNav(), bad = [], t = anchorWorld('tower');
@@ -555,8 +555,8 @@ test('Lv9 live: the neon parts light up one after another within 1.5 s, with one
   for (const order of SOLUTIONS) {
     const first = {}; let t = 0;
     const h = await liveFrames(order, isBulb(9), (hh, dt) => { t += dt; for (const k of NEON) if (first[k] === undefined && hh.show.stage.partObject(k)?.visible) first[k] = t; });
-    // 回到 GROW（2026-10-29）：燈泡 9 是 auto（以前要代幣 ≥9），兩條正解燈泡 9 時代幣還是 8——懸浮月台還沒蓋，月台的霓虹等代幣 9 才跟著出現；
-    // 查的是這一刻 view 裡有的霓虹
+    // 回到 GROW（2026-10-29）：燈泡 9 是 auto（以前要代幣 ≥9），懸浮月台要代幣 9，月台的霓虹等代幣 9 才跟著出現；
+    //   唯一正解燈泡 9 在最後一輪、代幣第 8 回合就到 9——月台已經蓋好、月台霓虹一起亮。查的是這一刻 view 裡有的霓虹
     const { lv: L, flags } = h.show.stage, want = NEON.filter(k => bulb.view(L, flags)[k]);
     assert.equal(want.includes('bulb.neon.station'), L.token >= 9 && !flags.flooded, `${order.join('>')}: platform neon only with the floating platform (token ${L.token})`);
     const ts = want.map(k => first[k]); assert.ok(want.length >= 2 && ts.every(x => x !== undefined), JSON.stringify(first));
@@ -576,17 +576,17 @@ test('quality low: neon parts drop their strips and keep only the sign models', 
   }
   assert.ok(spawned.length >= 2, 'signs still load at low');
 });
-// 審稿（裁決 R17）：◆ Lv7 在兩條正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）。
+// 審稿（裁決 R17）：◆ Lv7 在唯一正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）。
 // 計畫 5b 任務 4（節奏）：Lv5 全島 LED 在真的回合裡也 ≤ 4.5 s——放下當回合就長，電工常在主島另一頭，以前走去 101 腳下要 9 秒（外星第 6 回合 59 s）
-test('live play, both solutions: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (script) in the real turn', async () => {
+test('live play, the solution: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (script) in the real turn', async () => {
   const { playLive, KEY_MAX, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {
     const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);
-    // 兩條正解的燈泡都是 6 → 8 跳級：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決：風車島不能消失），量的是那個合成的燈泡 8 事件。
+    // 正解的燈泡是 6 → 8 跳級（第 8 回合）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決：風車島不能消失），量的是那個合成的燈泡 8 事件。
     // 起因閃一下那段（平移到幫手、閃白、平移回目標）不算在內：playLive 像撲空一樣單獨量，掛在事件的 cause 上（Task 3 裁決 B）
     const ev = at(8)?.e.jump ? at(8) : at(7), five = at(5);
     assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn} bulb ${ev?.e.to}${ev?.e.jump ? ' (merged jump)' : ''}: ${ev?.live.toFixed(2)} s`);
-    // 跳級合成一段（回到 GROW 設計 §4.2）之後，跳級的第二級也演自己的劇本（兩條正解的燈泡 5 都是 4 → 5 跳級的第二級）
+    // 跳級合成一段（回到 GROW 設計 §4.2）之後，跳級的第二級也演自己的劇本（正解的燈泡 5 是第 6 回合 4 → 5 跳級的第二級）
     assert.ok(five && five.script <= SCRIPT_MAX, `${order.join('>')} turn ${five?.turn}: Lv5 ${five?.script.toFixed(2)} s`);
   }
 });
@@ -608,7 +608,7 @@ test('the night market never closes the walkway between the station and the mark
   }
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 bulb 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：唯一正解每一個 bulb 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof bulb.visitSpot, 'function');

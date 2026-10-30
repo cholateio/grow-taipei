@@ -24,7 +24,6 @@ export const CLOSING_TURNS = 1;
 const auto = { always: true };   // 放下後自動長（放下當回合就長到 Lv2；一回合最多 +2 由引擎管）
 const and = (...c) => ({ and: c });
 const or = (...c) => ({ or: c });
-const flagIs = (name, is) => ({ flag: name, is });
 const age = (id, n) => ({ age: [id, n] });
 const min = (id, n) => ({ minLevel: [id, n] });
 const max = (id, n) => ({ maxLevel: [id, n] });

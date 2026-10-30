@@ -1,7 +1,8 @@
 // 拍的建構函數：劇本（turn.js 與各物品的腳本）用這些小積木排出一回合，交給 timeline.js 一拍一拍演。
 // 每個建構函數回一個拍 { kind, dur, start?, step?, end? }（kind 同函數名），只動 ctx 裡的東西（stage、roster、nav、bubbles、blink、rig、rail…）。
 // 跳過、reduced-motion 時拍只會 start → end、不 step，所以每一拍的 end 都要自己把東西放到最終狀態。
-// 躲進門裡（hidden，颱風登陸）的成員：walk、gesture、bubble、jump 都跳過（0 秒、不 claim）——登陸後照演的關鍵劇本不把人拉出來（裁決 R14）。
+// 躲進門裡（hidden，颱風放下時躲一下的那幾秒）的成員：walk、gesture、bubble、jump 都跳過（0 秒、不 claim）——同時在演的劇本不把人拉出來（裁決 R14；
+//   唯一正解修正輪 1 之後躲雨只在放下劇本裡，comeOut 就放出來）。
 import { together } from './timeline.js';
 import { BLINK } from './blink.js';
 import { SEATS } from './roster.js';

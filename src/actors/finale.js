@@ -116,9 +116,9 @@ export function view(lv, flags = {}, meta = {}) {
   const o = flags.missile;
   if (o) {
     // 101 的階段照 tower.js 的算法（stageOfView：meta.total，沒給才自己加總）：deflect 的塔頂跟著塔身；
-    // hit 的彎角每個階段都一樣（tower.js 照完工／點燈的彎法），bendPoint 不吃階段
+    // hit 的彎角照這一階段（tower.js bendPoint：蓋一半彎得低、工地打在底座）
     const stage = stageOfView(lv, meta);
-    const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint() : POOL;
+    const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint(stage) : POOL;
     v['finale.missile'] = { kind: 'missile', at, from: FLARE_AT, outcome: o, footprint: false, shadow: false };
     if (o === 'deflect') {
       v['finale.missile'].via = { x: TOWER.x + toFlare.x * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toFlare.z * SIDESTEP };

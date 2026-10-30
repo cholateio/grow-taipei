@@ -42,15 +42,15 @@ export const STAGE_NAMES = { site: '101 工地', half: null, full: '101 完工',
 // 選擇帶動升級（計畫 5b 任務 3）：9 回合（8 次放置＋最後一輪），門檻取在（當時）兩條正解總等級曲線的空檔中間——
 //   賽博 2 5 9 14 24 35 45 57 61、外星 2 5 9 15 23 34 45 56 61。
 // 四個階段各在不同回合跨過、散在整局：第 3 回合（5 → 9）蓋一半、第 6 回合（23／24 → 34／35）完工、第 8 回合（45 → 56／57，倒數第二回合）點燈。
-// 40320 種順序的終局總等級最少 30（命中最少 35），所以終局時 101 一定完工或點燈（29 ≤ 30）
+// 唯一正解（2026-10-31）之後亂放的局終局常常停在蓋一半：命中局的總等級最少 20，蓋一半 19973／完工 10174／點燈 91 局（body 的 bent 照各階段彎）
 export function stageOf(total) { return total >= 51 ? 'lit' : total >= 29 ? 'full' : total >= 7 ? 'half' : 'site'; }
 // view 的階段：照 meta.total（舞台只在回合最後的 settle 更新，101 才不會搭著別人的事件跳階，計畫 3.6）；沒給才自己加總。finale.js 的飛彈也用它
 export const stageOfView = (lv, meta = {}) => stageOf(meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0));
 
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
-// bent（最終章 §6，飛彈命中）：塔身一半高度（BEND_Y）以上的零件——上面四節、它們的白邊、頂帽、尖塔——繞 z 轉 π/2 往 +x 倒，
-//   像吸管折成 L。終局時 101 一定完工或點燈（40320 種順序枚舉過，命中時總等級都 ≥ 35 > 29），工地／蓋一半照完工的樣子彎（不丟錯）。
-//   回傳的 top 是倒下那段的頂面（view 的 labelY 不用它：頭頂照沒彎的塔，天際線不變）
+// bent（最終章 §6，飛彈命中）：在這一階段自己的高度（bendY(stage)）彎——彎角以上的零件繞 z 轉 π/2 往 +x 倒，像吸管折成 L。
+//   完工／點燈：八節的一半（上面四節、它們的白邊、頂帽、尖塔倒下）；蓋一半：四節的一半（第 2 節頂，上面兩節與白邊倒下）；
+//   工地：沒有塔身可彎，照原樣（吊車由 view 拿掉）。回傳的 top 是彎過的形狀的頂（倒下那段的頂面；工地是底座頂）——view 的頭頂照它
 // dark（最終章 §7 賽博）：玻璃、底座都是 DARK，白邊發霓虹藍；八節之上不放頂帽尖塔，改成平屋頂（'deck'）＋後緣的桅杆。
 //   回傳多帶 roof（屋頂面高度）與 mast（桅杆的水平位置），都相對 101 的 at。賽博尾聲時 101 一定點燈（全 MAX，總等級 61）；
 //   其他階段照點燈的樣子畫（不丟錯）。
@@ -59,7 +59,6 @@ export const stageOfView = (lv, meta = {}) => stageOf(meta.total ?? Object.value
 //   從上面看得到的是碟緣的頂面）。回傳多帶 deck（碟頂面高度，變異鼠王坐的地方）、mast（天線在碟緣後側）、lift，都相對 101 的 at；
 //   top = deck（天線細桿立在碟頂高度）。外星尾聲時 101 一定點燈（全 MAX）；其他階段照點燈的樣子畫（不丟錯）
 export function body(stage, { bent = false, dark = false, ship = false } = {}) {
-  if (bent && (stage === 'site' || stage === 'half')) stage = 'full';
   if (dark) return darkBody();
   if (ship) return shipBody();
   const lit = stage === 'lit', trim = lit ? { color: ICE, glow: ICE } : { color: CREAM };
@@ -80,8 +79,9 @@ export function body(stage, { bent = false, dark = false, ship = false } = {}) {
     y += 1.5;
   }
   if (stage === 'site') for (const [x, z] of [[-0.6, 0.7], [0.1, 0.72], [-0.7, 0.15]]) parts.push({ kind: 'cone', pos: [x, 0.39, z], scale: [0.14, 0.18, 0.14], color: CORAL });
-  if (!bent) return { parts, top: y };
-  return { parts: parts.map(p => (p.pos[1] > BEND_Y ? bendPart(p) : p)), top: BEND_Y + BENT_HALF };
+  if (!bent || stage === 'site') return { parts, top: y };
+  const by = bendY(stage);
+  return { parts: parts.map(p => (p.pos[1] > by ? bendPart(p, by) : p)), top: by + BENT_HALF };
 }
 function darkBody() {
   const trim = { color: NEON_BLUE, glow: NEON_BLUE }, parts = [
@@ -121,29 +121,29 @@ export function screenAt() {
   const b = darkBody();
   return { x: b.mast.x, y: b.top + SCREEN_UP + SCREEN[1] / 2, z: b.mast.z };
 }
-// 彎角：底座＋座身（0.3 + 1.1）再加 8 節的一半（相對 101 的 at）；倒下那段是方錐台寬 1.16 的一半高
-const BEND_Y = 0.3 + 1.1 + 4 * TIER_H, BENT_HALF = 0.6;
-// 繞 (0, BEND_Y) 轉 −π/2（往 +x 倒）：(x, y − BEND_Y) → (y − BEND_Y, −x)。
+// 彎角（相對 101 的 at）：底座＋座身（0.3 + 1.1）再加這一階段塔節的一半——完工／點燈 8 節的 4 節、蓋一半 4 節的 2 節；
+// 工地不彎，這個高度只給飛彈當撞點（工地座身 0.5 的中段）。倒下那段是方錐台寬 1.16 的一半高
+const bendY = stage => (stage === 'site' ? 0.3 + 0.5 / 2 : 0.3 + 1.1 + (stage === 'half' ? 2 : 4) * TIER_H), BENT_HALF = 0.6;
+// 繞 (0, by) 轉 −π/2（往 +x 倒）：(x, y − by) → (y − by, −x)。
 // 零件的 rot（Euler XYZ）只有 [0, 0, 0] 或 [π, 0, 0]（倒放的方錐台）：Rz(−π/2)·Rx(rx) = Rx(rx)·Rz(∓π/2)，rx = π 時 z 角變號
-const bendPart = p => {
+const bendPart = (p, by) => {
   const [x, y, z] = p.pos, [rx, ry, rz] = p.rot ?? [0, 0, 0];
-  return { ...p, pos: [y - BEND_Y, BEND_Y - x, z], rot: [rx, ry, rz + (Math.cos(rx) > 0 ? -1 : 1) * Math.PI / 2] };
+  return { ...p, pos: [y - by, by - x, z], rot: [rx, ry, rz + (Math.cos(rx) > 0 ? -1 : 1) * Math.PI / 2] };
 };
-// 彎角的世界座標（飛彈命中的點，finale.js 用）：每個階段都照完工／點燈的彎法，所以都一樣——不吃階段參數
-export const bendPoint = () => ({ x: AT.x, y: AT.y + BEND_Y, z: AT.z });
+// 彎角的世界座標（飛彈命中的點，finale.js 用）：照這一階段的彎角（工地是底座中段）
+export const bendPoint = stage => ({ x: AT.x, y: AT.y + bendY(stage), z: AT.z });
 
 // meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6；stageOfView）
 export function view(lv, flags = {}, meta = {}) {
   const at = anchorWorld('tower');
-  // 最終章 §6：命中 → 塔身彎 L、天線燈光秀罩子都拿掉（工地／蓋一半照完工的彎法，吊車也不畫）；矽盾擋下 → 罩子全亮
+  // 最終章 §6：命中 → 塔身在這一階段的高度彎 L（工地不彎）、天線燈光秀罩子吊車都拿掉；矽盾擋下 → 罩子全亮
   const hit = flags.missile === 'hit', stage = stageOfView(lv, meta);
-  // 彎過的塔頭頂（labelY）照「這一階段沒彎的塔」算：命中之後塔上不再冒字，天際線一變，回合收尾的 focus('home', { final, skyline })
-  // 在全景裡 setSkyline 就瞬間跳鏡頭（審稿第 1 輪）。工地／蓋一半照完工的形狀彎，但頭頂照原本的工地／半塔
-  // （2026-10-31 唯一正解收尾：以前一律照完工塔，蓋一半時被命中天際線從 4.45 跳到 7.75——釘住的命中局 EXAMPLE.hit 就是蓋一半）
+  // 彎過的塔頭頂（labelY）照彎過的形狀的頂（body 回傳的 top）：天際線跟著降，全景裡 setSkyline 是飛過去的（camera.js，最終審稿 2），
+  // 不會瞬間跳鏡頭（2026-10-31 最終修正：以前蓋一半照完工塔彎、頭頂照沒彎的半塔，兩邊對不上）
   // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
   // 外星尾聲（§7）：母艦；頭頂一樣照點燈的塔（碟頂比尖塔低，坐上去的王冠鼠也在頭頂下；天際線不變、收尾不跳鏡頭）
   const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien' && !hit;
-  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = dark || ship ? body('lit').top : hit ? body(stage).top : top;
+  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = dark || ship ? body('lit').top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
   // 母艦底下的綠光盤比底座寬、黑塔屋頂的霓虹邊條（1.64）比底座寬 0.04：站位照底座 1.6 見方（同彎 L 的塔、同點燈的塔自動算出來的）
   if (ship || dark) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };

@@ -147,9 +147,11 @@ test('view: missile flag draws finale.missile with outcome and target (shield �
   assert.ok(Math.abs(el - 55) < 1, `elevation ${el.toFixed(1)}°`);
   const da = Math.atan2(s.z - TOWER_AT.z, s.x - TOWER_AT.x), df = Math.atan2(F.z - TOWER_AT.z, F.x - TOWER_AT.x);
   assert.ok(Math.abs(da - df) < 1e-6, 'toward the flare');
-  // hit：101 彎角（工地也不丟錯）
+  // hit：101 在自己這一階段的彎角（工地不彎，打在底座）
   assert.deepEqual(finale.view(LIT, { missile: 'hit' }, LIT_META)['finale.missile'].at, tower.bendPoint('lit'));
-  assert.deepEqual(finale.view({}, { missile: 'hit' })['finale.missile'].at, tower.bendPoint('full'));
+  assert.deepEqual(finale.view({}, { missile: 'hit' })['finale.missile'].at, tower.bendPoint('site'));
+  assert.deepEqual(finale.view({ ...LIT, chip: 0, bulb: 0, milk: 0 }, { missile: 'hit' }, { total: 10 })['finale.missile'].at, tower.bendPoint('half'));
+  assert.ok(tower.bendPoint('half').y < tower.bendPoint('lit').y, 'a half tower is hit lower');
   // deflect：溫泉池中心、池面上 0.1；水花是白煙 4 團
   const spring = landmarkWorld('spring'), d = finale.view(LIT, { missile: 'deflect' }, LIT_META);
   assert.deepEqual(d['finale.missile'].at, { x: spring.x, y: spring.y + 0.1, z: spring.z });

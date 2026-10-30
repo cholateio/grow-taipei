@@ -22,7 +22,7 @@ const K = CAR_H / 0.3;
 export const GAP = 0.6 * K;   // 車廂間距（弧長）：車長約 1.7 × CAR_H（0.3 時長約 0.5、間距 0.6）
 export const RIDE_Y = 0.6 * CAR_H;          // 車頂座位的高度（軌道面以上；roster 的 ride、beats 的上車都用這一個）
 export const TRAIN_HEAD_Y = 0.5 * K;        // 車頭泡泡（列車當主角時的頭頂；0.3 時是 0.5）
-const POOL = 0xa4d4da;
+export const POOL = 0xa4d4da;   // 淹水的泳池水色（捷運站、大巨蛋淹水共用）
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower');
 export const POST = offset(AT, 0.6, 0.55), DOOR = offset(AT, 0, 0.5);   // 站務員的崗位（站門口旁）、站門
 // 名冊入口（§13.2）：站體北側（背面），站務員與泳客都從這裡繞過站體走來。計畫給的 offset(AT, 1.6, 0.9) 離崗位只有 1.06；

@@ -31,7 +31,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   root.add(partsGroup); scene.add(root);
 
   // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
-  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛登陸（小人、小孩躲起來，到下一回合開始）；
+  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛放下、到了 101 上空（landsTyphoon；小人、小孩躲起來，到下一回合開始）；
   //   bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）
   const META0 = { total: 0, landing: false, bitten: false };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;

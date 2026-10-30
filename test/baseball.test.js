@@ -10,7 +10,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 import { C, offset } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
-import { TRACK, CAR_H } from '../src/actors/token.js';
+import { TRACK, CAR_H, POOL } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
@@ -137,7 +137,9 @@ const KEY = [3, 8];
 function checkBall({ show, bubblesLog }, e, secs, n, timing) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
   (timing[to] ??= []).push(+secs.toFixed(1));
-  assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
+  // 唯一正解：棒球 6（跨年煙火）在第 6 回合、珍奶第 7 回合才放——沒有珍奶觀光客來看，只剩煙火與 ♪（≥ 2 s）；有觀光客的那段由下面的 Lv6 測試驗
+  const lo = to === 6 && !show.roster.members('boba.queue').length ? 2 : 3;
+  assert.ok(secs >= lo && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
   if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('baseball');
@@ -157,6 +159,24 @@ test('scripts: every baseball level in both solutions plays 3–5 s (◆ Lv3/Lv8
     await playItem(show, tracked, order, 'baseball', (e, secs) => { seen.push(e.kind === 'grow' ? e.to : 1); checkBall(h, e, secs, n, timing); });
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8], `baseball events seen: ${seen}`);
   }
+});
+// 大巨蛋淹水（唯一正解 2026-10-31 §4.3、§5.1：颱風到巨蛋上空時棒球 ≤3）：球場變泳池（同捷運站的 POOL 水色、沒有 footprint），
+// 兩個球員站上巨蛋屋頂（站位在巨蛋頂上、不帶 rescue，不會被拉回地面）、不傳球；沒有巨蛋（Lv2）站上木看台頂
+test('view: flags.domeFlood turns the field into a pool and puts the two players up on the dome roof', () => {
+  const dry = baseball.view(lv({ baseball: 3 }), {}), wet = baseball.view(lv({ baseball: 3 }), { domeFlood: true }), at = anchorWorld('baseball');
+  assert.equal(dry['baseball.field'], undefined);
+  const f = wet['baseball.field'];
+  assert.equal(f.footprint, false); assert.ok(f.parts.some(p => p.color === POOL), 'pool water');
+  assert.ok(Math.hypot(f.at.x - at.x, f.at.z - at.z) < 1e-9);
+  assert.ok(wet['baseball.deco'].parts.some(p => p.color === POOL), 'the dome base stands in the water');
+  const h = wet['baseball.players'].home;
+  assert.equal(h.kind, 'stand'); assert.equal(h.rescue, undefined, 'no rescue: they stay on the roof');
+  assert.equal(h.spots.length, 2); assert.equal(wet['baseball.players'].n, 2);
+  for (const p of h.spots) { assert.ok(Math.abs(p.y - (at.y + baseball.DOME_H.a)) < 1e-9, 'on the dome top'); assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 0.33, 'on the flat top'); }
+  assert.ok(Math.hypot(h.spots[0].x - h.spots[1].x, h.spots[0].z - h.spots[1].z) >= 0.25, 'not overlapping');
+  assert.equal(wet['baseball.ball'], undefined, 'no catch on the roof');
+  const stands = baseball.view(lv({ baseball: 2 }), { domeFlood: true })['baseball.players'].home;
+  assert.ok(stands.spots.every(p => p.y > at.y + 0.3), 'no dome yet: up on the stands');
 });
 test('◆ Lv3 and Lv8 are the key nodes and end on the overview before the LEVEL UP; the others are short scripts', () => {
   assert.deepEqual(Object.entries(baseball.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [3, 8]);
@@ -266,7 +286,8 @@ test('Lv6: two boba tourists come to the gate for the fireworks and walk back; t
   let live = false;
   const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
   show.update = (dt, t) => { update(dt, t); if (live) for (const m of show.roster.members('boba.queue')) closest.set(m, Math.min(closest.get(m) ?? Infinity, Math.hypot(m.pos.x - GATE.x, m.pos.z - GATE.z))); };
-  await liveAt(h, SOLUTIONS[0], isBall(6));
+  // 唯一正解的棒球 6 在珍奶放下之前（沒有人龍）：用珍奶先放、棒球照樣長到 6 的放法（窮舉找的，非正解）
+  await liveAt(h, ['milk', 'baseball', 'token', 'bulb', 'boba', 'chip'], isBall(6));
   assert.equal([...closest.values()].filter(d => d < 1.6).length, 2, 'two tourists at the gate');
   assert.ok(show.stage.partObject('baseball.fireworks'));
   for (let i = 0; i < 600; i++) show.update(1 / 30, 100 + i / 30);

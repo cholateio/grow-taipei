@@ -352,8 +352,10 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
     const p = head(); log.push(['levelUp', now, { flying: rig.flying, target: controls.target.clone(), top: new THREE.Vector3(p.x, p.y, p.z).project(camera).y }]);
     return levelUp(head, opts);
   };
-  // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）
-  const steps = turnSteps(SOLUTIONS[0]).slice(0, towerCrossings(SOLUTIONS[0]).at.full), events = [];
+  // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）。唯一正解的完工落在第 6 回合＝颱風放下的回合（大家躲雨，settle 只留套用、
+  // LEVEL UP 與回全景，turn.js 的 indoorSettle）——這裡要看 101 的完整劇本，第 6 回合改放珍奶（非正解，完工照樣在第 6 回合）
+  const ORDER = ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'];
+  const steps = turnSteps(ORDER).slice(0, towerCrossings(ORDER).at.full), events = [];
   let s = engine.createState(spec);
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;

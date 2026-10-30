@@ -18,17 +18,21 @@ test('worldEffects keys on the bulb ladder: dusk at 3, night at 5, the neon glow
   assert.ok(at(9).glowScale > 1, 'the island-wide cyber neon glows brighter');
   assert.equal(worldEffects(lv({ bulb: 9 }), { blackout: true }).glowScale, 0, 'a blackout still kills every glow');
 });
-// 錄影審查 2026-10-25：颱風被大巨蛋卡在 Lv2 時，全島的人不能消失到結局
-test('the typhoon clears the streets only on its landing turn; a lingering storm is lighter', () => {
-  const landing = worldEffects(lv({ typhoon: 2 }), {}, { landing: true }), linger = worldEffects(lv({ typhoon: 2 }), {}, { landing: false });
+// 唯一正解 2026-10-31 §5.1：颱風 Lv1–3 都在下雨——放下那回合（meta.landing）大雨，移站的回合雨小（LINGER），Lv4 放晴；人從不整群消失
+test('the storm pours on the placement turn, is lighter while the cloud moves on (Lv1–3), and clears at Lv4', () => {
+  const landing = worldEffects(lv({ typhoon: 1 }), {}, { landing: true });
   assert.equal(landing.storm, 1); assert.equal(landing.rain, 1);
   assert.equal(landing.peopleVisible, true, 'people hide one by one at their doors (roster), never the whole group');
-  assert.equal(linger.peopleVisible, true); assert.equal(linger.storm, 0.35); assert.equal(linger.rain, 0.35);
-  assert.equal(worldEffects(lv({ typhoon: 2 }), {}).peopleVisible, true, 'no meta = not landing');
-  const after = worldEffects(lv({ typhoon: 3 }), {}, { landing: false }); assert.equal(after.storm, 0); assert.equal(after.rain, 0);
+  for (const n of [1, 2, 3]) {
+    const linger = worldEffects(lv({ typhoon: n }), {}, { landing: false });
+    assert.equal(linger.peopleVisible, true); assert.equal(linger.storm, 0.35, `Lv${n}`); assert.equal(linger.rain, 0.35);
+  }
+  assert.equal(worldEffects(lv({ typhoon: 2 }), {}).storm, 0.35, 'no meta = not the placement turn');
+  for (const meta of [{}, { landing: true }]) { const after = worldEffects(lv({ typhoon: 4 }), {}, meta); assert.equal(after.storm, 0); assert.equal(after.rain, 0); }
+  assert.equal(worldEffects(lv({}), {}, { landing: true }).storm, 0, 'no typhoon, no storm');
 });
 test('stepWorld eases toward the target: ~98% in one second, snaps when close, never overshoots', () => {
-  const from = worldEffects(lv({}), {}), to = { ...worldEffects(lv({ bulb: 5, typhoon: 2 }), {}, { landing: true }), peopleVisible: false };
+  const from = worldEffects(lv({}), {}), to = { ...worldEffects(lv({ bulb: 5, typhoon: 1 }), {}, { landing: true }), peopleVisible: false };
   let w = from; for (let i = 0; i < 60; i++) { w = stepWorld(w, to, 1 / 60); assert.ok(w.time <= to.time && w.storm <= 1); }
   assert.ok((w.time - from.time) / (to.time - from.time) > 0.97); assert.equal(w.peopleVisible, false, 'people switch at once');
   for (let i = 0; i < 120; i++) w = stepWorld(w, to, 1 / 60);

@@ -303,7 +303,7 @@ test('a merged jump plays the highest key level among n−1 and n: n−1 key, n 
   const none = make([]), r0 = buildTurn(events, base([quietTower, none.mod]), fakeCtx());
   assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
   // 登陸之後也一樣：n−1 是 ◆ 就照演完整劇本（不是 [apply, LEVEL UP×2, apply]）
-  const indoor = make([3]), ri = buildTurn([grow('typhoon', 2, []), ...events], base([quietTower, landingLike(), indoor.mod]), fakeCtx());
+  const indoor = make([3]), ri = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, ...events], base([quietTower, landingLike(), indoor.mod]), fakeCtx());
   assert.deepEqual(indoor.asked, [3]); assert.ok(between(ri, 2).some(b => b.kind === 'wait' && b.dur === 2), 'the key script plays indoors');
 });
 // Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：矽盾測試不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
@@ -366,7 +366,7 @@ test('cause flash: a grow with via opens with focus(helper cell) + flash(<helper
 test('no cause flash: typhoon as via, after the landing, the first level of a jump, empty via, finale turn', () => {
   const mods = () => [quietTower, helperLike('milk'), helperLike('typhoon'), chipLike()];
   assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['typhoon'])], base(mods()), fakeCtx())), 'typhoon');
-  const landed = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk'])], base(mods()), fakeCtx());
+  const landed = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk'])], base(mods()), fakeCtx());
   assert.ok(!hasFlash(between(landed, 1)), 'indoors');
   const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base(mods()), fakeCtx());
   assert.deepEqual(between(jump, 0), [], 'first level of a jump: mark only'); assert.ok(hasFlash(between(jump, 1)), 'the merged second level carries the flash');
@@ -385,18 +385,29 @@ test('no cause flash from a locked helper: flooded token, blacked-out bulb (flag
   const sameTurn = buildTurn([{ kind: 'fx', item: 'turn', cause: 'typhoon', flag: { name: 'flooded', value: true } }, grow('chip', 2, ['token'])], base(mods()), fakeCtx());
   assert.ok(!hasFlash(sameTurn), 'flooded earlier in the same turn');
 });
-// 假的颱風登陸劇本跟真的一樣最後回全景（登陸自己回全景；不然下一個 indoors 事件前面會補一拍 focus('home')）
-const landingLike = () => ({ id: 'typhoon', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.focus('home')] } } });
+// 假的颱風放下劇本跟真的一樣最後回全景（放下自己回全景；不然下一個 indoors 事件前面會補一拍 focus('home')）。
+// 唯一正解 2026-10-31 §5.1：颱風到了＝放下事件（landsTyphoon）；移站（grow 2／3）不算
+const landingLike = () => { const placed = (e, s, c) => [c.B.wait(1), c.B.focus('home')]; placed.key = true; return { id: 'typhoon', view() {}, script: { rep: () => null, placed, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.levelUp('typhoon')] } } }; };
 test('indoors jump: after the landing the merged level plays [apply, levelUp twice, apply]; a key level plays its full script', () => {
   const key = (e, s, c) => [c.B.wait(2), c.B.levelUp('chip')]; key.key = true;
   const mod = { ...chipLike(), script: { ...chipLike().script, grow: { 2: chipLike().script.grow[2], 3: chipLike().script.grow[3], 4: key } } };
-  const plain = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), landingLike(), mod]), fakeCtx());
+  const plain = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), landingLike(), mod]), fakeCtx());
   assert.deepEqual(between(plain, 1), []); assert.deepEqual(kindsOf(between(plain, 2)), ['apply', 'levelUp', 'apply']); assert.equal(between(plain, 2)[1].twice, true);
   // ◆ 關鍵級登陸之後照演完整劇本（裁決 R14：照舊有空拍與平移到晶片格），LEVEL UP 也彈兩次；不插起因閃一下
-  const keyed = buildTurn([grow('typhoon', 2, []), grow('chip', 3, ['milk']), grow('chip', 4, ['milk'], { jump: true })], { ...base([quietTower, helperLike('milk'), landingLike(), mod]), lv: { ...zero, chip: 2 } }, fakeCtx());
+  const keyed = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 3, ['milk']), grow('chip', 4, ['milk'], { jump: true })], { ...base([quietTower, helperLike('milk'), landingLike(), mod]), lv: { ...zero, chip: 2 } }, fakeCtx());
   assert.deepEqual(between(keyed, 1), []);
   assert.deepEqual(kindsOf(between(keyed, 2)), ['wait', 'focus', 'wait', 'levelUp', 'apply']); assert.equal(between(keyed, 2)[3].twice, true);
   assert.ok(!hasFlash(keyed), 'no cause flash after the landing');
+  // 放下是 ◆（§5.3 颱風 1）：mark 標 key（pace 算 ◆ 個數）
+  assert.equal(marksOf(plain)[0].info.key, true, 'the typhoon placed event is a key event');
+});
+// 唯一正解 §5.1：indoors 只從颱風放下起算——移站的回合（第 7 回合颱風 Lv2）後面的事件照常演劇本（有起因閃一下、有自己的拍）
+test('indoors starts at the typhoon placed event only: after typhoon Lv2 (moving to the station) the later grows play normally', () => {
+  const placedTurn = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), landingLike(), chipLike()]), fakeCtx());
+  assert.deepEqual(kindsOf(between(placedTurn, 1)), ['apply', 'levelUp', 'apply'], 'placement turn: indoors');
+  const moveTurn = buildTurn([grow('typhoon', 2, []), grow('chip', 2, ['milk'])], { ...base([quietTower, helperLike('milk'), landingLike(), chipLike()]), lv: { ...zero, chip: 1, typhoon: 1 } }, fakeCtx());
+  assert.ok(hasFlash(between(moveTurn, 1)), 'Lv2 turn: the cause flash plays');
+  assert.notDeepEqual(kindsOf(between(moveTurn, 1)), ['apply', 'levelUp', 'apply'], 'Lv2 turn: the chip script plays');
 });
 // LEVEL DOWN（knock-back）不會被換成彈兩次；together 裡的 LEVEL UP 也換
 test('a jump wraps every LEVEL UP of its script, inside together too, but never a LEVEL DOWN', () => {
@@ -440,9 +451,9 @@ test('wait event → up to MISS_PER_TURN miss segments in ORDER; no icon bubble 
   // 等待物品沒有代表劇本（颱風、這裡的 milk 沒有模組）→ 那一項不插、照 ORDER 往後補（最終審稿 3：兩個位子留給叫得到人的）
   const some = buildTurn([waitOf('milk', 'chip', 'bulb')], base([tower, ...repMods()]), fakeCtx());
   assert.deepEqual(marksOf(some).filter(m => m.info.miss).map(m => m.info.item), ['chip', 'bulb']);
-  // 颱風登陸之後（大家躲在屋裡）不演撲空
+  // 颱風放下之後（大家躲在屋裡）不演撲空
   const typhoon = { id: 'typhoon', view() {}, script: { rep: () => null } };
-  const landed = buildTurn([{ kind: 'grow', item: 'typhoon', from: 1, to: 2 }, waitOf('chip', 'bulb')], base([tower, typhoon, ...repMods()]), fakeCtx());
+  const landed = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, waitOf('chip', 'bulb')], base([tower, typhoon, ...repMods()]), fakeCtx());
   assert.ok(marksOf(landed).every(m => !m.info.miss), 'no misses after the landing');
   assert.equal(anyBubble(landed), false);
 });

@@ -5,10 +5,12 @@
 // 人數預算（使用者 2026-10-26；裁決 R13 一格 ≤ 8 人：球員 2＋草皮 1＋觀眾 ≤ 5，老鼠與鼠災工作人員不算）：觀眾 Lv4 3、Lv5 4、Lv7 5；
 // 跨年來看煙火的觀光客 ≤ 2。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
+// 大巨蛋淹水（唯一正解 2026-10-31 §4.3、§5.1：颱風到巨蛋上空時棒球 ≤3，flags.domeFlood）：球場變泳池（同捷運站淹水的 POOL 水色），
+//   兩個球員爬上巨蛋屋頂坐著釣魚（名冊沒有釣竿配件，照舊戴球帽）；沒有巨蛋（≤2）就站上木看台頂。
 // 劇本（§6）：一級 3–5 秒；◆ Lv3、Lv8 6–10 秒、最後回全景定格。
 import { anchorWorld, frontOf } from './anchors.js';
 import { cellAt } from '../scene/hex.js';
-import { TRACK } from './token.js';
+import { TRACK, POOL } from './token.js';
 import { C, offset } from './palette.js';
 
 export const id = 'baseball';
@@ -38,6 +40,11 @@ function line([x0, z0], [x1, z1]) {
 }
 // 兩個球員在本壘前面面對面傳接球
 const players = at => [{ ...offset(at, -0.45, 1.05), yaw: Math.PI / 2 }, { ...offset(at, 0.45, 1.05), yaw: -Math.PI / 2 }];
+// 大巨蛋淹水：兩個球員站上屋頂，背對背面向泳池（釣魚）。hangar_roundA 縮到高 1.0 後，頂上離中心 ±0.33 以內都是平的（頂高 = DOME_H.a）；
+// 沒有巨蛋時站上木看台頂（STAND_H）。站位在 footprint 裡、不帶 rescue（帶了會被拉回地面，同泳客站在泳池裡）
+const roofSpots = (at, n) => (n >= 3
+  ? [{ ...offset(at, -0.2, 0.05, n >= 7 ? DOME_H.b : DOME_H.a), yaw: -Math.PI / 2 }, { ...offset(at, 0.2, 0.05, n >= 7 ? DOME_H.b : DOME_H.a), yaw: Math.PI / 2 }]
+  : [-1, 1].map(k => ({ ...offset(at, STANDS.x + k * STANDS_W / 4, STANDS.z, STAND_H), yaw: Math.PI })));
 
 // 入口點（§13.2）：球員從看台後方的格邊走出來，繞過看台到本壘前——看台正後方的格子北角被看台和兩邊的格邊圍住、走不出去，
 // 所以用看台後方東側的格邊（往中心格的橋頭）。觀眾從捷運站前（月台）走來，四個點沿 x 錯開、往站那側（−x）偏
@@ -101,7 +108,7 @@ function platformParts() {
 }
 
 export function view(lv, flags = {}) {
-  const n = lv.baseball, at = AT, v = {};
+  const n = lv.baseball, at = AT, v = {}, flood = !!flags.domeFlood;
   if (!n) return v;
   if (n <= 2) {
     // 沙地（Lv1）＋木看台（Lv2，兩座 glb）
@@ -119,7 +126,7 @@ export function view(lv, flags = {}) {
     // 底座、門口、頂縫透光（Lv4 暖黃；演唱會起跟應援棒、LED 帶同一個霓虹藍——一種發光色一個 draw call，整局截圖 ≤ 150）、
     // 應援棒（Lv5）、外牆 LED 帶（Lv7）：一個零件
     const deco = [
-      { kind: 'cylinder', pos: [0, 0.03, 0], scale: [2.3, 0.06, 1.9], color: C.curb },
+      { kind: 'cylinder', pos: [0, 0.03, 0], scale: [2.3, 0.06, 1.9], color: flood ? POOL : C.curb },
       { kind: 'box', pos: [0, 0.22, 0.93], scale: [0.36, 0.3, 0.05], color: C.window },
     ];
     const neon = { color: C.neonBlue, glow: C.neonBlue };
@@ -128,10 +135,16 @@ export function view(lv, flags = {}) {
     if (big) deco.push({ kind: 'rail', pos: [0, h * 0.42, 0], scale: [2.2, 1.9, 2.2], rot: [Math.PI / 2, 0, 0], ...neon, led: true });
     v['baseball.deco'] = { kind: 'compound', at, footprint: false, parts: deco };
   }
-  // 球員：Lv1 一個（放置時從看台後方的格邊進場跑壘，之後站在本壘前），Lv2 起兩個傳接球
-  v['baseball.players'] = { kind: 'roster', at, n: n >= 2 ? 2 : 1, accessory: 'cap', shirt: [C.white, C.navy], home: { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
+  // 大巨蛋淹水：球場（沙地、巨蛋底座外一圈）整片泳池，沒有 footprint（同捷運站淹水，人站在水裡）；巨蛋底座也泡在水裡（deco 換水色）
+  if (flood) v['baseball.field'] = { kind: 'compound', at, footprint: false, parts: [
+    { kind: 'cylinder', pos: [0, 0.02, 0], scale: [2.75, 0.04, 2.45], color: C.cliff },
+    { kind: 'cylinder', pos: [0, 0.045, 0], scale: [2.6, 0.05, 2.3], color: POOL },
+  ] };
+  // 球員：Lv1 一個（放置時從看台後方的格邊進場跑壘，之後站在本壘前），Lv2 起兩個傳接球；淹水時站上屋頂（不傳球）
+  v['baseball.players'] = { kind: 'roster', at, n: n >= 2 ? 2 : 1, accessory: 'cap', shirt: [C.white, C.navy],
+    home: flood && n >= 2 ? { kind: 'stand', spots: roofSpots(at, n), entry: PLAYER_ENTRY } : { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
   if (n >= 2) {
-    v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
+    if (!flood) v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
     // 觀眾：Lv8 兩個是坐新線來的（baseball.riders），門口的名冊留前三個人
     const fans = n >= 8 ? 3 : crowdN(n);
     if (fans) v['baseball.crowd'] = { kind: 'roster', at, n: fans, shirt: SHIRTS, home: { kind: 'stand', spots: fanSpots(fans), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };

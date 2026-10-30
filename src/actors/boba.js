@@ -8,6 +8,7 @@
 import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
 import { island } from './satellites.js';
+import { stormy } from './world.js';
 import { BLINK } from '../show/blink.js';
 import { MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, WATER_Y } from '../scene/hex.js';
 import { measurePath, locateOnPath } from '../scene/path.js';
@@ -152,7 +153,7 @@ const fountainParts = () => [
 export function view(lv, flags = {}) {
   const n = lv.boba, v = {};
   if (!n) return v;
-  const fresh = lv.milk >= 4, storm = lv.typhoon === 2;
+  const fresh = lv.milk >= 4, storm = stormy(lv);
   if (n < 3) {
     v['boba.main'] = { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: [
       { kind: 'box', pos: [0, 0.35, 0], scale: [CART.w, 0.5, 0.4], color: C.wall },

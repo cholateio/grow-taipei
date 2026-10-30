@@ -23,7 +23,8 @@ test('windmill blades: still at the opening and below bulb 7, turn at bulb 7; th
   for (const bulb of [0, 2, 6, 7, 9]) { const storm = sat.view(lv({ bulb, typhoon: 2 }), {})['sat.windmill']; assert.equal(storm.speed, bulb >= 7 ? 6 : 3, `storm, bulb ${bulb}`); assert.ok(storm.wobble); }
   assert.equal(sat.view(lv({ bulb: 2, typhoon: 2 }), { blackout: true })['sat.windmill'].speed, 3, 'blackout in the storm: the wind still turns it');
   assert.equal(sat.view(lv({ bulb: 2 }), { blackout: true })['sat.windmill'].speed, 0);
-  assert.equal(sat.view(lv({ bulb: 7, typhoon: 3 }), {})['sat.windmill'].speed, 1, 'after the storm back to the powered turn');
+  for (const typhoon of [1, 3]) assert.ok(sat.view(lv({ bulb: 2, typhoon }), {})['sat.windmill'].wobble, `the storm blows at typhoon ${typhoon} too (Lv1–3, 唯一正解 §5.1)`);
+  assert.equal(sat.view(lv({ bulb: 7, typhoon: 4 }), {})['sat.windmill'].speed, 1, 'after the storm (Lv4 clear) back to the powered turn');
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: sat.builders });
   const on = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']); on.update(0.5, 0.5); assert.notEqual(on.object.children[0].rotation.z, 0, 'powered blades turn');
   const off = f.build(sat.view(lv({}), {})['sat.windmill']); off.update(0.5, 0.5); assert.equal(off.object.children[0].rotation.z, 0, 'dark blades stand still');

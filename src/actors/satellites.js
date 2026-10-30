@@ -8,6 +8,7 @@ import { builders as ratBuilders } from './rat.js';
 import { kidAccessory } from './milk.js';
 import * as spec from '../rules/spec.js';
 import { DOCK } from './boba.js';
+import { stormy } from './world.js';
 import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export const id = 'satellites';
@@ -31,7 +32,7 @@ export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout
 export const BRANCH = 5;
 
 export function view(lv, flags) {
-  const v = {}, storm = lv.typhoon === 2, on = powered(lv, flags);
+  const v = {}, storm = stormy(lv), on = powered(lv, flags);
   // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）
   // 離島三段：燈泡 Lv7 起第二支風機（塔身在 sat.windmill.stage1，第一段）的葉片也在這個零件裡（twin = 第二個轉子相對主轉子的位置）——
   // 同一個 speed／wobble，颱風改速度時只重建這一個零件（第一段不跟著重建、不多閃一次）

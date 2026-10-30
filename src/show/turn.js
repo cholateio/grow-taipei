@@ -17,7 +17,7 @@
 //   不套、不閃、不平移、不查劇本。第二級照一般事件演 n 級的劇本（沒寫就預設；n−1 是 ◆、n 不是時演 n−1 的，見下面 ◆），裡面所有 LEVEL UP 換成彈兩次
 //   （withTwice，together 裡也換；LEVEL DOWN 不換）；它的 apply 一次套兩級的零件（舞台 foldEvent 直接設 lv = e.to，從 n−2 到 n 一次 diff，
 //   兩級的新零件一起閃白出現）。登陸之後（indoors）第二級 [apply, LEVEL UP×2, apply]。第二級劇本拿到的 s.prev 是 n−2（跟舞台一致）。
-// ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
+// ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key；放下事件看 script.placed.key，唯一正解 §5.3 颱風放下）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
 //   跳級合成時演 {n−1, n} 裡最高的 ◆：n 不是 ◆、n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決 2026-10-29：燈泡 Lv7 的風車島不能消失），mark 標 key。
 //   n−1 和 n 都是 ◆ 就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 的矽盾測試）：兩級照一般事件接著演、各自的 ◆ 劇本、各一個 LEVEL UP，起因只在第一級前面。
 // 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
@@ -31,11 +31,12 @@
 //   等待物品沒有代表劇本、這一級沒有代表（hasRep 假）→ 那一項不插、照 ORDER 往後補。代表演到才叫不到（藏著、在劇本手上）→ 整段 0 秒（不再往後補）。
 //   颱風登陸之後（大家躲在屋裡）、終局回合不插。之後 wait 事件自己照舊 mark + 不閃白的 apply（沒有別的拍）。
 //   pace 看 mark 的 info.miss 把撲空當獨立一段量（≤ MISS_CAP）。
-// 颱風登陸之後（使用者規則，計畫 4 任務 9）：登陸事件（landsTyphoon）演完，同一回合後面的事件只演 [apply, LEVEL UP]——
+// 颱風到了之後（使用者規則，計畫 4 任務 9；唯一正解 2026-10-31 §5.1 起算點改成颱風的放下事件）：landsTyphoon（颱風 placed）演完，
+//   同一回合後面的事件只演 [apply, LEVEL UP]——
 //   大家躲在屋裡，沒有人走路：不查劇本、不補鏡頭平移、不空拍，閃白照常（indoors）。◆ 關鍵級例外（裁決 R14）：照演完整劇本
 //   （老鼠不躲雨、霓虹不用人；劇本要拉的人若躲在門裡，walk／gesture／bubble／jump 拍自己跳過，beats.js）。撲空不演（大家躲著）；
 //   回合末的 settle 照 101 的劇本，但只留套用、LEVEL UP 與回全景（換塔頂要全景裝得下）。
-//   鏡頭：登陸自己回全景；◆ 關鍵劇本把鏡頭帶走之後（最後一個 focus 不是全景），下一個 indoors 事件前面補一拍 focus('home')，
+//   鏡頭：放下（登陸）自己回全景；◆ 關鍵劇本把鏡頭帶走之後（最後一個 focus 不是全景），下一個 indoors 事件前面補一拍 focus('home')，
 //   之後的 LEVEL UP 才在畫面裡（審稿：老鼠 Lv4 對著溫泉）；其他 indoors 事件照樣不平移。
 import { foldEvent, landsTyphoon } from '../rules/engine.js';
 import { cellOf } from '../actors/anchors.js';
@@ -94,7 +95,7 @@ function keepOnly(beats, keep) {
   return out;
 }
 
-// 預設劇本（§6.6）。大停電（颱風登陸的反應）：電一斷整區同時暗——零件一起閃，不一盞一盞錯開
+// 預設劇本（§6.6）。大停電（颱風放下的反應）：電一斷整區同時暗——零件一起閃，不一盞一盞錯開
 //   （選擇帶動升級：燈泡 ≤4 也會停電，Lv4 有九盞路燈，錯開要 2.3 s）
 const applyOf = e => B.apply(e, e.flag?.name === 'blackout' ? { stagger: 0 } : {});
 function defaults(e) {
@@ -116,13 +117,13 @@ function withTwice(beats) {
 }
 
 // 這回合哪些 grow 是跳級的第一級、哪些是合成的第二級（見檔頭）：第 i 個之後同物品的下一個 grow 是 jump: true 而且接著它（from === to）。
-// 颱風登陸的事件不當第一級（登陸要演；颱風也沒有跳級）。
+// 颱風沒有跳級（放下是 placed，不是 grow）。
 // 兩級都是 ◆（isKey(物品, 級)）就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 不能把矽盾測試吃掉）：兩個 grow 照一般事件接著演，
 // 各演自己的 ◆ 劇本、各一個 LEVEL UP；起因閃一下只在第一個前面（apart 記第二個，causeOf 不插）
 function jumpPairs(events, isKey = () => false) {
   const first = new Set(), second = new Set(), apart = new Set();
   events.forEach((e, i) => {
-    if (e.kind !== 'grow' || landsTyphoon(e)) return;
+    if (e.kind !== 'grow') return;
     const j = events.findIndex((x, k) => k > i && x.kind === 'grow' && x.item === e.item);
     if (!(j > i && events[j].jump && events[j].from === e.to)) return;
     if (isKey(e.item, e.to) && isKey(e.item, events[j].to)) { apart.add(j); return; }
@@ -168,7 +169,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   ctx.speed = 1;
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
-  let landed = false;   // 這回合颱風已經登陸（之後的事件 indoors）
+  let landed = false;   // 這回合颱風已經放下、到了 101 上空（之後的事件 indoors）
   let away = false;     // 鏡頭不在全景：上次回全景之後有過對著格子的 focus（回合開頭在全景）
   const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
   // 撲空演到才知道有沒有人演（代表叫不到、在劇本手上……整段 0 秒）：missFirst 記下撲空之前的帳（上一個物品、鏡頭對著的格）與
@@ -243,7 +244,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     // 不然 n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決：燈泡 Lv7 風車島這種大場面不能從正解裡消失；它的 apply 落在 n 級事件上，
     // n 級的零件跟補的 apply 一起出現），都不是就演 n
     const grows = e.kind === 'grow' ? mod(e.item)?.script?.grow : null;
-    const keyFn = grows && (jumpSecond.has(i) && !grows[e.to]?.key && grows[e.to - 1]?.key ? grows[e.to - 1] : grows[e.to]), key = !!keyFn?.key;
+    const keyFn = grows && (jumpSecond.has(i) && !grows[e.to]?.key && grows[e.to - 1]?.key ? grows[e.to - 1] : grows[e.to]);
+    const key = e.kind === 'placed' ? !!mod(e.item)?.script?.placed?.key : !!keyFn?.key;   // 放下的 ◆（颱風到 101、全島躲雨）
     // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 彈兩次、它的 apply 一次套兩級
     if (jumpFirst.has(i)) { out.push(mark(e, { gap: 0, key: false, skipped: true })); return; }
     const twice = jumpSecond.has(i), twiced = beats => (twice ? withTwice(beats) : beats);

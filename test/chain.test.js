@@ -102,7 +102,7 @@ test('island chain, both solutions live: bulb 7 → 8 and chip 6 → 7 → 8 →
     assert.ok(before('token.spur.windmill', w7) && from('token.spur.windmill', w7), `${name}: windmill spur from turn ${w7 + 1}`);
     assert.ok(turns[b7].lv.token >= 6, `${name}: the HSR carries the electrician (token ${turns[b7].lv.token} at bulb 7)`);
     // 燈泡 Lv7：風車轉、燈塔亮、守塔人都在燈泡到 7 的那一回合（之前沒有颱風的回合風車不轉、燈塔暗）
-    turns.slice(0, b7).forEach((t, i) => { assert.ok(!t.keys.has('sat.lighthouse') && !t.keys.has('sat.beam') && !t.keeper, `${name} turn ${i + 1}: lighthouse dark`); if (t.lv.typhoon !== 2) assert.equal(t.spin, false, `${name} turn ${i + 1}: windmill still`); });
+    turns.slice(0, b7).forEach((t, i) => { assert.ok(!t.keys.has('sat.lighthouse') && !t.keys.has('sat.beam') && !t.keeper, `${name} turn ${i + 1}: lighthouse dark`); if (!(t.lv.typhoon >= 1 && t.lv.typhoon <= 3)) assert.equal(t.spin, false, `${name} turn ${i + 1}: windmill still`); });
     turns.slice(b7).forEach((t, i) => assert.ok(t.spin && t.keys.has('sat.lighthouse') && t.keys.has('sat.beam') && t.keeper === 1, `${name} turn ${b7 + i + 1}: windmill turns, lighthouse lit, keeper out`));
     // 燈泡 Lv8 鋪電纜（暗）、晶片 Lv6 通電（亮）
     const wired = Math.min(at('bulb', 8), at('chip', 6)), c6 = at('chip', 6);

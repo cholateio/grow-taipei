@@ -131,7 +131,7 @@ export function view(lv, flags, meta = {}) {
     ...(tipped ? [{ kind: 'cylinder', pos: [0.38, 0.01, 0.05], scale: [0.4, 0.02, 0.28], color: C.white, spill: true }] : []),
   ] };
   if (n < 2) return v;
-  const home = (lv.typhoon === 2 && !!meta.landing) || !!meta.bitten;
+  const home = !!meta.landing || !!meta.bitten;   // 颱風放下那回合（全島躲雨）、被老鼠咬的回合：小孩躲回校舍
   // 校舍：一個零件裡幾棟 glb（builders.campus）；飾邊是屋頂色（颱風重建換色），小孩躲回來時窗戶亮燈
   const trim = roofColor(C.coral, rebuilt(lv)), lit = home ? { [WINDOW]: C.warm } : null;
   const models = campusModels(n).map(m => ({

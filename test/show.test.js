@@ -135,8 +135,8 @@ test('skip and reset still snap when a beat throws in end', async () => {
   assert.equal(b.show.stage.lv.milk, 0, 'stage reset ran'); assert.equal(b.show.stage.pendingKeys().length, 0); assert.equal(b.show.bubbles.count, 0);
 });
 
-// 颱風登陸那回合：每個人走到門口各自藏起來、整回合藏著；下一回合一開始全部露出來（§8.5「登陸後的回合：人在街上」）
-// 物品 v2：颱風最後放，登陸在倒數第 1 回合，所以連倒數回合一起走
+// 颱風放下（登陸）那回合：每個人走到門口各自藏起來、整回合藏著；下一回合一開始全部露出來（§8.5「登陸後的回合：人在街上」）
+// 唯一正解 2026-10-31 §5.1：颱風到了＝放下事件（landsTyphoon），正解第 6 回合
 test('people hidden at their doors on the landing turn are all back out when the next turn starts', async () => {
   const { show, run } = await headlessShow();
   let s = engine.createState(spec), landed = false;
@@ -148,7 +148,7 @@ test('people hidden at their doors on the landing turn are all back out when the
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.hidden, false, k);
       show.skip(); await p; break;
     }
-    if (!r.events.some(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2)) { await run(evs, { instant: true }); continue; }
+    if (!r.events.some(engine.landsTyphoon)) { await run(evs, { instant: true }); continue; }
     await run(evs); landed = true;
     const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
     assert.ok(hidden.length > 0, 'somebody is still hidden at the end of the landing turn');
@@ -201,11 +201,11 @@ test('on the opening screen no islander stands inside a building and no blink is
 test('a landing turn plays no miss and no icon bubble; hidden owners stay hidden', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  // 選擇帶動升級：颱風放下當回合就長到 Lv2 登陸。回到 GROW（2026-10-29）之後等待只剩 8 條阻擋：
-  // 燈泡、棒球、颱風——第三回合就是登陸回合（棒球 Lv1 等鮮奶，球員是代表）
-  for (const id of ['bulb', 'baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  // 唯一正解 2026-10-31 §5.1：颱風放下當回合就到 101 上空（landsTyphoon）。
+  // 棒球、颱風——第二回合就是登陸回合（棒球 Lv1 等鮮奶，球員是代表）
+  for (const id of ['baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
   const r = place(s, 'typhoon');
-  assert.ok(r.events.some(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2), 'placing the typhoon is the landing turn');
+  assert.ok(r.events.some(engine.landsTyphoon), 'placing the typhoon is the landing turn');
   const w = r.events.filter(e => e.kind === 'wait').at(-1)?.waits?.[0];
   assert.equal(w?.item, 'baseball', 'baseball waits on the landing turn');
   bubblesLog.length = 0;
@@ -371,10 +371,10 @@ test('a turn with a stage crossing into 點燈 holds the mid-script focus(home) 
   assert.ok(lit >= 0, 'the turn crosses into 點燈');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
-  // 劇本先飛去 101 那一拍不查：回到 GROW 之後點燈落在颱風登陸回合，登陸回合的 settle 只留套用、LEVEL UP 與回全景（turn.js 的 indoorSettle），
-  // 那一拍本來就不在（以前是跳級第一級晶片 7 的劇本剛好飛過 101 才過；跳級合成一段之後 n−1 級的劇本不演）。
-  // 釘住這個前提（最終修正 3：原本的 if (!landing) 兩條正解都進不去）——點燈哪天搬出登陸回合，這裡會失敗，再把 focus(tower) 的斷言加回來
-  assert.ok(events.some(engine.landsTyphoon), `點燈 falls in the typhoon landing turn (turn ${at.lit})`);
+  // 唯一正解 2026-10-31：點燈落在第 8 回合（颱風移到巨蛋），不是放下的回合（第 6 回合，indoors 的 settle 只留套用、LEVEL UP 與回全景）——
+  // 101 的劇本照演：回全景之前先飛去 101（釘住前提：點燈哪天又落進放下的回合，這裡會失敗）
+  assert.ok(!events.some(engine.landsTyphoon), `點燈 is not in the typhoon placement turn (turn ${at.lit})`);
+  assert.ok(before.slice(0, mid).some(l => l[0] === 'focus'), 'the 101 script flies to 101 before the mid-script home');
   // 停 0.8 s（1 倍速：演出時間就是真實秒數）
   assert.ok(log[lit][1] - log[mid][1] >= 0.8 - 1e-6, `the home holds 0.8 s before the LEVEL UP (${(log[lit][1] - log[mid][1]).toFixed(2)} s)`);
   assert.equal(log.at(-1)[0], 'home', 'the turn still ends with the final home');
@@ -617,7 +617,7 @@ test('after the typhoon lands, the rest of the turn plays only apply + LEVEL UP 
 test('the landing turn plays live with a LEVEL UP for every grow after the landing; the next turn people walk out of their doors', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  const steps = [...SOLUTIONS[1].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  const steps = [...SOLUTIONS[0].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   // 最後一輪照 game.js 演：跟放置回合一樣補 settle
   const turnEvents = (i, events) => [...events, { kind: 'settle' }];
   for (const [i, step] of steps.entries()) {
@@ -625,7 +625,8 @@ test('the landing turn plays live with a LEVEL UP for every grow after the landi
     if (!r.events.some(engine.landsTyphoon)) { await run(turnEvents(i, r.events), { instant: true }); continue; }
     const n = bubblesLog.length, after = r.events.slice(r.events.findIndex(engine.landsTyphoon) + 1).filter(e => e.kind === 'grow').length;
     await run(turnEvents(i, r.events));
-    assert.ok(bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').length >= after + 1, 'LEVEL UP for the landing and every grow after it');
+    // 放下事件沒有 LEVEL UP（唯一正解：颱風到了＝放下）；之後每個 grow 都有（跳級第一級的那一個由第二級彈兩次補上）
+    assert.ok(bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').length >= after, 'LEVEL UP for every grow after the landing');
     const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
     assert.ok(hidden.length > 0, 'people indoors at the end of the landing turn');
     const next = steps[i + 1](s), p = show.turn(turnEvents(i + 1, next.events));
@@ -638,32 +639,27 @@ test('the landing turn plays live with a LEVEL UP for every grow after the landi
   }
   assert.fail('no landing turn');
 });
-// 裁決 R14：外星那條的登陸回合（選擇帶動升級之後是第 8 回合，颱風放下當回合登陸）——◆ 老鼠 Lv4 分岔在登陸之後照演劇本
-// （◆ 燈泡 Lv9 在賽博那條才落在登陸之後，有的話一起量）；live 演完變異鼠變好、躲進門裡的人沒被劇本拉出來（劇本手上沒有藏著的人）
-test('alien landing turn live: the ◆ rat Lv4 branch (and ◆ bulb Lv9 if it is there) still plays its script after the landing; hidden people stay hidden', async () => {
-  const alien = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;
+// 裁決 R14：正解的放下回合（唯一正解第 6 回合，颱風放下當回合就到 101 上空）——◆ 鮮奶 Lv7 在放下之後照演劇本；
+// 躲進門裡的人沒被劇本拉出來（劇本手上沒有藏著的人）。（舊的外星那條 ◆ 老鼠 Lv4 分岔：外星改成壞結局，正解裡沒有了）
+test('the solution landing turn live: the ◆ milk Lv7 still plays its script after the landing; hidden people stay hidden', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  const steps = [...alien.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  const steps = [...SOLUTIONS[0].map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   const turnEvents = (i, events) => [...events, { kind: 'settle' }];   // 同 game.js
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
     if (!r.events.some(engine.landsTyphoon)) { await run(turnEvents(i, r.events), { instant: true }); continue; }
     const i0 = r.events.findIndex(engine.landsTyphoon), after = r.events.slice(i0 + 1);
-    const rat4 = after.find(e => e.kind === 'grow' && e.item === 'rat' && e.to === 4), bulb9 = after.find(e => e.kind === 'grow' && e.item === 'bulb' && e.to === 9);
-    assert.ok(rat4, 'rat 4 comes after the landing');
+    const keyed = after.filter(isKey);
+    assert.ok(keyed.some(e => e.item === 'milk' && e.to === 7), `milk 7 comes after the landing (${keyed.map(e => e.item + e.to)})`);
     const marks = [];
     await run(turnEvents(i, r.events), { onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) });
     const seg = e => { const k = marks.findIndex(([x]) => x === e); return { secs: (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1], bubbles: bubblesLog.slice(marks[k][2], marks[k + 1]?.[2]) }; };
-    const r4 = seg(rat4), b9 = bulb9 && seg(bulb9);
-    assert.ok(r4.secs > 3, `rat Lv4 script played (${r4.secs.toFixed(1)} s)`); assert.ok(r4.bubbles.some(b => b.kind === '……' || b.kind === '？'), 'the mutant ……／？');
-    if (b9) assert.ok(b9.secs > 2.5, `bulb Lv9 script played (${b9.secs.toFixed(1)} s)`);
-    assert.equal(show.stage.flags.ratBranch, 'alien'); assert.ok(show.roster.members('rat.pack')[0].dress.eye, 'mutant');
+    for (const e of keyed) assert.ok(seg(e).secs > 2.5, `◆ ${e.item} ${e.to} script played (${seg(e).secs.toFixed(1)} s)`);
     const hidden = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden);
     assert.ok(hidden.length > 0 && hidden.every(m => m.mode !== 'script'), 'people indoors stay indoors');
-    // 非關鍵級（例：老鼠 Lv3、珍奶 Lv6）只有 apply + LEVEL UP、沒有人走路：1 倍速下閃白（零件多的話依序錯開，珍奶 Lv6 約 0.6 s）
-    // ＋LEVEL UP 1.0 s，2 s 以內（蒙太奇時代是 2 倍速下的 0.6 s）
-    for (const e of after.filter(x => x.kind === 'grow' && !isKey(x))) assert.ok(seg(e).secs <= 2, `${e.item} ${e.to} ${seg(e).secs.toFixed(2)} s`);
+    // 非關鍵級只有 apply + LEVEL UP、沒有人走路：1 倍速下閃白（零件多的話依序錯開）＋LEVEL UP 1.0 s，2 s 以內
+    for (const e of after.filter(x => x.kind === 'grow' && !isKey(x))) if (seg(e).secs) assert.ok(seg(e).secs <= 2, `${e.item} ${e.to} ${seg(e).secs.toFixed(2)} s`);
     return;
   }
   assert.fail('no landing turn');
@@ -765,6 +761,10 @@ test('placed + grow[2] in the same turn: the placed script then the grow script,
     };
     // 整回合 live：mark 的順序、grow[2] 劇本有沒有建
     const h = await headlessShow(), { evs, s } = await upTo(h), mod = ALL.find(m => m.id === id), grow2 = mod.script.grow[2];
+    // 颱風例外（唯一正解 §4.3）：放下那回合停在 101 上空（up[2] 要 age ≥ 1），下一回合才移到車站
+    if (id === 'typhoon') { assert.ok(evs.some(isPlaced) && !evs.some(isGrow2), `${what}: the typhoon stays at Lv1 on its placement turn`); continue; }
+    // 正解第 7 回合珍奶放下的同一回合颱風移到車站（§4.3 外送爆單 +1）：珍奶 1 → 2 是颱風的 fx（delta），不是珍奶自己的 grow 2
+    if (evs.some(e => e.kind === 'fx' && e.delta?.target === id && e.delta.to === 2)) { assert.ok(!evs.some(isGrow2), `${what}: Lv2 comes from a reaction`); continue; }
     assert.ok(evs.some(isPlaced) && evs.some(isGrow2), `${what}: placed and grow 2 in the same turn`);
     let built = 0; mod.script.grow[2] = (...a) => { built++; return grow2(...a); };
     const marks = [];

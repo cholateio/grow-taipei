@@ -131,10 +131,11 @@ test('milk 6 with a ballfield relocates the kids next to the dome (little league
   assert.ok(Math.hypot(c.x - b.x, c.z - b.z) < 2.5); assert.ok(Math.hypot(c.x - b.x, c.z - (b.z + 1.05)) > 0.9, 'off the gate where players and fans stand');
   for (const n of [5, 7]) assert.deepEqual(cellAt(milk.view(lv({ milk: n, baseball: 2 }), {})['milk.kids'].home.at.x, milk.view(lv({ milk: n, baseball: 2 }), {})['milk.kids'].home.at.z), [-1, 0], `lv${n} on campus`);
 });
-test('typhoon Lv3 swaps the school trim (roof) colour', () => {
+test('typhoon Lv4 (clear sky, 唯一正解 §4.3) swaps the school trim (roof) colour; the storm stops (Lv1–3) do not', () => {
   const trim = v => v['milk.main'].models[0].tint['^#[5-8][0-9a-f][5-8]'];
   assert.equal(trim(views[3]), C.coral);
-  assert.notEqual(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 3 }), {})));
+  assert.equal(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 3 }), {})));
+  assert.notEqual(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 4 }), {})));
 });
 test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
   const { people, run } = await headlessShow({ modules: [milk] });

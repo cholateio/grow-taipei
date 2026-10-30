@@ -1,29 +1,24 @@
-// 颱風（物品 v2 §4.5，max 3）：灰雲 → 暴風圈、大雨、全島檢查（有珍奶就有外送機車在雨中繞；衛星島的風車被吹得搖）
-//   → 風停、彩虹、河濱公園、屋頂換色、堤防沿主島水道一圈。「所有房子換新屋頂」由各模組的 roofColor(…, rebuilt(lv)) 處理。
-// 劇本（§8.5、物品 v2 §6）：颱風雲是主角——飄進來 → 登陸、全島躲進門裡 → 雨過天晴；賴在巨蛋（spec.js 颱風 delay[3]）多等一回合時，
-//   引擎記一個 stall 事件：雲停在巨蛋上空冒「……」。
-// 全島檢查（大停電、淹水、鼠災、颱風假、外送）是登陸之後同一回合的事件：使用者規則（計畫 4 任務 9）只演 [apply, LEVEL UP]，
-//   由 show/turn.js 處理，這裡不寫反應劇本。
+// 颱風（唯一正解 2026-10-31 §4.3、§5.1，max 4）：四站——Lv1 暴風雲到 101 上空（放下那回合：大雨、全島躲進門裡；有珍奶就有外送機車在雨中繞；
+//   衛星島的風車被吹得搖）→ Lv2 移到捷運站上空 → Lv3 移到大巨蛋上空 → Lv4 風停、彩虹、河濱公園、屋頂換色、堤防沿主島水道一圈。
+//   「所有房子換新屋頂」由各模組的 roofColor(…, rebuilt(lv)) 處理。雨、機車整段 Lv1–3 都在。
+// 劇本：颱風雲是主角——◆ 放下：飄進來 → 鼓脹、下大雨 → 全島 ！躲進門口；Lv2／Lv3：雲從上一站飄到下一站（B.move）→ LEVEL UP；◆ Lv4 雨過天晴。
+// 全島檢查（放下的大停電、颱風假；車站的淹水、外送；巨蛋的淹水、鼠災）是同一回合接著的事件：放下之後只演 [apply, LEVEL UP]（大家躲在屋裡，
+//   show/turn.js 的 indoors）；移站的回合照一般事件演。這裡不寫反應劇本。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { R, TOP, MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, cellAt } from '../scene/hex.js';
 import { mulberry32 } from '../scene/random.js';
 import { C } from './palette.js';
 import { RAT_LANDING } from './rat.js';
 import { crowd } from '../show/crowd.js';   // 一群人同時演，名單演到才算
-import { ITEMS } from '../rules/spec.js';
-import { compile } from '../rules/conditions.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
-const CLOUD = 0x9aa7b8, STORM = 0x6b7280, SCOOTER_R = 1.95;
+const STORM = 0x6b7280, SCOOTER_R = 1.95;
 
-// 颱風賴在巨蛋（§8.5、物品 v2 §3）：spec.js delay[3]（棒球 ≥3 且晶片 ≤7）成立時 Lv3 要多等一回合——登陸回合過後，
-// 暴風雲改停在巨蛋上空（下一回合第一次套用時舞台閃白換到那裡），玩家看得到它卡在什麼上面；條件直接用 spec 的，
-// 延後不成立（晶片 ≥8）時雲不去巨蛋
-const DELAYED = compile(ITEMS.typhoon.delay[3], {});
-const lingers = (lv, meta) => lv.typhoon === 2 && DELAYED({ lv }) && !meta.landing;
+// 雲的四站（§4.3）：Lv1 101 上空、Lv2 捷運站上空、Lv3 大巨蛋上空；Lv4 雲散了
+export const STOPS = { 1: anchorWorld('tower'), 2: anchorWorld('token'), 3: anchorWorld('baseball') };
 
-// 堤防（Lv3）：主島外圍每一條靠海的格邊、離格心 LEVEE_R 的一道矮牆（走路格離格邊 0.35 以外、格面還在的那一圈邊上，
+// 堤防（Lv4）：主島外圍每一條靠海的格邊、離格心 LEVEE_R 的一道矮牆（走路格離格邊 0.35 以外、格面還在的那一圈邊上，
 // 不擋路、不算 footprint）；棒球格西南邊留給巨蛋捷運站的月台（同珍奶節的海岸氣球），第一隻老鼠爬上岸的那道牆在爬上來的地方留 LEVEE_OPEN 寬的缺口
 // （rat.js RAT_LANDING 投影到牆上那一點）。全部一個零件、一種顏色（深灰水泥，1 個 draw call）
 export const LEVEE_R = 2.08, LEVEE_H = 0.08, LEVEE_OPEN = 0.9;
@@ -49,34 +44,31 @@ function levee() {
     parts: LEVEE_EDGES.map(e => ({ kind: 'box', pos: [e.x, e.y + LEVEE_H / 2, e.z], scale: [e.len, LEVEE_H, 0.07], rot: [0, e.yaw, 0], color: C.window })) };
 }
 
-export function view(lv, flags, meta = {}) {
+export function view(lv) {
   const n = lv.typhoon, at = anchorWorld('typhoon'), v = {};
   if (!n) return v;
-  if (n === 1) v['typhoon.main'] = { kind: 'cloud', at, labelY: 3.9, footprint: false, parts: [
-    { kind: 'sphere', pos: [0, 4.5, 0], scale: 1.4, color: CLOUD }, { kind: 'sphere', pos: [0.8, 4.35, 0.1], scale: 1.0, color: CLOUD }, { kind: 'sphere', pos: [-0.75, 4.4, -0.1], scale: 0.9, color: CLOUD },
-  ] };
-  else if (n === 2) v['typhoon.main'] = { kind: 'cloud', at: lingers(lv, meta) ? anchorWorld('baseball') : at, labelY: 3.9, spin: 0.5, footprint: false, parts: [
-    { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },
-    ...Array.from({ length: 7 }, (_, i) => { const a = i / 7 * Math.PI * 2; return { kind: 'sphere', pos: [Math.cos(a) * 2.2, 4.4 + (i % 2) * 0.2, Math.sin(a) * 2.2], scale: 1.1 - (i % 3) * 0.12, color: STORM }; }),
-  ] };
-  else {
-    // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山。自己一個零件（雲散了沒有 main）：Lv3 劇本讓它從台地後升起
-    v['typhoon.rainbow'] = { kind: 'compound', at, shadow: false, footprint: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
-    const park = landmarkWorld('park');
-    // 河濱公園是走得到的草地：footprint 只擋樹（樹冠半徑 0.25，外擴 PAD 後 0.33）和兩張長椅（外擴後 0.22 蓋住 0.36 長的椅面），
-    // 不用整個包圍盒——外擴 PAD 後會把 101 南側那條通道堵死（§14.1）
-    v['typhoon.park'] = { kind: 'compound', at: park, footprint: [{ x: -0.45, z: -0.1, r: 0.21 }, { x: -0.35, z: 0.25, r: 0.1 }, { x: 0.35, z: -0.2, r: 0.1 }], parts: [
-      { kind: 'box', pos: [0, 0.01, 0], scale: [1.1, 0.02, 0.3], rot: [0, 0.6, 0], color: C.sand },
-      ...[[-0.35, 0.25], [0.35, -0.2]].flatMap(([x, z]) => [{ kind: 'box', pos: [x, 0.1, z], scale: [0.36, 0.04, 0.12], rot: [0, 0.6, 0], color: C.wood }, { kind: 'box', pos: [x, 0.05, z], scale: [0.3, 0.1, 0.03], rot: [0, 0.6, 0], color: C.ink }]),
-      ...[[0.3, 0.35, 0xf2b5c6], [0.45, 0.2, C.yellow], [-0.2, -0.35, 0xf2b5c6]].flatMap(([x, z, c]) => [{ kind: 'cylinder', pos: [x, 0.08, z], scale: [0.015, 0.16, 0.015], color: 0x6f9560 }, { kind: 'sphere', pos: [x, 0.17, z], scale: 0.07, color: c }]),
-      { kind: 'trunk', pos: [-0.45, 0.2, -0.1], scale: [0.1, 0.4, 0.1], color: C.wood }, { kind: 'leaf', pos: [-0.45, 0.55, -0.1], scale: 0.5, color: 0x8aaf70 },
+  if (n <= 3) {
+    // 暴風圈：一團深灰雲繞 y 轉，停在這一站上空（放下那回合從海上飄進來，之後一回合移一站）
+    v['typhoon.main'] = { kind: 'cloud', at: STOPS[n], labelY: 3.9, spin: 0.5, footprint: false, parts: [
+      { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },
+      ...Array.from({ length: 7 }, (_, i) => { const a = i / 7 * Math.PI * 2; return { kind: 'sphere', pos: [Math.cos(a) * 2.2, 4.4 + (i % 2) * 0.2, Math.sin(a) * 2.2], scale: 1.1 - (i % 3) * 0.12, color: STORM }; }),
     ] };
-    v['typhoon.levee'] = levee();
-  }
-  if (n === 2) {
     v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
     if (lv.boba >= 1) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
+    return v;
   }
+  // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山。自己一個零件（雲散了沒有 main）：Lv4 劇本讓它從台地後升起
+  v['typhoon.rainbow'] = { kind: 'compound', at, shadow: false, footprint: false, parts: [C.coral, C.yellow, C.blue].map((c, i) => ({ kind: 'rail', pos: [0.6, -0.3, -5.2], scale: 11 - i * 0.6, rot: [0, 0.2, 0], color: c })) };
+  const park = landmarkWorld('park');
+  // 河濱公園是走得到的草地：footprint 只擋樹（樹冠半徑 0.25，外擴 PAD 後 0.33）和兩張長椅（外擴後 0.22 蓋住 0.36 長的椅面），
+  // 不用整個包圍盒——外擴 PAD 後會把 101 南側那條通道堵死（§14.1）
+  v['typhoon.park'] = { kind: 'compound', at: park, footprint: [{ x: -0.45, z: -0.1, r: 0.21 }, { x: -0.35, z: 0.25, r: 0.1 }, { x: 0.35, z: -0.2, r: 0.1 }], parts: [
+    { kind: 'box', pos: [0, 0.01, 0], scale: [1.1, 0.02, 0.3], rot: [0, 0.6, 0], color: C.sand },
+    ...[[-0.35, 0.25], [0.35, -0.2]].flatMap(([x, z]) => [{ kind: 'box', pos: [x, 0.1, z], scale: [0.36, 0.04, 0.12], rot: [0, 0.6, 0], color: C.wood }, { kind: 'box', pos: [x, 0.05, z], scale: [0.3, 0.1, 0.03], rot: [0, 0.6, 0], color: C.ink }]),
+    ...[[0.3, 0.35, 0xf2b5c6], [0.45, 0.2, C.yellow], [-0.2, -0.35, 0xf2b5c6]].flatMap(([x, z, c]) => [{ kind: 'cylinder', pos: [x, 0.08, z], scale: [0.015, 0.16, 0.015], color: 0x6f9560 }, { kind: 'sphere', pos: [x, 0.17, z], scale: 0.07, color: c }]),
+    { kind: 'trunk', pos: [-0.45, 0.2, -0.1], scale: [0.1, 0.4, 0.1], color: C.wood }, { kind: 'leaf', pos: [-0.45, 0.55, -0.1], scale: 0.5, color: 0x8aaf70 },
+  ] };
+  v['typhoon.levee'] = levee();
   return v;
 }
 
@@ -123,15 +115,15 @@ export const builders = {
   },
 };
 
-// ── 劇本（§8.5、物品 v2 §6：一級 3–5 秒；登陸是全島的事，≤ 10 秒）──
+// ── 劇本（§5.1：放下與放晴是 ◆、≤ 8 s；移站一級 ≤ 4.5 s）──
 // 名單、位置都是演到那一拍才查（劇本在回合開始時一次建好，那時還不知道誰在哪）；once 查到第一次就記住，整段同一批人。
-const AT = anchorWorld('typhoon'), DOME = anchorWorld('baseball');
-const CLOUD_Y = 3.9, HURRY = 2.0;   // 雲頭上的泡泡高度；趕著躲雨的走路速度
+const HURRY = 2.0;   // 趕著躲雨的走路速度
 const DOOR_MIN = 0.35;   // 算「建築」的 footprint 最小半寬（路燈 0.15、牛奶箱 0.3 不算門）
-// 鏡頭（§13.1、計畫 3.8 Task 6）：雲在 4–5 單位高，對著颱風格的地面拉近會把雲切掉——注視點抬到雲和地面中間、zoom 0.8。
-// 登陸、雨過天晴是全島的事：回全景（focus('home')）；賴在巨蛋的雲對著巨蛋上空
+export const HOP = 1.5;  // 移站：雲從上一站飄到下一站幾秒（設計 §7：1.0–2.0）
+// 鏡頭（§13.1、計畫 3.8 Task 6）：雲在 4–5 單位高，對著地面拉近會把雲切掉——注視點抬到雲和地面中間、zoom 0.8。
+// 放下（躲雨）、雨過天晴是全島的事：雲到站之後回全景（focus('home')）；移站對著新的那一站上空
 const cloudView = p => ({ x: p.x, y: 2.6, z: p.z }), CLOUD_ZOOM = 0.8;
-const cloudFocus = (B, p = AT) => B.focus(cloudView(p), { zoom: CLOUD_ZOOM });
+const cloudFocus = (B, p) => B.focus(cloudView(p), { zoom: CLOUD_ZOOM });
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
@@ -153,52 +145,58 @@ function toDoor(B, m) {
   w.end = c => { end(c); c.roster.hide(m); };
   return w;
 }
-const cloudHead = ctx => ctx.B.partHead('typhoon.main', CLOUD_Y, ctx);
+// 移站：鏡頭對著新的那一站上空 → 雨照舞台變小（放下那回合過了，LINGER）→ 雲換到新站（不閃）、從上一站的位置飄過來 → LEVEL UP。
+// 淹水、外送、巨蛋淹水、鼠災是接著的 fx 事件（turn.js 預設劇本）
+function hop(e, s, ctx) {
+  const { B } = ctx, at = STOPS[e.to], from = STOPS[e.to - 1];
+  return [
+    cloudFocus(B, at), B.worldNow(),
+    B.apply(e, { only: ['typhoon.main'], blink: false }),
+    B.move('typhoon.main', { from: { dx: from.x - at.x, dy: from.y - at.y, dz: from.z - at.z }, to: 0, dur: HOP }),
+    B.apply(e), B.levelUp('typhoon'),
+  ];
+}
 
 export const script = {
-  // 烏雲從台地後面飄進來停在島上空 → ……
+  // ◆ 放下（颱風到 101 上空）：鏡頭對著 101 上空 → 暴風雲從台地後面飄進來（2.5 s）→ 回全景 → 閃白下大雨 → 雲鼓脹，
+  // 同一刻全島小人 ！、各自快走到最近的建築門口、到了就躲進去（整回合躲著；雨閃完才出發，躲進門的那一刻沒有東西在閃）→
+  // 船消失、風車被吹得搖、外送機車出來（剩下的零件一次閃白）。
+  // ◆ ≤ 8 s live（§5.3）：飄進來與舊的登陸併成一段，鼓脹、！、走去門口改成一起演（舊的登陸是一拍接一拍）；正解 5.9 s，吹歪那局門口最遠 7.4 s
+  // 放下事件沒有 LEVEL UP（同所有物品的放下）；之後同一回合的事件只演 apply + LEVEL UP（大家都在屋裡，turn.js 的 indoors）
   placed(e, s, ctx) {
-    const { B } = ctx;
-    return [cloudFocus(B), B.apply(e, { blink: false }), B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 2.5 }), B.bubble(cloudHead(ctx), '……', 0.8)];   // …… 1.2 → 0.8（裁決 R15）、飄進來 3 → 2.5 s（R17）
+    const { B } = ctx, cast = once(c => everyone(c));
+    const shelter = crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m)));   // 衛星島上的人不走（走路格只有主島）
+    return [
+      cloudFocus(B, STOPS[1]), B.apply(e, { only: ['typhoon.main'], blink: false }),
+      B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 2.5 }),   // 飄進來 3 → 2.5 s（裁決 R17）
+      B.focus('home'), B.apply(e, { only: ['typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
+      // ！ 跟放晴的 ♪ 一樣只給主島上的人：衛星島最外圈的人在全景邊上（選擇帶動升級裁決 R6）
+      B.together([B.gesture('typhoon.main', 'puff'), crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '！', 0.8))), shelter]),
+      B.apply(e),
+    ];
   },
   grow: {
-    // 登陸：雲鼓脹 → 閃白變暴風圈、下大雨 → 全島小人 ！ → 各自快走到最近的建築門口、到了就躲進去（整回合躲著）→
-    // 船消失、風車被吹得搖、外送機車出來（剩下的零件一次閃白）→ LEVEL UP。
-    // 之後同一回合的事件只演 apply + LEVEL UP（大家都在屋裡，turn.js 的 indoors）
-    2(e, s, ctx) {
-      const { B } = ctx, cast = once(c => everyone(c));
-      const shelter = crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => toDoor(B, m)));   // 衛星島上的人不走（走路格只有主島）
-      return [
-        B.focus('home'), B.gesture('typhoon.main', 'puff'),
-        B.apply(e, { only: ['typhoon.main', 'typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
-        // ！ 跟 Lv3 的 ♪ 一樣只給主島上的人：衛星島最外圈的人在全景邊上（選擇帶動升級裁決 R6 晶片 Lv8 標 ◆ 之後，賽博第 8 回合量到 ！ 整段在畫面外）
-        crowd(B, c => cast(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '！', 0.8))), shelter,
-        B.apply(e), B.levelUp('typhoon'),
-      ];
-    },
-    // 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園與堤防一起閃白 → 主島的小人一起 ♪ → 屋頂換色 → LEVEL UP
-    // （躲著的人在回合開始時已經從門口出來、走回家了：show.turn 的 showAll({ walk: true })）
-    3(e, s, ctx) {
+    2: hop,
+    3: hop,
+    // ◆ 雨過天晴：雲、雨、機車閃白後拿掉 → 天晴 → 彩虹從台地後升起 → 河濱公園與堤防一起閃白 → 主島的小人一起 ♪ → 屋頂換色 → LEVEL UP
+    // （躲著的人早在放下的下一回合開始時從門口出來、走回家了：show.turn 的 showAll({ walk: true })）
+    4(e, s, ctx) {
       const { B } = ctx;
       return [
         B.focus('home'), B.apply(e, { only: ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'] }), B.world({ storm: 0, rain: 0 }),
         B.apply(e, { only: ['typhoon.rainbow'], blink: false }), B.scaleIn('typhoon.rainbow', { dur: 1.2 }),
         B.apply(e, { only: ['typhoon.park', 'typhoon.levee'] }),
-        // ♪ 只給主島上的人：衛星島最外圈（遊樂場島、森林島）的人在全景邊上、常常一半在畫面外（選擇帶動升級：最後一輪照一般回合演，每個泡泡都演得到）
+        // ♪ 只給主島上的人：衛星島最外圈（遊樂場島、森林島）的人在全景邊上、常常一半在畫面外
         crowd(B, c => everyone(c).filter(m => cellAt(m.pos.x, m.pos.z)).map(m => B.bubble(m, '♪', 0.9))), B.home(everyone),
         B.apply(e), B.levelUp('typhoon'),
       ];
     },
   },
-  // 賴在巨蛋（spec.js 颱風 delay[3]：棒球 ≥3、矽盾還沒測試）多等一回合：引擎記一個 stall 事件。
-  // 雲已經照 view 的 lingers 停在巨蛋上空（這回合第一次套用時閃白換過去）：鏡頭對著它 → 雲鼓一下 → ……
-  stall(e, s, ctx) {
-    const { B } = ctx;
-    return [cloudFocus(B, DOME), B.apply(e, { only: ['typhoon.main'] }), B.gesture('typhoon.main', 'puff'), B.bubble(cloudHead(ctx), '……', 1.2)];
-  },
   rep: () => null,   // 颱風沒有等待
   hasRep: () => false,
 };
+// ◆ 關鍵節點（§5.3）：颱風 1（放下：到 101、全島躲雨）、4（放晴）。放下的 ◆ 由 turn.js 讀 script.placed.key
+script.placed.key = script.grow[4].key = true;
 
 // 拜訪點（計畫 6 設計 §4）：颱風是天氣——沒有人拜訪它，每一級都是 null
 export const visitSpot = () => null;

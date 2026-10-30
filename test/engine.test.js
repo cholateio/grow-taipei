@@ -362,8 +362,8 @@ test('ratBranch at rat Lv4: chip ≥ 8 → cyber, else alien', () => {
     const s = { ...s0, lv: { ...s0.lv, rat: 3, chip }, age: { ...s0.age, rat: 3, chip: 8 }, held: { ...s0.held, rat: 1, chip: 1 }, turn: 9 };
     return advance(s, real);
   };
-  const cyber = at(8), alien = at(6);   // 晶片 8 → 9 要颱風：不動；6 → 7 是 auto（回到 GROW），先掃到晶片升 7，還是 < 8
-  assert.equal(cyber.state.lv.chip, 8); assert.equal(alien.state.lv.chip, 7);
+  const cyber = at(8), alien = at(6);   // 晶片 8 → 9 要颱風：不動；6 → 7 要代幣 ≥7（2026-10-30 連鎖）：代幣 0，晶片停在 6，還是 < 8
+  assert.equal(cyber.state.lv.chip, 8); assert.equal(alien.state.lv.chip, 6);
   assert.equal(cyber.state.lv.rat, 4); assert.equal(cyber.state.flags.ratBranch, 'cyber');
   assert.equal(alien.state.lv.rat, 4); assert.equal(alien.state.flags.ratBranch, 'alien');
 });

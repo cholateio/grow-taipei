@@ -102,3 +102,10 @@ test('both solutions follow the design §3.3 level table turn by turn', () => {
     assert.deepEqual(rows, LV[r.ending.id], r.ending.id);
   }
 });
+
+// 2026-10-30 連鎖：使用者那局（捷運淹水、代幣停在 4）——靠捷運的五個物品都停在低級
+test('cascade: the 2026-10-30 recorded order ends with five low items, all pointing at the flooded metro', () => {
+  const r = playOrder(['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], spec);
+  assert.deepEqual(spec.ORDER.map(id => r.state.lv[id]), [10, 6, 6, 4, 3, 4, 5, 7]);
+  assert.equal(r.ending.id, 'flood');
+});

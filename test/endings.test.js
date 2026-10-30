@@ -118,8 +118,8 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   const all = enumerate(spec);
   // 字面值釘死（規則改了這裡跟 helpers/endings.js 一起換）
   assert.deepEqual(EXAMPLE, {
-    hit: ['milk', 'bulb', 'token', 'rat', 'chip', 'typhoon', 'boba', 'baseball'],
-    deflect: ['milk', 'bulb', 'token', 'typhoon', 'chip', 'rat', 'boba', 'baseball'],
+    hit: ['milk', 'chip', 'bulb', 'rat', 'token', 'typhoon', 'boba', 'baseball'],
+    deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
   });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);

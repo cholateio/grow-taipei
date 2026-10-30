@@ -81,9 +81,11 @@ test('CLOSING_TURNS is 1 and no item is steady', () => {
 
 // 回到 GROW（2026-10-29 設計 §3.2）：預設自己長；阻擋與跳級都少量、一字不差
 const minL = (id, n) => ({ minLevel: [id, n] }), maxL = (id, n) => ({ maxLevel: [id, n] }), pres = id => ({ present: id });
-test('blockers: exactly the eight of design §3.2; every other up[] is auto', () => {
+test('blockers: exactly the fifteen of design 2026-10-30 §3; every other up[] is auto', () => {
   const blockers = { 'milk 3': pres('baseball'), 'baseball 2': minL('milk', 3), 'baseball 3': { and: [maxL('token', 7), minL('milk', 3)] },
-    'rat 3': minL('token', 4), 'rat 4': { or: [minL('chip', 3), minL('typhoon', 2)] }, 'typhoon 3': minL('bulb', 6), 'chip 9': minL('typhoon', 2) };
+    'rat 3': minL('token', 4), 'rat 4': { or: [minL('chip', 3), minL('typhoon', 2)] }, 'typhoon 3': minL('bulb', 6), 'chip 9': minL('typhoon', 2),
+    // 2026-10-30 連鎖：靠捷運／電網的七級
+    'chip 6': minL('bulb', 6), 'chip 7': minL('token', 7), 'chip 8': minL('token', 7), 'bulb 7': minL('token', 5), 'bulb 9': minL('token', 7), 'boba 6': minL('token', 7), 'baseball 8': minL('token', 8) };
   for (const id of ORDER) for (let n = 2; n <= ITEMS[id].max; n++) {
     const key = `${id} ${n}`, c = ITEMS[id].up[n];
     if (key === 'rat 5') continue;   // 照舊（分岔旗標）
@@ -91,10 +93,10 @@ test('blockers: exactly the eight of design §3.2; every other up[] is auto', ()
   }
   assert.deepEqual(ITEMS.rat.up[5], { or: [{ and: [{ flag: 'ratBranch', is: 'cyber' }, minL('token', 7)] }, { and: [{ flag: 'ratBranch', is: 'alien' }, minL('typhoon', 2)] }] });
 });
-test('jumps: exactly the thirteen of design §3.2', () => {
-  assert.deepEqual(ITEMS.bulb.jump, { 5: minL('baseball', 4), 8: minL('chip', 4) });
+test('jumps: exactly the thirteen of design §3.2, two of them with the 2026-10-30 extra condition', () => {
+  assert.deepEqual(ITEMS.bulb.jump, { 5: minL('baseball', 4), 8: { and: [minL('chip', 4), minL('token', 5)] } });
   assert.deepEqual(ITEMS.token.jump, { 4: pres('chip'), 7: minL('bulb', 6), 10: minL('chip', 7) });
-  assert.deepEqual(ITEMS.chip.jump, { 4: minL('milk', 4), 6: minL('bulb', 6), 7: minL('token', 7), 8: minL('token', 7), 9: minL('typhoon', 2) });
+  assert.deepEqual(ITEMS.chip.jump, { 4: minL('milk', 4), 6: minL('bulb', 6), 7: { and: [minL('token', 7), minL('bulb', 6)] }, 8: minL('token', 7), 9: minL('typhoon', 2) });
   assert.deepEqual(ITEMS.rat.jump, { 4: { and: [minL('token', 4), { or: [minL('chip', 3), minL('typhoon', 2)] }] } });
   assert.deepEqual(ITEMS.boba.jump, { 4: minL('chip', 2), 6: minL('token', 7) });
   for (const id of ['milk', 'typhoon', 'baseball']) assert.deepEqual(ITEMS[id].jump ?? {}, {}, id);

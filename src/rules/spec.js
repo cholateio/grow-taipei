@@ -14,6 +14,11 @@
 // 晶片 4（鮮奶 ≥4）、6（燈泡 ≥6）、7、8（代幣 ≥7，兩條路線各用一條，刻意不合併）、9（颱風 ≥2）；
 // 老鼠 4（代幣 ≥4 且（晶片 ≥3 或颱風 ≥2）——跳級不看 up[3]，代幣 ≥4 是必要條件）；珍奶 4（晶片 ≥2）、6（代幣 ≥7）。
 //
+// 2026-10-30 連鎖（設計 docs/superpowers/specs/2026-10-30-cascade-and-glow-design.md §3）：靠捷運／電網的七級加回依賴，捷運淹水（代幣鎖在 ≤4）會拖垮離島鏈。
+// 晶片 6（燈泡 ≥6）、7／8（代幣 ≥7）；燈泡 7（代幣 ≥5）、9（代幣 ≥7）；珍奶 6（代幣 ≥7）；棒球 8（代幣 ≥8）。
+// 跳級是捷徑、不看 up[n−1]，所以會跨過這些級的跳級也跟著加條件：晶片 7 要代幣 ≥7 且燈泡 ≥6；燈泡 8 要晶片 ≥4 且代幣 ≥5。
+// 引擎掃描順序晶片、燈泡在代幣前面，看到的是代幣上一回合的級數，門檻照這個訂。兩條正解不變（全枚舉確認）。
+//
 // 這張表全枚舉剛好兩條全 MAX 的順序：
 //   鮮奶 → 棒球 → 燈泡 → 代幣 → 晶片 → 珍奶 → 老鼠 → 颱風 ⇒ 賽博龐克
 //   鮮奶 → 棒球 → 代幣 → 燈泡 → 晶片 → 珍奶 → 老鼠 → 颱風 ⇒ 外星人
@@ -43,15 +48,15 @@ export const ITEMS = {
     name: '晶片', max: 9,
     // 工地 → 廠房 → 園區 → ★ 星群總部（喝鮮奶長大的人才：鮮奶 ≥4 直接跳）→ 太陽能＋變電站 → ★ 海底電纜通電（變電所：燈泡 ≥6 直接跳）
     // → ★ 矽盾天線（零件搭列車到離島：代幣 ≥7 直接跳）→ ★ 測試（同上，晚一步的那條路線用）→ ★ 矽盾待命（要在暴風圈下測過：颱風 ≥2）
-    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: auto, 7: auto, 8: auto, 9: min('typhoon', 2) },
-    jump: { 4: min('milk', 4), 6: min('bulb', 6), 7: min('token', 7), 8: min('token', 7), 9: min('typhoon', 2) },
+    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: min('bulb', 6), 7: min('token', 7), 8: min('token', 7), 9: min('typhoon', 2) },
+    jump: { 4: min('milk', 4), 6: min('bulb', 6), 7: and(min('token', 7), min('bulb', 6)), 8: min('token', 7), 9: min('typhoon', 2) },
   },
   bulb: {
     name: '燈泡', max: 9,
     // 路燈 → 整條路 → 霓虹 → 夜市 → ★ 全島 LED、101 燈光秀（巨蛋開夜場：棒球 ≥4 直接跳）→ 變電所 → 離岸風電
     // → ★ 海底電纜接到主島（星群總部拉電纜：晶片 ≥4 直接跳）→ 全島賽博霓虹
-    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: auto, 7: auto, 8: auto, 9: auto },
-    jump: { 5: min('baseball', 4), 8: min('chip', 4) },
+    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: auto, 7: min('token', 5), 8: auto, 9: min('token', 7) },
+    jump: { 5: min('baseball', 4), 8: and(min('chip', 4), min('token', 5)) },
   },
   token: {
     name: '代幣', max: 10,
@@ -100,7 +105,7 @@ export const ITEMS = {
   boba: {
     name: '珍奶', max: 7,
     // 攤車 → 人龍 → 珍奶店 → ★ 噴泉廣場（廠房的工程師客群：晶片 ≥2 直接跳）→ 連鎖店 → ★ 燈塔島旗艦店（捷運到離島：代幣 ≥7 直接跳）→ 世界珍奶節
-    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: auto, 7: auto },
+    up: { 2: auto, 3: auto, 4: auto, 5: auto, 6: min('token', 7), 7: auto },
     jump: { 4: min('chip', 2), 6: min('token', 7) },
     onLevel: {
       4: [{ when: max('milk', 2), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }],
@@ -109,7 +114,7 @@ export const ITEMS = {
   baseball: {
     name: '棒球', max: 8,
     // 沙地 → 木看台（少棒的孩子：鮮奶 ≥3）→ 大巨蛋（少棒隊要先有：鮮奶 ≥3；要趕在捷運通車到離島前動工：代幣 ≤7）→ 比賽 → 演唱會 → 跨年煙火 → 擴建 → 巨蛋捷運站
-    up: { 2: min('milk', 3), 3: and(max('token', 7), min('milk', 3)), 4: auto, 5: auto, 6: auto, 7: auto, 8: auto },
+    up: { 2: min('milk', 3), 3: and(max('token', 7), min('milk', 3)), 4: auto, 5: auto, 6: auto, 7: auto, 8: min('token', 8) },
   },
 };
 

@@ -167,3 +167,32 @@ test('miss: nobody to send (no rep function, typhoon, busy rep) → no beats or 
   assert.ok(busy.marks[0][0].miss && busy.marks[1][1] - busy.marks[0][1] < 0.05, 'busy rep: the miss collapses to 0 s');
   assert.ok(dist(busy.marks[1][2], busy.at) < 1e-9 && busy.marks[1][3] === 'script', 'the busy rep stays put, still in his script');
 });
+
+// 2026-10-30 連鎖：使用者那局（捷運淹水、代幣停在 4）第 8 回合，wait 事件列出晶片、燈泡、珍奶、棒球都在等代幣。
+// 晶片的工程師離車站太遠（超過 MISS_WALK），照規則回自己門口嘆氣；珍奶老闆走得到——走向車站門口、看著車站、嘆氣
+test('miss live: cascade — a flooded metro stalls the islet chain: turn 8 lists chip/bulb/boba/baseball ← token; the boba owner walks to the station and sighs; ≤ MISS_CAP', async () => {
+  const order = ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'];
+  let s = engine.createState(spec), last;
+  for (const id of order) { last = engine.place(s, id, spec); s = last.state; }
+  const waits = last.events.filter(e => e.kind === 'wait').flatMap(e => e.waits);
+  assert.deepEqual(waits.map(w => `${w.item}<${w.for}`), ['chip<token', 'bulb<token', 'boba<token', 'baseball<token'], 'turn 8 waits');
+  const v = await liveMiss(order, [{ item: 'boba', for: ['token'] }]), [g] = v.segs;
+  assert.equal(v.segs.length, 1);
+  assert.equal(g.sv.lv.token, 4, 'the metro is stuck at 4 (flooded)');
+  assert.ok(mod('chip').script.hasRep(g.sv.lv.chip) && mod('boba').script.hasRep(g.sv.lv.boba), 'both have a rep at this level');
+  // common() 的「整局沒有圖示泡泡」不適用：前 8 個放置回合的泡泡也在 bubblesLog 裡，這裡只量撲空那一段（g.bubbles）
+  const what = 'boba<token4';
+  assert.ok(g.rep && g.startMode === 'home' && g.sigh && g.bubbles === 0, `${what}: rep from daily life sighs, no bubble in the segment`);
+  assert.ok(g.secs <= MISS_CAP && g.secs >= SIGH, `${what}: ${g.secs.toFixed(2)} s`);
+  assert.equal(g.mode, 'home', `${what}: back to daily life`); assert.equal(v.script, 0, `${what}: nobody left in script mode`);
+  assert.ok(dist(g.end, g.start) > 0.3, `${what}: walked`);
+  // 目標：spot／door、look 是代幣的拜訪點
+  const sp = mod('token').visitSpot(4, g.sv);
+  const h = await headlessShow(); let t = engine.createState(spec);
+  for (const id of order) { const r = engine.place(t, id, spec); t = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const sv = { lv: { ...h.show.stage.lv }, flags: h.show.stage.flags }, [walk] = miss({ item: 'boba', for: ['token'] }, sv, { B }, { item: mod('boba'), helper: mod('token') });
+  assert.ok(walk.ready({ roster: h.show.roster, nav: h.show.nav }), 'somebody to send');
+  const goal = walk.goal();
+  assert.ok(goal.kind === 'spot' || goal.kind === 'door', `goal kind ${goal.kind}`);
+  assert.ok(Math.hypot(goal.look.x - sp.x, goal.look.z - sp.z) < 1e-6, 'looks at the token visitSpot');
+});

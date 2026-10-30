@@ -1,4 +1,4 @@
-// 晶片（物品 v2 §4.3，max 9）：北士科工地 → 冒煙的廠房、2 個工程師走去 101 → 園區三棟玻璃盒、4 個工程師騎 YouBike 繞園區
+// 晶片（物品 v2 §4.3，max 9）：北士科工地 → 冒煙的廠房、2 個工程師走去 101 → 園區三棟玻璃盒、多一個工程師（3 個穿外套的照樣通勤）
 //   → 「星群」總部（弧形玻璃）→ 太陽能板屋頂＋變電站（小房子＋電線桿，煙囪不冒煙了）→ ★ 廠房通電（海底電纜從風車島接進變電站、發光、廠房燈全亮）
 //   → ★ 101 頂端長出矽盾天線（零件由列車運進來）→ ★ 矽盾測試（罩子閃三下又收起，全島抬頭）→ ★◆ 矽盾待命（罩子淡淡常駐、101 每 3 秒閃一圈）。
 // 天線與罩子是 101 的零件（tower.js 照 lv.chip 畫 tower.antenna、tower.shield），這裡的劇本用 apply 的 only 叫它們出來。
@@ -40,11 +40,6 @@ const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格�
 // 工程師上下班：廠門 → 沿園區南緣往西 → 橋 → 101 腳下（開放路徑，走到底折返）
 const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
 export const ENGINEER_ROUTE = [COMMUTE[0], { ...DOOR_WEST, y: COMMUTE[0].y }, ...COMMUTE.slice(1)];
-// Lv3 起騎 YouBike 的工程師在園區裡繞圈（計畫 9 §5；2026-10-30 錄影：四台走通勤路線、到 101 腳下的死路折返就卡成一坨）：
-// 廠門前、招牌與總部南邊那片草地上的橢圓（中心 (−0.15, +1.43)、半軸 1.1 × 0.2，十個點），閉合的環，四台照名冊的 i / n 等距起步。
-// 不繞每一棟建築（控制者裁決 B）：繞整個園區的環一定經過西北角上台地的階梯口、東邊變電站與登陸桿之間那條縫（電工主路），走路的人在那裡讓不開。
-// 這個橢圓離招牌、總部、玻璃盒的外擴 footprint ≥ 0.1、離電工主路 ≥ 0.3、離廠門外的入口（ENGINEER_ENTRY）≥ 2.7，整圈都在走路格上
-export const PARK_LOOP = Array.from({ length: 10 }, (_, i) => { const t = -i / 10 * 2 * Math.PI; return offset(AT, -0.15 + 1.1 * Math.cos(t), 1.43 + 0.2 * Math.sin(t)); });
 
 // ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
 export const MODELS = {
@@ -179,10 +174,11 @@ export function view(lv, flags = {}) {
   }
   if (wired) v['chip.cable'] = cable(n >= 6, n >= 5);
   if (n >= 2) {
-    const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 4 : 2) - (detective ? 1 : 0);
-    // Lv2 兩個穿外套的走上下班路線（開放路徑、走到底折返）；Lv3 起騎車繞園區草地上的環
-    const home = n >= 3 ? { kind: 'path', path: PARK_LOOP, loop: true, speed: 0.8, entry: ENGINEER_ENTRY } : { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45, entry: ENGINEER_ENTRY };
-    v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: n >= 3 ? 'bike' : 'coat', home };
+    // 穿外套的工程師走上下班路線（開放路徑、走到底折返）：Lv2 兩個、Lv3 起三個。
+    // 騎 YouBike 的四個 2026-10-30 拿掉了（計畫 9 §5、使用者「騎腳踏車人員可以拿掉，太擠了」）：四台走通勤路線在 101 腳下的死路擠成一坨，
+    //   改繞園區的環又找不到位子——草地上的環躲不開這條通勤路線和拜訪站位（visitSpot 的鏡頭側）
+    const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 3 : 2) - (detective ? 1 : 0);
+    v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: 'coat', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45, entry: ENGINEER_ENTRY } };
     // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
     // 老鼠坐車（rat 的 'train' 模式）時改成在捷運站北側等（審稿第 2 輪：一直對著飛快的列車重新規劃只會在站旁的橋頭原地踏步、擋住散步客）
     // 老鼠還在窩裡（'nest'）時站在隔壁格邊上盯著窩，不跟進球場格
@@ -203,8 +199,8 @@ const worker = () => c => seen(c, 'chip.worker')[0] ?? null;
 const eng = i => c => seen(c, 'chip.engineers')[i] ?? null;
 const ENGINEERS = c => c.roster.members('chip.engineers');
 const nearestEng = p => once(c => seen(c, 'chip.engineers').sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0] ?? null);
-// 工程師（最多 4 個）一起轉頭看 p
-const engineersLook = (B, p, dur = 1.0) => B.together([0, 1, 2, 3].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
+// 工程師（最多 3 個）一起轉頭看 p
+const engineersLook = (B, p, dur = 1.0) => B.together([0, 1, 2].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
 // （老鼠那邊的劇本在老鼠 Lv2 成立時也補這一拍，哪邊先成立哪邊演）
 const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(c => c.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
@@ -238,7 +234,7 @@ export const script = {
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // 園區：工程師轉頭看廠房旁的空地 → 閃白三棟玻璃盒、換 YouBike、多兩個人（老鼠 ≥2 時一個變偵防師）→ ♪
+    // 園區：工程師轉頭看廠房旁的空地 → 閃白三棟玻璃盒、多一個人（老鼠 ≥2 時一個變偵防師）→ ♪
     3(e, s, ctx) {
       const { B } = ctx;
       // ♪ 0.9 → 0.7（計畫 5b 任務 4，第 6 回合 ≤ 50 s）
@@ -272,7 +268,7 @@ export const script = {
     },
     // ★ 矽盾天線（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
     //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 天線在塔頂閃白 → LEVEL UP 時轉回晶片格。
-    //   （工程師平常在園區繞圈（Lv3 起），離站前都很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
+    //   （工程師平常在廠門與 101 腳下之間通勤，離站前都很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
     //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒。
     //   Task 6a（◆ ≤ 8 s：外星第 8 回合 6 → 7 合成一段 live 9.5 s——兩級的零件一起閃、工程師離 101 比較遠）：剛開過站不到半圈的車倒回來
     //   （同燈泡 Lv7 上車，back = π）、趕路的目標 4 → 2.5 s，鏡頭飛去站前的同時列車就趕來（together；列車最快也要 1 秒多才進站）

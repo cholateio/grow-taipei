@@ -376,29 +376,9 @@ test('home(m, { hurry }) on a path member rejoins the route at its nearest point
   assert.ok(joined, 'back on the route');
   assert.ok(gap(joined, near) < 0.3, `rejoined ${gap(joined, near).toFixed(2)} from where it stood`);
 });
-// 計畫 9 §5：同一圈閉合折線上的幾個人（晶片 Lv3 起四台 YouBike 繞園區草地）照沿環到前一台多遠放慢——四台擠成一串（相鄰 0.3）接上環，
-// 之後拉開：沿環的速度從不超過 home.speed（只放慢、不加速），25 秒後沿環的間距都 ≥ 等分的一半、兩兩直線距離 ≥ 0.25
-test('riders on one closed loop space themselves out: bunched riders slow down (never speed up) until the gaps are near even', async () => {
-  const { PARK_LOOP } = await import('../src/actors/chip.js'), { measurePath, locateOnPath } = await import('../src/scene/path.js');
-  const { roster, nav } = setup(), n = 4, speed = 0.8, dt = 1 / 30;
-  roster.declare('bikes', { kind: 'roster', at: PARK_LOOP[0], n, accessory: 'bike', home: { kind: 'path', path: PARK_LOOP, loop: true, speed } }); roster.snap();
-  const P = nav.ground(PARK_LOOP, { loop: true }), lens = measurePath(P, true), T = lens.at(-1), ms = roster.members('bikes');
-  ms.forEach((m, i) => { roster.claim(m); roster.setPose(m, { ...locateOnPath(P, lens, 1 + i * 0.3, true), walking: false }); roster.home(m); });
-  let fastest = 0;
-  for (let f = 0; f < 25 / dt; f++) {
-    const before = ms.map(m => m.cursor?.s);
-    roster.update(dt, f * dt);
-    ms.forEach((m, i) => { if (before[i] != null && m.cursor) fastest = Math.max(fastest, (m.cursor.s - before[i]) / dt); });
-  }
-  assert.ok(ms.every(m => m.cursor), 'all on the loop');
-  assert.ok(fastest <= speed + 1e-9, `never faster than the path speed along the loop (${fastest.toFixed(3)})`);
-  const s = ms.map(m => ((m.cursor.s % T) + T) % T).sort((x, y) => x - y), gaps = s.map((x, i) => (i + 1 < n ? s[i + 1] - x : s[0] + T - x));
-  assert.ok(Math.min(...gaps) >= T / n / 2, `gaps ${gaps.map(g => g.toFixed(2)).join(' ')} of ${T.toFixed(2)}`);
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(gap(ms[i].pos, ms[j].pos) >= 0.25, `riders ${i}–${j} ${gap(ms[i].pos, ms[j].pos).toFixed(2)} apart`);
-});
-// 審查（計畫 9 任務 3 第 1 輪）：間距與煞車只管 path、閉合、n ≥ 2 的名冊——電工（ROAD，n 1，旁邊有人在走）、守塔人（衛星島繞圈 n 1）、
-// 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）都照舊等速：10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢
-test('only path loops with n ≥ 2 space and brake: the electrician, the lighthouse keeper and the playground kids ride at constant speed as before', async () => {
+// 計畫 9 任務 3 審稿：閉合折線上的人照舊等速——電工（ROAD，n 1，前面一直有人在走）、守塔人（衛星島繞圈 n 1）、
+// 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢、不互相等
+test('loops keep a constant speed: the electrician, the lighthouse keeper and the playground kids never stop or slow down', async () => {
   const { ROAD } = await import('../src/actors/bulb.js'), sat = await import('../src/actors/satellites.js'), { lv } = await import('./helpers/actors.js');
   const { roster } = setup(), dt = 1 / 30, sv = sat.view(lv({ bulb: 9, token: 8, milk: 3 }), {});
   assert.ok(sv['sat.keeper'] && sv['sat.playground'].n === 2);

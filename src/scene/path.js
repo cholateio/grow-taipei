@@ -23,6 +23,5 @@ export function createPathCursor(path, { loop = true, s = 0 } = {}) {
     },
     locate() { const p = locateOnPath(path, lens, s, loop); if (dir < 0) p.yaw += Math.PI; return p; },
     get total() { return total; },
-    get s() { return s; },   // 走到第幾公尺（閉合路徑可能超過 total；名冊看同一圈上的人彼此隔多遠）
   };
 }

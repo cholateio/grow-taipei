@@ -4,6 +4,7 @@
 //   賽博＝機器鼠排隊跟偵防師走到 101 腳下變身、軍團 10 隻繞 101、一隻戴王冠坐在捷運站頂；
 //   外星（壞結局「變異鼠稱王」）＝變異鼠三眼綠光加冕、石堆島綠光圈（satellites.js）、小 UFO 盤旋。
 // 颱風把老鼠沖進大巨蛋：5 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
+// 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩在舞台結算的 meta.trouble 那棟門口晃（沒有 trouble 才在窩旁）；放下那回合有 trouble 就跑過去聞一聞。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
 // 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）。
 // 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 10 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，兩排各 5 隻面向鏡頭），
@@ -70,14 +71,18 @@ const SPRING_SPOTS = Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Mat
 
 // 名冊入口（§13.2，view 的 home.entry）：補進來的老鼠從哪裡走來。泡溫泉：從窩那邊（溫泉格的格邊離池子都不到 1.5）；
 // 賽博 Lv4 軍團：多的五隻從園區門口走去 101。其他模式用名冊預設（家那格邊上離家最遠的點）
-export function view(lv, flags) {
+// 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩的家跟著舞台結算的 meta.trouble 走——有出問題的那棟，就在那棟門口
+// （meta.troubleAt，stage.js troubleSpot）附近繞 TROUBLE_R；沒有就在窩旁晃。家換位置時名冊讓牠們走過去（roster.js apply 的 moved，不閃白）
+export const TROUBLE_R = 0.4;
+const daily = meta => (meta?.troubleAt ? wander(meta.troubleAt, TROUBLE_R) : wander(AT, 0.7));
+export function view(lv, flags, meta) {
   switch (ratMode(lv, flags)) {
     case null: return {};
-    case 'one': return { 'rat.pack': pack(AT, 1, wander(AT, 0.7)) };
+    case 'one': return { 'rat.pack': pack(AT, 1, daily(meta)) };
     // 鼠窩的 footprint 用圓（r 0.2 蓋住圓角盒）：包圍盒的角外擴 PAD 後會擦到窩邊那座橋上的電工主路（物品 v2：燈泡先放，電工繞島時老鼠正在生窩）
     case 'nest': return {
       'rat.main': { kind: 'compound', at: AT, footprint: { r: 0.2 }, parts: [{ kind: 'rbox', pos: [0, 0.12, 0], scale: [0.35, 0.24, 0.3], color: 0x9a6a3c }, { kind: 'sphere', pos: [0, 0.12, 0.15], scale: [0.12, 0.1, 0.04], color: C.ink }] },
-      'rat.pack': pack(AT, NEST_N, wander(AT, 0.7)),
+      'rat.pack': pack(AT, NEST_N, daily(meta)),
     };
     case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
     case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
@@ -215,13 +220,14 @@ function bite(e, ctx) {
   ];
 }
 export const script = {
-  // 一隻老鼠從巨蛋格東南岸的海裡爬上來 → …… 喘口氣 → 聞一聞 → 轉頭看見巨蛋 ！ → 在巨蛋旁晃
+  // 一隻老鼠從巨蛋格東南岸的海裡爬上來 → …… 喘口氣 → 聞一聞 → 轉頭看見巨蛋 ！ → 在巨蛋旁晃。
+  // 老鼠當指標（§5.2）：上一回合結算出有出問題的那棟（meta.troubleAt；劇本在回合開頭建，這時的 meta 就是上一回合的結算）
+  //   → 爬上岸直接跑過去（鏡頭同時平移到那裡）聞一聞，在那棟門口晃
   placed(e, s, ctx) {
-    const { B } = ctx, r0 = rat(0);
-    return [
-      B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING)),   // 從水裡爬上岸
-      B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0),
-    ];
+    const { B } = ctx, r0 = rat(0), at = ctx.stage?.meta?.troubleAt ?? null;
+    const ashore = [B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING))];   // 從水裡爬上岸
+    if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })]), B.gesture(r0, 'sniff'), B.home(r0)];
+    return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0)];
   },
   grow: {
     // 一窩：♥ → 閃白鼠窩 → 兩隻從窩邊跑出來（一窩 3 隻）→ 窩旁晃

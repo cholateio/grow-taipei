@@ -727,3 +727,52 @@ test('placed + grow[2] in the same turn: the placed script then the grow script,
     assert.deepEqual(k.show.stage.flags, ref.show.stage.flags, `${what}: same flags`);
   }
 });
+
+// 唯一正解 §5.2 老鼠當指標：整局 live，每回合演完、鏡頭回全景後再等老鼠走一會兒（玩家想下一手的時間）——
+// Lv1／Lv2 的老鼠都在 meta.trouble 那棟門口（troubleAt 附近 TROUBLE_R），沒有 trouble 就在窩旁；整局 walls／jumps／pops 都是空的（不閃白、不瞬移、不穿牆）。
+//   使用者 10-30 的順序（新規則下不淹水，裁決 Task 1）：老鼠第 8 回合放下、當回合生窩，那回合珍奶在等代幣 → 一窩在珍奶店門口；第 9 回合分岔（外星）。
+//   純照級數的順序：第 6 回合代幣在等鮮奶 → 第 7 回合放下的老鼠爬上岸直接跑到車站門口聞一聞；第 7 回合結算沒有人在等 → trouble null，走回窩旁。
+//   （設計原寫「鮮奶等棒球時老鼠在早餐店門口」：那是第 2–4 回合，老鼠還沒放；早餐店那一段在 rat.test 的放置測試）
+test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk back to the nest when it clears; no pops, jumps or walls', async () => {
+  const rat = ALL.find(m => m.id === 'rat'), NEST = anchorWorld('rat'), gap = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+  const ORDERS = { user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'] };
+  const placed = rat.script.placed, sniffs = [];
+  rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
+  const seen = {};
+  try {
+    for (const [name, order] of Object.entries(ORDERS)) {
+      const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), log = seen[name] = [];
+      let s = engine.createState(spec), t = 500;
+      for (const [i, step] of turnSteps(order).entries()) {
+        const r = step(s); s = r.state; const what = `${name} turn ${i + 1}`;
+        inv.label(what); sniffs.length = 0;
+        await run([...r.events, { kind: 'settle' }]);
+        inv.turnEnd();
+        const st = show.stage, mode = rat.ratMode(st.lv, st.flags);
+        log.push({ turn: i + 1, mode, trouble: st.meta.trouble, sniffs: [...sniffs] });
+        if (mode !== 'one' && mode !== 'nest') continue;
+        const goal = st.meta.troubleAt ?? NEST, r0 = st.meta.troubleAt ? rat.TROUBLE_R : 0.7;
+        const rats = () => show.roster.members('rat.pack'), there = () => rats().every(m => m.mode === 'home' && gap(m.pos, goal) <= r0 + 0.35);
+        for (let f = 0; f < 30 * 30 && !there(); f++) { show.update(1 / 30, t); t += 1 / 30; }
+        assert.ok(there(), `${what}: rats ${rats().map(m => `(${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`).join(' ')} at ${st.meta.trouble ?? 'the nest'} (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
+        assert.equal(rats().length, mode === 'one' ? 1 : 3, `${what}: the rat budget is unchanged`);
+      }
+      assert.deepEqual([...inv.pops].slice(0, 10), [], `${name}: ${inv.pops.size} pops`);
+      assert.deepEqual([...inv.jumps].slice(0, 10), [], `${name}: ${inv.jumps.size} jumps`);
+      assert.deepEqual([...inv.walls].slice(0, 10), [], `${name}: ${inv.walls.size} inside a building`);
+      assert.deepEqual(inv.labels.slice(0, 10), [], `${name}: labels off screen`);
+      assert.deepEqual(inv.camera.slice(0, 10), [], `${name}: camera`);
+    }
+  } finally { rat.script.placed = placed; }
+  const at = (name, turn) => seen[name].find(x => x.turn === turn);
+  const u8 = at('user1030', 8);
+  assert.deepEqual([u8.mode, u8.trouble], ['nest', 'boba'], 'the nest gathers at the boba shop (boba waits for the token)');
+  assert.equal(u8.sniffs.length, 2, 'turn 7 settled no trouble: the landing keeps the old sniff + look at the dome');
+  assert.equal(at('user1030', 9).mode, 'alien');
+  const { frontOf } = await import('../src/actors/anchors.js');
+  const l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(3, { lv: { token: 3 }, flags: {} }), front = frontOf(sp, sp.r);
+  assert.equal(at('levels', 6).trouble, 'token');
+  assert.deepEqual([l7.mode, l7.trouble], ['nest', null], 'turn 7 clears: back to the nest');
+  assert.equal(l7.sniffs.length, 1, 'the landing rat sniffs once (at the station)');
+  assert.ok(gap(l7.sniffs[0], front) <= 0.5, `sniffed in front of the station (${l7.sniffs[0].x.toFixed(2)}, ${l7.sniffs[0].z.toFixed(2)})`);
+});

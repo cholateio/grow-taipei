@@ -5,8 +5,9 @@
 // blink：show/blink.js 的閃白；沒給（單元測試）就不閃，移除的立刻拿掉。
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
-import { anchorWorld } from './anchors.js';
+import { anchorWorld, frontOf } from './anchors.js';
 import { foldEvent } from '../rules/engine.js';
+import { cellAt } from '../scene/hex.js';
 
 export function diffParts(prev, next) {
   const same = k => k in prev && k in next && JSON.stringify(prev[k]) === JSON.stringify(next[k]);
@@ -22,6 +23,35 @@ const WIDE = 2.4;   // 自動 footprint：水平邊長超過 WIDE 的不算（�
 // 老鼠咬鮮奶（§8.6 的反應）：鮮奶因老鼠掉級的那個事件
 export const bitesMilk = e => !!e.delta && e.delta.target === 'milk' && e.cause === 'rat' && e.delta.to < e.delta.from;
 
+// 老鼠當指標（唯一正解 §5.2）：這回合出問題的物品。照 ORDER 第一個被鎖住的（鎖的旗標照規則資料：停電→燈泡、淹水→代幣、
+// 巨蛋淹水→棒球）；沒有就這回合 wait 事件裡第一個等幫手的物品（老鼠自己除外）；都沒有就 null
+const lockFlags = new WeakMap();
+function locksOf(spec) {
+  if (!lockFlags.has(spec)) {
+    const map = {};
+    for (const it of Object.values(spec.ITEMS)) for (const a of [...(it.fx ?? []), ...Object.values(it.onLevel ?? {}).flat()]) if (a.lock && a.flag) map[a.lock] = a.flag.name;
+    lockFlags.set(spec, map);
+  }
+  return lockFlags.get(spec);
+}
+export function troubleOf(lv, flags, waits, spec) {
+  const locks = locksOf(spec);
+  const locked = spec.ORDER.find(id => locks[id] && flags[locks[id]] && lv[id] > 0);
+  return locked ?? waits?.find(w => w.item !== 'rat')?.item ?? null;
+}
+// 出問題那棟的門口：那個物品這一級建築的正面（visitSpot 往鏡頭側走 r，同撲空的 door，不落 nav——老鼠的家用它當散步中心）；
+// 正面不在主島格上就用 visitSpot 本身；沒有 visitSpot（颱風、離島那一級）或也不在主島上 → 那個物品的錨點
+export function troubleSpot(item, lv, flags, modules) {
+  if (!item) return null;
+  const n = lv[item] ?? 0, sp = n > 0 ? modules.find(m => m.id === item)?.visitSpot?.(n, { lv, flags }) : null;
+  if (sp) {
+    const f = frontOf(sp, sp.r ?? 0);
+    if (cellAt(f.x, f.z)) return f;
+    if (cellAt(sp.x, sp.z)) return { x: sp.x, y: sp.y, z: sp.z };
+  }
+  return anchorWorld(item);
+}
+
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   // flags：零件可以每幀讀目前的舞台旗標（getter，不是快照）。以前 finale.flare 照倒數 alarm 變快；選擇帶動升級之後紅光固定 2 Hz，目前沒有零件讀它
@@ -33,8 +63,10 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
   //   total：101 看的總等級（不搭別人的事件跳階）；bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）。
   //   （颱風的 landing 拿掉了：躲雨是颱風放下劇本裡的一小段，不是回合狀態——唯一正解修正輪 1）
-  const META0 = { total: 0, bitten: false };
+  //   trouble／troubleAt：這回合出問題的物品與它門口的點（troubleOf／troubleSpot；老鼠 Lv1／Lv2 的家搬到那裡，§5.2）
+  const META0 = { total: 0, bitten: false, trouble: null, troubleAt: null };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
+  let waits = null;   // 這回合 wait 事件的 waits（經過 apply 時記下，settle 結算 trouble 後清掉）
   let stale = null;   // 被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
   const live = new Map();          // key → { spec, part, fp }（pending 的新零件也在這裡）
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
@@ -129,9 +161,12 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     if (stale) { meta = { ...meta, ...stale }; stale = null; }
     ({ lv, flags } = foldEvent({ lv, flags }, e));
     if (bitesMilk(e)) meta = { ...meta, bitten: true };
+    if (e.kind === 'wait') waits = e.waits ?? null;
     if (e.kind === 'settle') {
       if (meta.bitten) stale = { bitten: false };
-      meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0) };
+      const trouble = troubleOf(lv, flags, waits, spec);
+      meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0), trouble, troubleAt: troubleSpot(trouble, lv, flags, modules) };
+      waits = null;
     }
   }
 
@@ -157,7 +192,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       for (const p of pending.values()) if (p.old) drop(p.old);
       dropDying();
       live.clear(); pending.clear(); tilted.clear(); roster?.reset?.();
-      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; seen = new WeakSet();
+      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; waits = null; seen = new WeakSet();
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync();
     },

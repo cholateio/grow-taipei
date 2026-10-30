@@ -994,3 +994,22 @@ test('every member carries a radius: people 0.125, models 0.65 × h clamped to 0
   roster.declare('r', { kind: 'roster', at: C, n: 1, model: { path: 'rat.glb', h: 0.5 }, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
   assert.ok(Math.abs(r('r') - 0.325) < 1e-9, 'remodelled rat grows its radius');
 });
+// 唯一正解 §5.2 老鼠當指標：模型名冊（老鼠）的 wander 家搬到隔壁格的門口——同一批老鼠一幀一幀走過去（不閃白、不瞬移），走到新家附近晃
+test('a model roster whose wander home moves to another cell walks there frame by frame: no blink, no teleport', () => {
+  const { roster, blink, nav } = setup(), NEST = anchorWorld('rat'), FAR = anchorWorld('chip');
+  const DOOR = nav.nearestWalkable({ x: FAR.x - 0.5, z: FAR.z + 1.2 });
+  const rats = home => ({ kind: 'roster', at: NEST, n: 3, model: { path: 'quat/enemies/Rat.glb', h: 0.2, anim: 'Walk' }, home });
+  roster.declare('rat.pack', rats({ kind: 'wander', at: NEST, r: 0.7 })); roster.snap();
+  const ms = [...roster.members('rat.pack')];
+  roster.declare('rat.pack', rats({ kind: 'wander', at: DOOR, r: 0.4 })); roster.flush();
+  assert.deepEqual(roster.members('rat.pack'), ms, 'same rats');
+  let worst = 0;
+  for (let f = 0; f < 30 * 30; f++) {
+    const before = ms.map(m => ({ ...m.pos }));
+    roster.update(1 / 30, f / 30);
+    ms.forEach((m, i) => { worst = Math.max(worst, gap(m.pos, before[i]) / (m.speed / 30)); });
+  }
+  assert.ok(worst <= 1 + 1e-6, `never faster than walking (worst ${worst.toFixed(2)}× a walking step)`);
+  for (const m of ms) assert.ok(gap(m.pos, DOOR) <= 0.4 + 0.3, `rat ${m.i} at the new home (${gap(m.pos, DOOR).toFixed(2)})`);
+  assert.deepEqual(blink.log, [], 'no blink');
+});

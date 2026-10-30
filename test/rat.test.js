@@ -70,6 +70,31 @@ test('view: home shapes — one/nest wander by the nest, spring stands in the po
   assert.deepEqual(rat.view(lv({ rat: 3, token: 5 }), { flooded: true })['rat.pack'].home, { kind: 'ride', cars: 5, speed: 0 });
   assert.deepEqual(rat.view(lv({ rat: 2 }), { domeRats: true })['rat.pack'].home, { kind: 'wander', at: GATE, r: 0.9 });
 });
+// 唯一正解 §5.2 老鼠當指標：Lv1／Lv2 的家跟著舞台結算的 meta.trouble（troubleOf／troubleSpot，見 stage.js）
+const { troubleOf, troubleSpot } = await import('../src/actors/stage.js');
+const { frontOf } = await import('../src/actors/anchors.js');
+const metaOf = (l, f, waits = []) => { const trouble = troubleOf(l, f, waits, spec); return { trouble, troubleAt: troubleSpot(trouble, l, f, ALL) }; };
+const modOf = id => ALL.find(m => m.id === id);
+test('view: Lv1 / Lv2 homes follow meta.trouble — flooded → in front of the station, chip waiting → in front of HQ, none → the nest', () => {
+  const flood = lv({ token: 3, typhoon: 2, rat: 1, milk: 2 }), fm = metaOf(flood, { flooded: true }, [{ item: 'milk', for: ['baseball'] }]);
+  const st = modOf('token').visitSpot(3, { lv: flood, flags: { flooded: true } });
+  assert.equal(fm.trouble, 'token', 'the lock beats the waiting milk');
+  assert.deepEqual(rat.view(flood, { flooded: true }, fm)['rat.pack'].home, { kind: 'wander', at: frontOf(st, st.r), r: rat.TROUBLE_R });
+  assert.equal(rat.TROUBLE_R, 0.4);
+  assert.ok(cellAt(fm.troubleAt.x, fm.troubleAt.z), 'the station front is on the main island');
+  const wait = lv({ chip: 2, rat: 2, milk: 2 }), wm = metaOf(wait, {}, [{ item: 'rat', for: ['token'] }, { item: 'chip', for: ['bulb'] }]);
+  const hq = modOf('chip').visitSpot(2, { lv: wait, flags: {} });
+  assert.equal(wm.trouble, 'chip', 'the rat waiting for itself is not trouble');
+  const nest = rat.view(wait, {}, wm);
+  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: frontOf(hq, hq.r), r: 0.4 }); assert.equal(nest['rat.pack'].n, 3);
+  assert.deepEqual(nest['rat.main'].at, AT, 'the nest itself stays put');
+  assert.deepEqual(rat.view(wait, {}, metaOf(wait, {}))['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }, 'no trouble → the nest');
+  assert.deepEqual(rat.view(wait, {})['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }, 'no meta → the nest');
+  // Lv3 起照舊：搭車、泡溫泉、鼠災不看 trouble
+  assert.deepEqual(rat.view(lv({ rat: 3, token: 4 }), {}, wm)['rat.pack'].home, { kind: 'ride', cars: 3, speed: 0.35 });
+  assert.equal(rat.view(lv({ rat: 3 }), {}, wm)['rat.pack'].home.kind, 'stand');
+  assert.deepEqual(rat.view(lv({ rat: 2 }), { domeRats: true }, wm)['rat.pack'].home, { kind: 'wander', at: GATE, r: 0.9 });
+});
 test('rat is a 4-level item (single path §4.4) and the transition clamp is gone', async () => {
   assert.equal(spec.ITEMS.rat.max, 4); assert.equal(spec.ITEMS.typhoon.max, 4);
   await assert.rejects(import('../src/actors/clamp.js'), 'clamp.js deleted');
@@ -446,6 +471,34 @@ test('the placement turn plays live: a rat goes to the crate and bites (no cart 
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 1);
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
   assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 20);
+});
+// 老鼠當指標（§5.2）：上一回合結算出有出問題的那棟，放下老鼠時爬上岸直接跑過去聞一聞（不先在巨蛋旁 …… ！）、在那棟門口晃。
+// 放法同上：放颱風那回合鮮奶 2 還在等棒球（燈泡已經 3，沒有停電）——放老鼠那回合 trouble 是鮮奶（早餐店門口）
+test('placed with trouble: the first rat runs from the landing to the front of the trouble building and sniffs there', async () => {
+  const h = await headlessShow(), { show, run, bubblesLog } = h, walls = watchWalls(h);
+  let st = engine.createState(spec);
+  for (const id of ['milk', 'chip', 'bulb', 'token', 'typhoon']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.meta.trouble, 'milk'); const at = show.stage.meta.troubleAt;
+  const shop = modOf('milk').visitSpot(2, { lv: show.stage.lv, flags: show.stage.flags });
+  assert.deepEqual(at, frontOf(shop, shop.r), 'the breakfast-shop front');
+  const sniffs = [], placed = rat.script.placed;
+  rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
+  try {
+    const r = engine.place(st, 'rat', spec), n = bubblesLog.length;
+    await run([r.events.find(e => e.kind === 'placed')]);
+    assert.equal(sniffs.length, 1, 'one sniff, no look-at-the-dome');
+    const goal = show.nav.nearestWalkable(at);
+    assert.ok(near(sniffs[0], goal, 0.3), `sniffs at the breakfast-shop front (${sniffs[0].x.toFixed(2)}, ${sniffs[0].z.toFixed(2)}) vs (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
+    assert.ok(!bubblesLog.slice(n).some(b => b.kind === '……'), 'no catching-breath bubble on the trouble run');
+    const [m] = show.roster.members('rat.pack'); assert.equal(m.mode, 'home');
+    assert.deepEqual(show.roster.members('rat.pack').length, 1);
+  } finally { rat.script.placed = placed; }
+  assert.deepEqual(walls.bad, []);
+});
+// 沒有 trouble（ctx 沒舞台、或 meta.troubleAt null）：照舊——爬上岸、……、聞一聞、看巨蛋 ！、回窩旁
+test('placed without trouble keeps the old landing beats (…… sniff look ！ home)', () => {
+  const beats = rat.script.placed({ kind: 'placed', item: 'rat', to: 1 }, { lv: lv({ rat: 1 }), flags: {} }, { B, stage: { meta: { trouble: null, troubleAt: null } } });
+  assert.deepEqual(beats.map(b => b.kind), ['apply', 'spawn', 'walk', 'bubble', 'gesture', 'gesture', 'bubble', 'home']);
 });
 // 鮮奶真的被咬掉級（引擎現在不會出：老鼠生窩要鮮奶 ≤1；堆出狀態直接演事件）：箱子翻倒、小學生跑回校舍、LEVEL DOWN
 test('a bite that costs milk a level: crate tips, kids ！ run to the school gate and vanish quietly, LEVEL DOWN', async () => {

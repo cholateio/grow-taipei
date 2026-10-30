@@ -6,7 +6,7 @@ import { installFakeDom } from './helpers/fakedom.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
-const { createStage, diffParts } = await import('../src/actors/stage.js');
+const { createStage, diffParts, troubleOf, troubleSpot } = await import('../src/actors/stage.js');
 const { createBlink } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
@@ -192,11 +192,48 @@ test('settle with nothing to change reports nothing', () => {
   assert.deepEqual(stage.apply({ kind: 'settle' }), { changed: [], rest: [] });
 });
 // 唯一正解修正輪 1：颱風放下不再是回合狀態（舊的 meta.landing 拿掉了；躲雨是放下劇本裡的一小段）
-test('the typhoon placed event sets no turn state: meta has only total and bitten', () => {
+test('the typhoon placed event sets no turn state: meta has only total, bitten and the trouble spot', () => {
   const { stage } = setup([fakeMilk]);
   stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
   assert.equal(stage.meta.landing, undefined);
-  stage.apply({ kind: 'settle' }); assert.deepEqual(Object.keys(stage.meta).sort(), ['bitten', 'total']);
+  stage.apply({ kind: 'settle' }); assert.deepEqual(Object.keys(stage.meta).sort(), ['bitten', 'total', 'trouble', 'troubleAt']);
+});
+
+// 唯一正解 §5.2 老鼠當指標：settle 結算 meta.trouble——照 ORDER 第一個被鎖的（停電→燈泡、淹水→代幣、巨蛋淹水→棒球），
+// 沒有就這回合 wait 事件裡第一個等幫手的物品（老鼠自己除外），都沒有就 null
+const LV = { milk: 3, chip: 2, bulb: 2, token: 3, typhoon: 3, rat: 1, boba: 0, baseball: 2 };
+test('troubleOf: a locked item beats any waiting one, first in ORDER (blackout bulb before flooded token before domeFlood baseball)', () => {
+  const waits = [{ item: 'milk', for: ['baseball'] }];
+  assert.equal(troubleOf(LV, { flooded: true, domeFlood: true }, waits, spec), 'token');
+  assert.equal(troubleOf(LV, { domeFlood: true, flooded: true, blackout: true }, waits, spec), 'bulb');
+  assert.equal(troubleOf(LV, { domeFlood: true }, waits, spec), 'baseball');
+});
+test('troubleOf: no lock → the first waiting item of the wait event', () => {
+  assert.equal(troubleOf(LV, { milkExpired: true }, [{ item: 'chip', for: ['bulb'] }, { item: 'token', for: ['milk'] }], spec), 'chip');
+});
+test('troubleOf: nothing locked, nothing waiting → null', () => {
+  assert.equal(troubleOf(LV, {}, [], spec), null);
+  assert.equal(troubleOf(LV, {}, null, spec), null);
+});
+test('troubleOf: the rat waiting for its own helper is not trouble', () => {
+  assert.equal(troubleOf(LV, {}, [{ item: 'rat', for: ['token'] }], spec), null);
+  assert.equal(troubleOf(LV, {}, [{ item: 'rat', for: ['token'] }, { item: 'boba', for: ['token'] }], spec), 'boba');
+});
+test('settle folds the wait event of its turn into meta.trouble (+ the spot in front of that building) and forgets it after', async () => {
+  const chip = await import('../src/actors/chip.js'), { frontOf, anchorWorld } = await import('../src/actors/anchors.js');
+  const { stage } = setup([fakeMilk, chip]);
+  stage.apply({ kind: 'placed', item: 'chip', to: 1 }); stage.apply({ kind: 'grow', item: 'chip', from: 1, to: 2 });
+  stage.apply({ kind: 'wait', item: 'chip', waits: [{ item: 'rat', for: ['token'] }, { item: 'chip', for: ['bulb'] }] });
+  assert.equal(stage.meta.trouble, null, 'the wait event alone does not settle anything');
+  stage.apply({ kind: 'settle' });
+  const sp = chip.visitSpot(2, { lv: stage.lv, flags: stage.flags });
+  assert.equal(stage.meta.trouble, 'chip'); assert.deepEqual(stage.meta.troubleAt, frontOf(sp, sp.r));
+  stage.apply({ kind: 'settle' });
+  assert.equal(stage.meta.trouble, null, 'the next turn had no wait event'); assert.equal(stage.meta.troubleAt, null);
+  // 沒有 visitSpot（颱風、離島那一級）→ 錨點
+  assert.deepEqual(troubleSpot('typhoon', { ...LV }, {}, [fakeMilk]), anchorWorld('typhoon'));
+  stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }); stage.reset();
+  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.trouble, null, 'reset forgets the wait event too');
 });
 // 老鼠咬鮮奶（fx、cause rat、鮮奶掉級）：小孩躲一回合，跟颱風登陸一樣撐過回合結束畫面，下一回合第一個事件才收
 test('a rat bite on milk sets meta.bitten through the turn settle; the next turn clears it', () => {

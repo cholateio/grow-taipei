@@ -42,10 +42,10 @@ test('rat lv4 without ratBranch falls back to plain rats (review focus 4)', () =
 
 // ── Task 16：老鼠全部改成名冊 rat.pack（§5.1：同一批老鼠上岸、生窩、上車、變身）──
 const MODES = [
-  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 4 }, { ratBranch: 'cyber' }, 5],
+  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 3], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 4 }, { ratBranch: 'cyber' }, 5],
   [{ rat: 5 }, { ratBranch: 'cyber' }, 10], [{ rat: 4 }, { ratBranch: 'alien' }, 1], [{ rat: 5 }, { ratBranch: 'alien' }, 1], [{ rat: 2 }, { domeRats: true }, 5],
 ];
-test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 5 → 10), walking anim, h 0.2 except the mutant', () => {
+test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 3 at the nest → 5 → 10), walking anim, h 0.2 except the mutant', () => {
   for (const [l, f, n] of MODES) {
     const v = rat.view(lv(l), f), p = v['rat.pack'], what = JSON.stringify([l, f]);
     assert.equal(p.kind, 'roster', what); assert.equal(p.n, n, what);
@@ -58,7 +58,7 @@ test('view: home shapes — one/nest wander by the nest, spring stands in the po
   const one = rat.view(lv({ rat: 1 }), {})['rat.pack'];
   assert.deepEqual(one.home, { kind: 'wander', at: AT, r: 0.7 });
   const nest = rat.view(lv({ rat: 2 }), {});
-  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 });
+  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }); assert.equal(nest['rat.pack'].n, 3, 'a nest of three (plan 9 §5)');
   assert.equal(nest['rat.main'].kind, 'compound'); assert.deepEqual(nest['rat.main'].footprint, { r: 0.2 }, 'nest footprint is a circle (clear of the road on the bridge)');
   assert.equal(rat.view(lv({ rat: 1 }), {})['rat.main'], undefined);
   const spring = rat.view(lv({ rat: 3 }), {})['rat.pack'].home;
@@ -214,9 +214,9 @@ test('alien Lv5: the mutant wears a crown, a small UFO hovers over it, a green g
   for (const [l, f] of [[{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'cyber' }]]) assert.equal(sat.view(lv(l), f)['sat.rocksRing'], undefined);
   assert.ok(sat.view(lv({ rat: 5 }), { ratBranch: 'alien' })['sat.rocks'], 'the two rats on the stones stay (skeletons: 1 + 2 + shiba)');
 });
-// 人數預算：老鼠 1 → 5 → 5 → 5／1 → 10＋王冠鼠／1；骨架動畫（名冊老鼠＋王冠鼠＋石堆兩隻）≤ 11（再加柴犬 ≤ 12）
-test('rat budget per level: 1, 5, 5, 5 / 1, 10 + the crown rat / 1; animated rats ≤ 11 at every level', () => {
-  const cases = [[{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 5], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 4, chip: 8 }, { ratBranch: 'cyber' }, 5], [{ rat: 4 }, { ratBranch: 'alien' }, 1],
+// 人數預算：老鼠 1 → 3（一窩，計畫 9 §5）→ 5 → 5／1 → 10＋王冠鼠／1；骨架動畫（名冊老鼠＋王冠鼠＋石堆兩隻）≤ 11（再加柴犬 ≤ 12）
+test('rat budget per level: 1, 3, 5, 5 / 1, 10 + the crown rat / 1; animated rats ≤ 11 at every level', () => {
+  const cases = [[{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 3], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 3 }, {}, 5], [{ rat: 4, chip: 8 }, { ratBranch: 'cyber' }, 5], [{ rat: 4 }, { ratBranch: 'alien' }, 1],
     [{ rat: 5, chip: 8, token: 10 }, { ratBranch: 'cyber' }, 11], [{ rat: 5 }, { ratBranch: 'alien' }, 1]];
   for (const [l, f, want] of cases) {
     const v = rat.view(lv(l), f), s = sat.view(lv(l), f), what = JSON.stringify([l, f]);
@@ -352,6 +352,7 @@ test('Lv3 train: all five run to the nest-side shore and hop on together while t
   const { e, secs, n } = await liveAt(h, SOLUTIONS[0], isRat(3));
   checkRat(h, e, secs, n);
   assert.deepEqual(boards.map(b => b.i).sort(), [0, 1, 2, 3, 4], 'all five board');
+  assert.equal(show.roster.members('rat.pack').length, 5, 'the nest of three plus the two that come out of it (plan 9 §5)');
   assert.ok(boards.every(b => b.held), 'each rat lands while the train is held');
   const nest = Math.atan2(AT.z, AT.x);
   assert.ok(boards.every(b => Math.abs(b.a - nest) < 0.35), 'they board by the nest');
@@ -363,6 +364,7 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
   assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${secs.toFixed(1)} s`);
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 5); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
+  assert.equal(show.roster.members('rat.pack').length, 5, 'the nest of three plus the two that come out of it (plan 9 §5)');
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
 });
 // 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。

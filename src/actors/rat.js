@@ -1,5 +1,5 @@
-// 老鼠（物品 v2 §4.6，max 5）：一隻在巨蛋附近晃（放置反應：鮮奶 ≤2 就咬牛奶箱、有珍奶就撞翻攤車）→ 一窩 5 隻
-// → 搭捷運（列車有了：代幣 ≥4）或泡北投溫泉 → ◆ Lv4 分岔（引擎的 ratBranch）：機器鼠排隊跟偵防師（賽博）／變異鼠三眼綠光（外星）
+// 老鼠（物品 v2 §4.6，max 5）：一隻在巨蛋附近晃（放置反應：鮮奶 ≤2 就咬牛奶箱、有珍奶就撞翻攤車）→ 一窩 3 隻（計畫 9 §5）
+// → 搭捷運（列車有了：代幣 ≥4）或泡北投溫泉（窩裡再鑽出兩隻，5 隻）→ ◆ Lv4 分岔（引擎的 ratBranch）：機器鼠排隊跟偵防師（賽博）／變異鼠三眼綠光（外星）
 // → ◆ Lv5：機器鼠軍團 10 隻繞 101、一隻戴王冠坐在捷運站頂 ／ 變異鼠加冕、石堆島綠光圈（satellites.js）、小 UFO 盤旋。
 // 颱風把老鼠沖進大巨蛋：5 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
@@ -60,6 +60,8 @@ export function ratMode(lv, flags) {
 }
 
 const wander = (at, r) => ({ kind: 'wander', at, r });
+// 一窩 3 隻（計畫 9 §5：5 → 3，巨蛋旁那格太擠）；泡溫泉、搭車、賽博 Lv4、鼠災仍是 5 隻——Lv3 的劇本先從窩裡再鑽出兩隻（GROW_TO）才一起出發
+const NEST_N = 3, GROW_TO = 5;
 const pack = (at, n, home, model = {}) => ({ kind: 'roster', at, n, model: { path: RAT, h: 0.2, anim: 'Walk', ...model }, home });
 // 泡溫泉：池子裡圍一圈五個位置，面向池心
 const SPRING_SPOTS = Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Math.PI * 2 + 0.3; return { ...offset(SPRING, Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.1), yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }; });
@@ -73,7 +75,7 @@ export function view(lv, flags) {
     // 鼠窩的 footprint 用圓（r 0.2 蓋住圓角盒）：包圍盒的角外擴 PAD 後會擦到窩邊那座橋上的電工主路（物品 v2：燈泡先放，電工繞島時老鼠正在生窩）
     case 'nest': return {
       'rat.main': { kind: 'compound', at: AT, footprint: { r: 0.2 }, parts: [{ kind: 'rbox', pos: [0, 0.12, 0], scale: [0.35, 0.24, 0.3], color: 0x9a6a3c }, { kind: 'sphere', pos: [0, 0.12, 0.15], scale: [0.12, 0.1, 0.04], color: C.ink }] },
-      'rat.pack': pack(AT, 5, wander(AT, 0.7)),
+      'rat.pack': pack(AT, NEST_N, wander(AT, 0.7)),
     };
     case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
     case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
@@ -226,9 +228,9 @@ export const script = {
     ];
   },
   grow: {
-    // 一窩：♥ → 閃白鼠窩 → 四隻從窩邊跑出來 → 窩旁晃
+    // 一窩：♥ → 閃白鼠窩 → 兩隻從窩邊跑出來（一窩 3 隻）→ 窩旁晃
     2(e, s, ctx) {
-      const { B } = ctx, out = [1, 2, 3, 4], door = once(c => c.nav.slots(AT, 4, 0.3)), spot = once(c => c.nav.slots(AT, 4, 0.75));
+      const { B } = ctx, out = Array.from({ length: NEST_N - 1 }, (_, k) => k + 1), door = once(c => c.nav.slots(AT, out.length, 0.3)), spot = once(c => c.nav.slots(AT, out.length, 0.75));
       return [
         B.bubble(rat(0), '♥'), B.apply(e, { only: ['rat.main'] }),
         B.apply(e, { only: [KEY], hold: [KEY] }),
@@ -238,13 +240,16 @@ export const script = {
       ];
     },
     3(e, s, ctx) {
-      const { B } = ctx, mode = ratMode(s.lv, s.flags), ids = [0, 1, 2, 3, 4];
+      const { B } = ctx, mode = ratMode(s.lv, s.flags), ids = Array.from({ length: GROW_TO }, (_, i) => i);
+      // 一窩只有 3 隻：新家（5 隻）hold 住之後，缺的從窩邊鑽出來（劇本手上、不閃到家），五隻再一起出發
+      const door = once(c => c.nav.slots(AT, GROW_TO, 0.3));
+      const fill = { kind: 'spawn', dur: 0, start(c) { for (let k = c.roster.members(KEY).length; k < GROW_TO; k++) c.roster.spawnHeld(KEY, door(c)[k]); } };
       // 搭捷運（列車有了）：五隻 ！ 跑到窩那側的島緣 → 列車趕過來停住 → 一起跳上車頂 → 跟車走（鏡頭對著老鼠窩格）
       // 新家（車頂）先 hold 著：跳上車的那隻 home 就坐好跟車走，還在岸上的不會被名冊瞬移上車
       if (mode === 'train') {
         const wait = once(c => c.nav.slots(NEST_SHORE(c), 5, 0.3));
         return [
-          B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
+          B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill,
           // 老鼠跑到島緣的同時列車就趕過來（不是跑到了才叫車；裁決 R15 一級 ≤ 4.5 s）
           catchTrain(B, ids, wait, ctx, centred(trainCars(s.lv.token))),
           B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃
@@ -253,7 +258,7 @@ export const script = {
       // 泡溫泉（列車還沒有）：五隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）
       if (mode === 'spring') {
         return [
-          B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }),
+          B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill,
           // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）
           B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
           B.home(RATS), B.levelUp('rat'),

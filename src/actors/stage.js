@@ -74,17 +74,17 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     partsGroup.add(part.object);
     return { spec: s, part, fp: footprintOf(s, part.object) };
   }
-  // 閃白中的零件先換回原材質再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
+  // 亮一下／彈一下中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
   function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
 
-  // glint：要不要閃白（commitAll、換裝前收掉舊的 pending 都不閃）
+  // glint：要不要亮一下（commitAll、換裝前收掉舊的 pending 都不亮）。新零件亮一下＋小彈一下；要拿掉的舊零件只亮、不彈，亮完才拿掉
   function commit(key, glint = true) {
     const p = pending.get(key); if (!p) return;
     pending.delete(key);
     if (p.fresh) {
       if (p.old) drop(p.old);
       p.fresh.part.object.visible = true;
-      if (glint) blink?.part(p.fresh.part.object);
+      if (glint) { blink?.part(p.fresh.part.object); blink?.pop(p.fresh.part.object); }
     } else if (glint && blink) {
       dying.add(p.old);
       blink.part(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });

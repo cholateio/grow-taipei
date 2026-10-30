@@ -29,8 +29,8 @@ const setup = (modules = [fakeMilk], roster = null, { blink: withBlink = true } 
   const parts = () => scene.getObjectByName('stage:parts').children;
   return { scene, glow, people, stage, parts, blink };
 };
-// 零件現在是不是白的（閃白中：每個 mesh 都換成同一個白色 MeshBasicMaterial）
-const white = o => { let all = true, any = false; o.traverse(m => { if (m.isMesh) { any = true; all &&= m.material.isMeshBasicMaterial && m.material.color.getHex() === 0xffffff; } }); return any && all; };
+// 零件現在是不是在亮（亮一下：每個 mesh 換成會發光的複本，沒有純白材質）
+const lit = (blink, o) => { let all = true, any = false; o.traverse(m => { if (m.isMesh) { any = true; all &&= m.material.emissiveIntensity > 0 && !(m.material.isMeshBasicMaterial && m.material.color.getHex() === 0xffffff); } }); return any && all && blink.has(o); };
 const placed = { kind: 'placed', item: 'milk', to: 1, story: '一箱鮮奶送到了' };
 const grow = to => ({ kind: 'grow', item: 'milk', from: to - 1, to });
 
@@ -63,15 +63,17 @@ test('commit reveals the fresh part and blinks it; the old part is dropped', () 
   const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
   stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
   stage.commit('milk.main');
-  assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.equal(fresh.visible, true); assert.ok(white(fresh)); assert.equal(blink.count, 1);
-  stage.commit('milk.lamp'); assert.ok(white(stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
-  blink.update(0.16); assert.equal(blink.count, 0); assert.ok(!white(fresh), 'back to its own colours');
+  assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.equal(fresh.visible, true); assert.ok(lit(blink, fresh)); assert.equal(blink.count, 1);
+  assert.ok(Math.abs(fresh.scale.y - 0.94) < 1e-9, 'the fresh part pops from 0.94x');
+  stage.commit('milk.lamp'); assert.ok(lit(blink, stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
+  blink.update(0.16); assert.equal(blink.count, 0); assert.ok(!lit(blink, fresh), 'back to its own colours'); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
 test('a removed part blinks first and is dropped when the blink ends', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
   stage.apply(drop, { deferred: true }); assert.ok(parts().includes(lamp), 'old kept while pending');
-  stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, blinking'); assert.ok(white(lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
+  stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, blinking'); assert.ok(lit(blink, lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
+  assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'a part going away glows but does not pop');
   blink.update(0.1); assert.ok(parts().includes(lamp));
   blink.update(0.06); assert.ok(!parts().includes(lamp), 'dropped after the blink'); assert.equal(blink.count, 0);
 });
@@ -79,12 +81,12 @@ test('commitAll commits without blinking and drops a blinking removal at once, r
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
   stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); assert.equal(blink.count, 1);
   stage.commitAll(); assert.ok(!parts().includes(lamp), 'removal dropped at once'); assert.ok(parts().every(o => o.visible));
-  assert.equal(blink.count, 0, 'commitAll blinks nothing and restores the removal before dropping it'); assert.ok(!white(lamp));
+  assert.equal(blink.count, 0, 'commitAll blinks nothing and restores the removal before dropping it'); assert.ok(!lit(blink, lamp));
 });
 test('reset drops a part that is blinking out', () => {
-  const { stage, parts } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
   stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); stage.reset();
-  assert.ok(!parts().includes(lamp)); assert.ok(!white(lamp), 'restored before it was dropped'); assert.deepEqual(stage.partKeys(), []);
+  assert.ok(!parts().includes(lamp)); assert.ok(!lit(blink, lamp), 'restored before it was dropped'); assert.deepEqual(stage.partKeys(), []);
 });
 test('a stage without blink commits as before', () => {
   const { stage, parts } = setup([fakeMilk], null, { blink: false }); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');

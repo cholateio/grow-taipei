@@ -48,6 +48,7 @@ const BRIDGE_SIDE = 0.12;   // 橋上迎面讓路最多橫移多少（橋面半�
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
+const CONVOY_PHASE = 1.0, PATH_WAIT = 3;   // 接上折線時離同方向的人 < 1 公尺（相位）就改往回走、兩個方向都太近就站著等 ≤ 3 秒（pathDir）
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度、轉過去／轉回來各 0.2 秒（同小人的 look 轉向）
 
@@ -556,7 +557,25 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     }
     // 走不過去（卡在走不出去的死角裡，找不到路）也照樣接上游標，但標 offPath：每幀限速拉過去的那一段照樣不穿 footprint（擋住就停在牆外），
     // 拉到游標上才算回到折線（任務 7 審稿第 1 輪：卡住的機器鼠被直線拖過廠房）
-    m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s }); m.offPath = Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE;
+    // 錯開點兩個方向都會貼著別人走（錯開點在線的端點、別人剛從那裡走開）：站在原地等別人走遠，最多 PATH_WAIT 秒
+    let dir = pathDir(m, P, s, spec);
+    if (!dir && (m.pathWait = (m.pathWait ?? 0) + dt) < PATH_WAIT) { if (m.walking) setPose(m, { ...m.pos, walking: false }); return; }
+    m.pathWait = 0; dir ||= pathDir(m, P, s, spec, true);
+    m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s, dir }); m.offPath = Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE;
+  }
+  // 接上開放折線時往哪走（2026-10-31 唯一正解收尾，chip.test 工程師扎堆）：錯開點只錯開「接上去的那一點」，同一條線上別人正在走——
+  //   剛好有人同方向經過這一點，兩人就同速貼著走一整局（正解第 8 回合：晶片 7 放回來的那位走到 1/3 處，晶片 8 看完放回來的那位剛好接在他旁邊）。
+  //   來回走的線把（s, 方向）看成長 2 × total 的一圈上的相位（往終點 = s、往起點 = 2 total − s）；同方向的相位離別人 < CONVOY_PHASE 就改往回走
+  //   （只在會貼著走時才改，平常照舊往終點走）；兩個方向都 < CONVOY_PHASE（端點上兩個方向是同一個相位）回 0＝先等一下，
+  //   force 時回比較遠的那個方向。閉合路徑、n 1 不管
+  function pathDir(m, P, s, spec, force = false) {
+    if (P.loop || spec.n < 2) return 1;
+    const L = P.total, phases = (groups.get(m.key)?.members ?? []).filter(o => o !== m && o.cursor && !o.hidden && o.mode === 'home').map(o => (o.cursor.dir > 0 ? o.cursor.s : 2 * L - o.cursor.s));
+    const gap = u => Math.min(...phases.map(v => { const d = Math.abs(u - v) % (2 * L); return Math.min(d, 2 * L - d); }));
+    const fwd = gap(s), back = gap(2 * L - s);
+    if (fwd >= CONVOY_PHASE) return 1;
+    if (back >= CONVOY_PHASE) return -1;
+    return force ? (back > fwd ? -1 : 1) : 0;
   }
   // follow：走向另一個名冊最近的成員，停在 dist 外；目標走開 0.5 以上重新規劃；沒有目標就站著（剛走進來的先走到 spec.at）
   // 不擠（最終審查：偵防師貼著泡湯客停了整個結局）：動身時就在目標周圍挑一個離每個人 ≥ 兩人半徑相加的站位走過去

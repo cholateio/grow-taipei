@@ -15,7 +15,7 @@ import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helper
 import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星）
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const AT = anchorWorld('chip'), CELL = cellOf('chip'), TOWER = anchorWorld('tower');
 const PALETTE = new Set(Object.values(C));
 const fakeCtx = { B, roster: { members: () => [], nearest: () => null, keys: () => [] } };
@@ -83,11 +83,13 @@ test('detective: follows the rats, but watches the nest from the next cell and w
   assert.equal(nest.kind, 'stand'); assert.notDeepEqual(cellAt(p.x, p.z), cellAt(at.x, at.z), 'outside the nest cell');
   assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 2, 'close to the nest'); assert.ok(Math.abs(Math.atan2(at.x - p.x, at.z - p.z) - p.yaw) < 1e-9, 'faces the nest');
 });
-// 計畫 9（2026-10-30 錄影「卡成一坨」）：兩條正解整局 live，每回合演完再過 15 秒——劇本放回來的人走回自己錯開的那一點（roster.js），
+// 計畫 9（2026-10-30 錄影「卡成一坨」）：正解整局 live，每回合演完再過 15 秒——劇本放回來的人走回自己錯開的那一點（roster.js），
 // 不再接在同一段走成一串：最近的那一對 < 0.3 每次最多 1 秒（只有交會、沒有並排走）；101 腳下（FOOT 0.5 內）同時兩個不超過 1 秒；
 // 最近的那一對 ≥ 0.3 的幀數：兩個人 ≥ 90%，三個人 ≥ 70%——通勤路線只有 3.64 公尺、走到底折返，三個人兩兩每 total ÷ 0.45 ≈ 8 秒交會一次、
-// 每次 < 0.3 約 0.67 秒（相對速度 0.9），三對加起來約四分之一的時間（實測 73–77%），錯開起步也改不了交會的次數
-test('live, both solutions: the commuting engineers do not walk as a convoy (only brief crossings, never two at the 101 foot for > 1 s)', async () => {
+// 每次 < 0.3 約 0.67 秒（相對速度 0.9），三對加起來約四分之一的時間（實測 73–77%），錯開起步也改不了交會的次數。
+// 2026-10-31（唯一正解收尾）：正解第 8 回合兩個工程師同方向貼著走了整整 15 秒（晶片 7 放回來的人剛好走過另一個人的錯開點）——
+//   舊的 ≥ 6 回合前提擋在前面一直沒量到；roster.js pathDir 修掉（接上折線時同方向太近就往回走或先等一下）
+test('live, the solution: the commuting engineers do not walk as a convoy (only brief crossings, never two at the 101 foot for > 1 s)', async () => {
   const { turnSteps } = await import('./helpers/show.js'), DT = 1 / 30, rows = [];
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow(); let s = engine.createState(spec), t = 1000;
@@ -108,7 +110,8 @@ test('live, both solutions: the commuting engineers do not walk as a convoy (onl
     }
   }
   if (process.env.CONVOY) console.log(JSON.stringify(rows));
-  assert.ok(rows.length >= 6, `${rows.length} turns with ≥ 2 engineers`);
+  // 唯一正解（2026-10-31）：有 ≥ 2 個工程師的回合是第 5–9 回合（晶片第 5 回合放下、2 級起兩個人）；舊的 ≥ 6 是兩條正解加起來的數
+  assert.ok(rows.length >= 5, `${rows.length} turns with ≥ 2 engineers`);
   for (const r of rows) {
     assert.ok(r.stretch <= 1, `${r.order} turn ${r.turn}: closest pair < 0.3 for ${r.stretch.toFixed(2)} s in a row`);
     assert.ok(r.apart >= (r.n >= 3 ? 0.7 : 0.9), `${r.order} turn ${r.turn} (${r.n} engineers): closest pair ≥ 0.3 in only ${(r.apart * 100).toFixed(0)}% of frames`);

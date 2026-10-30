@@ -192,25 +192,29 @@ test('miss: nobody to send (no rep function, typhoon, busy rep) → no beats or 
   assert.ok(dist(busy.marks[1][2], busy.at) < 1e-9 && busy.marks[1][3] === 'script', 'the busy rep stays put, still in his script');
 });
 
-// 2026-10-30 連鎖：使用者那局（捷運淹水、代幣停在 4）第 8 回合，wait 事件列出晶片、燈泡、珍奶、棒球都在等代幣。
-// 晶片的工程師離車站太遠（超過 MISS_WALK），照規則回自己門口嘆氣；珍奶老闆走得到——走向車站門口、看著車站、嘆氣
-test('miss live: cascade — a flooded metro stalls the islet chain: turn 8 lists chip/bulb/boba/baseball ← token; the boba owner walks to the station and sighs; ≤ MISS_CAP', async () => {
-  const order = ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'];
+// 2026-10-30 連鎖：捷運淹水那一回合，wait 事件列出好幾個物品都在等代幣；離車站近的珍奶老闆走得到——走向車站門口、看著車站、嘆氣。
+// 唯一正解（2026-10-31）：使用者那局（milk,baseball,chip,bulb,boba,token,typhoon,rat）在新規則下不淹水（代幣第 8 回合趕在颱風移站前升到 4），
+//   舊前提過時。淹水鎖代幣 ≤3，晶片不再等代幣——改用列舉裡第一條「放完 8 個時淹水、而且 ≥ 3 個物品在等代幣」的放法 CASCADE
+//   （代幣停在 2；同回合還有晶片等燈泡），珍奶老闆走去車站、棒球（巨蛋離車站太遠）回自己門口
+const CASCADE = ['milk', 'chip', 'bulb', 'rat', 'boba', 'baseball', 'typhoon', 'token'];
+test('miss live: cascade — a flooded metro stalls the chain: turn 8 lists rat/boba/baseball ← token; the boba owner walks to the station and sighs; ≤ MISS_CAP', async () => {
+  const order = CASCADE;
   let s = engine.createState(spec), last;
   for (const id of order) { last = engine.place(s, id, spec); s = last.state; }
+  assert.ok(s.flags.flooded, 'flooded');
   const waits = last.events.filter(e => e.kind === 'wait').flatMap(e => e.waits);
-  assert.deepEqual(waits.map(w => `${w.item}<${w.for}`), ['chip<token', 'bulb<token', 'boba<token', 'baseball<token'], 'turn 8 waits');
+  assert.deepEqual(waits.map(w => `${w.item}<${w.for}`), ['chip<bulb', 'rat<token', 'boba<token', 'baseball<token'], 'turn 8 waits');
   const v = await liveMiss(order, [{ item: 'boba', for: ['token'] }]), [g] = v.segs;
   assert.equal(v.segs.length, 1);
-  assert.equal(g.sv.lv.token, 4, 'the metro is stuck at 4 (flooded)');
-  assert.ok(mod('chip').script.hasRep(g.sv.lv.chip) && mod('boba').script.hasRep(g.sv.lv.boba), 'both have a rep at this level');
+  assert.equal(g.sv.lv.token, 2, 'the metro is stuck at 2 (flooded)');
+  assert.ok(mod('baseball').script.hasRep(g.sv.lv.baseball) && mod('boba').script.hasRep(g.sv.lv.boba), 'both have a rep at this level');
   // common() 的「整局沒有圖示泡泡」不適用：前 8 個放置回合的泡泡也在 bubblesLog 裡，這裡只量撲空那一段（segment：段裡沒泡泡、走路 ≤ MISS_WALK、不瞬移）
-  const what = 'boba<token4';
+  const what = 'boba<token2';
   segment(v, g, what);
   assert.ok(g.sigh, `${what}: sighs`);
   assert.ok(dist(g.end, g.start) > 0.3, `${what}: walked`);
   // 目標：spot／door、look 是代幣的拜訪點
-  const sp = mod('token').visitSpot(4, g.sv);
+  const sp = mod('token').visitSpot(g.sv.lv.token, g.sv);
   const h = await headlessShow(); let t = engine.createState(spec);
   for (const id of order) { const r = engine.place(t, id, spec); t = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   const sv = { lv: { ...h.show.stage.lv }, flags: h.show.stage.flags }, [walk] = miss({ item: 'boba', for: ['token'] }, sv, { B }, { item: mod('boba'), helper: mod('token') });
@@ -220,17 +224,18 @@ test('miss live: cascade — a flooded metro stalls the islet chain: turn 8 list
   assert.ok(Math.hypot(goal.look.x - sp.x, goal.look.z - sp.z) < 1e-6, 'looks at the token visitSpot');
 });
 
-// 整支分支審稿 Important 1：同一局（捷運淹水、代幣停在 4）第 8 回合的晶片 < 代幣——工程師離車站太遠，照規則回 HQ 門口，
-// 但嘆氣時面向車站（代幣的錨點），不面向 HQ：撲空要指著淹水的捷運
-test('miss live: cascade — chip<token on the flooded turn 8: the engineer walks to the HQ door and sighs facing the station, not HQ', async () => {
-  const order = ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], w = { item: 'chip', for: ['token'] };
-  const v = await liveMiss(order, [w]), [g] = v.segs, what = 'chip<token4';
-  assert.equal(v.segs.length, 1); assert.equal(g.sv.lv.token, 4, 'the metro is stuck at 4 (flooded)');
+// 整支分支審稿 Important 1：同一局（捷運淹水）第 8 回合，離車站太遠的代表照規則回自己門口，但嘆氣時面向車站（代幣的錨點），
+// 不面向自己的建築：撲空要指著淹水的捷運。唯一正解（2026-10-31）：原本是晶片 < 代幣（工程師回 HQ 門口），新規則下淹水時晶片不等代幣——
+//   改量同一回合的棒球 < 代幣（巨蛋離車站太遠，球員回巨蛋門口）
+test('miss live: cascade — baseball<token on the flooded turn 8: the player walks to the dome door and sighs facing the station, not the dome', async () => {
+  const order = CASCADE, w = { item: 'baseball', for: ['token'] };
+  const v = await liveMiss(order, [w]), [g] = v.segs, what = 'baseball<token2';
+  assert.equal(v.segs.length, 1); assert.equal(g.sv.lv.token, 2, 'the metro is stuck at 2 (flooded)');
   segment(v, g, what);
-  const at = anchorWorld('token'), hq = mod('chip').visitSpot(g.sv.lv.chip, g.sv);
-  assert.ok(dist(g.end, doorOf(v.show, 'chip', g.sv)) < 0.15, `${what}: ends at the HQ door (${dist(g.end, doorOf(v.show, 'chip', g.sv)).toFixed(2)})`);
+  const at = anchorWorld('token'), hq = mod('baseball').visitSpot(g.sv.lv.baseball, g.sv);
+  assert.ok(dist(g.end, doorOf(v.show, 'baseball', g.sv)) < 0.15, `${what}: ends at the dome door (${dist(g.end, doorOf(v.show, 'baseball', g.sv)).toFixed(2)})`);
   assert.ok(g.sighAt && yawDiff(g.sighAt.yaw, face(g.sighAt, at)) < 0.05, `${what}: sighs facing the token anchor`);
-  assert.ok(yawDiff(g.sighAt.yaw, face(g.sighAt, hq)) > 0.3, `${what}: not facing HQ`);
+  assert.ok(yawDiff(g.sighAt.yaw, face(g.sighAt, hq)) > 0.3, `${what}: not facing the dome`);
   const { goal } = await goalOf(order, w);
   assert.equal(goal.kind, 'door'); assert.ok(!goal.short); assert.deepEqual(goal.look, at, `${what}: looks at the token anchor`);
 });

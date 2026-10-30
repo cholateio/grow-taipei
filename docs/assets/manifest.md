@@ -48,21 +48,20 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 燈泡 | 7 ★◆ | `sat.windmill`（speed 0 → 1）、`sat.lighthouse`、`sat.beam`、`sat.keeper`、`bulb.electrician`（家換到風車島） | 程式：風車塔身＋開關箱在 island.js 的 kit、葉片是 `blades` 演員；燈塔燈室改成不發光的 kit 球（開局暗），演員亮燈。`windturbine_tall.gltf` 沒用（可選；kit 塔身不花 draw call） | — | 現有 |
 | 燈泡 | 8 ★ | `chip.cable` | 晶片的零件（任務 6，零件 kind `cable`）：燈泡 ≥8 鋪好（暗），晶片 ≥6 通電；燈泡不另畫纜線 | — | 現有 |
 | 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`、`bulb.neon.market`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅、夜市屋簷霓虹藍）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）、`Sign_2.glb`（夜市招牌，發粉紅光；換掉 Lv4 的招牌板） | CC0 | 換新 |
-| 颱風 | 1 | `typhoon.main` | 程式（灰雲） | — | 現有 |
-| 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈、大雨、外送機車） | — | 現有 |
-| 颱風 | 3 | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
-| 老鼠 | 1 | `rat.pack` | `quat/enemies/Rat.glb`（動畫，不併） | CC0 | 現有 |
-| 老鼠 | 2 | `rat.pack` | `quat/enemies/Rat.glb` ×5 | CC0 | 現有 |
-| 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb`（搭捷運／泡溫泉） | CC0 | 現有 |
-| 老鼠 | 4 ◆ | `rat.pack` | `quat/enemies/Rat.glb`＋程式（機器鼠天線／三眼綠光） | CC0 | 現有 |
-| 老鼠 | 5 ◆ | `rat.pack`、`rat.king`、`rat.ufo`、`sat.rocksRing` | 機器鼠軍團 10 隻＋站頂戴王冠的機器鼠 = `quat/enemies/Rat.glb`（天線、王冠程式）；變異鼠加冕、小 UFO、石堆島綠光圈 = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 換新 |
+| 颱風 | 1 ◆ | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈停在 101 旁邊上空＝颱風錨點、大雨；有珍奶就有外送機車在雨中繞；放下那回合全島跑去門口躲一下，2026-10-31 單一正解 §4.3） | — | 現有 |
+| 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（同一團暴風圈移到捷運站上空，雨小一點） | — | 現有 |
+| 颱風 | 3 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈移到大巨蛋上空；巨蛋淹水時 `baseball.field` 泳池一圈、球員站上屋頂，在棒球的零件裡） | — | 現有 |
+| 颱風 | 4 ◆ | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
+| 老鼠 | 1 | `rat.pack` | `quat/enemies/Rat.glb`（動畫，不併；在舞台結算的 `meta.troubleAt` 那棟門口晃，沒有才在窩旁） | CC0 | 現有 |
+| 老鼠 | 2 | `rat.main`、`rat.pack` | 程式鼠窩＋`quat/enemies/Rat.glb` ×3（同 Lv1，聚到出問題的那棟門口） | CC0 | 現有 |
+| 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb` ×5（搭捷運／泡溫泉） | CC0 | 現有 |
+| 老鼠 | 4 ◆ | `rat.pack`、`rat.king`、`rat.ufo`、`sat.rocksRing` | 分岔＝最終型態（2026-10-31 單一正解：原本的 Lv4 分岔＋Lv5 併成一級）。賽博：機器鼠軍團 10 隻＋站頂戴王冠的機器鼠 = `quat/enemies/Rat.glb`（天線、王冠程式）；外星（壞結局「變異鼠稱王」）：變異鼠三眼綠光加冕、小 UFO、石堆島綠光圈 = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 換新 |
 | 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車，錨點南邊 0.4：夜市第四攤擋不到） | — | 現有 |
 | 珍奶 | 2 | `boba.queue`、`boba.yard` | 程式名冊（人龍 4 人一排，人數預算）＋程式立牌（鮮奶 ≥4 白底藍字） | — | 現有 |
 | 珍奶 | 3 | `boba.main`、`boba.sign`、`boba.yard` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店，tint 牆奶油、磚與飾邊木色、招牌珊瑚）＋`kenney/food/cup-tea.glb`（屋頂招牌杯）＋程式遮雨棚、店前磚地 | CC0 | 換新 |
 | 珍奶 | 4 | `boba.fountain` | 程式（噴泉在店東側、往北退 0.3：不在店與鏡頭之間；水面不發光，整局截圖 draw call ≤ 150） | — | 換新（挪到店側邊） |
-| 珍奶 | 5 | `sat.forest.stage1`（分店＋茶屋桌椅，原 `sat.forestShop`）、`sat.forest`、`sat.boats` | 程式（小森林島分店、觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；門檻由 Lv4 改 Lv5（satellites.js `BRANCH`）。`3Story_Small_Mat.glb` 沒用 | CC0（船） | 現有 |
-| 珍奶 | 6 ★ | `boba.flagship`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | `quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店，同店面 tint）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`，繞店飛一小圈、停在屋頂）；觀光客 = 程式名冊 | CC0 | 換新 |
-| 珍奶 | 7 ◆ | `boba.yard`（氣球）、`boba.fleet` | 程式（主島 17 條靠海格邊各一束氣球——細繩＋三顆小球，併在院子零件裡；五艘小船桅杆頂掛圓燈籠，一個零件繞島轉；101「世界珍奶節」是劇本字卡；2026-10-28 拿掉所有旗子） | — | 換新 |
+| 珍奶 | 5 ★◆ | `sat.forest.stage1`（分店＋茶屋桌椅）、`sat.forest`、`sat.boats`、`boba.flagship`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | 兩島同一級（2026-10-31 單一正解：原本的 Lv5 森林島分店＋Lv6 燈塔島旗艦店併成一級）。程式（小森林島分店、觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；`quat/buildings/1Story_Sign_Mat.glb`（燈塔島旗艦店，同店面 tint）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`）；觀光客 = 程式名冊 | CC0 | 換新 |
+| 珍奶 | 6 ◆ | `boba.yard`（氣球）、`boba.fleet` | 程式（主島 17 條靠海格邊各一束氣球——細繩＋三顆小球，併在院子零件裡；五艘小船桅杆頂掛圓燈籠，一個零件繞島轉；101「世界珍奶節」是劇本字卡；2026-10-28 拿掉所有旗子） | — | 換新 |
 | 棒球 | 1 | `baseball.main`、`baseball.lines.*`、`baseball.players` | 程式（沙地球場；第一個球員放置時從看台後方進場跑壘，裁決 R16：球場格不住島民） | — | 現有 |
 | 棒球 | 2 | `baseball.stands`、`baseball.players` | `kenney/racing/grandStand.glb` ×2（木看台，tint 座椅珊瑚、骨架木色；零件 kind `stands`）；球員 = 程式名冊 | CC0 | 換新 |
 | 棒球 | 3 ◆ | `baseball.main`、`baseball.deco` | `kenney/space/hangar_roundA.glb`（大巨蛋，高 1.0，tint 圓頂白、殼奶油、飾條珊瑚）＋程式底座與門口；Quaternius `GeodesicDome` 是 Draco 壓縮，沒收 | CC0 | 換新 |
@@ -83,9 +82,9 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 
 （清單不用表格：上面那張表一級一列，assets.test 數列數）
 
-- **燈塔島**——第一段：燈泡 Lv7 `sat.lighthouse.stage1`：守塔人小屋（白牆、紅四坡頂、門、煙囪；島東北）；第二段：珍奶 Lv6 `sat.lighthouse.stage2`：棧橋碼頭（板面＋橫板＋四根柱子，從西南岸朝 `boba.DOCK` 伸出去、側讓 0.5；珍奶 Lv6 小船開過去時閃白）
+- **燈塔島**——第一段：燈泡 Lv7 `sat.lighthouse.stage1`：守塔人小屋（白牆、紅四坡頂、門、煙囪；島東北）；第二段：珍奶 Lv5 `sat.lighthouse.stage2`：棧橋碼頭（板面＋橫板＋四根柱子，從西南岸朝 `boba.DOCK` 伸出去、側讓 0.5；珍奶 Lv5 小船開過去時閃白）
 - **風車島**——第一段：燈泡 Lv7 `sat.windmill.stage1`：第二支風機塔身＋電池屋（通電時綠燈條發光）；葉片是 `sat.windmill` 的 `twin` 轉子（同速轉、颱風同樣搖，第一段不跟著重建）；第二段：晶片 Lv6 `sat.windmill.stage2`：變電小站（水泥墊、變壓箱、兩個霓虹藍礙子）
-- **石堆島**——第一段：老鼠 Lv3 `sat.rocks.stage1`：鼠洞（最大石頭鏡頭側）＋曬太陽的石板；第二段：老鼠 Lv5 外星：綠光圈（現有 `sat.rocksRing`）；賽博沒有
+- **石堆島**——第一段：老鼠 Lv3 `sat.rocks.stage1`：鼠洞（最大石頭鏡頭側）＋曬太陽的石板；第二段：老鼠 Lv4 外星：綠光圈（現有 `sat.rocksRing`）；賽博沒有
 - **階梯丘**——第一段：晶片 Lv3 `sat.pyramid.stage1`（跟營區同一個零件）：第二頂帳篷（第四層梯田）；第二段：晶片 Lv9 `sat.pyramid.stage2`：觀測站（圓頂淡淡發光＋望遠鏡）
 - **遊樂場島**——第一段：代幣 Lv8 `sat.playground.stage1`：鞦韆（kind `swing`，座位會盪；架子和座位一個 mesh）；第二段：鮮奶 Lv10 `sat.playground.stage2`：旋轉木馬（kind `carousel`，8 秒一圈）
 - **小森林**——第一段：珍奶 Lv5 `sat.forest.stage1`（跟分店同一個零件）：茶屋兩張圓桌、四張凳；第二段：燈泡 Lv9 `sat.forest.stage2`：燈籠串（兩棵樹之間 6 顆暖黃燈籠；大停電時暗）

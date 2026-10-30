@@ -305,11 +305,15 @@ export const script = {
       //   這一段只 hold 老鼠的名冊、套 UFO（不閃）：其餘零件（窩收掉、石堆島的老鼠）留給後面的 apply 閃
       const hold = B.apply(e, { only: [KEY], hold: [KEY] }), ufo = B.apply(flag, { only: ['rat.ufo'], blink: false }), down = B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 });
       const mutate = B.apply(flag, { only: [KEY] });
+      // 泡湯客先讓位（2026-10-31 唯一正解收尾，roster.test 變異鼠擦身）：變異鼠站的溫泉邊在池子正前方，泡湯客的家搬到池子北側
+      //   要從這裡繞過去——以前跟「剩下的零件」最後才套，變異鼠已經站好，繞池子的那條窄路被牠堵住，泡湯客直直走過牠身上（0.10 m）。
+      //   改成老鼠一出發就套（不閃），泡湯客趁老鼠還在路上先走到北側
+      const room = B.apply(flag, { only: ['landmarks.bathers'], blink: false });
       // 搭車來的：其餘的老鼠還坐在車頂上跟車走（日常是搭車），分岔旗標一套就不再是搭車的家——跳下車就閃白變身（車頂上的閃白拿掉），
       //   變異鼠再走到溫泉邊、UFO 同時降下
       const open = riding(s)
-        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT), down])]
-        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT), down]), mutate];
+        ? [B.together([room, B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT), down])]
+        : [B.together([claim(RATS), hold, ufo, room, B.focus(SPRING), B.walk(r0, MUTANT), down]), mutate];
       return [
         ...open, B.home(r0),
         // 綠光圈先閃、剩下的零件（窩收掉、石堆島的老鼠）接著閃完，LEVEL UP 之後不再閃

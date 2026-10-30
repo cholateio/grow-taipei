@@ -641,6 +641,27 @@ test('alien bad ending: the merged rat 2 → 4 in the last round still plays the
   assert.ok(high > 2, `the UFO came down from the sky (max dy ${high.toFixed(2)})`);
   assert.ok(show.roster.members('rat.pack')[0].dress.crown, 'crowned'); assert.ok(show.stage.partObject('sat.rocksRing'), 'ring on the rocks');
 });
+// 2026-10-31（唯一正解收尾，roster.test 變異鼠擦身）：泡湯客的家搬到池子北側要從變異鼠站的溫泉邊繞過去——老鼠一出發就先讓位，
+// 變異鼠站好之後沒有泡湯客從牠身上走過（以前最後才套，泡湯客直直穿過牠 0.10 m）：整段劇本＋之後 5 秒，兩邊身體不相碰（≥ 半徑和 × 0.64）
+test('alien bad ending: the bathers make room before the mutant arrives — no bather ever walks through the mutant at the spring', async () => {
+  const h = await headlessShow(), { show, run } = h;
+  let s = engine.createState(spec), evs = null;
+  const steps = [...ALIEN.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  for (const step of steps) {
+    const r = step(s); s = r.state;
+    if (r.events.some(isRat(4))) { evs = [...r.events, { kind: 'settle' }]; break; }
+    await run([...r.events, { kind: 'settle' }], { instant: true });
+  }
+  const update = show.update; let near = Infinity, frames = 0;
+  show.update = (dt, t) => {
+    update(dt, t);
+    const [m] = show.roster.members('rat.pack'); if (!m || m.radius < 0.3 || m.hidden) return;
+    for (const o of show.roster.members('landmarks.bathers')) { if (o.hidden) continue; frames++; near = Math.min(near, Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) / (m.radius + o.radius)); }
+  };
+  try { await run(evs); for (let f = 0; f < 150; f++) show.update(1 / 30, 2000 + f / 30); } finally { show.update = update; }
+  assert.ok(frames > 100, `${frames} mutant–bather frames`);
+  assert.ok(near >= 0.64, `closest bather at ${near.toFixed(2)} × (ra + rb)`);
+});
 // 審稿（裁決 R15）：Lv3 在整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——唯一正解與外星壞局都是第 9 回合 2 → 4 合併跳級的第一級（只有 mark）
 test('live play, the solution and the alien order: rat Lv3 script ≤ 4.5 s in the real turn', async () => {
   const { playLive, SCRIPT_MAX } = await import('./helpers/show.js');

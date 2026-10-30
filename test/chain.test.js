@@ -230,7 +230,7 @@ async function playMisses(order) {
     for (const e of r.events) { if (e.kind === 'wait') break; view = engine.foldEvent(view, e); }
     inv.label(turn);
     let cur = null, keys = 0;
-    const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
+    const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; if (cur.geo?.door) cur.lenDoorEnd = cur.geo.lenFrom(cur.end, cur.geo.door); cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
     await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => {
       close(); inv.label(`${turn} [${e.kind}${e.item ? ` ${e.item}` : ''}]`);
       if (info?.key) keys++;
@@ -243,10 +243,10 @@ async function playMisses(order) {
       // 2026-10-29：鮮奶 Lv2 借島民之後，第 7 回合走「往門口走一段」那一支，用整局最後的 nav 量反而以為走得到門口）
       if (usable) {
         const nav = show.nav, w = cur.w, h = w.for[0], hl = sv.lv[h];
-        const len = to => { const r = nav.route(cur.start, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; };
+        const lenFrom = (from, to) => { const r = nav.route(from, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; }, len = to => lenFrom(cur.start, to);
         const spotOf = (id, n) => { const sp = n > 0 ? mod(id).visitSpot(n, sv) : null; return sp && cellAt(sp.x, sp.z) ? frontOf(sp, sp.r, nav) : null; };
         const helperAt = h === 'typhoon' || hl === 0 ? null : spotOf(h, hl), door = spotOf(w.item, sv.lv[w.item]);
-        cur.geo = { helperAt, lot: h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null, door, lenDoor: door ? len(door) : Infinity, lenHelper: helperAt ? len(helperAt) : Infinity };
+        cur.geo = { helperAt, lot: h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null, door, lenDoor: door ? len(door) : Infinity, lenHelper: helperAt ? len(helperAt) : Infinity, lenFrom };
       }
       segs.push(cur);
     } });
@@ -289,7 +289,9 @@ for (const outcome of ['hit', 'deflect']) {
         else if (lot && flat(g.end, lot) < flat(g.start, lot) - 0.05) kind = 'toward lot';
         else if (helperAt && flat(g.end, helperAt) < 0.2) kind = 'spot';
         else if (door && flat(g.end, door) < 0.2) kind = 'door';
-        else if (door && lenDoor > cap && flat(g.end, door) < flat(g.start, door) - Math.min(1, cap / 2)) kind = 'toward door';
+        // 往門口走了一段：照路線量（同 lenDoor）——2026-10-31 唯一正解收尾：以前量直線距離，路線先往北繞的那段（燈泡的電工在主島西緣，
+        //   門口在東南、路要先繞過去）走滿 MISS_WALK 也只近了 0.86 公尺直線，被當成沒走對；路線剩下的長度才是「往門口走了」
+        else if (door && lenDoor > cap && g.lenDoorEnd < lenDoor - Math.min(1, cap / 2)) kind = 'toward door';
         else if (!door) kind = 'here';
         assert.ok(kind, `${label}: ended at (${g.end.x.toFixed(2)}, ${g.end.z.toFixed(2)}) — not the helper, not its door (start ${g.start.x.toFixed(2)}, ${g.start.z.toFixed(2)})`);
         // 幫手那邊走得到又近（同格／相鄰、MISS_WALK 秒內）就一定是去幫手那邊

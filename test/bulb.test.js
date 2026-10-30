@@ -632,17 +632,22 @@ test('bulb rep: the electrician on a main-island bridge counts; on the windmill 
 // Task 6a 修正輪（控制者裁決，Critical）：以前 Lv7 劇本在沒列車時直接丟錯，玩家亂放就整局卡死。沒列車演不搭車的版本：
 // 不叫電工，鏡頭到風車島、套用（風車轉、燈塔亮）、回全景、LEVEL UP。
 // 計畫 9 連鎖（2026-10-30，設計 §8 R3）：燈泡 7 要代幣 ≥5，規則下燈泡到 7 一定有列車（show.test 整份列舉驗）——退路程式留著當防呆，
-//   這裡改用合成狀態直接演劇本、不經引擎：EXAMPLE.hit（淹水）前 7 回合瞬間演完（燈泡 6、代幣 4、淹水停駛），再 live 演一個合成的燈泡 6 → 7
+//   這裡改用合成狀態直接演劇本、不經引擎。
+// 唯一正解（2026-10-31）：淹水鎖代幣 ≤3，列舉 4 萬局裡淹水時燈泡最多 4 級（燈泡 5 要棒球 4／代幣 4，淹水局到不了）——
+//   引擎走不到「淹水＋燈泡 6」，舊前提（EXAMPLE.hit 前 7 回合到燈泡 6、代幣 4）過時。改成：EXAMPLE.hit 8 回合瞬間演完
+//   （淹水、燈泡 4、代幣 2、沒有環狀線），再瞬間演合成的燈泡 4 → 5 → 6，之後 live 演一個合成的燈泡 6 → 7
 async function floodedAtBulb6(h) {
   const { turnSteps } = await import('./helpers/show.js'), { EXAMPLE } = await import('./helpers/endings.js');
   let s = engine.createState(spec);
-  for (const step of turnSteps(EXAMPLE.hit).slice(0, 7)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.ok(s.flags.flooded && s.lv.bulb === 6 && s.lv.token === 4, `precondition: flooded, bulb 6, token 4 (${JSON.stringify(s.lv)})`);
+  for (const step of turnSteps(EXAMPLE.hit).slice(0, 8)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.ok(s.flags.flooded && s.lv.bulb === 4 && s.lv.token === 2, `precondition: flooded, bulb 4, token 2 (${JSON.stringify(s.lv)})`);
+  await h.run([bulbGrow(4, 5), bulbGrow(5, 6), { kind: 'settle' }], { instant: true });
+  s = { ...s, lv: { ...s.lv, bulb: 6 } };
   assert.deepEqual(h.show.stage.lv, s.lv);
   return s;
 }
 const bulbGrow = (from, to) => ({ kind: 'grow', item: 'bulb', from, to, story: spec.STORIES.grow.bulb[to] });
-test('bulb Lv7 with no train running (synthetic: flooded, token 4) plays the fallback instead of throwing: the windmill turns, LEVEL UP on bulb', async () => {
+test('bulb Lv7 with no train running (synthetic: flooded, token 2) plays the fallback instead of throwing: the windmill turns, LEVEL UP on bulb', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await floodedAtBulb6(h);
   const n = bubblesLog.length;

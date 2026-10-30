@@ -137,12 +137,13 @@ export function view(lv, flags = {}, meta = {}) {
   const at = anchorWorld('tower');
   // 最終章 §6：命中 → 塔身彎 L、天線燈光秀罩子都拿掉（工地／蓋一半照完工的彎法，吊車也不畫）；矽盾擋下 → 罩子全亮
   const hit = flags.missile === 'hit', stage = stageOfView(lv, meta);
-  // 彎過的塔頭頂（labelY）照沒彎的完工／點燈塔算：命中之後塔上不再冒字，天際線降低反而讓回合收尾的 focus('home', { final, skyline })
-  // 在全景裡 setSkyline 瞬間跳鏡頭（審稿第 1 輪）
+  // 彎過的塔頭頂（labelY）照「這一階段沒彎的塔」算：命中之後塔上不再冒字，天際線一變，回合收尾的 focus('home', { final, skyline })
+  // 在全景裡 setSkyline 就瞬間跳鏡頭（審稿第 1 輪）。工地／蓋一半照完工的形狀彎，但頭頂照原本的工地／半塔
+  // （2026-10-31 唯一正解收尾：以前一律照完工塔，蓋一半時被命中天際線從 4.45 跳到 7.75——釘住的命中局 EXAMPLE.hit 就是蓋一半）
   // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
   // 外星尾聲（§7）：母艦；頭頂一樣照點燈的塔（碟頂比尖塔低，坐上去的王冠鼠也在頭頂下；天際線不變、收尾不跳鏡頭）
   const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien' && !hit;
-  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = hit || dark || ship ? body(stage === 'lit' || dark || ship ? 'lit' : 'full').top : top;
+  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = dark || ship ? body('lit').top : hit ? body(stage).top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
   // 母艦底下的綠光盤比底座寬、黑塔屋頂的霓虹邊條（1.64）比底座寬 0.04：站位照底座 1.6 見方（同彎 L 的塔、同點燈的塔自動算出來的）
   if (ship || dark) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };

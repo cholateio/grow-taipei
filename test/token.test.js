@@ -19,12 +19,27 @@ import { headlessShow, playItem, entriesThroughSolutions, solo, overviewRig, SCR
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
+const RESULTS = enumerate(spec);
+const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower'), TWO_PI = 2 * Math.PI, CELL = cellOf('token');
 const satC = kind => { const s = SATELLITES.find(x => x.kind === kind); return axialToWorld(s.q, s.r); };
 const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
 // 代幣 Lv7 開往哪座島：燈泡先放（賽博）→ 燈泡 Lv7 先鋪好風車島的支線 → 遊樂場島（裁決 R7）；不然風車島
-const islandOf7 = order => (order.indexOf('bulb') < order.indexOf('token') ? 'playground' : 'windmill');
+// 唯一正解（2026-10-31）：舊的「燈泡先放就是遊樂場島」是兩條正解的捷徑——改成照引擎演：代幣升 7 那一刻燈泡已經 ≥ 7 才是遊樂場島
+//   （到不了代幣 7 回 null）。正解是代幣先放、代幣 7 比燈泡 7 早 → 風車島
+const islandOf7 = order => {
+  let s = engine.createState(spec), bulb = 0;
+  for (const step of [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
+    const r = step(s); s = r.state;
+    for (const e of r.events) {
+      if (e.item === 'bulb' && (e.kind === 'grow' || e.kind === 'placed')) bulb = e.kind === 'grow' ? e.to : 1;
+      if (e.kind === 'grow' && e.item === 'token' && e.to === 7) return bulb >= 7 ? 'playground' : 'windmill';
+    }
+  }
+  return null;
+};
+// 遊樂場島那條（燈泡 Lv7 先鋪好風車島支線）不在正解上：列舉裡第一條代幣到得了 7、而且是遊樂場島的放法
+const PLAYGROUND7 = RESULTS.map(r => r.order).find(o => islandOf7(o) === 'playground');
 const views = Array.from({ length: 11 }, (_, n) => token.view(L({ token: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const PALETTE = new Set(Object.values(C));
@@ -340,10 +355,12 @@ async function liveAt(h, order, to) {
   }
   return null;
 }
-// Lv7 live：列車真的開到新支線那頭（車頭離島心 < 1.3）——風車島的支線已經被燈泡 Lv7 鋪好（賽博）就開進遊樂場島（裁決 R7），不然風車島
+// Lv7 live：列車真的開到新支線那頭（車頭離島心 < 1.3）——風車島的支線已經被燈泡 Lv7 鋪好就開進遊樂場島（裁決 R7），不然風車島。
+// 唯一正解（2026-10-31）：正解是風車島；遊樂場島那條改用列舉裡第一條（PLAYGROUND7），兩條都量（舊前提是兩條正解各一條）
 test('Lv7 live: the train rides out to the island of the new spur while the camera is there, then the overview', async () => {
-  assert.deepEqual(SOLUTIONS.map(islandOf7).sort(), ['playground', 'windmill'], 'one solution each');
-  for (const order of SOLUTIONS) {
+  assert.deepEqual(SOLUTIONS.map(islandOf7), ['windmill'], 'the solution: the windmill spur');
+  assert.ok(PLAYGROUND7, 'some order grows the playground spur at token 7');
+  for (const order of [...SOLUTIONS, PLAYGROUND7]) {
     const h = await headlessShow(), { show } = h, kind = islandOf7(order), c = satC(kind), update = show.update;
     let near = 0;
     show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
@@ -351,10 +368,10 @@ test('Lv7 live: the train rides out to the island of the new spur while the came
     assert.ok(done && near >= 15, `${order.join('>')}: head near the ${kind} island for ${near} frames`);
   }
 });
-// 審稿（計畫 5b 任務 3，裁決 R7）：賽博那條燈泡 Lv7 先到、風車島支線已經鋪好；代幣 Lv7 只長遊樂場島那條——鏡頭要在遊樂場島，
+// 審稿（計畫 5b 任務 3，裁決 R7）：燈泡 Lv7 先到的那種局（唯一正解之後是 PLAYGROUND7）、風車島支線已經鋪好；代幣 Lv7 只長遊樂場島那條——鏡頭要在遊樂場島，
 // 不能還飛去風車島（新長的支線整段在畫面外）。真的鏡頭 rig（16:9 全景）：支線長出來的每一幀，新長的那條支線的島心投影在 NDC ±0.9 裡
-test('Lv7 live, real camera: the island of every newly grown spur is on screen (NDC ±0.9) while the spur grows, in both solutions', async () => {
-  for (const order of SOLUTIONS) {
+test('Lv7 live, real camera: the island of every newly grown spur is on screen (NDC ±0.9) while the spur grows, in the solution (windmill) and the playground order', async () => {
+  for (const order of [...SOLUTIONS, PLAYGROUND7]) {
     const cam = overviewRig(), h = await headlessShow({ rig: cam.rig }), { show } = h, update = show.update, frames = {}, out = [];
     const ndc = p => { cam.camera.lookAt(cam.controls.target); cam.camera.updateMatrixWorld(); cam.camera.updateProjectionMatrix(); return new THREE.Vector3(p.x, p.y, p.z).project(cam.camera); };
     show.update = (dt, t) => {

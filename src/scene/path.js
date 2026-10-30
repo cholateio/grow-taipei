@@ -13,9 +13,10 @@ export function locateOnPath(path, lens, s, loop = true) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, yaw: Math.atan2(b.x - a.x, b.z - a.z) };
 }
 
-export function createPathCursor(path, { loop = true, s = 0 } = {}) {
+// dir：開放路徑一開始往哪走（1 往終點、-1 往起點；閉合路徑一律 1）。s／dir 唯讀，給名冊算同一條線上的人的相位
+export function createPathCursor(path, { loop = true, s = 0, dir = 1 } = {}) {
   const lens = measurePath(path, loop), total = lens.at(-1);
-  let dir = 1;
+  if (loop) dir = 1;
   return {
     advance(ds) {
       s += ds * dir;
@@ -23,5 +24,7 @@ export function createPathCursor(path, { loop = true, s = 0 } = {}) {
     },
     locate() { const p = locateOnPath(path, lens, s, loop); if (dir < 0) p.yaw += Math.PI; return p; },
     get total() { return total; },
+    get s() { return s; },
+    get dir() { return dir; },
   };
 }

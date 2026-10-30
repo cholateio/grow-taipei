@@ -399,6 +399,40 @@ test('path homes with n ≥ 2: members released from a script walk back to their
     assert.ok(circ >= 0.25 * T, `members ${i}–${j}: ${circ.toFixed(2)} apart along the route (total ${T.toFixed(2)})`);
   }
 });
+// 2026-10-31（唯一正解收尾，chip.test 工程師扎堆）：錯開點只錯開接上去的那一點——別人剛好同方向經過，兩人就同速貼著走一整局。
+// 接上開放折線時看同一條線上的人的相位（同上一個測試）：同方向 < 1 公尺就往回走；端點上兩個方向是同一個相位，先站著等別人走遠（≤ 3 秒）
+test('path homes with n ≥ 2: a member rejoining next to a same-direction walker turns back, and at an end of the line waits until the other is ≥ 1 m ahead', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js'), { createPathCursor } = await import('../src/scene/path.js');
+  const dt = 1 / 30, phase = c => (c.dir > 0 ? c.s : 2 * c.total - c.s), circ = (u, v, T) => { const d = Math.abs(u - v) % (2 * T); return Math.min(d, 2 * T - d); };
+  // 線的中段：m1 的錯開點（total / 2）旁邊 m0 正往前走過 → m1 往回走，之後兩人只交會、不並排
+  {
+    const { roster, nav } = setup();
+    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 2, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+    const P = nav.ground(ENGINEER_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
+    m0.cursor = createPathCursor(P, { loop: false, s: T / 2 - 0.05 });
+    const mid = createPathCursor(P, { loop: false, s: T / 2 }).locate();
+    roster.claim(m1); roster.setPose(m1, { x: mid.x, y: mid.y, z: mid.z, walking: false }); roster.home(m1);
+    roster.update(dt, 0);
+    assert.ok(m1.cursor, 'rejoined at once (standing on its staggered point)');
+    assert.equal(m1.cursor.dir, -1, 'turns back instead of walking beside m0');
+    let close = 0, longest = 0;
+    for (let f = 1; f < 20 / dt; f++) { roster.update(dt, f * dt); close = gap(m0.pos, m1.pos) < 0.3 ? close + dt : 0; longest = Math.max(longest, close); }
+    assert.ok(longest <= 1, `closest < 0.3 for ${longest.toFixed(2)} s in a row`);
+  }
+  // 線的端點：m0 的錯開點是起點、m1 剛從起點走開 0.2 → m0 站著等，m1 走到相位 ≥ 1 公尺外才接上
+  {
+    const { roster, nav } = setup();
+    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 2, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+    const P = nav.ground(ENGINEER_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
+    m1.cursor = createPathCursor(P, { loop: false, s: 0.2 });
+    roster.claim(m0); roster.setPose(m0, { x: P[0].x, y: P[0].y, z: P[0].z, walking: false }); roster.home(m0);
+    let joined = null;
+    for (let f = 0; f < 4 / dt && !joined; f++) { roster.update(dt, f * dt); if (m0.cursor) joined = { t: f * dt, gap: circ(phase(m0.cursor), phase(m1.cursor), T) }; else assert.ok(!m0.walking && gap(m0.pos, P[0]) < 0.1, 'waits at the start of the line'); }
+    assert.ok(joined, 'rejoins within the wait limit');
+    assert.ok(joined.t > 1 && joined.t <= 3.1, `waited ${joined?.t.toFixed(2)} s`);
+    assert.ok(joined.gap >= 1 - 1e-6, `${joined.gap.toFixed(2)} m behind m1 along the line`);
+  }
+});
 // 計畫 9 任務 3 審稿：閉合折線上的人照舊等速——電工（ROAD，n 1，前面一直有人在走）、守塔人（衛星島繞圈 n 1）、
 // 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢、不互相等
 test('loops keep a constant speed: the electrician, the lighthouse keeper and the playground kids never stop or slow down', async () => {
@@ -631,7 +665,7 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
   }
 });
 
-// ── §14.1／§14.5：兩條正解 live 演完（seed 21），每一幀名冊成員都不在 footprint（含 PAD）裡；走進來的人都走得到 ──
+// ── §14.1／§14.5：唯一正解＋外星壞局 live 演完（seed 21），每一幀名冊成員都不在 footprint（含 PAD）裡；走進來的人都走得到 ──
 // 「在 footprint 裡」= 主島走路格上、落在 show.nav 當下外擴 PAD 的 footprint 裡（nav.inFootprint）。藏起來（躲進門裡）的人不算。
 // 不歸走路格管的不查：劇本手上的人（劇本自己擺位置）、沿手畫折線走的 path 成員、站位本來就畫在 footprint 裡的 stand（沒有 rescue：泡溫泉的老鼠、
 // 攤車後的老闆）。已經在裡面才開始查的人（建築長在身上——footprint 換了的那一幀人就在裡面；劇本把人放在門裡再交回日常）
@@ -640,7 +674,7 @@ test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking 
 // 審查修正：每個名冊（最終審查：不再只看幾個名單上的鍵）不論日常、沿折線還是劇本手上，任何一幀都不在建築本身（不含 PAD）裡——
 // 只有站位畫在 footprint 裡（泡溫泉）、坐在車頂（ride，不在走路格上）和建築長在身上（CAUGHT_MAX 秒內走出來）例外
 // 最終審查修正：同一趟 live 也查（1）橋上的人貼著橋面：|y − groundY| ≤ BRIDGE_TOL，橋頭一閃 ≤ BRIDGE_END、不超過 BRIDGE_BLIP 秒；
-// （2）外星結局（closing 起）偵防師離每個露出來的人 ≥ SEPARATION。兩條正解只演一次，幾個測試共用（livePlay）
+// （2）外星結局（closing 起）偵防師離每個露出來的人 ≥ SEPARATION。兩局只演一次，幾個測試共用（livePlay）
 const DT_LIVE = 1 / 30, BRIDGE_TOL = 0.01, BRIDGE_END = 0.05, BRIDGE_BLIP = 0.1, TAIL = 150;   // TAIL：最後一回合演完再看 5 秒
 const SEP_TOL = 0.005;   // 兩個走路的人互推剛好推到 SEPARATION（每幀限速的那一截下一幀才補上），差一點點不算擠
 const RAT_TOL = 0.03;   // 老鼠對人：半徑是估的（模型照高度），名冊每幀限速推開時會在半徑和內 1–3 公分徘徊，不算貼著
@@ -657,7 +691,10 @@ async function playBoth() {
   const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
   const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, nestNear, passStand, armyNear, get nestFrames() { return nestFrames; }, get passFrames() { return passFrames; }, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
-  for (const order of stats(enumerate(spec), spec).full.map(r => r.order)) {
+  // 唯一正解（2026-10-31）：外星不再是正解、是壞結局「變異鼠稱王」——原本「兩條正解」的外星那條換成列舉裡第一條外星壞局
+  //   （同 rat.test／boba.test 的 ALIEN）；外星結局的檢查（變異鼠、closing 的偵防師）照舊量那一局
+  const results0 = enumerate(spec), ALIEN = results0.find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;
+  for (const order of [...stats(results0, spec).full.map(r => r.order), ALIEN]) {
     const { show, run } = await headlessShow(), update = show.update, since = new Map(), caught = new Map(), outside = new WeakSet(), wallIn = new Map(), wallOut = new WeakSet(), off = new Map(), decked = new WeakSet(), stepping = new Map();
     let label = '', t = 0, version = show.nav.version, walkedIn = 0, built = '[]', closing = false;
     const passing = new Map(), ratPass = new Map();   // built：舞台的 footprint（新零件 apply 一開始就算進去，比 nav 早）
@@ -744,7 +781,7 @@ async function playBoth() {
 test('no roster member is ever inside a padded footprint, and nobody is stuck: every walk-in arrives', async () => {
   const { PAD } = await import('../src/show/nav.js'), { bad, slow, stuck, walls, walkedIn } = await livePlay();
   for (const [order, n] of Object.entries(walkedIn)) assert.ok(n >= 10, `${order}: ${n} walk-ins arrived`);
-  assert.equal(Object.keys(walkedIn).length, 2, 'both solutions');
+  assert.equal(Object.keys(walkedIn).length, 2, 'the solution and the alien bad game');
   assert.equal(PAD, 0.12);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} frames inside a footprint`);
   assert.deepEqual(slow.slice(0, 20), [], 'caught by a new building: walks out at once');
@@ -785,7 +822,7 @@ test('every hand-drawn path home stays outside every padded footprint at every l
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
 // 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子
-test('live, both solutions: everyone on a bridge stays on the deck (y within 0.01 of nav.groundY; ≤ 0.05 blips at the ends for ≤ 0.1 s)', async () => {
+test('live, the solution and the alien bad game: everyone on a bridge stays on the deck (y within 0.01 of nav.groundY; ≤ 0.05 blips at the ends for ≤ 0.1 s)', async () => {
   const { sunk, bridgeFrames } = await livePlay();
   assert.ok(bridgeFrames > 1000, `${bridgeFrames} member-frames on bridges`);
   assert.deepEqual([...sunk].slice(0, 20), [], `${sunk.size} off the deck`);
@@ -805,19 +842,19 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
 // Task 6a 修正輪（控制者裁決）：標 todo，門檻不放寬、不刪。回到 GROW 之後兩條正解第 7 回合同時放老鼠（鼠窩 Lv2）、棒球長到 7（第 5 個觀眾進場）：
 // 觀眾從捷運站那座橋下來（落點約 (−0.6, 4.3)）直線走到門口西端 (−4.15, 4.73)，路線在 x −1.19 離窩心 (−1.19, 4.14) 只有 0.23 m，
 // 穿過老鼠散步圈（r 0.7）——量到 25 幀、最近 0.01 m（要 0.255）。錨點往南移 0.8 試過，改撞草皮觀眾與球員，已還原。留給延後的多輪人群那一輪（R10）
-test('live, both solutions: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '回到 GROW 後第 7 回合第 5 個觀眾從捷運站橋下來，路線離鼠窩心 0.23 m（25 幀、最近 0.01 m）——延後的多輪人群那一輪' }, async () => {
+test('live, the solution and the alien bad game: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '回到 GROW 後第 7 回合第 5 個觀眾從捷運站橋下來，路線離鼠窩心 0.23 m（25 幀、最近 0.01 m）——延後的多輪人群那一輪' }, async () => {
   const { nestNear, nestFrames } = await livePlay();
   assert.ok(nestFrames > 300, `${nestFrames} nest-rat–person frames`);
   assert.deepEqual([...nestNear].slice(0, 20), [], `${nestNear.size} frames too close`);
 });
 // (c) 走路的老鼠經過站定的人（stand 站好了）：nav.separate 讓走路的那個退開整段，不穿過去
-test('live, both solutions: a walking rat never runs through a standing person', async () => {
+test('live, the solution and the alien bad game: a walking rat never runs through a standing person', async () => {
   const { passStand, passFrames } = await livePlay();
   assert.ok(passFrames > 100, `${passFrames} walking-rat–standing-person frames`);
   assert.deepEqual([...passStand].slice(0, 20), [], `${passStand.size} frames too close`);
 });
 // (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久——另案，先標 todo
-test('live, both solutions: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與中心格島民擦身，留待之後處理' }, async () => {
+test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與中心格島民擦身，留待之後處理' }, async () => {
   const { armyNear } = await livePlay();
   assert.deepEqual([...armyNear].slice(0, 20), [], `${armyNear.size} frames too close`);
 });

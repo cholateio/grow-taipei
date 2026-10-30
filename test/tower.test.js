@@ -106,7 +106,8 @@ test('view with missile hit: body is bent at full and lit — the upper tiers ro
     let v; assert.doesNotThrow(() => { v = tower.view(lvOf(total, { chip: 7 }), { missile: 'hit' }, { total }); });
     assert.deepEqual(v['tower.main'].parts, tower.body('full', { bent: true }).parts, `total ${total}: the full shape, bent`);
     assert.equal(v['tower.crane'], undefined); assert.equal(v['tower.antenna'], undefined);
-    assert.equal(v['tower.main'].labelY, tower.view(lvOf(31), {}, { total: 31 })['tower.main'].labelY, `total ${total}: head of the full tower`);
+    // 頭頂照這一階段沒彎的塔（工地／蓋一半）：天際線不因命中而變（下一個測試）
+    assert.equal(v['tower.main'].labelY, tower.view(lvOf(total, { chip: 7 }), {}, { total })['tower.main'].labelY, `total ${total}: head of the unbent ${tower.stageOf(total)} tower`);
     assert.deepEqual(tower.bendPoint(tower.stageOf(total)), tower.bendPoint('full'));
   }
   assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');

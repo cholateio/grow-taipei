@@ -18,7 +18,9 @@ import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
 import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
+const RESULTS = enumerate(spec);
+const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
+const ALIEN = RESULTS.find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（列舉裡第一條）
 const AT = anchorWorld('boba'), CELL = cellOf('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
@@ -370,11 +372,11 @@ test('Lv3: the owner builds, the shop appears, the queue and the owner move to t
   }
 });
 // 物品 v2：糖分超標在珍奶 Lv4（唯一正解 Task 1 裁決：鮮奶 ≤4），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）。
-// 放法：求解器列舉的第一條外星壞局（第 8 回合珍奶 2 → 4 跳級，鮮奶 5 → 4 被咬過）
+// 放法：求解器列舉的第一條外星壞局（milk,chip,bulb,token,rat,boba,baseball,typhoon：第 8 回合珍奶 2 → 4 跳級，鮮奶 5 → 4 被咬過）
 test('Lv4 with low milk is the sugar rush: every islander ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let s = engine.createState(spec), e4 = null, rest = [];
-  for (const id of ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon']) {
+  for (const id of ALIEN) {
     const r = engine.place(s, id, spec); s = r.state;
     const i = r.events.findIndex(isBoba(4));
     if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e4 = r.events[i]; rest = r.events.slice(i + 1); break; }

@@ -354,7 +354,8 @@ test('scripts: every rat level in the solution and the alien order plays in rang
       await tracked([{ kind: 'settle' }], { instant: true });
     }
     assert.deepEqual([...seen].sort(), [1, 2, 4], `rat events seen: ${[...seen]}`);
-    assert.ok(walls.frames > 50, `walk frames ${walls.frames}`);   // 合併跳級一起演之後 Lv3 不單獨演（外星那局只有一隻走到溫泉）：100 → 50 assert.deepEqual(walls.bad, [], order.join(' '));
+    assert.ok(walls.frames > 50, `walk frames ${walls.frames}`);   // 合併跳級一起演之後 Lv3 不單獨演（外星那局只有一隻走到溫泉）：100 → 50
+    assert.deepEqual(walls.bad, [], order.join(' '));
     show.reset(); assert.equal(show.roster.members('rat.pack').length, 0);
   }
 });
@@ -436,7 +437,9 @@ test('the placement turn plays live: a rat goes to the crate and bites (no cart 
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
   const { events, secs, n } = await liveAt(h, ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat'), 'the bite');
-  assert.ok(!events.some(e => e.kind === 'fx' && e.cause === 'rat' && !e.delta && !e.flag), 'no cart knock');
+  // 撞攤車拿掉了：沒有 delta、沒有旗標的老鼠 fx（以前的撞攤車事件）劇本回 null，有珍奶也一樣（這局沒有珍奶，直接問劇本）
+  const knock = rat.script.fx({ kind: 'fx', item: 'rat', cause: 'rat' }, { lv: lv({ rat: 1, boba: 3 }), flags: {} }, { B, roster: { members: () => [], nearest: () => null } });
+  assert.equal(knock, null, 'no cart knock');
   assert.ok(secs >= 8 && secs <= 40, `${secs.toFixed(1)} s`);
   assert.ok(milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.crate'].parts.some(p => p.spill), 'the bite tips the crate over (spilled milk)');
   assert.ok(bubblesLog.slice(n).some(b => b.down), 'LEVEL DOWN');

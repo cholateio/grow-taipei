@@ -14,7 +14,7 @@
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 //   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO），只有 cyber 演尾聲——
-//   外星尾聲在單一正解下到不了。劇本、零件、母艦都留著（之後給圖鑑），測試照舊直接演 epilogue 事件驗它。
+//   外星尾聲在單一正解下到不了。劇本、零件、母艦都留著（之後給圖鑑）；測試只驗 view（finale.test），沒有測試演這段劇本。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';

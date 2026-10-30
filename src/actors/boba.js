@@ -265,9 +265,6 @@ function sail() {
 }
 // 無人機起飛（不佔時間：繞一圈在背景飛完）
 const launch = () => ({ kind: 'fly', dur: 0, start(c) { DRONE_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * 0.4 })); return false; } });
-// 從離島回珍奶格再打 LEVEL UP（先飛回來、再彈字）：跟飛行一起彈的話，前半秒鏡頭還對著離島，字在畫面外
-// （Task 6a：EXAMPLE.deflect 最後一輪珍奶 5 的 LEVEL UP 16/30 幀在畫面外）。Lv5 劇本裡 focus('boba') 自己一拍、LEVEL UP 在它後面
-
 export const script = {
   // 老闆從捷運站北邊推著攤車走過來（攤車每幀都在他面前）→ 停好 → ♪、繞到攤車東南角站好（他推車的位置下一級會蓋店面）
   placed(e, s, ctx) {
@@ -310,10 +307,13 @@ export const script = {
       const { B } = ctx, sp = [0, 1].map(i => B.spawn('boba.tourists', () => seatAt(0, i)));
       const hop = B.together([0, 1].map(i => B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5)));
       return [
-        B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.stage1', 'sat.forest'] }),
+        // 分店閃完停 0.3 s 再飛去燈塔島（審稿：一閃完就飛走看不清分店）
+        B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.stage1', 'sat.forest'] }), B.wait(0.3),
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,
         B.together([sail(), B.apply(e, { only: ['sat.lighthouse.stage2'] })]), hop, B.home([passenger(0), passenger(1)]),
+        // 從離島回珍奶格再打 LEVEL UP（先飛回來、再彈字）：跟飛行一起彈的話，前半秒鏡頭還對著離島，字在畫面外
+        // （Task 6a：EXAMPLE.deflect 最後一輪珍奶 5 的 LEVEL UP 16/30 幀在畫面外）
         B.apply(e), B.focus('boba'), B.together([launch(), B.levelUp('boba')]),
       ];
     },

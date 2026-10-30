@@ -517,9 +517,9 @@ test('no script throws: an even stride over the enumeration, the no-train order 
     } catch (err) { bad.push(`${order.join('>')} ${at}: ${err.message}`); }
   }
   assert.ok(strided.length >= 20, `${strided.length} strided orders`);
+  assert.deepEqual(bad, []);   // 先看有沒有劇本丟錯（計畫 9 任務 3 審稿：放在沒車那兩條前面，沒車的前提失效時這條照樣看得到）
   assert.ok(noTrain.has(NO_TRAIN.join('>')), 'the explicit order reaches bulb 7 with no train');
   assert.ok(strided.some(o => noTrain.has(o.join('>'))), `the stride itself covers bulb 7 with no train (${noTrain.size} orders of ${orders.length})`);
-  assert.deepEqual(bad, []);
 });
 
 // 物品 v2：每個演員的 view 認得每一級（過渡期的 clamp.js 已拿掉）；兩條正解 live 演完，每一級都有 LEVEL UP、最後全滿。

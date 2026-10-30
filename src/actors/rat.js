@@ -162,6 +162,11 @@ const riding = s => ratMode(s.prev.lv, s.prev.flags) === 'train';   // 這次升
 
 // 0 秒的小拍：把老鼠們拿到劇本手上、原地停下（名冊換家的時候它們才不會先瞬移上車）
 const claim = who => ({ kind: 'claim', dur: 0, start(c) { for (const m of who(c)) { c.roster.claim(m); c.roster.setPose(m, { ...m.pos, walking: false }); } return false; } });
+// 0 秒：一窩只有 NEST_N 隻——新家（GROW_TO 隻）hold 住之後，缺的從窩邊鑽出來（劇本手上、不閃到家），再跟大家一起出發
+function fill() {
+  let door = null;
+  return { kind: 'spawn', dur: 0, start(c) { door ??= c.nav.slots(AT, GROW_TO, 0.3); for (let k = c.roster.members(KEY).length; k < GROW_TO; k++) c.roster.spawnHeld(KEY, door[k]); } };
+}
 // 0 秒：走到目的地就藏起來（小學生躲進校舍；回合末的 apply 收掉藏著的人不閃白）
 const hide = who => ({ kind: 'hide', dur: 0, start(c) { const m = who(c); if (m) c.roster.hide(m); return false; } });
 // 偵防師 ！：晶片 ≥3 時老鼠一生窩，名冊就把一個工程師換成偵防師（晶片 grow 3 那邊也補這一拍，哪邊先成立哪邊演）
@@ -241,15 +246,12 @@ export const script = {
     },
     3(e, s, ctx) {
       const { B } = ctx, mode = ratMode(s.lv, s.flags), ids = Array.from({ length: GROW_TO }, (_, i) => i);
-      // 一窩只有 3 隻：新家（5 隻）hold 住之後，缺的從窩邊鑽出來（劇本手上、不閃到家），五隻再一起出發
-      const door = once(c => c.nav.slots(AT, GROW_TO, 0.3));
-      const fill = { kind: 'spawn', dur: 0, start(c) { for (let k = c.roster.members(KEY).length; k < GROW_TO; k++) c.roster.spawnHeld(KEY, door(c)[k]); } };
       // 搭捷運（列車有了）：五隻 ！ 跑到窩那側的島緣 → 列車趕過來停住 → 一起跳上車頂 → 跟車走（鏡頭對著老鼠窩格）
       // 新家（車頂）先 hold 著：跳上車的那隻 home 就坐好跟車走，還在岸上的不會被名冊瞬移上車
       if (mode === 'train') {
-        const wait = once(c => c.nav.slots(NEST_SHORE(c), 5, 0.3));
+        const wait = once(c => c.nav.slots(NEST_SHORE(c), GROW_TO, 0.3));
         return [
-          B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill,
+          B.focus('rat'), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill(),
           // 老鼠跑到島緣的同時列車就趕過來（不是跑到了才叫車；裁決 R15 一級 ≤ 4.5 s）
           catchTrain(B, ids, wait, ctx, centred(trainCars(s.lv.token))),
           B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃
@@ -258,7 +260,7 @@ export const script = {
       // 泡溫泉（列車還沒有）：五隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）
       if (mode === 'spring') {
         return [
-          B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill,
+          B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill(),
           // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）
           B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
           B.home(RATS), B.levelUp('rat'),
@@ -268,15 +270,20 @@ export const script = {
     },
     // ◆ 分岔（引擎的 ratBranch，旗標條件見 branchOf）
     4(e, s, ctx) {
-      const { B } = ctx, branch = branchOf(s), ids = [0, 1, 2, 3, 4], r0 = rat(0);
+      const { B } = ctx, branch = branchOf(s), ids = Array.from({ length: GROW_TO }, (_, i) => i), r0 = rat(0);
       if (s.flags.domeRats) return null;
-      const transform = [B.apply(e), B.apply(branchEvent(branch))];
+      // 老鼠的名冊先 hold 住、等分岔事件一起套用：從一窩 3 隻跳級上來（2 → 4 合併跳級）時，中間那份「搭車／泡溫泉 5 隻」不套用——
+      // 不然多出來的兩隻會冒出來 0.3 秒又走掉（計畫 9 任務 3 審稿）
+      const transform = [B.apply(e, { hold: [KEY] }), B.apply(branchEvent(branch))];
       // 賽博：偵防師走到園區那側島緣、列車進站，老鼠們一起跳下來 → 圖框「晶片」→ 排成一列跟著他走到園區門口 → 閃白變機器鼠（天線）
       // 鏡頭（§13.1）：整段在園區（晶片格）
       if (branch === 'cyber') {
-        const gate = once(c => c.nav.slots(PARK, 5, 0.6));
+        const gate = once(c => c.nav.slots(PARK, GROW_TO, 0.6));
+        // 從一窩 3 隻直接跳上來（2 → 4 合併跳級）：先 hold 住、缺的兩隻從窩邊鑽出來，五隻一起排隊（不然多的兩隻變身後才從格邊走進來、
+        // 家在橋上的那隻直接冒出來）
+        const short = ratMode(s.prev.lv, s.prev.flags) === 'nest' ? [B.apply(e, { only: [KEY], hold: [KEY] }), fill()] : [];
         return [
-          B.focus('chip'), B.together([B.walk(detective, PARK_SHORE), ...hopOff(B, s, ids, PARK_A, PARK_SHORE, 0.35)]),
+          B.focus('chip'), ...short, B.together([B.walk(detective, PARK_SHORE), ...hopOff(B, s, ids, PARK_A, PARK_SHORE, 0.35)]),
           // 排成一列跟著他（每隻晚 FOLLOW 秒出發），他一邊走一邊冒圖框「晶片」（裁決 R17 ◆ ≤ 8 s）
           B.together([B.bubble(detective, { icon: 'chip' }, 0.8), B.walk(detective, offset(PARK, 0.5, 0.5)), ...ids.map(i => B.walk(rat(i), c => gate(c)[i], { delay: FOLLOW * (i + 1) }))]),
           ...transform, B.wait(0.2), B.home(c => [...RATS(c), detective(c)].filter(Boolean)), B.levelUp('rat'),

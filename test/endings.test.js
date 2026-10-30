@@ -14,6 +14,7 @@ test('missile: shield when chip max, deflect while the typhoon has not cleared (
   for (const typhoon of [1, 2, 3]) assert.equal(missile(full({ lv: lv({ chip: 4, typhoon }) }), spec), 'deflect', `typhoon ${typhoon}`);
   assert.equal(missile(full({ lv: lv({ chip: 4, typhoon: 4 }) }), spec), 'hit');
   assert.equal(missile(full({ lv: lv({ chip: 9, typhoon: 1 }) }), spec), 'shield', 'the shield beats the clouds');
+  assert.equal(missile(full({ lv: lv({ chip: 4, typhoon: 0 }) }), spec), 'hit', 'an unplaced typhoon has no clouds to deflect with');
 });
 // 設計 §4.5：真結局只有賽博；外星改壞結局「變異鼠稱王」——全 MAX 但 ratBranch alien（求解器下不會發生）就落到外星壞結局
 test('all max with the cyber branch is cyber, extras still listed; alien is a bad ending', () => {

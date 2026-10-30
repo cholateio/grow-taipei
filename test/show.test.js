@@ -734,12 +734,15 @@ test('placed + grow[2] in the same turn: the placed script then the grow script,
 //   純照級數的順序：第 6 回合代幣在等鮮奶 → 第 7 回合放下的老鼠爬上岸直接跑到車站門口聞一聞；第 7 回合結算沒有人在等 → trouble null，走回窩旁。
 //   （設計原寫「鮮奶等棒球時老鼠在早餐店門口」：那是第 2–4 回合，老鼠還沒放；早餐店那一段在 rat.test 的放置測試）
 //   farNest：老鼠第 8 回合放下、當回合生窩，老鼠 0 在遠處那棟門口——窩的 ♥ 要在畫面裡（labels），在門口的老鼠留在原地。
+//   typhoon2nd（設計 §6）：第 4 回合大巨蛋淹水（棒球鎖在 2），第 8 回合放下、生窩的老鼠聚在巨蛋前。
 test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk back to the nest when it clears; no pops, jumps or walls', async () => {
   const rat = ALL.find(m => m.id === 'rat'), NEST = anchorWorld('rat'), gap = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
   const ORDERS = {
     user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'],
     // 老鼠最後放、當回合就生窩，那時老鼠 0 在遠處出問題的那棟門口：生窩的 ♥ 冒在窩上（鏡頭平移去的那格），不是老鼠 0 頭上（最終修正）
     farNest: ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'],
+    // 設計 §6 的「颱風第二個放」：第 4 回合大巨蛋淹水（棒球鎖在 2），第 8 回合放下的老鼠跑到巨蛋前
+    typhoon2nd: ['milk', 'typhoon', 'baseball', 'token', 'bulb', 'chip', 'boba', 'rat'],
   };
   const placed = rat.script.placed, sniffs = [];
   rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
@@ -761,6 +764,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
         for (let f = 0; f < 30 * 30 && !there(); f++) { show.update(1 / 30, t); t += 1 / 30; }
         assert.ok(there(), `${what}: rats ${rats().map(m => `(${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`).join(' ')} at ${st.meta.trouble ?? 'the nest'} (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
         assert.equal(rats().length, mode === 'one' ? 1 : 3, `${what}: the rat budget is unchanged`);
+        log.at(-1).rats = rats().map(m => ({ ...m.pos }));
       }
       assert.deepEqual([...inv.pops].slice(0, 10), [], `${name}: ${inv.pops.size} pops`);
       assert.deepEqual([...inv.jumps].slice(0, 10), [], `${name}: ${inv.jumps.size} jumps`);
@@ -776,6 +780,12 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   assert.equal(at('user1030', 9).mode, 'alien');
   const { frontOf } = await import('../src/actors/anchors.js');
   // 放下劇本讀的是上一回合（第 6 回合）結算的 troubleAt：車站照那一刻的代幣級（2026-10-31 Task 5：原本寫死代幣 3）
+  // 颱風第二個放：第 3 回合棒球放到 2、第 4 回合結算大巨蛋淹水（鎖在 2，到終局都是 2）；第 8 回合的一窩聚在巨蛋前
+  assert.ok(!at('typhoon2nd', 3).flags.domeFlood && at('typhoon2nd', 4).flags.domeFlood, 'the dome floods on turn 4');
+  for (let t = 3; t <= 9; t++) assert.equal(at('typhoon2nd', t).lv.baseball, 2, `turn ${t}: baseball locked at 2`);
+  const t8 = at('typhoon2nd', 8), bb = ALL.find(m => m.id === 'baseball').visitSpot(2, { lv: t8.lv, flags: t8.flags }), dome = frontOf(bb, bb.r);
+  assert.deepEqual([t8.mode, t8.trouble], ['nest', 'baseball']);
+  for (const p of t8.rats) assert.ok(gap(p, dome) <= rat.TROUBLE_R + 0.35, `turn 8: rat (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) at the dome front (${dome.x.toFixed(2)}, ${dome.z.toFixed(2)})`);
   const l6 = at('levels', 6), l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(l6.lv.token, { lv: l6.lv, flags: l6.flags }), front = frontOf(sp, sp.r);
   assert.equal(l6.trouble, 'token');
   assert.deepEqual([l7.mode, l7.trouble], ['nest', null], 'turn 7 clears: back to the nest');

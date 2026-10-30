@@ -17,7 +17,8 @@ const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const TOTAL_MAX = 30, CELL_MAX = 8, SMALL = ['rat.pack'];
 // 每格上限的例外（Task 6a 修正輪，控制者裁決）：球場格（巨蛋，最大的一格）11——棒球 Lv5 起、鮮奶 ≥6 時球員 2＋少棒隊小孩 3＋觀眾 4＋草皮觀眾 1
 // 是刻意的場面（回到 GROW 之後正解第 5 回合正是這樣），再留一個路過的人；其他格照舊 8，不是整體放寬
-// 11 剛好是量到的最高（外星第 5 回合結束那一刻：這 10 人＋路過的電工）；再多一個就是真的超過，不是這個場面
+// 11 是當時（還有外星正解）量到的最高（外星第 5 回合結束那一刻：這 10 人＋路過的電工）；外星 2026-10-31 改成壞結局之後，
+// 唯一正解實測最高 9（第 5 回合：球員 2＋小孩 2＋觀眾 4＋草皮 1），上限照舊 11 沒放寬也沒收緊
 const CELL_MAX_AT = { [String(cellOf('baseball'))]: 11 }, cellMax = cell => CELL_MAX_AT[cell] ?? CELL_MAX;
 const MAIN_REACH = Math.sqrt(3) * SPACING + R;   // 主島最外圈格子的外緣：橋上的人算主島，再外面是離島
 

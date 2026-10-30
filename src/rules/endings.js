@@ -17,10 +17,11 @@ export const ENDINGS = {
   tryAgain: { id: 'tryAgain', title: '再接再厲', kind: 'neutral', line: '台北還在長大中' },
 };
 
-// 矽盾 MAX → 擋下；否則颱風還沒放晴（< 4，雲還在島上）→ 吹歪；否則命中
+// 矽盾 MAX → 擋下；否則颱風放了還沒放晴（1–3，雲還在島上）→ 吹歪；否則命中（沒放的颱風沒有雲，不算吹歪）
 export function missile(state, spec = defaultSpec) {
   if (state.lv.chip === spec.ITEMS.chip.max) return 'shield';
-  return state.lv.typhoon < spec.ITEMS.typhoon.max ? 'deflect' : 'hit';
+  const t = state.lv.typhoon;
+  return t > 0 && t < spec.ITEMS.typhoon.max ? 'deflect' : 'hit';
 }
 
 export function satisfied(state, spec = defaultSpec) {

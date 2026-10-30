@@ -191,15 +191,12 @@ test('settle with nothing to change reports nothing', () => {
   stage.apply(placed);
   assert.deepEqual(stage.apply({ kind: 'settle' }), { changed: [], rest: [] });
 });
-// 審查：登陸回合的「結束畫面」也要看得到人躲雨（跳過、reduced-motion 的人只看得到結束畫面），下一回合第一個事件才收
-test('the typhoon landing lasts through its turn end and clears on the next turn', () => {
+// 唯一正解修正輪 1：颱風放下不再是回合狀態（舊的 meta.landing 拿掉了；躲雨是放下劇本裡的一小段）
+test('the typhoon placed event sets no turn state: meta has only total and bitten', () => {
   const { stage } = setup([fakeMilk]);
   stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
-  stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 });
-  assert.equal(stage.meta.landing, true);
-  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.landing, true, 'still landing at rest');
-  stage.apply(placed); assert.equal(stage.meta.landing, false, 'next turn');
-  stage.apply({ kind: 'settle' }); assert.equal(stage.meta.landing, false);
+  assert.equal(stage.meta.landing, undefined);
+  stage.apply({ kind: 'settle' }); assert.deepEqual(Object.keys(stage.meta).sort(), ['bitten', 'total']);
 });
 // 老鼠咬鮮奶（fx、cause rat、鮮奶掉級）：小孩躲一回合，跟颱風登陸一樣撐過回合結束畫面，下一回合第一個事件才收
 test('a rat bite on milk sets meta.bitten through the turn settle; the next turn clears it', () => {
@@ -211,10 +208,10 @@ test('a rat bite on milk sets meta.bitten through the turn settle; the next turn
   stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 }); assert.equal(stage.meta.bitten, false, 'next turn');
   stage.apply({ kind: 'fx', item: 'rat', cause: 'rat', delta: { target: 'milk', from: 2, to: 2 } }); assert.equal(stage.meta.bitten, false, 'no level lost, no bite');
 });
-test('a turn with nothing but settle also ends the landing', () => {
+test('a turn with nothing but settle also ends the bite', () => {
   const { stage } = setup([fakeMilk]);
-  stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
-  stage.apply({ kind: 'grow', item: 'typhoon', from: 1, to: 2 });
+  stage.apply(placed); stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 });
+  stage.apply({ kind: 'fx', item: 'rat', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } });
   stage.apply({ kind: 'settle' }); stage.apply({ kind: 'settle' });
-  assert.equal(stage.meta.landing, false);
+  assert.equal(stage.meta.bitten, false);
 });

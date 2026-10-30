@@ -103,7 +103,7 @@ test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, ch
     assert.ok(Math.hypot(p.x - w.x - dx, p.z - w.z - dz) < 1e-9, `home ${k} at the cell centre + (${dx}, ${dz})`);
   });
   assert.ok(Math.hypot(x.home.at[2].x - MUTANT.x, x.home.at[2].z - MUTANT.z) - x.home.r[2] >= 1.0, 'the spring kid keeps clear of the mutant rat');
-  assert.equal(milk.view(lv({ milk: 10, typhoon: 2 }), {}, { landing: true })['milk.extraKids'], undefined, 'the festival kids hide on the landing turn too');
+  assert.equal(milk.view(lv({ milk: 10 }), {}, { bitten: true })['milk.extraKids'], undefined, 'the festival kids hide on the bite turn too');
 });
 test('milk draw calls stay ≤ 12 for the whole cell at every level (glb parts merged; lit windows included)', () => {
   for (let n = 1; n <= 10; n++) for (const meta of [{}, { bitten: true }]) {
@@ -111,19 +111,16 @@ test('milk draw calls stay ≤ 12 for the whole cell at every level (glb parts m
     assert.ok(drawCalls(v) <= 12, `lv${n} ${JSON.stringify(meta)}: ${drawCalls(v)}`);
   }
 });
-test('the rat-bite turn or the typhoon landing send the kids home and light the windows; the turn after they come back', () => {
-  for (const [extra, meta] of [[{}, { bitten: true }], [{ typhoon: 2 }, { landing: true }]]) {
-    const v = milk.view(lv({ milk: 3, ...extra }), {}, meta);
-    assert.equal(v['milk.kids'], undefined, JSON.stringify(meta)); assert.ok(v['milk.main'].models.every(m => Object.values(m.glow ?? {}).includes(C.warm)));
-  }
+test('the rat-bite turn sends the kids home and lights the windows; the turn after they come back', () => {
+  const v = milk.view(lv({ milk: 3 }), {}, { bitten: true });
+  assert.equal(v['milk.kids'], undefined); assert.ok(v['milk.main'].models.every(m => Object.values(m.glow ?? {}).includes(C.warm)));
   assert.ok(views[3]['milk.main'].models.every(m => !m.glow), 'windows dark while the kids are out');
   assert.ok(milk.view(lv({ milk: 3, typhoon: 3 }), {})['milk.kids'], 'back out after the storm');
   assert.ok(milk.view(lv({ milk: 3, rat: 4 }), {}, { bitten: false })['milk.kids'], 'a rat nest alone does not keep them in');
 });
-// 錄影審查：颱風被大巨蛋卡在 Lv2 的後續回合，小孩不能整場消失（只在登陸那回合躲）
-test('milk kids stay out after the landing turn while the typhoon lingers', () => {
-  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {}, { landing: false })['milk.kids']);
-  assert.ok(milk.view(lv({ milk: 3, typhoon: 2 }), {})['milk.kids'], 'no meta = not landing');
+// 唯一正解修正輪 1：颱風不讓小孩整回合躲在家（躲雨是颱風放下劇本裡的一小段，小孩跟大家一樣躲一下又出來）
+test('milk kids stay out at every typhoon level (the shelter is a gag inside the typhoon placed script, not a turn state)', () => {
+  for (const typhoon of [1, 2, 3, 4]) assert.ok(milk.view(lv({ milk: 3, typhoon }), {}, {})['milk.kids'], `typhoon ${typhoon}`);
 });
 test('milk 6 with a ballfield relocates the kids next to the dome (little league); the university brings them back', () => {
   const v = milk.view(lv({ milk: 6, baseball: 2 }), {}), b = anchorWorld('baseball');

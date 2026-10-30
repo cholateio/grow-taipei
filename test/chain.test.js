@@ -267,9 +267,9 @@ for (const outcome of ['hit', 'deflect']) {
     const kinds = new Set(), milkLot = [];   // 鮮奶 Lv2 等棒球那幾段演成哪一支（最終修正 1：EXAMPLE.hit 一定要有往棒球空地走的）
     for (const [i, { events, segs, secs, keys, waitLv }] of turns.entries()) {
       const what = `${outcome} turn ${i + 1}`, wait = events.find(e => e.kind === 'wait');
-      const landed = wait && events.slice(0, events.indexOf(wait)).some(e => engine.landsTyphoon(e));
-      // 最終審稿 3：位子只給這一級叫得到代表的（script.hasRep），照 ORDER 往後補
-      const want = !wait || landed ? [] : wait.waits.filter(w => mod(w.item)?.script?.rep && mod(w.item).script.hasRep(waitLv[w.item])).slice(0, MISS_PER_TURN).map(w => w.item);
+      // 最終審稿 3：位子只給這一級叫得到代表的（script.hasRep），照 ORDER 往後補；
+      // 唯一正解修正輪 1：颱風放下的回合不再整回合躲著，撲空照演
+      const want = !wait ? [] : wait.waits.filter(w => mod(w.item)?.script?.rep && mod(w.item).script.hasRep(waitLv[w.item])).slice(0, MISS_PER_TURN).map(w => w.item);
       assert.deepEqual(segs.map(g => g.w.item), want, `${what}: misses = the first ${MISS_PER_TURN} waits in ORDER that have a rep at their level`);
       assert.ok(segs.length <= MISS_PER_TURN);
       for (const g of segs) {

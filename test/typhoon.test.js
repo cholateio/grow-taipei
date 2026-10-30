@@ -9,9 +9,12 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { cellAt } from '../src/scene/hex.js';
 
 // 唯一正解 2026-10-31 §4.3：四站——Lv1 101 上空、Lv2 捷運站上空、Lv3 大巨蛋上空（暴風圈＋雨，有珍奶就有外送機車），Lv4 放晴（沒有雲、有彩虹）
-test('view: Lv1–3 the spinning storm ring sits over 101 / the station / the dome with rain; Lv4 no cloud, a rainbow and the riverside park', () => {
+// 修正輪 1：Lv1 停在颱風錨點（101 那一格、塔的旁邊）——停在塔正上方會被完工的 101 塔頂穿過
+test('view: Lv1–3 the spinning storm ring sits next to 101 (typhoon anchor) / over the station / over the dome with rain; Lv4 no cloud, a rainbow and the riverside park', () => {
   const near = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) < 1e-9;
-  for (const [n, id] of [[1, 'tower'], [2, 'token'], [3, 'baseball']]) {
+  const t = anchorWorld('typhoon'), tw = anchorWorld('tower');
+  assert.deepEqual(cellOf('typhoon'), cellOf('tower')); assert.ok(Math.hypot(t.x - tw.x, t.z - tw.z) > 1, 'next to the tower, not over its top');
+  for (const [n, id] of [[1, 'typhoon'], [2, 'token'], [3, 'baseball']]) {
     const v = typhoon.view(lv({ typhoon: n }), {});
     assert.deepEqual(Object.keys(v), ['typhoon.main', 'typhoon.rain'], `Lv${n}`);
     assert.equal(v['typhoon.main'].kind, 'cloud'); assert.ok(v['typhoon.main'].spin > 0); assert.ok(v['typhoon.main'].parts.length >= 8);
@@ -137,6 +140,10 @@ test('beats: placed flies in, pours (storm 1, rain 1) and sends the crowd to the
   assert.ok(placed.some(b => b.kind === 'world' && b.effects?.storm === 1 && b.effects?.rain === 1), 'storm 1, rain 1');
   assert.ok(placed.filter(b => b.kind === 'crowd').length >= 2, '！ and the door walks are crowd beats');
   assert.ok(!placed.some(b => b.kind === 'levelUp'), 'a placed event never shows LEVEL UP');
+  // 修正輪 1：躲一下（wait）就放大家出來（home 拍），都在放下劇本裡——不是回合狀態
+  const k = placed.findIndex(b => b.kind === 'wait');
+  assert.ok(k > 0 && placed[k].dur > 0 && placed[k].dur <= 1 && placed.slice(k + 1).some(b => b.kind === 'home'), 'a short huddle, then everyone comes back out');
+  assert.equal(placed.at(-1).kind, 'home', 'coming out is the last beat (the walk home is background)');
   for (const n of [2, 3]) {
     const beats = flat(typhoon.script.grow[n](growE(n), s(n), fakeCtx())), mv = beats.find(b => b.kind === 'move');
     assert.ok(mv && mv.dur === typhoon.HOP && typhoon.HOP === 1.5, `Lv${n} move 1.5 s`);
@@ -167,8 +174,8 @@ function checkTyphoon({ show, bubblesLog }, e, secs, n) {
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over typhoon`);
   } else assert.ok(!bubblesLog.slice(n).some(b => b.text === 'LEVEL UP'), 'no LEVEL UP for the placed event');
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
-  // 放下那回合島上的人躲在門裡到回合結束；移站、放晴的時候沒有人藏著（單獨演一級：回合開頭的 showAll 不在這裡，放晴前的回合已經走出來）
-  if (to === 1) assert.ok(people(show).filter(m => cellAt(m.pos.x, m.pos.z)).length === 0 || people(show).some(m => m.hidden), `${what} people indoors`);
+  // 修正輪 1：躲雨是放下劇本裡的一小段——每一級演完都沒有人藏著
+  assert.ok(people(show).every(m => !m.hidden), `${what} nobody hidden`);
 }
 test('scripts: typhoon placed ◆ / Lv2 / Lv3 / Lv4 ◆ in the solution play within budget, LEVEL UP on the typhoon (not for placed), everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -180,7 +187,7 @@ test('scripts: typhoon placed ◆ / Lv2 / Lv3 / Lv4 ◆ in the solution play wit
     const o = show.stage.partObject('typhoon.main'); if (o) at[to] = { x: o.position.x, z: o.position.z };
   });
   assert.deepEqual([...seen].sort(), [1, 2, 3, 4], `typhoon events seen: ${[...seen]}`);
-  for (const [n, id] of [[1, 'tower'], [2, 'token'], [3, 'baseball']]) { const p = anchorWorld(id); assert.ok(Math.hypot(at[n].x - p.x, at[n].z - p.z) < 1e-6, `Lv${n}: the cloud ends over ${id}`); }
+  for (const [n, id] of [[1, 'typhoon'], [2, 'token'], [3, 'baseball']]) { const p = anchorWorld(id); assert.ok(Math.hypot(at[n].x - p.x, at[n].z - p.z) < 1e-6, `Lv${n}: the cloud ends over the ${id} anchor`); }
 });
 
 // 照 order 放（再長 CLOSING_TURNS 回合）到 pred 命中的那一回合為止（之前的回合瞬間演），回傳那一回合的事件（含 settle）
@@ -195,70 +202,82 @@ async function turnWith(run, order, pred) {
 }
 const ACTORS = await Promise.all(spec.ORDER.map(id => import(`../src/actors/${id}.js`)));
 const isKey = e => e.kind === 'grow' && !!ACTORS.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
-// 放下回合整段 live 演（多個事件一回合：名單、門口都要演到才查）。回傳 { reacts, secs, seg, after }：
-//   seg = 放下那一個事件的秒數；after = 放下之後每個事件的秒數（使用者規則：只演 apply + LEVEL UP）
+// 放下回合整段 live 演（名單、門口都要演到才查）。修正輪 1：躲雨是放下劇本裡的一小段——跑到門口躲一下、又走出來淋雨；
+// 同一回合後面的事件照一般事件演。回傳 { reacts, seg, after, hides }：seg = 放下那一段的秒數；after = 之後每個事件 [e, 秒數]；
+// hides：每個躲進門的人 { m, walking（藏的那一刻在走嗎）, blinks（那一刻有幾個東西在閃）, at（藏的位置）, out（露出來的位置）}
 async function playLanding(h, evs, opts = {}) {
   const { show, run, worldLog, bubblesLog } = h;
   const reacts = evs.filter(e => e.kind === 'fx' && e.cause === 'typhoon').map(e => e.flag?.name ?? e.delta?.target ?? e.story);
-  // 每個人是走到門口停下那一刻才藏起來（不是整群一起關掉）；記下藏的時候在不在走
-  const w0 = worldLog.length, hide = show.roster.hide, hides = [];
-  show.roster.hide = m => { hides.push({ m, walking: m.walking }); return hide(m); };
+  const w0 = worldLog.length, hide = show.roster.hide, unhide = show.roster.show, hides = [];
+  show.roster.hide = m => { hides.push({ m, walking: m.walking, blinks: show.blink.count, at: { ...m.pos }, out: null }); return hide(m); };
+  show.roster.show = m => { const x = hides.find(x => x.m === m && !x.out); if (x) x.out = { ...m.pos }; return unhide(m); };
   // LEVEL DOWN 冒出來那一刻鮮奶的頭頂（大停電掉回一級之後，同一回合鮮奶又可能長回去，回合末的頭頂換了建築）
   const levelUp = show.bubbles.levelUp, downs = [];
   show.bubbles.levelUp = (head, o = {}) => { if (o.down) downs.push({ at: head(), milk: show.stage.headOf('milk') }); return levelUp(head, o); };
   const n = bubblesLog.length, marks = [];
-  let secs;
-  try { secs = await run(evs, { ...opts, onMark: e => marks.push([e, show.elapsed, bubblesLog.length]) }); } finally { show.roster.hide = hide; show.bubbles.levelUp = levelUp; }
+  let hiddenAfter = null;
+  try {
+    await run(evs, { ...opts, onMark: e => {
+      // 放下那一段演完（下一個事件開始）的那一刻：沒有人還藏著
+      if (hiddenAfter === null && marks.some(([x]) => landing(x)) && !landing(e)) hiddenAfter = people(show).filter(m => m.hidden).length;
+      marks.push([e, show.elapsed, bubblesLog.length]);
+    } });
+  } finally { show.roster.hide = hide; show.roster.show = unhide; show.bubbles.levelUp = levelUp; }
   const i0 = marks.findIndex(([e]) => landing(e)), at = k => marks[k]?.[1] ?? show.elapsed;
-  // 放下之後的事件：◆ 關鍵級照演劇本（裁決 R14），不算進「只演 apply + LEVEL UP」
-  const seg = at(i0 + 1) - at(i0), after = marks.slice(i0 + 1).map(([e], k) => [e, at(i0 + 2 + k) - at(i0 + 1 + k), k]).filter(([e]) => !isKey(e));
+  const seg = at(i0 + 1) - at(i0), after = marks.slice(i0 + 1).map(([e], k) => [e, at(i0 + 2 + k) - at(i0 + 1 + k)]);
   const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
   assert.ok(live.some(w => w.storm === 1 && w.rain === 1), `storm world ${JSON.stringify(live)}`);
   assert.ok(live.every(w => w.peopleVisible !== false), 'the whole people group is never switched off');
   assert.ok(hides.length > 0 && hides.every(h => !h.walking), 'people hidden only once they stop at a door');
-  // 放下之後（關鍵級之外）只冒 LEVEL UP／DOWN，沒有別的泡泡
-  const later = after.flatMap(([, , k]) => bubblesLog.slice(marks[i0 + 1 + k][2], marks[i0 + 2 + k]?.[2] ?? bubblesLog.length));
-  assert.ok(later.every(b => b.text || b.kind?.icon), `after the landing only LEVEL UP / DOWN (${JSON.stringify(later.map(b => b.kind ?? b.text))})`);
+  assert.ok(hides.every(x => x.blinks === 0), `nothing blinks while people hide (${hides.map(x => x.blinks)})`);
+  assert.ok(hides.filter(x => !x.m.gone).every(x => x.out && Math.hypot(x.out.x - x.at.x, x.out.z - x.at.z) < 1e-9), 'everybody comes back out of the door where they hid');
+  assert.equal(hiddenAfter ?? people(show).filter(m => m.hidden).length, 0, 'nobody still hidden when the placed segment ends');
   const bubbles = bubblesLog.slice(n);
   if (reacts.includes('blackout')) assert.ok(live.some(w => w.glowScale === 0));
   if (evs.some(e => e.flag?.name === 'blackout' && e.delta?.to < e.delta?.from)) {   // 鮮奶真的掉級才有 LEVEL DOWN（Lv1 掉不下去）
     assert.ok(bubbles.some(b => b.text === 'LEVEL DOWN'), 'LEVEL DOWN');
     assert.ok(downs.some(d => Math.hypot(d.at.x - d.milk.x, d.at.z - d.milk.z) < 0.3), 'LEVEL DOWN over milk');
   }
-  // 島上的人整回合躲著
-  assert.ok(hides.filter(h => !h.m.gone).every(h => h.m.hidden), 'people stay indoors for the rest of the turn');
+  assert.ok(people(show).every(m => !m.hidden), 'nobody hidden at the end of the turn');
   for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k);
   assert.equal(show.stage.lv.typhoon, 1);
-  return { reacts, secs, seg, after };
+  return { reacts, seg, after, hides };
 }
 // 放下的反應（§4.3）：燈泡在場且 ≤2 → 大停電（鎖燈泡、鮮奶 −1）；颱風假。最短的放法（窮舉）：鮮奶 → 燈泡 → 颱風
-test('placement turn with reactions (blackout, real engine) live as one turn: the ◆ landing ≤ 8 s, people hide only at the doors, the reactions land as apply + LEVEL DOWN', async () => {
+test('placement turn with reactions (blackout, real engine) live as one turn: the ◆ landing ≤ 8 s, people hide at the doors and come back out, the blackout lands', async () => {
   const h = await headlessShow();
-  const { reacts, seg, after } = await playLanding(h, await turnWith(h.run, ['milk', 'bulb', 'typhoon'], landing));
+  const { reacts, seg } = await playLanding(h, await turnWith(h.run, ['milk', 'bulb', 'typhoon'], landing));
   assert.ok(reacts.includes('blackout') && reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
   assert.ok(seg <= KEY_MAX, `landing ${seg.toFixed(1)} s`);
-  for (const [e, t] of after) if (e.kind !== 'settle') assert.ok(t <= 2.6, `${e.kind} ${e.item ?? ''} after the landing took ${t.toFixed(2)} s`);
 });
-// 正解的放下回合（第 6 回合）：颱風假，後面的升級都在屋裡演（鮮奶 7 是 ◆，照演完整劇本）
-test('the solution placement turn live: the ◆ landing ≤ 8 s live, every later non-◆ grow is apply + LEVEL UP (≤ 2.6 s)', async () => {
-  const h = await headlessShow();
-  const { reacts, seg, after } = await playLanding(h, await turnWith(h.run, SOLUTION, landing));
+// 正解的放下回合（第 6 回合）：颱風假；躲一下又出來之後，同一回合的升級照一般事件演——◆ 鮮奶 7（大學）的小孩走去拱門、跳起來
+test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards the turn plays normally (◆ milk 7 gathers the kids, later grows are not cut to apply + LEVEL UP)', async () => {
+  const h = await headlessShow(), { show } = h, walking = new Set(), update = show.update;
+  let after0 = false;
+  show.update = (dt, t) => { update(dt, t); if (after0) for (const m of show.roster.members('milk.kids')) if (m.mode === 'script' && m.walking) walking.add(m); };
+  const evs = await turnWith(h.run, SOLUTION, landing);
+  const run = h.run; h.run = (e, o) => run(e, { ...o, onMark: x => { if (!landing(x) && evs.indexOf(x) > evs.findIndex(landing)) after0 = true; o?.onMark?.(x); } });
+  let res;
+  try { res = await playLanding(h, evs); } finally { show.update = update; h.run = run; }
+  const { reacts, seg, after } = res;
   assert.ok(reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
   assert.ok(seg <= KEY_MAX, `landing ${seg.toFixed(1)} s`);
-  assert.ok(after.some(([e]) => e.kind === 'grow'), 'something grows indoors');
-  for (const [e, t] of after) if (e.kind !== 'settle') assert.ok(t <= 2.6, `${e.kind} ${e.item ?? ''}${e.to ?? ''} after the landing took ${t.toFixed(2)} s`);
+  const milk7 = after.findLast(([e]) => e.kind === 'grow' && e.item === 'milk' && e.to === 7);   // 最後一個 mark 是劇本（前一個是起因段）
+  assert.ok(milk7 && milk7[1] > 4, `◆ milk 7 plays its whole script (${milk7?.[1].toFixed(1)} s)`);
+  assert.ok(walking.size >= 2, `the kids walk to the arch (${walking.size})`);
 });
-// 移站回合（§4.3）：車站上空淹水（代幣 ≤3）＋外送爆單；巨蛋上空大巨蛋淹水（棒球 ≤3）或鼠災。移站之後的事件照一般事件演（不是 indoors）
+// 移站回合（§4.3）：車站上空淹水（代幣 ≤3）＋外送爆單；巨蛋上空大巨蛋淹水（棒球 ≤3）或鼠災
 for (const [name, order, n, need] of [
   ['flood and delivery', ['token', 'typhoon', 'boba'], 2, ['flooded', 'boba']],
   ['dome flood', ['milk', 'baseball', 'typhoon', 'chip', 'bulb'], 3, ['domeFlood']],   // 巨蛋（棒球 Lv3）蓋好了、還沒開賽
   ['dome rats', ['milk', 'token', 'rat', 'baseball', 'typhoon', 'chip', 'bulb'], 3, ['domeRats']],
 ]) {
-  test(`Lv${n} turn with reactions (${name}, real engine) live: the cloud flies in from the last stop, ≤ 4.5 s, nobody hides, the reactions play`, async () => {
+  test(`Lv${n} turn with reactions (${name}, real engine) live: the cloud flies in from the last stop, ≤ 4.5 s, nobody hides, the reactions play; invariants clean`, async () => {
     const h = await headlessShow(), { show, run, worldLog } = h;
     const evs = await turnWith(run, order, isGrow(n)), reacts = evs.filter(e => e.kind === 'fx' && e.cause === 'typhoon').map(e => e.flag?.name ?? e.delta?.target);
     assert.ok(need.every(k => reacts.includes(k)), `reactions ${reacts}`);
-    const prev = anchorWorld(n === 2 ? 'tower' : 'token'), stop = anchorWorld(n === 2 ? 'token' : 'baseball'), trail = [], marks = [], w0 = worldLog.length;
+    const inv = gameInvariants(show);
+    const prev = anchorWorld(n === 2 ? 'typhoon' : 'token'), stop = anchorWorld(n === 2 ? 'token' : 'baseball'), trail = [], marks = [], w0 = worldLog.length;
     const update = show.update;
     show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('typhoon.main'); if (o && show.stage.lv.typhoon === n) trail.push({ x: o.position.x, z: o.position.z }); };
     try { await run(evs, { onMark: e => marks.push([e, show.elapsed]) }); } finally { show.update = update; }
@@ -273,17 +292,20 @@ for (const [name, order, n, need] of [
     if (reacts.includes('boba')) assert.ok(show.stage.partObject('typhoon.scooter')?.visible, 'delivery scooter out in the rain');
     if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
     if (reacts.includes('domeFlood')) {
+      // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳
       assert.ok(show.stage.partObject('baseball.field'), 'the field is a pool');
-      for (let i = 0; i < 300; i++) show.update(1 / 30, 500 + i / 30);
-      const roof = show.roster.members('baseball.players'), dome = anchorWorld('baseball');
+      const roof = show.roster.members('baseball.players'), dome = anchorWorld('baseball'), top = dome.y + baseball.DOME_H.a;
       assert.equal(roof.length, 2);
-      assert.ok(roof.every(m => m.pos.y > dome.y + 0.5 && Math.hypot(m.pos.x - dome.x, m.pos.z - dome.z) < 0.4), `players up on the roof (${roof.map(m => `${m.pos.x.toFixed(2)},${m.pos.y.toFixed(2)},${m.pos.z.toFixed(2)}`)})`);
+      assert.ok(roof.every(m => m.pos.y >= top - 0.05 && Math.hypot(m.pos.x - dome.x, m.pos.z - dome.z) < 0.4), `players up on the roof by the end of the turn (${roof.map(m => `${m.pos.x.toFixed(2)},${m.pos.y.toFixed(2)},${m.pos.z.toFixed(2)}`)})`);
     }
+    assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} silent relocations`);
+    assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} frame jumps`);
+    assert.deepEqual([...inv.walls].slice(0, 10), [], `${inv.walls.size} inside a building`);
     for (const kk of show.roster.keys()) for (const m of show.roster.members(kk)) assert.equal(m.mode, 'home', kk);
   });
 }
-// 放下的反應全套（自己堆的狀態）：燈泡 Lv2（≤2）在場、鮮奶在場 → 大停電＋颱風假；同一回合後面的升級 indoors
-test('placement with the blackout (crafted state) live as one turn: the landing 3–8 s, each reaction after it ≤ 2.6 s (apply + LEVEL UP / DOWN)', async () => {
+// 放下的反應（自己堆的狀態）：燈泡 Lv2（≤2）在場、鮮奶在場 → 大停電＋颱風假
+test('placement with the blackout (crafted state) live as one turn: the landing 3–8 s; the blackout plays as apply + LEVEL DOWN', async () => {
   const h = await headlessShow(), LV = { bulb: 2, milk: 3, boba: 2, rat: 2, baseball: 3 };
   await h.run([...Object.entries(LV).flatMap(([item, to]) => [{ kind: 'placed', item, to: 1 }, ...Array.from({ length: to - 1 }, (_, i) => ({ kind: 'grow', item, from: i + 1, to: i + 2 }))]), { kind: 'settle' }], { instant: true });
   const st = engine.createState(spec);
@@ -292,7 +314,7 @@ test('placement with the blackout (crafted state) live as one turn: the landing 
   const { reacts, seg, after } = await playLanding(h, evs);
   assert.deepEqual(reacts.map(k => (k.includes('颱風假') ? 'story' : k)), ['blackout', 'story']);
   assert.ok(seg >= 3 && seg <= KEY_MAX, `landing took ${seg.toFixed(1)} s`);
-  for (const [e, t] of after) if (e.kind !== 'settle') assert.ok(t <= 2.6, `${e.kind} ${e.flag?.name ?? e.delta?.target ?? e.story ?? ''} took ${t.toFixed(2)} s`);
+  for (const [e, t] of after) if (e.kind === 'fx') assert.ok(t <= 2.6, `${e.flag?.name ?? e.story ?? ''} took ${t.toFixed(2)} s`);
 });
 // 選擇帶動升級（計畫 5b 任務 3）：♪ 只給主島上的人——正解的最後一輪真的有人冒 ♪（不是篩完空了）
 test('Lv4: the sky clears, nobody is hidden, the rainbow is standing, and the main-island crowd sings ♪', async () => {
@@ -312,7 +334,7 @@ test('Lv4: the sky clears, nobody is hidden, the rainbow is standing, and the ma
   assert.ok(sing.length >= 3, `${sing.length} ♪ in the Lv4 crowd`);
   assert.ok(sing.every(b => cellAt(b.at.x, b.at.z)), '♪ only over the main island');
 });
-test('skip during the door walks: everyone home and visible, world snapped to the landing, typhoon at Lv1', async () => {
+test('skip during the door walks: everyone home and visible, world snapped to the storm, typhoon at Lv1', async () => {
   const h = await headlessShow(), { show, run, worldLog } = h;
   const evs = await turnWith(run, SOLUTION, landing);
   const p = show.turn(evs);
@@ -324,68 +346,51 @@ test('skip during the door walks: everyone home and visible, world snapped to th
   const [w, instant] = worldLog.at(-1);
   assert.equal(instant, true); assert.deepEqual(w, worldEffects(show.stage.lv, show.stage.flags, show.stage.meta)); assert.equal(w.storm, 1);
 });
-test('placed live: the camera frames the cloud over 101 at zoom 0.8, then home', async () => {
+test('placed live: the camera frames the cloud next to 101 (typhoon anchor) at zoom 0.8, then home', async () => {
   const h = await headlessShow(); let n0 = 0, opts = null;
   await playItem(h.show, (evs, o) => { if (!o?.instant) n0 = h.rig.log.length; return h.run(evs, o); }, SOLUTION, 'typhoon', e => {
     if (e.kind === 'placed') opts = h.rig.log.slice(n0).filter(([k]) => k === 'focus').map(([, t, o]) => ({ t, zoom: o.zoom }));
   });
-  const p = anchorWorld('tower');
+  const p = anchorWorld('typhoon');
   assert.equal(opts.length, 1, JSON.stringify(opts)); assert.equal(opts[0].zoom, 0.8); assert.ok(opts[0].t.y > 2, 'aimed up at the cloud, not the ground');
-  assert.ok(Math.hypot(opts[0].t.x - p.x, opts[0].t.z - p.z) < 1e-9, 'over 101');
+  assert.ok(Math.hypot(opts[0].t.x - p.x, opts[0].t.z - p.z) < 1e-9, 'over the typhoon anchor');
 });
-// 放下回合 live：每個人走到門口才藏起來，藏的時候不閃（blink.count 0）；下一回合（颱風移到車站）開頭從門口（藏起來的地方）走出來回家、不閃
-test('landing turn live: people vanish at their doors without a blink; the next turn they walk out of those doors', async () => {
-  const h = await headlessShow(), { show, run } = h, order = SOLUTION;
-  const evs = await turnWith(run, order, landing);
-  const hide = show.roster.hide, hides = [];
-  show.roster.hide = m => { hides.push({ m, blinks: show.blink.count, at: { ...m.pos } }); return hide(m); };
-  try { await run(evs); } finally { show.roster.hide = hide; }
+// 放下回合 live：每個人走到門口才藏起來，藏的時候不閃（blink.count 0）；躲一下就從同一個門口露出來（不閃）、用走路速度走回家；
+// 溫泉客躲進小澡堂（池子不能躲），不是在池邊原地不見（審查）
+test('placement turn live: people vanish at their doors without a blink, then step out of those doors and walk home at walking speed without a blink', async () => {
+  const h = await headlessShow(), { show, run } = h;
+  const evs = await turnWith(run, SOLUTION, landing);
+  // 只看放下那一段（之後同一回合別的劇本換配件、換位置的閃白不算）
+  let inPlaced = false;
+  const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { if (inPlaced) blinked.add(w); return walker(w); };
+  const run0 = h.run; h.run = (e, o) => run0(e, { ...o, onMark: x => { inPlaced = landing(x); o?.onMark?.(x); } });
+  const update = show.update, trips = new Map();
+  show.update = (dt, t) => {
+    update(dt, t);
+    for (const m of people(show)) {
+      const tr = trips.get(m); if (!tr || tr.done) continue;
+      if (!m.hidden && tr.outAt === null) tr.outAt = t;
+      if (tr.outAt !== null) { tr.frames++; if (m.walking) tr.walk++; tr.len += Math.min(Math.hypot(m.pos.x - tr.at.x, m.pos.z - tr.at.z), (m.speed ?? 1.6) * dt); tr.at = { ...m.pos }; if (tr.frames >= 15) tr.done = true; }
+    }
+  };
+  const hide = show.roster.hide;
+  show.roster.hide = m => { trips.set(m, { outAt: null, frames: 0, walk: 0, len: 0, at: { ...m.pos }, hidAt: { ...m.pos }, done: false }); blinked.clear(); return hide(m); };
+  let res;
+  try { res = await playLanding(h, evs); } finally { show.update = update; show.blink.walker = walker; show.roster.hide = hide; h.run = run0; }
+  const { hides } = res;
   assert.ok(hides.length >= 3, `${hides.length} people took shelter`);
-  assert.ok(hides.every(x => x.blinks === 0), `nothing blinks while people hide (${hides.map(x => x.blinks)})`);
-  const indoors = hides.filter(x => x.m.hidden && !x.m.gone);
-  assert.ok(indoors.length >= 3, 'still indoors at the end of the landing turn');
-  // 溫泉客躲進小澡堂（池子不能躲），不是在池邊原地不見（審查）
   const { BATHHOUSE } = await import('../src/actors/landmarks.js'), SP = landmarkWorld('spring'), bath = { x: SP.x + BATHHOUSE.x, z: SP.z + BATHHOUSE.z };
   const bathers = hides.filter(x => x.m.key === 'landmarks.bathers');
   assert.equal(bathers.length, 2, 'both bathers take shelter');
   for (const x of bathers) assert.ok(Math.hypot(x.at.x - bath.x, x.at.z - bath.z) < 0.6, `bather ${x.m.i} hides at the bathhouse (${Math.hypot(x.at.x - bath.x, x.at.z - bath.z).toFixed(2)})`);
-  // 回合之間也照樣更新幾秒：躲著的人不在門裡亂走
-  for (let i = 0; i < 60; i++) show.update(1 / 30, 200 + i / 30);
-  for (const x of indoors) assert.ok(Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) < 1e-9, `${x.m.key} stays at the door`);
-  // 下一回合（瞬間跑完前面的回合：只換到這一步的事件）live 演；唯一正解：颱風第 6 回合放下，下一回合颱風移到車站
-  const steps = turnSteps(order);
-  let st = engine.createState(spec), k = 0;
-  for (; k < steps.length; k++) { const r = steps[k](st); st = r.state; if (r.events.some(landing)) break; }
-  const next = [...steps[k + 1](st).events, { kind: 'settle' }];
-  // 從門口出來、走回家不閃；回合裡被劇本或拜訪叫去（劇本手上）之後換位置的閃白（計畫 6 裁決 R3）不算
-  const walker = show.blink.walker, blinked = new Set(); show.blink.walker = w => { if (indoors.some(x => x.m.walker === w && x.m.mode === 'home')) blinked.add(w); return walker(w); };
-  // 回合一開始就出發（第一個 0.5 秒內在走）、用走路速度（0.5 秒走了 0.4 以上；日常散步 0.5/s 只走得到 0.25）。
-  // 家比 0.4 近的（物品 v2 正解的島民躲在家旁邊的門口）：0.5 秒內走到、走回家那段平均每秒 1.0 以上也算
-  // （只算 arriving 那段的走路幀：走到家之後日常散步接著走開的不算進去，物品 v2 任務 4）
-  // 走了多遠用沿路累加的距離（不是離起點的直線距離）：門口到家要繞過建築轉彎時，0.5 秒的直線位移會比走的路短（任務 8）
-  const update = show.update, walked = new Set(), first = new Map(), early = new Map(), trip = new Map(); let frames = 0;
-  show.update = (dt, t) => {
-    update(dt, t); frames++;
-    for (const x of indoors) {
-      if (!first.has(x.m)) first.set(x.m, { ...x.m.pos, hidden: x.m.hidden });
-      const f = first.get(x.m), d = Math.hypot(x.m.pos.x - f.x, x.m.pos.z - f.z), r = early.get(x.m) ?? { walk: 0, d: 0, home: false };
-      if (frames <= 15 && !r.home) { if (x.m.walking) r.walk++; r.d = Math.max(r.d, d); r.home = r.walk > 0 && !x.m.arriving; early.set(x.m, r); }
-      // 每幀最多算走路速度 × dt（一幀瞬移不算走路）
-      const tr = trip.get(x.m) ?? { len: 0, at: { ...x.m.pos } }; tr.len += Math.min(Math.hypot(x.m.pos.x - tr.at.x, x.m.pos.z - tr.at.z), (x.m.speed ?? 1.6) * dt); tr.at = { ...x.m.pos }; trip.set(x.m, tr);
-      if (frames <= 15 && x.m.walking && tr.len > 0.4) walked.add(x.m);
-    }
-  };
-  const p = run(next);
-  try { await p; } finally { show.update = update; show.blink.walker = walker; }
-  for (const x of indoors) {
-    const f = first.get(x.m);
-    assert.equal(f.hidden, false, `${x.m.key} out on the first frame`);
-    assert.ok(Math.hypot(f.x - x.at.x, f.z - x.at.z) < 0.15, `${x.m.key} comes out where it hid`);
-    // 家就在門邊的不用走（正解放下颱風時巨蛋已經蓋好，球員的站位就在巨蛋門口）
-    const r = early.get(x.m), arrived = r.home && r.d / (r.walk / 30) >= 1.0;
-    if (Math.hypot(x.m.pos.x - x.at.x, x.m.pos.z - x.at.z) > 0.5) assert.ok(walked.has(x.m) || arrived, `${x.m.key} walks home at walking speed from the start of the turn`);
-    assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink`);
+  // 走出來之後的前 0.5 秒：家比 0.4 遠的人在走、走得比日常散步快（0.5 s 走了 0.4 以上；散步 0.5/s 只走得到 0.25）
+  for (const x of hides) {
+    const tr = trips.get(x.m); if (x.m.gone) continue;
+    assert.ok(tr.outAt !== null, `${x.m.key} comes out`);
+    assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink coming out`);
+    if (tr.walk >= 10) assert.ok(tr.len > 0.4, `${x.m.key} walks home at walking speed (${tr.len.toFixed(2)} in 0.5 s)`);
   }
+  assert.ok(hides.filter(x => trips.get(x.m).walk >= 10).length >= 3, 'several people walk home from the doors');
 });
 // R13：玩家在回合中途拖過鏡頭 → 放下劇本中途的 focus('home') 不把鏡頭拉回全景、不清拖過的記號；只有回合最後的 home 照回並清掉
 test('landing turn with the camera dragged mid-turn: no home before the turn-end one, which still flies home and clears the drag', async () => {

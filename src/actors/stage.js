@@ -6,7 +6,7 @@
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
 import { anchorWorld } from './anchors.js';
-import { foldEvent, landsTyphoon } from '../rules/engine.js';
+import { foldEvent } from '../rules/engine.js';
 
 export function diffParts(prev, next) {
   const same = k => k in prev && k in next && JSON.stringify(prev[k]) === JSON.stringify(next[k]);
@@ -31,11 +31,11 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   root.add(partsGroup); scene.add(root);
 
   // meta：回合層級的狀態，只在回合最後的 settle 事件結算（計畫 3.6）。
-  //   total：101 看的總等級（不搭別人的事件跳階）；landing：颱風這回合剛放下、到了 101 上空（landsTyphoon；小人、小孩躲起來，到下一回合開始）；
-  //   bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）
-  const META0 = { total: 0, landing: false, bitten: false };
+  //   total：101 看的總等級（不搭別人的事件跳階）；bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）。
+  //   （颱風的 landing 拿掉了：躲雨是颱風放下劇本裡的一小段，不是回合狀態——唯一正解修正輪 1）
+  const META0 = { total: 0, bitten: false };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
-  let stale = null;   // 登陸／被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
+  let stale = null;   // 被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
   const live = new Map();          // key → { spec, part, fp }（pending 的新零件也在這裡）
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
   const dying = new Set();         // 已經 commit 的移除：閃白中，閃完才拿掉
@@ -128,10 +128,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   function fold(e) {
     if (stale) { meta = { ...meta, ...stale }; stale = null; }
     ({ lv, flags } = foldEvent({ lv, flags }, e));
-    if (landsTyphoon(e)) meta = { ...meta, landing: true };
     if (bitesMilk(e)) meta = { ...meta, bitten: true };
     if (e.kind === 'settle') {
-      if (meta.landing || meta.bitten) stale = { landing: false, bitten: false };
+      if (meta.bitten) stale = { bitten: false };
       meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0) };
     }
   }

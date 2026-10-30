@@ -2,7 +2,7 @@
 //   → ◆ 大學（校舍拉長、拱門校門、學士帽）→ 研究大樓（玻璃盒）、白袍、校門 YouBike → 畢業典禮（拋學士帽、101 打字）
 //   → ◆ 鮮奶節（全島每格多一個小孩、牛奶箱旁停牛奶車、岸邊觀光船載牛奶箱）。
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
-// 被老鼠咬或颱風登陸那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來；颱風賴著不走也一樣）。
+// 被老鼠咬那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來）。颱風放下時小孩跟大家一樣跑去門口躲一下又出來（颱風劇本）。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv7、Lv10 ≤ 10 秒、最後回全景定格。
 import { anchorWorld, cellCentre, cellOf } from './anchors.js';
 import { HOME_R } from './landmarks.js';
@@ -131,7 +131,7 @@ export function view(lv, flags, meta = {}) {
     ...(tipped ? [{ kind: 'cylinder', pos: [0.38, 0.01, 0.05], scale: [0.4, 0.02, 0.28], color: C.white, spill: true }] : []),
   ] };
   if (n < 2) return v;
-  const home = !!meta.landing || !!meta.bitten;   // 颱風放下那回合（全島躲雨）、被老鼠咬的回合：小孩躲回校舍
+  const home = !!meta.bitten;   // 被老鼠咬的回合：小孩躲回校舍（颱風的躲雨是放下劇本裡的一小段，小孩跟大家一樣躲一下又出來）
   // 校舍：一個零件裡幾棟 glb（builders.campus）；飾邊是屋頂色（颱風重建換色），小孩躲回來時窗戶亮燈
   const trim = roofColor(C.coral, rebuilt(lv)), lit = home ? { [WINDOW]: C.warm } : null;
   const models = campusModels(n).map(m => ({
@@ -319,7 +319,7 @@ export const script = {
     10(e, s, ctx) {
       const { B } = ctx;
       return [
-        // 小孩一起回來（Task 6a）：兩條正解的鮮奶 10 是最後一輪第一個事件，前一回合颱風登陸、小孩躲在家（meta.landing 到這一刻才清掉）——
+        // 小孩一起回來（Task 6a）：前一回合小孩躲在家（被老鼠咬的 meta.bitten 到這一刻才清掉）時，
         // 只套牛奶車的話名冊要等後面的 apply 才補人，跑去、♥ 整段沒人演（劇本 2.3 s）
         B.apply(e, { only: ['milk.truck', 'milk.kids'] }),
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),

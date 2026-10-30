@@ -43,6 +43,16 @@ async function liveMiss(order, waits, { prep } = {}) {
   close(); show.update = update;
   return { e, segs, script, show, bubbles: bubblesLog };
 }
+// 直接問 miss() 定案的目標：跟 liveMiss 一樣瞬間演完 order 那幾個放置回合（prep 同 liveMiss），回 walk.goal() 與當時的 stage
+async function goalOf(order, w, { prep } = {}) {
+  const h = await headlessShow(); let s = engine.createState(spec);
+  for (const step of turnSteps(order).slice(0, order.length)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  await prep?.(h.show);
+  const sv = { lv: { ...h.show.stage.lv }, flags: h.show.stage.flags }, [walk] = miss(w, sv, { B }, { item: mod(w.item), helper: mod(w.for[0]) });
+  assert.ok(walk.ready({ roster: h.show.roster, nav: h.show.nav }), `${w.item}<${w.for[0]}: somebody to send`);
+  return { goal: walk.goal(), sv };
+}
+const face = (p, to) => Math.atan2(to.x - p.x, to.z - p.z), yawDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 const doorOf = (show, id, sv) => { const sp = mod(id).visitSpot(sv.lv[id], sv); return frontOf(sp, sp.r, show.nav); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 // 共同的檢查：代表在、做了 sigh、段裡沒有泡泡、≤ MISS_CAP、走的路 ≤ MISS_WALK 秒、沒有換位置（每幀 ≤ 走路速度）、段尾回日常、劇本手上沒人
@@ -131,6 +141,11 @@ test('miss live: helper absent but far → walks toward its lot; helper placed b
   assert.ok(NEIGHBORS.some(([dq, dr]) => cq + dq === bq && cr + dr === br), `chip<bulb3: the engineer's cell [${cq},${cr}] is next to the bulb's [${bq},${br}]`);
   assert.ok(far > MISS_WALK * c.rep.speed, `chip<bulb3: the bulb is ${far.toFixed(2)} m away`);
   assert.ok(dist(c.end, doorOf(n.show, 'chip', c.sv)) < 0.15, `chip<bulb3: at its own door`);
+  // 整支分支審稿 Important 1：回自己門口嘆氣時面向缺的那個幫手（燈泡的錨點），不面向自己的建築
+  { const { goal } = await goalOf(['bulb', 'chip'], { item: 'chip', for: ['bulb'] }), at = anchorWorld('bulb'), own = mod('chip').visitSpot(c.sv.lv.chip, c.sv);
+    assert.equal(goal.kind, 'door'); assert.deepEqual(goal.look, at, 'chip<bulb3: looks at the bulb anchor');
+    assert.ok(c.sighAt && yawDiff(c.sighAt.yaw, face(c.sighAt, at)) < 0.05, 'chip<bulb3: sighs facing the bulb anchor');
+    assert.ok(yawDiff(c.sighAt.yaw, face(c.sighAt, own)) > 0.3, 'chip<bulb3: not facing its own building'); }
   // 晶片 Lv3、燈泡 Lv2：燈泡 < 晶片，電工散步到很遠，自己門口也超過 MISS_WALK 秒：往門口走 MISS_WALK 秒、在路上失望（不換位置）。
   // 前面的回合瞬間演完時電工站在固定的地方，離門口不到 MISS_WALK 秒——live 的局裡他常散步得更遠；這裡把他放到自己巡路（bulb.ROAD）上
   // 一個走到門口要 MISS_WALK 秒再多 0.3–2 m 的點（日常裡本來就走得到；前後 2 m 都在主島格上：焦點裡他會沿路走，代表要站在主島格上才叫得到）讓前提成立
@@ -151,6 +166,11 @@ test('miss live: helper absent but far → walks toward its lot; helper placed b
   const door = doorOf(d.show, 'bulb', b.sv), len = d.show.nav.routeLength(d.show.nav.route(b.start, door));
   assert.ok(len > MISS_WALK * b.rep.speed, `bulb<chip3: precondition — the door is ${len.toFixed(2)} m away (> ${(MISS_WALK * b.rep.speed).toFixed(2)})`);
   assert.ok(dist(b.end, door) < dist(b.start, door) - 1, `bulb<chip3: walked toward its door (${dist(b.start, door).toFixed(2)} → ${dist(b.end, door).toFixed(2)})`);
+  // 同上（審稿 Important 1）：往自己門口走了一段（short）、嘆氣時面向晶片的錨點
+  { const { goal } = await goalOf(['chip', 'bulb'], { item: 'bulb', for: ['chip'] }, { prep: away }), at = anchorWorld('chip'), own = mod('bulb').visitSpot(b.sv.lv.bulb, b.sv);
+    assert.equal(goal.kind, 'door'); assert.ok(goal.short, 'bulb<chip3: short of its door'); assert.deepEqual(goal.look, at, 'bulb<chip3: looks at the chip anchor');
+    assert.ok(b.sighAt && yawDiff(b.sighAt.yaw, face(b.sighAt, at)) < 0.05, 'bulb<chip3: sighs facing the chip anchor');
+    assert.ok(yawDiff(b.sighAt.yaw, face(b.sighAt, own)) > 0.3, 'bulb<chip3: not facing its own building'); }
 });
 
 test('miss: nobody to send (no rep function, typhoon, busy rep) → no beats or every beat skipped', async () => {
@@ -198,4 +218,19 @@ test('miss live: cascade — a flooded metro stalls the islet chain: turn 8 list
   const goal = walk.goal();
   assert.ok(goal.kind === 'spot' || goal.kind === 'door', `goal kind ${goal.kind}`);
   assert.ok(Math.hypot(goal.look.x - sp.x, goal.look.z - sp.z) < 1e-6, 'looks at the token visitSpot');
+});
+
+// 整支分支審稿 Important 1：同一局（捷運淹水、代幣停在 4）第 8 回合的晶片 < 代幣——工程師離車站太遠，照規則回 HQ 門口，
+// 但嘆氣時面向車站（代幣的錨點），不面向 HQ：撲空要指著淹水的捷運
+test('miss live: cascade — chip<token on the flooded turn 8: the engineer walks to the HQ door and sighs facing the station, not HQ', async () => {
+  const order = ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], w = { item: 'chip', for: ['token'] };
+  const v = await liveMiss(order, [w]), [g] = v.segs, what = 'chip<token4';
+  assert.equal(v.segs.length, 1); assert.equal(g.sv.lv.token, 4, 'the metro is stuck at 4 (flooded)');
+  segment(v, g, what);
+  const at = anchorWorld('token'), hq = mod('chip').visitSpot(g.sv.lv.chip, g.sv);
+  assert.ok(dist(g.end, doorOf(v.show, 'chip', g.sv)) < 0.15, `${what}: ends at the HQ door (${dist(g.end, doorOf(v.show, 'chip', g.sv)).toFixed(2)})`);
+  assert.ok(g.sighAt && yawDiff(g.sighAt.yaw, face(g.sighAt, at)) < 0.05, `${what}: sighs facing the token anchor`);
+  assert.ok(yawDiff(g.sighAt.yaw, face(g.sighAt, hq)) > 0.3, `${what}: not facing HQ`);
+  const { goal } = await goalOf(order, w);
+  assert.equal(goal.kind, 'door'); assert.ok(!goal.short); assert.deepEqual(goal.look, at, `${what}: looks at the token anchor`);
 });

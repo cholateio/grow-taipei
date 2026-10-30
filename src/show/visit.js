@@ -13,7 +13,8 @@
 //     否則（幫手放了但太遠、幫手是颱風、幫手這一級在離島上、主島上沒有 visitSpot）→ 走到自己門口 frontOf(visitSpot(物品, 現在的等級), r, nav)；
 //     自己門口也超過 MISS_WALK 秒 → 往門口走 MISS_WALK 秒、在路上失望（short）；自己這一級沒有主島上的門口、走不過去 → 原地失望（here）。
 //     撲空不換位置、不閃白。
-//   失望之前面向目標（幫手的錨點／建築；原地的話面向缺的那個幫手的錨點）。
+//   失望之前面向目標（幫手的錨點／建築；原地的話面向缺的那個幫手的錨點）。回自己門口（door，含 short）的時候：缺的幫手放了、不是颱風
+//   → 面向幫手的錨點（整支分支審稿 Important 1：嘆氣要指著缺的那個幫手，不指著自己的建築）；幫手是颱風 → 面向自己的建築。
 //   每段 ≤ MISS_CAP 真實秒數（跟走路一起演的平移不另外算，物品之間的空拍由 turn.js 另外記在 mark 的 info.gap）：
 //   MISS_WALK = MISS_CAP − SIGH − 0.2（幀的餘裕）。一回合最多 MISS_PER_TURN 段（turn.js：wait 事件的前兩個 waits，照 ORDER）。
 import { B } from './beats.js';
@@ -86,11 +87,13 @@ export function miss(w, s, ctx, { item, helper } = {}) {
       }
     }
     if (!pick && !lot) {
-      // 自己門口：路線太長就走 MISS_WALK 秒那麼遠（往門口走、走不到門口就在路上失望；不換位置）
+      // 自己門口：路線太長就走 MISS_WALK 秒那麼遠（往門口走、走不到門口就在路上失望；不換位置）。
+      // 幫手放了（不是颱風）只是太遠：失望時面向幫手的錨點、不面向自己的建築（整支分支審稿 Important 1：淹水那局工程師在 HQ 門口要看著車站）
       const d = door(item, lvOf(item.id), nav), route = d && nav.route(m.pos, d.to), end = route?.at(-1);
       if (end && Math.hypot(end.x - d.to.x, end.z - d.to.z) <= REACH) {
         const len = nav.routeLength(route), cap = MISS_WALK * m.speed;
-        pick = len <= cap ? { kind: 'door', ...d } : { kind: 'door', to: cutAt(m, route, nav), look: d.look, short: true };
+        const look = helper && helper.id !== 'typhoon' && lvOf(helper.id) > 0 ? anchorWorld(helper.id) : d.look;
+        pick = len <= cap ? { kind: 'door', to: d.to, look } : { kind: 'door', to: cutAt(m, route, nav), look, short: true };
       }
     }
     if (!pick) pick = { kind: 'here', to: { ...m.pos }, look: helper && helper.id !== 'typhoon' ? anchorWorld(helper.id) : null };

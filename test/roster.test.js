@@ -780,7 +780,8 @@ test('every hand-drawn path home stays outside every padded footprint at every l
       }
     }
   }
-  assert.deepEqual([...seen].sort(), ['bulb.electrician', 'chip.engineers', 'rat.pack']);
+  // 唯一正解：老鼠 Lv4 分岔就是最終型態（軍團繞 101 是 wander），機器鼠不再走工程師的通勤路線——手畫路線剩電工與工程師
+  assert.deepEqual([...seen].sort(), ['bulb.electrician', 'chip.engineers']);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
 // 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子

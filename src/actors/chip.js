@@ -14,7 +14,7 @@ import { builders as milkBuilders } from './milk.js';
 import { SHIELD_TEST_DUR } from './parts.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { lookUp } from '../show/crowd.js';
-import { ratMode } from './rat.js';   // rat.js 也 import 這裡的 ENGINEER_ROUTE：兩邊都只在函式裡用到對方，循環 import 沒問題
+import { ratMode } from './rat.js';   // 只在函式裡用（唯一正解之後 rat.js 不再 import 這裡：賽博 Lv4 不走工程師路線了）
 
 export const id = 'chip';
 export const labelY = 1.5;

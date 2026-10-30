@@ -53,13 +53,13 @@ export function view(lv, flags) {
     const f = island('forest'), yaw = Math.atan2(-f.x, -f.z);   // 面向主島拍照
     v['sat.forest'] = { kind: 'roster', at: f, n: 2, accessory: 'suitcase', home: { kind: 'stand', spots: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] } };
   }
-  // 石堆上的老鼠；賽博最終型態（10 隻軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
-  if (lv.rat >= 3 && !(lv.rat >= 5 && flags.ratBranch === 'cyber') && flags.epilogue !== 'alien') v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
+  // 石堆上的老鼠；賽博最終型態（老鼠 Lv4，10 隻軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
+  if (lv.rat >= 3 && !(lv.rat >= 4 && flags.ratBranch === 'cyber') && flags.epilogue !== 'alien') v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
     spots: [{ ...at('rocks', -0.4, 0.3, 0.52), yaw: 0.6 }, { ...at('rocks', 0.5, -0.2, 0.44), yaw: -2.2 }] };
-  // 外星 Lv5（變異鼠加冕）：石堆小島一圈綠光（外星結局的降落場前身，物品 v2 §8）
+  // 外星 Lv4（變異鼠加冕＝最終型態，唯一正解 §4.4）：石堆小島一圈綠光（「變異鼠稱王」壞結局的畫面之一；尾聲的降落場前身）
   // 外星尾聲（最終章 §7）：綠光圈變降落場——圈更亮（管子粗 2.5 倍、內側再一圈）＋三盞落地燈（r 0.08）等分站在圈上；
   // 同一個 C.alien 發光材質，draw call 不變
-  if (lv.rat >= 5 && flags.ratBranch === 'alien') {
+  if (lv.rat >= 4 && flags.ratBranch === 'alien') {
     const pad = flags.epilogue === 'alien';
     v['sat.rocksRing'] = { kind: 'compound', at: island('rocks'), shadow: false, footprint: false, parts: [
       { kind: 'torus', pos: [0, 0.06, 0], scale: [RING_D, RING_D, pad ? 2.5 : 1], rot: [Math.PI / 2, 0, 0], color: C.alien, glow: C.alien },
@@ -100,7 +100,7 @@ export function view(lv, flags) {
 //   low: false——?quality=low（手機）不畫點綴：全 MAX 的手機截圖本來就 143（≤ 150），十幾個點綴放不下（併進黏土也一段一個）
 // tagAlong：跟同一拍第一個閃的零件一起閃、不多佔 stagger（beats.apply）——加了點綴，劇本與整局的時間一格不變。
 //   含基座的第一段（階梯丘、小森林）不標：營區、分店是那一級的主角，跟原本的 sat.camp／sat.forestShop 一樣自己佔一格
-export const STAGE = { lighthouse: [['bulb', 7], ['boba', 6]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
+export const STAGE = { lighthouse: [['bulb', 7], ['boba', 5]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
   playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;
 // 第二支風機：塔頂 (-0.55, 1.2, -0.9) 相對島心；轉子在塔頂前 0.1，換成相對主轉子（at('windmill', 0, 0.12, 1.6)）的位置

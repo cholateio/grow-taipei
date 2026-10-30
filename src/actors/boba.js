@@ -1,10 +1,11 @@
-// 珍奶（物品 v2 §4.7，max 7）：路邊攤車 → 人龍 3 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
-//   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）→ 連鎖店（小森林島分店、觀光船多兩艘：satellites.js）
-//   → ★ 離島旗艦店（燈塔島開店；兩個觀光客坐小船從碼頭過去、住在島上；外送無人機兩台繞著店飛）
-//   → ◆ 世界珍奶節（全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
+// 珍奶（唯一正解 §4.4，max 6）：路邊攤車 → 人龍 3 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
+//   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）
+//   → ◆ 離島：森林島分店＋燈塔島旗艦店同一級（原本的 Lv5 連鎖店＋Lv6 旗艦店併成一級：小森林島分店、觀光船多兩艘、茶屋桌椅（satellites.js）；
+//     燈塔島開店，兩個觀光客坐小船從碼頭過去、住在島上，棧橋；外送無人機兩台繞著店飛）
+//   → ◆ 世界珍奶節（原本的 Lv7；全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
 // 人數預算（使用者 2026-10-26）：人龍最多 3 人（2026-10-28 錄影修正：4 → 3，珍奶格太擠）、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
-// 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；老鼠撞翻攤車、颱風外送是那兩個模組的劇本，不在這裡。
-// 劇本（§6）：一級 3–5 秒；◆ Lv7 6–10 秒、最後回全景定格。
+// 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；颱風外送是颱風模組的劇本，不在這裡（老鼠撞翻攤車：唯一正解 §5.2 拿掉了）。
+// 劇本（§6）：一級 ≤ 4.5 秒；◆ Lv5、Lv6 ≤ 8 秒（Lv6 最後回全景定格）。
 import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
 import { island } from './satellites.js';
@@ -66,7 +67,7 @@ export const ownerSpot = n => { const q = queue(AT, 1, n >= 3)[0]; return { ...B
 // （≥ PAD 0.12，手畫的主路不切進外擴後的噴泉）、北緣離夜市第一攤 0.3
 export const FOUNTAIN = offset(SHOP, 0.675, -0.3), FOUNTAIN_R = 0.25;
 
-// ── 燈塔島（Lv6 旗艦店）：燈塔在島中心（底座半徑 0.5）、守塔人繞 0.6 一圈、東南有一棵樹；旗艦店在西南（朝主島、靠鏡頭那側）──
+// ── 燈塔島（Lv5 旗艦店）：燈塔在島中心（底座半徑 0.5）、守塔人繞 0.6 一圈、東南有一棵樹；旗艦店在西南（朝主島、靠鏡頭那側）──
 const LIGHT = island('lighthouse');
 export const FLAGSHIP = offset(LIGHT, -1.15, 0.85);
 const FLAGSHIP_H = 0.7;
@@ -83,7 +84,7 @@ export const SAIL = 2.4;   // 船開幾秒（R10：≤ 5 s）
 export const FERRY_H = 0.3;
 const BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream }, SEATS = [0.14, -0.14], SEAT_Y = 0.12;
 
-// ── 外送無人機（Lv6）：Kenney Space Kit craft_miner，一台寬約 0.26；停在店屋頂兩側，每隔一陣子繞店飛一小圈（零件 kind 'orbit'，parts.js）──
+// ── 外送無人機（Lv5）：Kenney Space Kit craft_miner，一台寬約 0.26；停在店屋頂兩側，每隔一陣子繞店飛一小圈（零件 kind 'orbit'，parts.js）──
 const DRONE_TINT = { '^metalRed$': C.coral, '^metalDark$': C.curb, '^metal$': C.white, '^dark$': C.ink };
 const DRONE_SIZE = 0.1;
 export const DRONE_KEYS = ['boba.drones.0', 'boba.drones.1'];
@@ -95,7 +96,7 @@ function drone(i) {
   };
 }
 
-// ── 世界珍奶節（Lv7）：主島外圍每一條靠海的格邊綁一束氣球（棒球格西南邊那條留給巨蛋捷運站的月台）；全部併在院子那個零件（不多花 draw call）。
+// ── 世界珍奶節（Lv6）：主島外圍每一條靠海的格邊綁一束氣球（棒球格西南邊那條留給巨蛋捷運站的月台）；全部併在院子那個零件（不多花 draw call）。
 // 2026-10-28 錄影修正：原本是海岸一圈旗竿＋旗面，旗子政治敏感，全部換成氣球——一條細繩（高 0.5）頂上三顆小球（半徑 0.07，錯開高度），沒有任何矩形旗面 ──
 const BALLOON_R = 2.0;   // 離格心：走路格（離格邊 0.35）外、還在島面上
 const SKIP_EDGE = '-1,1>-2,2';
@@ -167,21 +168,22 @@ export function view(lv, flags = {}) {
     v['boba.sign'] = { kind: 'glb', at: offset(SHOP, 0, SHOP_W / 2 - 0.15, SHOP_H), path: MODELS.cup.path, h: 0.32, footprint: false };
   }
   // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
-  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 7 ? balloonParts(AT) : [])] };
+  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? balloonParts(AT) : [])] };
   if (n >= 4) v['boba.fountain'] = { kind: 'compound', at: FOUNTAIN, footprint: { r: FOUNTAIN_R }, parts: fountainParts() };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
   v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [ownerSpot(n)], fidget: 'wave', rescue: true, entry: PIER[3] } };
   // 人龍：攤車前／店門口一排（人數預算 ≤ 3）；從碼頭走來
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
-  if (n >= 6) {
+  // Lv5 離島：森林島分店（satellites.js）跟燈塔島旗艦店、小船、觀光客、無人機同一級
+  if (n >= 5) {
     v['boba.flagship'] = { kind: 'glb', at: FLAGSHIP, path: MODELS.flagship.path, h: FLAGSHIP_H, tint: SHOP_TINT, footprint: false };
     v['boba.ferry'] = { kind: 'glb', at: DOCK, path: MODELS.boat.path, h: FERRY_H, ry: DOCK_YAW, tint: BOAT_TINT, footprint: false };
     // 坐船過去的兩個觀光客住在燈塔島上（衛星島沒有走路格：stand 的站位直線走回去，同 sat.forest）
     v['boba.tourists'] = { kind: 'roster', at: FLAGSHIP, n: 2, accessory: 'suitcase', shirt: SHIRTS.slice(4), home: { kind: 'stand', spots: TOURIST_SPOTS } };
     DRONE_KEYS.forEach((k, i) => { v[k] = drone(i); });
   }
-  if (n >= 7 && !storm) {
+  if (n >= 6 && !storm) {
     v['boba.fleet'] = { kind: 'fleet', at: { x: 0, y: SEA_Y, z: 0 }, speed: 0.04, footprint: false, low: false, parts: fleetParts() };
   }
   return v;
@@ -242,7 +244,7 @@ function push(w) {
 // 觀光客從碼頭出來（一人一個入口點；被擋就站到最近的可走點）
 const pier = k => c => c.nav.nearestWalkable(PIER[k % PIER.length]);
 
-// ── Lv6 小船：船身沿 FERRY_PATH 開 SAIL 秒（緩起緩停），坐在船上的兩個觀光客每幀擺在座位上；
+// ── Lv5 小船：船身沿 FERRY_PATH 開 SAIL 秒（緩起緩停），坐在船上的兩個觀光客每幀擺在座位上；
 // 一開始在碼頭閃白出現；end 停在 DOCK（船的零件本來就停在那裡，轉正）。跳過時直接停好、觀光客由後面的 jump 拍落地 ──
 const ease = k => k * k * (3 - 2 * k);
 const ferryAt = k => locateOnPath(FERRY_PATH, FERRY_LENS, FERRY_LEN * ease(Math.min(1, Math.max(0, k))), false);
@@ -263,9 +265,8 @@ function sail() {
 }
 // 無人機起飛（不佔時間：繞一圈在背景飛完）
 const launch = () => ({ kind: 'fly', dur: 0, start(c) { DRONE_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * 0.4 })); return false; } });
-// 從離島回珍奶格再打 LEVEL UP（先飛回來、再彈字）：跟飛行一起彈的話，前半秒鏡頭還對著森林島，字在畫面外
-// （Task 6a：EXAMPLE.deflect 最後一輪珍奶 5 的 LEVEL UP 16/30 幀在畫面外）。focus 拍不算劇本秒數
-const levelUpAtShop = B => [B.focus('boba'), B.levelUp('boba')];
+// 從離島回珍奶格再打 LEVEL UP（先飛回來、再彈字）：跟飛行一起彈的話，前半秒鏡頭還對著離島，字在畫面外
+// （Task 6a：EXAMPLE.deflect 最後一輪珍奶 5 的 LEVEL UP 16/30 幀在畫面外）。Lv5 劇本裡 focus('boba') 自己一拍、LEVEL UP 在它後面
 
 export const script = {
   // 老闆從捷運站北邊推著攤車走過來（攤車每幀都在他面前）→ 停好 → ♪、繞到攤車東南角站好（他推車的位置下一級會蓋店面）
@@ -301,30 +302,24 @@ export const script = {
         B.together([0, 1].map(i => B.bubble(tourist(i), '♥', 0.8))), B.home(owner), B.levelUp('boba'),
       ];
     },
-    // 分店：老闆 …… → 圖框「小島」→ 鏡頭到小森林島（focus，zoom 0.8）→ 閃白分店、觀光客 2 人 → 觀光船多 2 艘 →
-    // 鏡頭跟 LEVEL UP 一起回珍奶格（levelUp 1 秒 ≥ focus 拍，不多佔時間）
+    // ◆ 離島（原本的 Lv5 分店＋Lv6 旗艦店併成一段，唯一正解 §5.3；◆ ≤ 8 s：拿掉老闆的 ……／圖框「小島」兩個泡泡，走位與船程不動）：
+    //   鏡頭到小森林島（zoom 0.8）→ 閃白分店、茶屋桌椅（離島三段第一段 sat.forest.stage1，分店是基座）、觀光客 2 人 →
+    //   鏡頭到燈塔島 → 小船載著兩個觀光客在珍奶格東岸外出現、開到燈塔島（SAIL 秒；棧橋 sat.lighthouse.stage2 同時閃白）→ 兩人跳上岸 →
+    //   閃白旗艦店、店屋頂兩台外送無人機、觀光船多 2 艘 → 回珍奶格，無人機起飛繞店一圈、LEVEL UP
     5(e, s, ctx) {
-      const { B } = ctx;
-      return [
-        B.bubble(owner, '……', 0.9), B.bubble(owner, { icon: 'islet' }, 1.0), B.focus(FOREST, { zoom: ISLAND_ZOOM }),
-        B.apply(e, { only: ['sat.forest.stage1', 'sat.forest'] }), B.apply(e), ...levelUpAtShop(B),   // 分店與茶屋桌椅（離島三段第一段 sat.forest.stage1，分店是基座）一起閃
-      ];
-    },
-    // ★ 旗艦店：鏡頭到燈塔島（zoom 0.8）→ 小船載著兩個觀光客在珍奶格東岸外閃白出現、開到燈塔島（SAIL 秒）→ 兩人跳上岸 →
-    //   閃白旗艦店、店屋頂兩台外送無人機 → 鏡頭跟 LEVEL UP 一起回珍奶格，無人機同時起飛繞店一圈
-    6(e, s, ctx) {
       const { B } = ctx, sp = [0, 1].map(i => B.spawn('boba.tourists', () => seatAt(0, i)));
       const hop = B.together([0, 1].map(i => B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5)));
       return [
+        B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.stage1', 'sat.forest'] }),
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,
-        B.together([sail(), B.apply(e, { only: ['sat.lighthouse.stage2'] })]), hop, B.home([passenger(0), passenger(1)]),   // 棧橋（離島三段）在小船開過去時閃白
-        B.apply(e), B.together([B.focus('boba'), launch(), B.levelUp('boba')]),
+        B.together([sail(), B.apply(e, { only: ['sat.lighthouse.stage2'] })]), hop, B.home([passenger(0), passenger(1)]),
+        B.apply(e), B.focus('boba'), B.together([launch(), B.levelUp('boba')]),
       ];
     },
-    // ◆ 世界珍奶節（燈泡 ≥5）：老闆 ！ → 回全景，全島海岸的氣球、繞島的船隊閃白出現 → 101 頭上打「世界珍奶節」→
+    // ◆ 世界珍奶節（原本的 Lv7）：老闆 ！ → 回全景，全島海岸的氣球、繞島的船隊閃白出現 → 101 頭上打「世界珍奶節」→
     //   排隊的觀光客 ♥ → 全景定格 → LEVEL UP
-    7(e, s, ctx) {
+    6(e, s, ctx) {
       const { B } = ctx;
       return [
         B.bubble(owner, '！', 0.8),
@@ -344,9 +339,10 @@ export const script = {
   rep: (s, ctx) => ctx.roster.members('boba.owner').find(m => !m.hidden) ?? null,   // 代表（撲空找的人）：藏起來的人（躲進門裡）不算
   hasRep: lv => lv >= 1,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：每一級都有老闆
 };
-// ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這一級，也演完整劇本（turn.js）
-script.grow[7].key = true;
+// ◆ 關鍵節點（裁決 R11；唯一正解 §5.3：珍奶 5／6）：跳級的第二級落在這一級，也演完整劇本（turn.js）；
+// 正解第 9 回合 4 → 5、5 → 6（跳級）兩級都是 ◆，不合成，各演各的（turn.js jumpPairs 的 apart）
+script.grow[5].key = script.grow[6].key = true;
 
-// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–4 攤車／店／噴泉廣場（錨點）；Lv5 森林島分店、Lv6 燈塔島旗艦店在離島 → null；
-// Lv7 珍奶節 → 主島的店
-export const visitSpot = n => ((n >= 1 && n <= 4) || n === 7 ? { ...AT, r: 0.9 } : null);
+// 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–4 攤車／店／噴泉廣場（錨點）；Lv5 離島（森林島分店、燈塔島旗艦店）→ null；
+// Lv6 珍奶節 → 主島的店
+export const visitSpot = n => ((n >= 1 && n <= 4) || n === 6 ? { ...AT, r: 0.9 } : null);

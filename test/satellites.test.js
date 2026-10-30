@@ -51,7 +51,7 @@ test('playground kids come with the shuttle and need a school; forest tourists a
 test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), chest opens only when everything is MAX', () => {
   assert.equal(sat.view(lv({ chip: 2 }), {})['sat.pyramid.stage1'], undefined); assert.ok(sat.view(lv({ chip: 3 }), {})['sat.pyramid.stage1'].parts.some(p => p.glow));
   assert.equal(sat.view(lv({ rat: 3 }), {})['sat.rocks'].kind, 'rats');
-  assert.equal(sat.view(lv({ rat: 5 }), { ratBranch: 'cyber' })['sat.rocks'], undefined, 'skeleton budget: 10 army + shiba');
+  assert.equal(sat.view(lv({ rat: 4 }), { ratBranch: 'cyber' })['sat.rocks'], undefined, 'skeleton budget: 10 army + shiba (rat Lv4 is the final form)');
   assert.equal(sat.view(lv({}), {})['sat.chest'].open, false); assert.equal(sat.view(allMax, {})['sat.chest'].open, true);
   assert.ok(sat.view(allMax, {})['sat.chest'].parts.some(p => p.glow));
 });
@@ -169,14 +169,14 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
   // 落在燈泡 7 以後的跳級只有 6 → 8（晶片 ≥4）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決 2026-10-29），電工照樣搭車去開風電、燈塔亮
   assert.deepEqual(Object.keys(spec.ITEMS.bulb.jump ?? {}).filter(n => +n >= 7), ['8'], 'the only jump past bulb 6 is 6 → 8');
   assert.equal((await import('../src/actors/bulb.js')).script.grow[7].key, true, 'bulb 7 is a key level: the merged 6 → 8 plays it');
-  for (let b = 0; b <= 7; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stage1'], b >= 5, `boba ${b}`); }
-  for (const [r, branch, ring] of [[4, 'alien', false], [5, 'alien', true], [5, 'cyber', false], [5, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
+  for (let b = 0; b <= 6; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stage1'], b >= 5, `boba ${b}`); }
+  for (const [r, branch, ring] of [[3, 'alien', false], [4, 'alien', true], [4, 'cyber', false], [4, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
 });
 
 // 最終章 §7 外星尾聲：石堆島的綠光圈變降落場——圈更亮（更粗、多一圈內環）＋三盞落地燈（sphere r 0.08、C.alien 發光）圍在圈上；
 // 石堆上的兩隻老鼠不畫（三台大 UFO 停在這裡）
 test('epilogue alien: sat.rocksRing becomes the landing pad (brighter ring + 3 lights), sat.rocks rats gone', () => {
-  const L = lv({ rat: 5 }), base = sat.view(L, { ratBranch: 'alien', missile: 'shield' }), v = sat.view(L, { ratBranch: 'alien', missile: 'shield', epilogue: 'alien' });
+  const L = lv({ rat: 4 }), base = sat.view(L, { ratBranch: 'alien', missile: 'shield' }), v = sat.view(L, { ratBranch: 'alien', missile: 'shield', epilogue: 'alien' });
   const ring0 = base['sat.rocksRing'], pad = v['sat.rocksRing'], rocks = sat.island('rocks');
   assert.ok(pad && Math.hypot(pad.at.x - rocks.x, pad.at.z - rocks.z) < 1e-9, 'on the rocks islet');
   assert.equal(pad.footprint, false); assert.equal(pad.shadow, false);
@@ -201,7 +201,7 @@ test('epilogue alien: sat.rocksRing becomes the landing pad (brighter ring + 3 l
 const stageOn = (v, isl, n) => !!v[`sat.${isl}.stage${n}`];
 const stagePartOf = (v, isl, n) => v[`sat.${isl}.stage${n}`];
 const STAGES = {
-  lighthouse: [['bulb', 7], ['boba', 6]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3], null],
+  lighthouse: [['bulb', 7], ['boba', 5]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3], null],
   pyramid: [['chip', 3], ['chip', 9]], playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6], 'allMax'],
 };
 test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 levels, independently (stage 2 alone when its trigger comes first), none before', () => {
@@ -217,7 +217,7 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
     }
   });
   // 兩段各自獨立：只滿足第二段的觸發時只有第二段
-  for (const [isl, extra] of [['lighthouse', { boba: 6 }], ['windmill', { chip: 6 }], ['pyramid', { chip: 9 }], ['playground', { milk: 10 }], ['forest', { bulb: 9 }]]) {
+  for (const [isl, extra] of [['lighthouse', { boba: 5 }], ['windmill', { chip: 6 }], ['pyramid', { chip: 9 }], ['playground', { milk: 10 }], ['forest', { bulb: 9 }]]) {
     const v = sat.view(lv(extra), {}), [[i1, n1]] = STAGES[isl];
     if ((extra[i1] ?? 0) >= n1) { assert.ok(stageOn(v, isl, 1)); continue; }   // 同一個物品（階梯丘）：第二段必然在第一段之後
     assert.ok(stageOn(v, isl, 2) && !stageOn(v, isl, 1), `${isl}: stage 2 alone at ${JSON.stringify(extra)}`);
@@ -225,9 +225,9 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
   // 寶箱島：全 MAX 才噴金幣；差一級就沒有
   assert.ok(sat.view(allMax, {})['sat.chest.stage2']);
   for (const id of spec.ORDER) assert.equal(sat.view({ ...allMax, [id]: allMax[id] - 1 }, {})['sat.chest.stage2'], undefined, `${id} one short`);
-  // 石堆島：第二段 = 外星綠光圈（老鼠 Lv5 外星），賽博沒有；不另外加零件
-  assert.ok(!stageOn(sat.view(lv({ rat: 5 }), { ratBranch: 'cyber' }), 'rocks', 2));
-  assert.ok(sat.view(lv({ rat: 5 }), { ratBranch: 'alien' })['sat.rocksRing']);
+  // 石堆島：第二段 = 外星綠光圈（老鼠 Lv4 外星），賽博沒有；不另外加零件
+  assert.ok(!stageOn(sat.view(lv({ rat: 4 }), { ratBranch: 'cyber' }), 'rocks', 2));
+  assert.ok(sat.view(lv({ rat: 4 }), { ratBranch: 'alien' })['sat.rocksRing']);
   // 空島：開局什麼段都沒有
   assert.deepEqual(Object.keys(sat.view(lv({}), {})).filter(k => /\.stage\d$/.test(k)), []);
 });
@@ -262,7 +262,7 @@ import { ISLAND_HOME, ISLAND_R } from '../src/actors/bulb.js';
 // 六角半徑（pointy-top：|x| 換算成外接半徑、|z| + |x|/√3 取大）：島緣的步道環從 RING_R − 0.14 = 2.11 起
 const hexR = (dx, dz) => Math.max(Math.abs(dx) * 2 / Math.sqrt(3), Math.abs(dz) + Math.abs(dx) / Math.sqrt(3)), ISLET_R = 2.0;
 test('islet parts stay inside their islet footprint and off the keeper / tourist / kid spots; draw calls per islet ≤ 6', () => {
-  const full = { ...allMax }, views = [sat.view(full, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 5, baseball: 6 }), { ratBranch: 'alien' })];
+  const full = { ...allMax }, views = [sat.view(full, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 4, baseball: 6 }), { ratBranch: 'alien' })];
   const centreOf = k => sat.island(k.split('.')[1]);
   // 不能壓到的站位：{ x, z, r }（r = 散步圈半徑，量到圈上）
   const keep = v => {
@@ -328,7 +328,7 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
 // 棧橋（審查 fix round 1）：大部分伸在海上（六角島緣外）、板面頂在島面之上（蓋在路緣上）、遠端過了停好的小船船身中段、
 // 船側離板面 ≤ 0.2（靠在旁邊）；小船最後一段航線掃過的範圍不碰板面。船的尺寸照 Boat.glb 的 bounding box × FERRY_H 的縮放量
 test('the lighthouse pier reaches out over the sea beside the moored ferry, on top of the curb, clear of the ferry route', () => {
-  const pier = sat.view(lv({ boba: 6, bulb: 7 }), {})['sat.lighthouse.stage2'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
+  const pier = sat.view(lv({ boba: 5, bulb: 7 }), {})['sat.lighthouse.stage2'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
   const deck = pier.parts[0], len = deck.scale[2], half = deck.scale[0] / 2;
   assert.ok(Math.abs(Math.hypot(deck.pos[0], deck.pos[2]) - Math.hypot(...[d[0] * (s0 + s1) / 2 + n[0] * LAT, d[1] * (s0 + s1) / 2 + n[1] * LAT])) < 1e-9 && Math.abs(len - (s1 - s0)) < 1e-9, 'parts[0] is the deck');
   assert.ok(pier.at.y + deck.pos[1] + deck.scale[1] / 2 >= TOP - 0.2 + 0.01, 'deck top above the island surface (on the curb)');
@@ -385,11 +385,11 @@ test('islet draw calls: full MAX satellites ≤ 24 (was 27) on normal quality, u
   assert.ok(campOnly.parts.length && campOnly.parts.length < camp.parts.length);
   assert.equal(geoOf(builtFactory('low'), camp), geoOf(builtFactory('low'), campOnly), 'phone: only the camp');
   assert.ok(geoOf(builtFactory(), camp) > geoOf(builtFactory(), campOnly), 'normal: camp + tent');
-  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 7, boba: 6 }), {})['sat.lighthouse.stage2']), 0, 'phone: no islet decoration');
+  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 7, boba: 5 }), {})['sat.lighthouse.stage2']), 0, 'phone: no islet decoration');
 });
 // 裁決 R7：下一段出現時已經站著的不重閃——每座島把另一段的觸發拉上去，這一段的零件 spec 一字不變（寶箱：海鷗飛來寶箱不變）
 const STAGE_TRIGGERS = {
-  lighthouse: [{ bulb: 7 }, { boba: 6 }], windmill: [{ bulb: 7 }, { chip: 6 }], rocks: [{ rat: 3 }, { rat: 5 }],
+  lighthouse: [{ bulb: 7 }, { boba: 5 }], windmill: [{ bulb: 7 }, { chip: 6 }], rocks: [{ rat: 3 }, { rat: 4 }],
   pyramid: [{ chip: 3 }, { chip: 9 }], playground: [{ token: 8 }, { milk: 10 }], forest: [{ boba: 5 }, { bulb: 9 }],
 };
 test('raising one islet stage trigger leaves the other stage part (and the chest) spec untouched', () => {

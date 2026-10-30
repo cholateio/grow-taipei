@@ -250,12 +250,12 @@ test('the ◆ key nodes are Lv7, Lv8 (R6) and Lv9 (R11); the Lv9 standby holds o
   assert.ok(i > 0 && j > i, 'holds on the overview before LEVEL UP');
   assert.equal(beats[0].kind, 'focus'); assert.equal(beats[0].target, 'home', 'opens on the overview (the whole dome)');
 });
-// 物品 v2 的兩條正解晶片 Lv3 時老鼠都還沒生窩：老鼠先放、晶片第二個放（老鼠 Lv3 時晶片升到 3）
+// 唯一正解晶片 Lv3 時老鼠還沒放：另找一局老鼠先生窩、晶片才長到 3
 test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
-  // 回到 GROW（2026-10-29）：晶片 3 是 auto（放下當回合 Lv2、下一回合 3），老鼠放下當回合就 Lv2——老鼠先放、晶片第二個放，
-  // 第三回合晶片長到 3 時老鼠 2（老鼠 3 要代幣 ≥4，停在 2）。舊的放法（選擇帶動升級：晶片 up[3] 要燈泡 ≥6）晶片 3 時老鼠還沒放
-  const { n } = await liveAt(h, ['rat', 'chip', 'milk'], isChip(3));
+  // 唯一正解（2026-10-31）：晶片 3 要燈泡 ≥3（燈泡 3 要代幣在場）——鮮奶、晶片、老鼠、燈泡、代幣：第 3 回合老鼠生窩（鮮奶 ≥2），
+  // 第 5 回合代幣放下、燈泡 3、晶片 3（一級一級長，不是跳級）時老鼠還在窩裡（老鼠 3 要代幣 ≥4）
+  const { n } = await liveAt(h, ['milk', 'chip', 'rat', 'bulb', 'token'], isChip(3));
   assert.ok(show.stage.lv.rat >= 2);
   const [d] = show.roster.members('chip.detective'); assert.equal(d?.walker.accessory, 'glass');
   assert.equal(show.roster.members('chip.engineers').length, 2);   // 3 個穿外套的，一個變偵防師（計畫 9 §5 拿掉騎車的之後）

@@ -159,17 +159,15 @@ test('people hidden at their doors during the typhoon placed script are back out
   assert.ok(done);
 });
 
-// 老鼠撞歪攤車、牛奶箱（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白）。
-//   珍奶、燈泡、老鼠：珍奶 Lv3 在老鼠那回合等晶片（不重建），攤車歪到回合結束。
+// 老鼠撞歪牛奶箱（§8.6「下回合白光扶正」，§13.2 改成零件自己閃白；撞歪珍奶攤車唯一正解 §5.2 拿掉了）。
 //   牛奶箱：選擇帶動升級之後鮮奶放下當回合就是 Lv2，老鼠放下時鮮奶一定 ≥ 2（被咬是掉級翻倒、不是撞歪），
 //   真的一局走不到「鮮奶 Lv1 被咬」——直接演事件：鮮奶停在 Lv1，老鼠放下咬一口（delta 1 → 1，撞歪）
-const engineTurns = order => { let s = engine.createState(spec); return order.map(id => { const r = place(s, id); s = r.state; return [...r.events, { kind: 'settle' }]; }); };
 const biteTurns = () => [
   [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'settle' }],
   [{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, { kind: 'settle' }],
   [{ kind: 'placed', item: 'chip', to: 1 }, { kind: 'settle' }],
 ];
-for (const [turns, key, rz] of [[() => engineTurns(['boba', 'bulb', 'rat', 'milk', 'token']), 'boba.main', 0.25], [biteTurns, 'milk.crate', 0.35]]) {
+for (const [turns, key, rz] of [[biteTurns, 'milk.crate', 0.35]]) {
   test(`a knocked part is righted with a blink at the start of the next turn (${key})`, async () => {
     const { show, run } = await headlessShow();
     let knocked = false;

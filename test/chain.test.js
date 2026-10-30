@@ -146,7 +146,8 @@ test('island chain, event by event: each chain part first appears with its own e
   }
 });
 
-test('both solutions end on the shield: every item MAX, no disaster flag, cyber / alien ending, satellites at the finale', async () => {
+// 唯一正解（2026-10-31 §4.5）：真結局只有 cyber（外星改成壞結局「變異鼠稱王」，見 finale.test）
+test('the solution ends on the shield: every item MAX, no disaster flag, the cyber ending, satellites at the finale', async () => {
   const branches = [];
   for (const [n, { turns, state }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), end = turns.at(-1);
@@ -155,10 +156,10 @@ test('both solutions end on the shield: every item MAX, no disaster flag, cyber 
     assert.equal(missile(state, spec), 'shield');
     const r = resolve(state, spec); branches.push(r.id);
     assert.equal(r.id, state.flags.ratBranch, `${name}: ${r.id}`); assert.deepEqual(r.extras, []);
-    // 終局的衛星島：寶箱打開、石堆綠光圈只在外星
-    assert.ok(end.keys.has('sat.chest')); assert.equal(end.keys.has('sat.rocksRing'), state.flags.ratBranch === 'alien', `${name}: rocks ring`);
+    // 終局的衛星島：寶箱打開、石堆綠光圈（外星才有）不在、石堆的老鼠被軍團收掉
+    assert.ok(end.keys.has('sat.chest')); assert.ok(!end.keys.has('sat.rocksRing'), `${name}: no rocks ring`); assert.ok(!end.keys.has('sat.rocks'), `${name}: no rocks rats`);
   }
-  assert.deepEqual(branches.sort(), ['alien', 'cyber']);
+  assert.deepEqual(branches, ['cyber']);
 });
 
 // 最終章（選擇帶動升級 §4）：最後一輪是一般回合（沒有倒數字），終局回合演警告＋矽盾擋下＋各自的尾聲，演完回全景（turnEnd 查）、

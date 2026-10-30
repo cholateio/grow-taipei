@@ -13,6 +13,8 @@
 //   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
+//   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO），只有 cyber 演尾聲——
+//   外星尾聲在單一正解下到不了。劇本、零件、母艦都留著（之後給圖鑑），測試照舊直接演 epilogue 事件驗它。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
@@ -327,7 +329,7 @@ export const script = {
   },
 };
 
-// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
+// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速；唯一正解下到不了——外星是壞結局、不演尾聲，留給圖鑑，見檔頭）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
 //   鏡頭推到石堆島（裁決 R5；focus 的點用 worldToAxial 反算格子，衛星島也算得出格子，點直接交給 rig.focus）→ 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
 //   外星生物閃白 → 回全景停 0.8 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
 //   老鼠的家搬上碟頂（apply）、閃白放上去（roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常 → 剩下的套用（小 UFO 拿掉）→

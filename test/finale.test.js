@@ -101,8 +101,8 @@ test('warning skipped (instant): alarm 1, the flare is there, nobody left in scr
 });
 
 test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×844 portrait overview (lit-stage skyline)', () => {
-  const lv = { milk: 10, baseball: 8, token: 10, rat: 5, boba: 7, typhoon: 3, chip: 9, bulb: 9 };
-  const main = tower.view(lv, {}, { total: 61 })['tower.main'], skyline = main.at.y + main.labelY;
+  const lv = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 4, chip: 9, bulb: 9 };
+  const main = tower.view(lv, {}, { total: 60 })['tower.main'], skyline = main.at.y + main.labelY;
   assert.ok(skyline > 7, `lit skyline (${skyline})`);
   const portrait = () => {
     const camera = new THREE.PerspectiveCamera(32, 390 / 844, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
@@ -126,7 +126,8 @@ import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
 import { SHIELD } from '../src/actors/parts.js';
 import { HOLD_END, FLIGHT, DEFLECT } from '../src/actors/finale.js';
 
-const LIT = { milk: 10, baseball: 8, token: 10, rat: 5, boba: 7, typhoon: 3, chip: 9, bulb: 9 }, LIT_META = { total: 61 };
+// 全 MAX（唯一正解：老鼠 4、珍奶 6、颱風 4，總等級 60）
+const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 4, chip: 9, bulb: 9 }, LIT_META = { total: 60 };
 const TOWER_AT = anchorWorld('tower');
 const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
@@ -423,13 +424,14 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
   assert.ok(dist3({ x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }, park) < 1e-6, 'skip: the car parked');
 });
 
-// ── 外星尾聲（設計 §7，任務 7）──
+// ── 外星尾聲（設計 §7，任務 7）：唯一正解（2026-10-31 §4.5）之後外星是壞結局「變異鼠稱王」，不演尾聲。
+// 尾聲的零件與劇本留著給圖鑑：view 測試照舊（純函數），整局 live 的測試換成「外星是壞結局」──
 import { UFO_N, UFO_PARTS_BIG } from '../src/actors/finale.js';
 import { SHIP_SPOT, UFO_PARTS } from '../src/actors/rat.js';
 import { island } from '../src/actors/satellites.js';
-import { shipTop } from '../src/actors/tower.js';
 import { C } from '../src/actors/palette.js';
-const ALIEN_ORDER = stats(enumerate(spec), spec).full.find(r => r.ending.id === 'alien').order;
+// 外星壞局：列舉裡第一條老鼠 Lv4 分岔成外星的放法
+const ALIEN_ORDER = enumerate(spec).find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;
 const meshes = o => { const out = []; o.traverse(x => { if (x.isMesh) out.push(x); }); return out; };
 
 test('view: epilogue alien draws finale.ufos (one compound, three saucers over the rocks island) and finale.aliens (three, bobbing, C.alien glow)', () => {
@@ -472,120 +474,25 @@ test('view: epilogue alien draws finale.ufos (one compound, three saucers over t
   part.dispose();
 });
 
-// 外星正解整局瞬間演完、飛彈瞬間演完，尾聲 live（終局回合 1 倍速）
-async function alienFinale(opts = {}) {
-  const h = await headlessShow(opts);
+// 外星是壞結局（唯一正解 §4.5）：結局「變異鼠稱王」、終局只有警告＋飛彈、沒有尾聲；畫面就是老鼠 Lv4 外星型態——
+// 戴王冠的變異鼠、頭上的小 UFO、石堆島的綠光圈（整局演完、終局回合也演完之後都還在）
+test('alien is a bad ending (變異鼠稱王): finaleEvents has no epilogue; the rat Lv4 alien view shows the crowned mutant + the small UFO and the rocks-islet ring', async () => {
+  const { ENDINGS } = await import('../src/rules/endings.js');
+  const h = await headlessShow();
   let s = createState(spec);
-  for (const st of turnSteps(ALIEN_ORDER)) {
-    const r = st(s); s = r.state;
-    await h.run([...r.events, { kind: 'settle' }], { instant: true });
-  }
-  const [warn, missileEvent, epilogueEvent] = finaleEvents(resolve(s, spec));
-  assert.equal(epilogueEvent?.ending, 'alien');
-  await h.run([warn, missileEvent], { finale: true, instant: true });
-  return { ...h, epilogueEvent };
-}
-
-test('alien epilogue live: mutant waves + ！, pad blinks in, UFOs descend 2 s, aliens blink in, mothership blinks in, mood alien, king on top + ♥, ends on the overview; ≤ 12 s real', async () => {
-  const { show, run, bubblesLog, worldLog, rig, epilogueEvent } = await alienFinale();
-  const w0 = worldLog.length, n0 = bubblesLog.length, r0 = rig.log.length, main0 = show.stage.partObject('tower.main'), pad0 = show.stage.partObject('sat.rocksRing');
-  assert.ok(pad0, 'the green ring is there before');
-  const mutant = show.roster.members('rat.pack')[0];
-  const t = {}, mark = (k, cond, now) => { if (t[k] === undefined && cond) t[k] = now; };
-  let waving = 0, ufoY = [], seen = n0;
-  const said = [];
-  const update = show.update.bind(show);
-  show.update = (d, tt) => {
-    update(d, tt);
-    const now = show.elapsed;
-    while (seen < bubblesLog.length) said.push({ ...bubblesLog[seen++], t: now });
-    if (mutant.waving) waving += d;
-    mark('pad', show.stage.partObject('sat.rocksRing') !== pad0, now);
-    const u = show.stage.partObject('finale.ufos');
-    mark('ufos', !!u, now);
-    if (u) ufoY.push([now, u.userData.showOffset?.dy ?? 0]);
-    mark('aliens', !!show.stage.partObject('finale.aliens'), now);
-    mark('ship', show.stage.partObject('tower.main') !== main0, now);
-    mark('mood', worldLog.slice(w0).some(([w]) => w.mood === 'alien'), now);
-    mark('top', dist3(mutant.pos, SHIP_SPOT) < 1e-6, now);
-  };
-  await run([epilogueEvent], { finale: true });
-  show.update = update;
-  const secs = show.elapsed;
-  console.log(`alien epilogue: ${secs.toFixed(2)} s real (${Object.entries(t).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ')})`);
-  assert.ok(secs <= 12, `≤ 12 s real (${secs.toFixed(2)})`);
-  const bang = said.filter(b => b.kind === '！'), heart = said.filter(b => b.kind === '♥');
-  assert.equal(bang.length, 1, 'the mutant ！');
-  const spring = landmarkWorld('spring');
-  assert.ok(Math.hypot(bang[0].at.x - spring.x, bang[0].at.z - spring.z) < 1.5, '！ over the mutant by the spring');
-  assert.ok(bang[0].t < t.pad, '！ before the pad');
-  assert.ok(waving >= 0.9, `the mutant waves (${waving.toFixed(2)})`);
-  assert.ok(t.pad < t.ufos && t.ufos < t.aliens && t.aliens < t.ship && t.ship <= t.mood && t.mood <= t.top, 'pad → ufos → aliens → mothership → mood → king');
-  // UFO 從 7 高降下來，2 秒
-  const high = ufoY.find(([, dy]) => dy > 6.5), low = ufoY.find(([, dy]) => dy === 0);
-  assert.ok(high && low, 'descends from dy 7 to 0');
-  assert.ok(Math.abs(low[0] - high[0] - 2.0) < 0.15, `in 2 s (${(low[0] - high[0]).toFixed(2)})`);
-  assert.equal(heart.length, 1, '♥');
-  assert.ok(heart[0].t >= t.top && heart[0].at.y > shipTop(), '♥ over the king on the ship top');
-  assert.ok(show.stage.partKeys().includes('finale.ufos') && show.stage.partKeys().includes('finale.aliens'));
-  assert.ok(!show.stage.partKeys().includes('rat.ufo'), 'the small UFO is gone');
-  assert.ok(!show.stage.partKeys().includes('sat.rocks'), 'the stone rats are gone');
-  assert.ok(dist3(mutant.pos, SHIP_SPOT) < 1e-6 && mutant.mode === 'home', 'the king sits on the ship top');
-  assert.equal(worldLog.at(-1)[0].mood, 'alien', 'third eyes to the end');
-  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
-  // 鏡頭（裁決 R5）：溫泉 → 石堆島（降落場、UFO、外星生物都在那裡演）→ 全景（母艦、王冠鼠）
-  const cam = rig.log.slice(r0), foci = cam.filter(([k]) => k === 'focus').map(([, p]) => p), rocks = island('rocks');
-  assert.equal(foci.length, 2, `two focus moves (${cam.map(c => c[0]).join(' ')})`);
-  assert.ok(Math.hypot(foci[0].x - spring.x, foci[0].z - spring.z) < 1e-6, 'first the spring');
-  assert.ok(Math.hypot(foci[1].x - rocks.x, foci[1].z - rocks.z) < 1e-6, 'then the rocks islet');
-  const homeAt = cam.findIndex(([k]) => k === 'home');
-  assert.ok(homeAt > cam.findIndex(c => c[1] === foci[1]) && cam.at(-1)[0] === 'home', 'then the overview, to the end');
-  // 跳過：終態一樣
-  const skip = await alienFinale();
-  await skip.run([skip.epilogueEvent], { finale: true, instant: true });
-  assert.deepEqual(skip.show.stage.partKeys().sort(), show.stage.partKeys().sort());
-  assert.ok(dist3(skip.show.roster.members('rat.pack')[0].pos, SHIP_SPOT) < 1e-6, 'skip: the king on the ship top');
-  assert.equal(skip.worldLog.at(-1)[0].mood, 'alien');
-  assert.equal(everyone(skip.show).filter(m => m.mode === 'script').length, 0, 'skip: everyone released');
-  assert.ok(!skip.show.roster.members('rat.pack')[0].waving, 'skip: the wave is cleared');
-  const so = skip.show.stage.partObject('finale.ufos'), lo = show.stage.partObject('finale.ufos');
-  assert.ok(dist3(so.position, lo.position) < 1e-9, 'skip: the UFOs landed');
-});
-
-test('alien epilogue on low quality draws ufos as one mesh', async () => {
-  const { show, run, epilogueEvent } = await alienFinale({ quality: 'low' });
-  await run([epilogueEvent], { finale: true, instant: true });
-  assert.equal(meshes(show.stage.partObject('finale.ufos')).length, 1, 'one draw call');
-  assert.equal(meshes(show.stage.partObject('finale.aliens')).length, 1, 'the aliens too');
-  assert.equal(meshes(show.stage.partObject('tower.main')).length, 1, 'the mothership too');
-});
-
-// 裁決 R5：真的鏡頭——推到石堆島飛完之後（外星生物出現那一刻），島心、外星生物、三台 UFO 都投影在 NDC ±0.9 裡；
-// 母艦換上的時候鏡頭已經在回全景
-test('alien epilogue camera (real rig): the rocks islet, the UFOs and the aliens are on screen while focused', async () => {
-  const portrait = () => {
-    const camera = new THREE.PerspectiveCamera(32, 390 / 844, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
-    const rig = createCameraRig({ THREE, camera, controls }); rig.fit(390 / 844);
-    return { rig, camera, controls };
-  };
-  for (const [aspect, r] of [['16:9', overviewRig()], ['390×844', portrait()]]) {
-    const { show, run, epilogueEvent } = await alienFinale({ rig: r.rig });
-    const rocks = island('rocks'), v = finale.view(LIT, { missile: 'shield', epilogue: 'alien' }, LIT_META), u = v['finale.ufos'];
-    const points = [['islet', rocks], ['aliens', v['finale.aliens'].at], ...[1, 4, 7].map(i => [`ufo ${i}`, { x: u.at.x + u.parts[i].pos[0], y: u.at.y + u.parts[i].pos[1], z: u.at.z + u.parts[i].pos[2] }])];
-    let seen = null;
-    const update = show.update.bind(show);
-    show.update = (d, t) => {
-      update(d, t);
-      if (seen === null && show.stage.partObject('finale.aliens')) {
-        assert.ok(!r.rig.flying, `${aspect}: the camera has settled on the islet when the aliens appear`);
-        r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
-        seen = points.map(([name, p]) => [name, new THREE.Vector3(p.x, p.y, p.z).project(r.camera)]);
-      }
-    };
-    await run([epilogueEvent], { finale: true });
-    show.update = update;
-    assert.ok(seen, 'the aliens appeared');
-    console.log(`alien camera ${aspect}: ${seen.map(([n, p]) => `${n} (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join(', ')}`);
-    for (const [name, p] of seen) assert.ok(Math.abs(p.x) <= 0.9 && Math.abs(p.y) <= 0.9 && p.z < 1, `${aspect} ${name}: NDC (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
-  }
+  for (const st of turnSteps(ALIEN_ORDER)) { const r = st(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(s.flags.ratBranch, 'alien'); assert.equal(s.lv.rat, 4);
+  const ending = resolve(s, spec);
+  assert.equal(ending.id, 'alien'); assert.equal(ENDINGS.alien.kind, 'bad'); assert.equal(ending.title, '變異鼠稱王');
+  const evs = finaleEvents(ending);
+  assert.deepEqual(evs.map(e => e.kind), ['warning', 'missile'], 'no epilogue');
+  await h.run(evs, { finale: true, instant: true });
+  const { show } = h, [mutant] = show.roster.members('rat.pack');
+  assert.equal(show.roster.members('rat.pack').length, 1);
+  assert.ok(mutant.dress.crown && mutant.dress.eye && mutant.dress.h === 0.5, 'the crowned mutant');
+  assert.ok(Math.hypot(mutant.pos.x - SHIP_SPOT.x, mutant.pos.z - SHIP_SPOT.z) > 1, 'not on a mothership');
+  assert.ok(show.stage.partObject('rat.ufo'), 'the small UFO');
+  assert.ok(show.stage.partObject('sat.rocksRing'), 'the green ring on the rocks islet');
+  assert.ok(!show.stage.partKeys().some(k => k === 'finale.ufos' || k === 'finale.aliens'), 'no landing UFOs, no aliens');
+  assert.equal(show.stage.flags.epilogue, undefined);
 });

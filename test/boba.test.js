@@ -18,13 +18,13 @@ import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
 import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
-const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 兩條正解（賽博、外星），從求解器取
+const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const AT = anchorWorld('boba'), CELL = cellOf('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
 const LIGHT_I = SATELLITES.findIndex(s => s.kind === 'lighthouse'), LIGHT = axialToWorld(SATELLITES[LIGHT_I].q, SATELLITES[LIGHT_I].r);
 const onLighthouse = p => !cellAt(p.x, p.z) && satelliteAt(p) === LIGHT_I;
-const views = Array.from({ length: 8 }, (_, n) => boba.view(lv({ boba: n }), {}));
+const views = Array.from({ length: 7 }, (_, n) => boba.view(lv({ boba: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => keys.includes(k)));
 // 珍奶看得見的東西：自己的零件＋小森林島分店、觀光船（衛星島）
@@ -32,24 +32,28 @@ const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.
 // 鏡頭方向（水平）：OVERVIEW_DIR 指向鏡頭
 const CAM = (() => { const n = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z); return { x: OVERVIEW_DIR.x / n, z: OVERVIEW_DIR.z / n }; })();
 
-test('boba has its v2 ladder (max 7)', () => { assert.equal(spec.ITEMS.boba.max, 7); });
+test('boba has its single-path ladder (max 6)', () => { assert.equal(spec.ITEMS.boba.max, 6); });
 
-// ── view：每一級看得見的東西都不一樣（§4.7）──
-test('boba has something new at every level 1–7: cart, queue, shop, fountain, branch, flagship, festival', () => {
+// ── view：每一級看得見的東西都不一樣（§4.7；唯一正解 §4.4：分店與旗艦店同一級）──
+test('boba has something new at every level 1–6: cart, queue, shop, fountain, islets (branch + flagship), festival', () => {
   assert.deepEqual(Object.keys(views[1]), ['boba.main', 'boba.owner']);
-  for (let n = 2; n <= 7; n++) assert.ok(diffParts(nonRoster(whole(n - 1)), nonRoster(whole(n))).add.length, `lv${n}: something new`);
+  for (let n = 2; n <= 6; n++) assert.ok(diffParts(nonRoster(whole(n - 1)), nonRoster(whole(n))).add.length, `lv${n}: something new`);
   assert.equal(views[2]['boba.queue'].n, 3);
   assert.equal(views[3]['boba.main'].kind, 'glb'); assert.equal(views[2]['boba.main'].kind, 'compound');
   assert.ok(views[4]['boba.fountain'] && !views[3]['boba.fountain'], 'Lv4 fountain');
   assert.ok(whole(5)['sat.forest.stage1'] && !whole(4)['sat.forest.stage1'], 'Lv5 forest branch');
   assert.equal(whole(5)['sat.boats'].n, whole(4)['sat.boats'].n + 2, 'Lv5 two more tour boats');
-  assert.ok(views[6]['boba.flagship'] && !views[5]['boba.flagship'], 'Lv6 flagship');
-  assert.ok(views[7]['boba.fleet'] && !views[6]['boba.fleet'] && views[7]['boba.yard'].parts.some(p => p.coast), 'Lv7 balloons and fleet');
-  assert.ok(boba.script.placed && [2, 3, 4, 5, 6, 7].every(n => boba.script.grow[n]) && boba.script.fx && boba.script.rep);
+  // 同一級：森林島分店、燈塔島旗艦店、小船、觀光客、無人機、棧橋
+  assert.ok(views[5]['boba.flagship'] && !views[4]['boba.flagship'], 'Lv5 flagship');
+  assert.ok(views[5]['boba.ferry'] && views[5]['boba.tourists'] && boba.DRONE_KEYS.every(k => views[5][k]), 'Lv5 ferry, tourists, drones');
+  assert.ok(sat.view(lv({ boba: 5 }), {})['sat.lighthouse.stage2'] && !sat.view(lv({ boba: 4 }), {})['sat.lighthouse.stage2'], 'Lv5 lighthouse pier');
+  assert.ok(views[6]['boba.fleet'] && !views[5]['boba.fleet'] && views[6]['boba.yard'].parts.some(p => p.coast), 'Lv6 balloons and fleet');
+  assert.ok(!views[5]['boba.yard'].parts.some(p => p.coast), 'no balloons before Lv6');
+  assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7] && boba.script.fx && boba.script.rep);
 });
 // 人數預算（使用者 2026-10-26）：人龍 ≤ 4，不再有閒晃的觀光客
 test('people budget: queue of 3 at every level, no strollers anywhere', () => {
-  for (let n = 1; n <= 7; n++) for (const milk of [0, 2, 4, 10]) {
+  for (let n = 1; n <= 6; n++) for (const milk of [0, 2, 4, 10]) {
     const v = boba.view(lv({ boba: n, milk }), {});
     assert.equal(v['boba.strollers'], undefined, `lv${n} milk${milk}`);
     assert.ok(Object.keys(v).every(k => !k.includes('stroll')));
@@ -77,7 +81,7 @@ test('the shop sits 0.05 north of the anchor with open ground in front; the foun
 });
 // 人龍（§13.3、計畫 3.8 Task 7）：一排、同一個 z、沿 x 間距 0.25、都面向攤車／店；店門口那排離捷運站、月台的入口 ≥ 0.25
 test('the queue is one horizontal row facing the cart (Lv2) or the shop door (Lv3+); clear of the station and platform entries', () => {
-  for (const [n, shop] of [[2, false], [3, true], [7, true]]) {
+  for (const [n, shop] of [[2, false], [3, true], [6, true]]) {
     const q = views[n]['boba.queue'].home.spots;
     assert.deepEqual(q, boba.queue(AT, 3, shop));
     for (const p of q) {
@@ -116,7 +120,7 @@ test('Lv4 fountain sits beside the shop on the side away from the camera, so the
 // 老闆的站位每一級、每一種夜市（燈泡 0–9）、車站（代幣 0–10）都走得到（原本攤車後面被夜市第四攤擋住）
 test('the owner\'s spot is walkable at every boba level, every bulb level and every station', () => {
   const nav = createNav();
-  for (let n = 1; n <= 7; n++) for (let b = 0; b <= 9; b++) for (const t of [0, 3, 9]) {
+  for (let n = 1; n <= 6; n++) for (let b = 0; b <= 9; b++) for (const t of [0, 3, 9]) {
     const L = lv({ boba: n, bulb: b, token: t, baseball: 8 }), all = [boba, bulb, token, baseball].flatMap(m => Object.values(m.view(L, {})));
     nav.setFootprints(all.flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
     const o = boba.view(L, {})['boba.owner'].home.spots[0];
@@ -124,9 +128,9 @@ test('the owner\'s spot is walkable at every boba level, every bulb level and ev
     for (const q of boba.view(L, {})['boba.queue']?.home.spots ?? []) assert.ok(nav.walkable(q.x, q.z), `boba ${n} bulb ${b} token ${t}: queue (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`);
   }
 });
-// ★ Lv6 旗艦店（衛星島 view）：燈塔島上的店、靠岸的小船、住在島上的兩個觀光客；兩台外送無人機（kind 'orbit'）繞店飛一小圈
-test('Lv6: flagship on the lighthouse island, the ferry moored off it, two tourists living there; two delivery drones orbit the shop', () => {
-  const v = views[6];
+// ◆ Lv5 旗艦店（衛星島 view）：燈塔島上的店、靠岸的小船、住在島上的兩個觀光客；兩台外送無人機（kind 'orbit'）繞店飛一小圈
+test('Lv5: flagship on the lighthouse island, the ferry moored off it, two tourists living there; two delivery drones orbit the shop', () => {
+  const v = views[5];
   assert.ok(onLighthouse(v['boba.flagship'].at), 'flagship on the lighthouse island');
   assert.ok(Math.hypot(v['boba.flagship'].at.x - LIGHT.x, v['boba.flagship'].at.z - LIGHT.z) > 1.0, 'clear of the lighthouse and the keeper ring');
   const f = v['boba.ferry']; assert.equal(f.path, boba.MODELS.boat.path); assert.equal(cellAt(f.at.x, f.at.z), null);
@@ -147,21 +151,21 @@ test('Lv6: flagship on the lighthouse island, the ferry moored off it, two touri
   }
   assert.ok(boba.SAIL <= 5, 'boat ride ≤ 5 s (R10)');
 });
-// ◆ Lv7 世界珍奶節：靠海的每一條主島格邊一束氣球（全部一個零件 ≤ 3 個 draw call；2026-10-28 錄影修正：不用旗子）；
+// ◆ Lv6 世界珍奶節：靠海的每一條主島格邊一束氣球（全部一個零件 ≤ 3 個 draw call；2026-10-28 錄影修正：不用旗子）；
 // 船隊繞島，桅杆上掛圓燈籠（沒有任何矩形旗面）
-test('Lv7: one balloon bunch on each sea-facing main-cell edge (one part, no flags), a lantern fleet circling the island', () => {
+test('Lv6: one balloon bunch on each sea-facing main-cell edge (one part, no flags), a lantern fleet circling the island', () => {
   const outer = MAIN_CELLS.flatMap(c => [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]].filter(([dq, dr]) => !MAIN_CELLS.some(m => m[0] === c[0] + dq && m[1] === c[1] + dr)));
   assert.equal(boba.BALLOON_SPOTS.length, outer.length - 1, 'every sea edge but the dome-station edge');
   for (const p of boba.BALLOON_SPOTS) { const cell = cellAt(p.x, p.z); assert.ok(cell, 'on land'); assert.ok(distToCell(p, cell) > 1.9, 'by the coast'); }
-  const coast = views[7]['boba.yard'].parts.filter(p => p.coast);
+  const coast = views[6]['boba.yard'].parts.filter(p => p.coast);
   assert.equal(coast.filter(p => p.kind === 'cylinder').length, boba.BALLOON_SPOTS.length, 'one string per spot');
   assert.equal(coast.filter(p => p.kind === 'sphere').length, 3 * boba.BALLOON_SPOTS.length, 'three balloons per string');
   assert.ok(coast.every(p => p.kind !== 'box' && !p.glow && !p.flag), 'no flag faces; one clay draw call');
-  const fl = views[7]['boba.fleet']; assert.equal(fl.kind, 'fleet');
+  const fl = views[6]['boba.fleet']; assert.equal(fl.kind, 'fleet');
   assert.equal(fl.parts.filter(p => p.kind === 'sphere' && p.color === C.coral).length, boba.FLEET_N, 'a round lantern on every mast');
   assert.ok(fl.parts.every(p => p.kind !== 'box' || p.scale[0] > 0.1), 'no flag on the masts');
   for (const p of worldPoints(fl)) { const r = Math.hypot(p.x, p.z); assert.ok(r > 13.8 && r < 15.4, 'between the satellites and the sea boats'); }
-  assert.equal(boba.view(lv({ boba: 7, typhoon: 2 }), {})['boba.fleet'], undefined, 'the fleet stays in port during the storm');
+  assert.equal(boba.view(lv({ boba: 6, typhoon: 2 }), {})['boba.fleet'], undefined, 'the fleet stays in port during the storm');
 });
 
 // ── draw call：整格（含旗艦店、小船、無人機、船隊）≤ 14 ──
@@ -170,13 +174,13 @@ function drawCalls(v) {
   return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' || p.kind === 'fleet' ? compound(p.parts) : p.kind === 'glb' || p.kind === 'orbit' ? 1 + (p.glow ? 1 : 0) : 0), 0);
 }
 test('boba draw calls ≤ 14 at every level (fresh milk, storm included)', () => {
-  for (let n = 1; n <= 7; n++) for (const extra of [{}, { milk: 4 }, { typhoon: 2 }]) {
+  for (let n = 1; n <= 6; n++) for (const extra of [{}, { milk: 4 }, { typhoon: 2 }]) {
     const d = drawCalls(boba.view(lv({ boba: n, ...extra }), {})); assert.ok(d <= 14, `lv${n} ${JSON.stringify(extra)}: ${d}`);
   }
 });
 // ── 不出格（§14.1）：footprint 的角都在珍奶格裡；主島上的零件、站位都在珍奶格裡（海岸的氣球、旗艦店、小船、船隊、無人機的圈例外）──
 test('every boba footprint corner and every main-island part stays inside the boba cell', () => {
-  for (let n = 1; n <= 7; n++) for (const [key, s] of Object.entries(boba.view(lv({ boba: n, milk: 4 }), {}))) {
+  for (let n = 1; n <= 6; n++) for (const [key, s] of Object.entries(boba.view(lv({ boba: n, milk: 4 }), {}))) {
     for (const f of [].concat(s.footprint || [])) {
       const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
       for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), CELL, `lv${n} ${key} corner`);
@@ -187,7 +191,7 @@ test('every boba footprint corner and every main-island part stays inside the bo
   }
 });
 test('view: the owner is an apron roster that fidgets, standing by the cart / shop door facing the head of the queue', () => {
-  for (let n = 1; n <= 7; n++) {
+  for (let n = 1; n <= 6; n++) {
     const o = views[n]['boba.owner'];
     assert.deepEqual([o.kind, o.n, o.accessory, o.home.kind, o.home.fidget, o.home.rescue], ['roster', 1, 'apron', 'stand', 'wave', true]);
     assert.deepEqual(o.home.spots[0], boba.ownerSpot(n));
@@ -213,9 +217,9 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
   }
   throw new Error('event not found');
 }
-// 物品 v2 §6：一級 3–5 s；◆ Lv7 6–10 s（含鏡頭平移與回全景的整段，show.elapsed）
-const KEY = [7];
-test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 s whole), ends with LEVEL UP on boba, everyone home', async () => {
+// 物品 v2 §6：一級 3–4.5 s；◆ Lv5、Lv6 6–8 s（含鏡頭平移與回全景的整段，show.elapsed；唯一正解 §5.3）
+const KEY = [5, 6];
+test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv5, Lv6 6–8 s whole), ends with LEVEL UP on boba, everyone home', async () => {
   const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -235,14 +239,13 @@ test('scripts: every boba level in both solutions plays 3–5 s (◆ Lv7 6–10 
       assert.equal(show.roster.members('boba.owner').length, 1, `${what} owner`);
       assert.equal(show.roster.members('boba.queue').length, v['boba.queue']?.n ?? 0, `${what} queue`);
     });
-    // 物品 v2：颱風外送 +1（fx 的 delta）帶上去的那一級不是 grow 事件，不在這裡
-    assert.ok([1, 2, 3, 6, 7].every(l => seen.includes(l)), `boba events seen: ${seen}`);
+    // 颱風外送 +1（fx 的 delta）帶上去的 Lv2 不是 grow 事件，不在這裡（下一個測試自己演）
+    assert.deepEqual([...new Set(seen)].sort(), [1, 3, 4, 5, 6], `boba events seen: ${seen}`);
   }
 });
-// 正解裡不演自己劇本的兩級自己演一次：選擇帶動升級之後兩條正解都是 Lv4 跳級的第二級（只演 apply + LEVEL UP）、
-// Lv5 被颱風外送帶上去（fx 的 delta）。照 order 演到上一級，改成 grow 事件單獨演
-test('scripts: the levels a jump or the typhoon delivery skips (Lv4, Lv5) also play 3–5 s with their camera', async () => {
-  for (const [order, to] of SOLUTIONS.flatMap(o => [[o, 4], [o, 5]])) {
+// 正解裡不演自己劇本的那一級自己演一次：Lv2 被颱風外送帶上去（fx 的 delta）。照 order 演到上一級，改成 grow 事件單獨演
+test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: three tourists queue up', async () => {
+  for (const [order, to] of SOLUTIONS.map(o => [o, 2])) {
     const h = await headlessShow();
     let s = engine.createState(spec), done = false;
     const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
@@ -251,13 +254,9 @@ test('scripts: the levels a jump or the typhoon delivery skips (Lv4, Lv5) also p
       const i = r.events.findIndex(e => (e.kind === 'grow' && e.item === 'boba' && e.to === to) || (e.delta?.target === 'boba' && e.delta.to === to));
       if (i >= 0) {
         await h.run(r.events.slice(0, i), { instant: true });
-        const r0 = h.rig.log.length, secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
+        const secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
         assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} lv${to} took ${secs.toFixed(2)} s`);
-        if (to === 5) {
-          const f = SATELLITES.find(x => x.kind === 'forest'), c = axialToWorld(f.q, f.r), trail = focusTrail(h.rig.log, r0).map(String);
-          assert.deepEqual(trail.slice(-3), [String(worldToAxial(c.x, c.z)), String(CELL), 'home'], 'forest island, back to boba for LEVEL UP, then home');
-          assert.equal(h.show.roster.members('sat.forest').length, 2); assert.ok(h.show.stage.partObject('sat.forest.stage1'));
-        } else assert.ok(h.show.stage.partObject('boba.fountain'));
+        assert.equal(h.show.roster.members('boba.queue').length, 3);
         done = true; break;
       }
       s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true });
@@ -265,34 +264,35 @@ test('scripts: the levels a jump or the typhoon delivery skips (Lv4, Lv5) also p
     assert.ok(done, `${order.join('>')} lv${to} reached`);
   }
 });
-test('◆ Lv7 is the only key node; it puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
-  assert.deepEqual(Object.entries(boba.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [7]);
+test('◆ Lv5 and Lv6 are the key nodes; Lv6 puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
+  assert.deepEqual(Object.entries(boba.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [5, 6]);
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
-  const beats = flat(boba.script.grow[7]({ kind: 'grow', item: 'boba', to: 7 }, { lv: lv({ boba: 7 }), flags: {} }, ctx));
+  const beats = flat(boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, ctx));
   const label = beats.find(b => b.kind === 'levelUp' && b !== beats.at(-1)); assert.ok(label, '101 label');
   const homes = beats.map((b, i) => (b.kind === 'focus' && b.target === 'home' ? i : -1)).filter(i => i >= 0);
   assert.ok(homes.length && beats[homes.at(-1)].dur >= 1 && beats.at(-1).kind === 'levelUp', 'holds the overview, then LEVEL UP');
 });
 // 審稿（計畫 4 最後一輪）：「世界珍奶節」打在 101 頭頂上——鏡頭停在全景（裝得下 101 頭頂，§14.4）時打字；
 // 原本跟 focus('tower') 一起演，拉近 101 格把頭頂切掉、字在畫面外
-test('Lv7: 世界珍奶節 goes up over 101 while the camera holds the overview (the label never shares a beat with a focus)', () => {
-  const beats = boba.script.grow[7]({ kind: 'grow', item: 'boba', to: 7 }, { lv: lv({ boba: 7 }), flags: {} }, { B, roster: { members: () => [] } });
+test('Lv6: 世界珍奶節 goes up over 101 while the camera holds the overview (the label never shares a beat with a focus)', () => {
+  const beats = boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, { B, roster: { members: () => [] } });
   const i = beats.findIndex(b => b.kind === 'levelUp'), flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const before = flat(beats.slice(0, i)).filter(b => b.kind === 'focus');
   assert.ok(i > 0 && before.length && before.at(-1).target === 'home' && before.at(-1).dur >= 1, `on the overview before the label (${beats.map(b => b.kind)})`);
   assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
 });
-test('Lv7 live: the balloons and the fleet appear, 101 reads 世界珍奶節, the camera ends on the overview', async () => {
+test('Lv6 live: the balloons and the fleet appear, 101 reads 世界珍奶節, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, bubblesLog } = h;
-    const { n, r } = await liveAt(h, order, isBoba(7));
+    const { n, r } = await liveAt(h, order, isBoba(6));
     assert.ok(bubblesLog.slice(n).some(b => b.text === '世界珍奶節'), '101 label');
     assert.ok(show.stage.partObject('boba.fleet') && boba.view(show.stage.lv, show.stage.flags)['boba.yard'].parts.some(p => p.coast));
     assert.equal(focusTrail(h.rig.log, r).at(-1), 'home');
   }
 });
-// ★ Lv6 live：小船從碼頭開到燈塔島（≤ 5 s），兩個觀光客坐在船上（每幀跟著船），跳上岸、住在島上；鏡頭先到燈塔島、LEVEL UP 回珍奶格；無人機起飛
-test('Lv6 live: the ferry carries two tourists from the pier to the lighthouse island; they hop ashore and stay; the drones take off', async () => {
+// ◆ Lv5 live（分店＋旗艦店一段）：鏡頭先到小森林島（分店、茶屋、兩個觀光客閃白），再到燈塔島——小船從碼頭開到燈塔島（≤ 5 s），
+// 兩個觀光客坐在船上（每幀跟著船），跳上岸、住在島上；LEVEL UP 回珍奶格；無人機起飛
+test('Lv5 live: the forest branch appears, then the ferry carries two tourists from the pier to the lighthouse island; they hop ashore and stay; the drones take off', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show } = h, update = show.update, frames = [];
     let live = false;
@@ -302,7 +302,7 @@ test('Lv6 live: the ferry carries two tourists from the pier to the lighthouse i
       const b = show.stage.partObject('boba.ferry'), ts = show.roster.members('boba.tourists');
       frames.push({ boat: b && { x: b.position.x, z: b.position.z }, ts: ts.map(m => ({ ...m.pos })), drone: show.stage.partObject('boba.drones.0')?.children[0]?.position.y });
     };
-    const { r } = await liveAt(h, order, isBoba(6));
+    const { r } = await liveAt(h, order, isBoba(5));
     const what = order.join('>'), moving = frames.filter((f, i) => i && f.boat && frames[i - 1].boat && Math.hypot(f.boat.x - frames[i - 1].boat.x, f.boat.z - frames[i - 1].boat.z) > 1e-4);
     assert.ok(moving.length / 30 >= 1.5 && moving.length / 30 <= 5, `${what}: sailed ${(moving.length / 30).toFixed(2)} s`);
     assert.ok(near(moving[0].boat, boba.FERRY_PATH[0], 0.3), `${what}: leaves from the pier`);
@@ -313,8 +313,10 @@ test('Lv6 live: the ferry carries two tourists from the pier to the lighthouse i
     const ts = show.roster.members('boba.tourists'); assert.equal(ts.length, 2);
     for (const m of ts) { assert.ok(onLighthouse(m.pos), `${what}: lives on the lighthouse island`); assert.equal(m.mode, 'home'); }
     const b = show.stage.partObject('boba.ferry'); assert.ok(near(b.position, boba.DOCK, 1e-6), 'moored');
-    const trail = focusTrail(h.rig.log, r).map(String);
-    assert.deepEqual(trail.slice(-3), [String(worldToAxial(LIGHT.x, LIGHT.z)), String(CELL), 'home'], `${what}: ${trail}`);
+    const trail = focusTrail(h.rig.log, r).map(String), F = SATELLITES.find(x => x.kind === 'forest'), FC = axialToWorld(F.q, F.r);
+    assert.deepEqual(trail.slice(-4), [String(worldToAxial(FC.x, FC.z)), String(worldToAxial(LIGHT.x, LIGHT.z)), String(CELL), 'home'], `${what}: ${trail}`);
+    assert.equal(show.roster.members('sat.forest').length, 2); assert.ok(show.stage.partObject('sat.forest.stage1'), `${what}: forest branch`);
+    assert.ok(show.stage.partObject('sat.lighthouse.stage2') && show.stage.partObject('boba.flagship'), `${what}: pier and flagship`);
     const ys = frames.map(f => f.drone).filter(y => y != null); assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
   }
 });
@@ -344,10 +346,11 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   assert.ok(near(show.roster.members('boba.owner')[0].pos, boba.ownerSpot(1), 0.1), 'owner by the cart');
 });
+// 正解的 Lv2 是颱風外送帶上去的（fx）：用珍奶照常 1 → 2 的放法（命中那局，第 8 回合鮮奶 3 帶珍奶 2）
 test('Lv2: three tourists come from the pier and stand in the queue', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('boba.queue')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
-  await liveAt(h, SOLUTIONS[0], isBoba(2));
+  await liveAt(h, ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'], isBoba(2));
   assert.equal(firsts.size, 3);
   for (const p of firsts.values()) assert.ok(boba.PIER.some(q => near(p, show.nav.nearestWalkable(q), 0.3)), 'spawned at the pier');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
@@ -366,11 +369,12 @@ test('Lv3: the owner builds, the shop appears, the queue and the owner move to t
     assert.ok(near(show.roster.members('boba.owner')[0].pos, boba.ownerSpot(3), 0.1), 'owner by the door');
   }
 });
-// 物品 v2：糖分超標在珍奶 Lv4（鮮奶 ≤2），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）
-test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
+// 物品 v2：糖分超標在珍奶 Lv4（唯一正解 Task 1 裁決：鮮奶 ≤4），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）。
+// 放法：求解器列舉的第一條外星壞局（第 8 回合珍奶 2 → 4 跳級，鮮奶 5 → 4 被咬過）
+test('Lv4 with low milk is the sugar rush: every islander ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let s = engine.createState(spec), e4 = null, rest = [];
-  for (const id of ['boba', 'chip', 'rat', 'typhoon', 'token']) {
+  for (const id of ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon']) {
     const r = engine.place(s, id, spec); s = r.state;
     const i = r.events.findIndex(isBoba(4));
     if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e4 = r.events[i]; rest = r.events.slice(i + 1); break; }
@@ -383,32 +387,13 @@ test('Lv4 with milk ≤ 2 is the sugar rush: every islander ♥', async () => {
   assert.ok(secs <= 20, `${secs.toFixed(1)} s`);
   assert.equal(show.stage.flags.bobaSugar, true);
 });
-// 老鼠撞珍奶（§8.6）：攤車歪了、老闆 ！
-test('a rat knocks the cart: it tilts and the owner ！ over his head', async () => {
-  // 老鼠那回合珍奶若接著長就重建扶正——挑珍奶那回合不長、也不撲空的放法（已經到 MAX 7）。
-  // 計畫 9 連鎖（2026-10-30）：珍奶 6 要代幣 ≥7，原本的「珍奶、晶片、鮮奶、燈泡、代幣、老鼠」珍奶停在 5 等列車，
-  //   那回合結尾老闆去車站撲空、走離攤車，「！ 在老闆頭上」比的是撲空之後的位置。改成颱風的「外送爆單」把珍奶推過 6 的放法：
-  //   珍奶、燈泡、鮮奶、代幣、颱風、老鼠——放老鼠時珍奶 7、鮮奶 2（沒有棒球，咬得到），那回合沒有撲空
-  const h = await headlessShow(), { show, bubblesLog } = h;
-  const { n, events } = await liveAt(h, ['boba', 'bulb', 'milk', 'token', 'typhoon', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
-  assert.equal(show.stage.lv.boba, 7, '颱風外送 +1 已把珍奶推到 7（R8）');
-  // 這個放法的前提（審稿）：撞攤車那回合珍奶不長（長了就重建扶正，看不到歪）、老闆不去撲空（站在攤車旁）
-  assert.ok(!events.some(e => (e.kind === 'grow' && e.item === 'boba') || (e.kind === 'fx' && e.delta?.target === 'boba')), `boba does not grow in the knock turn: ${events.map(e => `${e.kind} ${e.item ?? e.delta?.target ?? ''}${e.to ?? e.delta?.to ?? ''}`).join(', ')}`);
-  assert.ok(!events.some(e => e.kind === 'wait'), 'no miss visit in the knock turn (the owner stays by the cart)');
-  const o = show.roster.members('boba.owner')[0];
-  assert.ok(o, 'owner exists');
-  assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9);
-  const bang = bubblesLog.slice(n).filter(b => b.kind === '！');
-  assert.ok(bang.some(b => Math.abs(b.at.y - (o.pos.y + o.headY)) < 0.05 && near(b.at, o.pos, 1.0)), 'owner ！');
-});
-
-// ── 碼頭入口（§13.2）：珍奶格靠海那側、走得到、離每個站位 ≥ 1.5（每一級；兩條正解每一刻的真 footprint）──
+// ── 碼頭入口（§13.2）：珍奶格靠海那側、走得到、離每個站位 ≥ 1.5（每一級；正解每一刻的真 footprint）──
 test('the pier entry is in the boba cell by the sea, walkable and ≥ 1.5 from every queue spot at every level', async () => {
   const c = axialToWorld(...CELL);
   assert.ok(!MAIN_CELLS.some(([q, r]) => q === CELL[0] + 1 && r === CELL[1]), 'east of the boba cell is sea');
   for (const p of boba.PIER) { assert.deepEqual(cellAt(p.x, p.z), CELL); assert.ok(p.x > c.x + 0.5, 'east half'); }
   const nav = createNav(), bad = [];
-  for (let n = 1; n <= 7; n++) for (const b of [0, 2, 4, 9]) {
+  for (let n = 1; n <= 6; n++) for (const b of [0, 2, 4, 9]) {
     const L = lv({ boba: n, bulb: b, milk: 4 }), v = boba.view(L, {});
     nav.setFootprints([...Object.values(v), ...Object.values(bulb.view(L, {}))].flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
     if (v['boba.queue']) assert.deepEqual(v['boba.queue'].home.entry, boba.PIER, `lv${n} queue entry`);
@@ -418,11 +403,11 @@ test('the pier entry is in the boba cell by the sea, walkable and ≥ 1.5 from e
   assert.deepEqual(bad, []);
 });
 
-// 拜訪點（計畫 6 設計 §4、§5）：兩條正解每一個 boba 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
+// 拜訪點（計畫 6 設計 §4、§5）：正解每一個 boba 的 placed／grow，演之前與演完之後問 visitSpot——在格子裡、站位走得到；問到的級寫死
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof boba.visitSpot, 'function');
   const { bad, seen } = await visitSpotsThroughSolutions(boba, SOLUTIONS, { cells: () => [[0, 1]] });
   assert.deepEqual(bad, []);
-  assert.deepEqual(seen, [1, 2, 3, 4, 7]);
+  assert.deepEqual(seen, [1, 3, 4, 6]);   // Lv2 是颱風外送（fx）、Lv5 在離島（null）
 });

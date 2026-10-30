@@ -192,12 +192,13 @@ test('foldEvent applies placed / grow / delta / flag and leaves the input alone'
   assert.equal(foldEvent(s1, { kind: 'fx', item: 'typhoon', flag: { name: 'blackout', value: true } }).flags.blackout, true);
   assert.equal(foldEvent(s1, { kind: 'wait', item: 'milk', waits: [] }), s1);
 });
-test('landsTyphoon: only the event that brings the typhoon to Lv2', () => {
-  assert.equal(landsTyphoon({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }), true);
-  assert.equal(landsTyphoon({ kind: 'fx', item: 'typhoon', delta: { target: 'typhoon', from: 1, to: 2 } }), true);
+// 颱風四站（設計 2026-10-31 §5.1）：「颱風到了」改看放下事件——烏雲放下那回合就到 101 上空、全島躲雨
+test('landsTyphoon: the typhoon placed event, never a grow or a delta', () => {
+  assert.equal(landsTyphoon({ kind: 'placed', item: 'typhoon', to: 1 }), true);
+  assert.equal(landsTyphoon({ kind: 'placed', item: 'milk', to: 1 }), false);
+  assert.equal(landsTyphoon({ kind: 'grow', item: 'typhoon', from: 1, to: 2 }), false);
   assert.equal(landsTyphoon({ kind: 'grow', item: 'typhoon', from: 2, to: 3 }), false);
-  assert.equal(landsTyphoon({ kind: 'grow', item: 'milk', from: 1, to: 2 }), false);
-  assert.equal(landsTyphoon({ kind: 'fx', item: 'typhoon', delta: { target: 'typhoon', from: 2, to: 2 } }), false);
+  assert.equal(landsTyphoon({ kind: 'fx', item: 'typhoon', delta: { target: 'typhoon', from: 1, to: 2 } }), false);
 });
 
 // 物品 v2（設計 2026-10-26 §3）：跳級 jump[n] 從 n−2 一次升兩級；delay[n] 成立時那一級要多等一回合
@@ -311,38 +312,46 @@ const playReal = (order, closing = 0) => {
   for (let i = 0; i < closing; i++) { s = advance(s, real).state; lvs.push(s.lv); }
   return { s, lvs };
 };
-test('delay[3] on typhoon: with baseball ≥ 3 the rainbow waits one extra turn instead of never coming', () => {
-  // 選擇帶動升級：颱風放下當回合就登陸。燈泡要到 6 才放得了晴，而燈泡 5 要棒球 ≥4，所以照常玩放晴時大巨蛋一定在：
-  // 晶片還沒測矽盾 → 放下（登陸）→ 賴在巨蛋一回合 → 放晴
-  // （因果設計 2026-10-28：棒球長要鮮奶 ≥3，所以鮮奶先放；第 6 個放颱風）
-  const { lvs } = playReal(['milk', 'chip', 'bulb', 'token', 'baseball', 'typhoon', 'rat', 'boba']);
-  assert.ok(lvs[6].baseball >= 3 && lvs[6].chip <= 7);
-  assert.deepEqual(lvs.slice(5, 8).map(l => l.typhoon), [2, 2, 3]);
-  // 正解（賽博）：第 8 個放、晶片已經 8 → 罩子把颱風推走，最後一輪就放晴
-  const cyber = playReal(['milk', 'baseball', 'bulb', 'token', 'chip', 'boba', 'rat', 'typhoon'], 1).lvs;
-  assert.deepEqual(cyber.slice(7).map(l => l.typhoon), [2, 3]); assert.equal(cyber[7].chip, 8);
-  // 矽盾測試過（晶片 ≥8）：罩子把颱風推走，不多等
-  const s0 = createState(real);
-  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 6, chip: 8 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, turn: 9 };   // 颱風上回合剛登陸
-  assert.equal(advance(lingering, real).state.lv.typhoon, 3);
-  assert.equal(advance({ ...lingering, lv: { ...lingering.lv, chip: 6 } }, real).state.lv.typhoon, 2);
+// 颱風四站（設計 2026-10-31 §4.3）：放下當回合停在 Lv1（up[2] 要 age ≥ 1），之後一回合移一站：車站 2、巨蛋 3、放晴 4
+test('the typhoon stays Lv1 in its placement turn, then moves one stop a turn: 2, 3, 4', () => {
+  const r = playReal(['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'], 1);
+  assert.deepEqual(r.lvs.map(l => l.typhoon), [0, 0, 0, 0, 0, 1, 2, 3, 4]);
+  let s = createState(real);
+  for (const id of ['milk', 'baseball', 'token', 'bulb', 'chip']) s = place(s, id, real).state;
+  const t6 = place(s, 'typhoon', real);
+  assert.ok(!t6.events.some(e => e.kind === 'grow' && e.item === 'typhoon'), 'no move in the placement turn');
+  assert.ok(!t6.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'a just-placed typhoon is not waiting for anyone');
+  assert.ok(!t6.state.flags.blackout, 'bulb 3 at placement: no blackout');
 });
-// 計畫 4 任務 9：只差多等一回合（+1 條件成立、delay 擋著）時記一個 stall 事件（演出層：雲停在巨蛋上空冒「……」）；
-// 缺幫手（燈泡 <6）照舊是 wait，不記 stall；第二回合照常長
-test('the typhoon delay records one stall event on the extra turn (up passes, delay holds), then grows', () => {
-  const s0 = createState(real);
-  const lingering = { ...s0, lv: { ...s0.lv, typhoon: 2, baseball: 5, bulb: 6, chip: 6 }, age: { ...s0.age, typhoon: 1, baseball: 5, bulb: 5, chip: 5 }, held: { ...s0.held, typhoon: 0, baseball: 0, bulb: 0, chip: 0 }, locked: { bulb: true, chip: true, baseball: true }, turn: 9 };
-  const r1 = advance(lingering, real);
-  assert.equal(r1.state.lv.typhoon, 2);
-  assert.deepEqual(r1.events.filter(e => e.kind === 'stall'), [{ kind: 'stall', item: 'typhoon' }]);
-  assert.ok(!r1.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'not a wait');
-  const r2 = advance(r1.state, real);
-  assert.equal(r2.state.lv.typhoon, 3); assert.ok(!r2.events.some(e => e.kind === 'stall'));
-  const pushed = advance({ ...lingering, lv: { ...lingering.lv, chip: 8 } }, real);
-  assert.equal(pushed.state.lv.typhoon, 3); assert.ok(!pushed.events.some(e => e.kind === 'stall'), 'the shield pushes it away: no stall');
-  const dark = advance({ ...lingering, lv: { ...lingering.lv, bulb: 5 } }, real);
-  assert.ok(!dark.events.some(e => e.kind === 'stall'), 'waiting for the bulb is a wait, not a stall');
-  assert.ok(dark.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')));
+// 三個檢查的時機：放下＝燈泡 ≤2 停電；Lv2（車站）＝代幣 ≤3 淹水、珍奶 +1；Lv3（巨蛋）＝棒球 ≤3 巨蛋淹水
+const turnOf = (order, pred) => { let s = createState(real); for (let t = 0; t < order.length; t++) { const r = place(s, order[t], real); s = r.state; if (pred(r)) return { t: t + 1, r, s }; } return null; };
+test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, the bulb locked, milk −1, before any growth', () => {
+  const hit = turnOf(['milk', 'baseball', 'token', 'bulb', 'typhoon'], r => r.state.flags.blackout);
+  assert.equal(hit.t, 5, 'the turn the typhoon is placed');
+  const kinds = hit.r.events.map(e => e.kind), fx = hit.r.events.find(e => e.lock === 'bulb');
+  assert.ok(fx && fx.cause === 'typhoon' && fx.delta?.target === 'milk' && fx.delta.to === fx.delta.from - 1);
+  assert.ok(hit.r.events.indexOf(fx) < kinds.indexOf('grow'), 'a placement reaction comes before the growth scan');
+  assert.equal(hit.s.locked.bulb, true); assert.equal(hit.s.lv.bulb, 2);
+  assert.ok(hit.r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.story === '颱風假！小朋友在家看電視'));
+});
+test('Lv2 check: the token ≤ 3 when the typhoon reaches the station → flood, the token locked; boba present → +1; nothing at placement', () => {
+  let s = createState(real);
+  for (const id of ['milk', 'token', 'typhoon']) s = place(s, id, real).state;
+  assert.equal(s.lv.typhoon, 1); assert.ok(!s.flags.flooded, 'no flood at placement');
+  const r = place(s, 'boba', real);
+  assert.equal(r.state.lv.typhoon, 2); assert.equal(r.state.flags.flooded, true); assert.equal(r.state.locked.token, true); assert.ok(r.state.lv.token <= 3);
+  const lock = r.events.find(e => e.lock === 'token'), deliver = r.events.find(e => e.kind === 'fx' && e.delta?.target === 'boba');
+  assert.equal(lock.cause, 'typhoon'); assert.equal(deliver.cause, 'typhoon'); assert.deepEqual(deliver.delta, { target: 'boba', from: 1, to: 2 });
+  const move = r.events.findIndex(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2);
+  assert.ok(move >= 0 && move < r.events.indexOf(lock), 'the flood fires on the move to the station');
+});
+test('Lv3 check: the baseball ≤ 3 when the typhoon reaches the dome → domeFlood, the baseball locked', () => {
+  let s = createState(real);
+  for (const id of ['milk', 'baseball', 'typhoon', 'chip']) s = place(s, id, real).state;
+  assert.equal(s.lv.typhoon, 2); assert.ok(!s.flags.domeFlood); assert.equal(s.lv.baseball, 3);
+  const r = place(s, 'bulb', real);
+  assert.equal(r.state.lv.typhoon, 3); assert.equal(r.state.flags.domeFlood, true); assert.equal(r.state.locked.baseball, true); assert.equal(r.state.lv.baseball, 3);
+  assert.equal(r.events.find(e => e.lock === 'baseball').cause, 'typhoon');
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   const s = place(createState(real), 'milk', real).state;    // 鮮奶放下當回合就到 2（早餐店）；沒有棒球就蓋不了小學
@@ -417,25 +426,16 @@ test('an item with no jump[n] takes +1 even when up[n−1] and up[n] both hold',
   t = advance(t, choice).state; assert.equal(t.lv.m, 3, 'no jump[4] → +1');
   assert.deepEqual(grows(advance(t, choice)), ['m3>4', 'm4>5J'], 'its explicit jump[5] works');
 });
-// 回到 GROW（2026-10-29）之後真的 spec 沒有老鼠 jump[5]、颱風 jump[3]：在真 spec 的複本上寫明這兩條（等同舊的預設跳級 up[n−1] ∧ up[n]）
+// 真的 spec 沒有颱風 jump[3]：在複本上寫明（up[2] ∧ up[3]），測「跳級跨過的那一級的反應照樣觸發」
 const crossing = { ...real, ITEMS: { ...real.ITEMS,
-  rat: { ...real.ITEMS.rat, jump: { ...real.ITEMS.rat.jump, 5: { and: [real.ITEMS.rat.up[4], real.ITEMS.rat.up[5]] } } },
   typhoon: { ...real.ITEMS.typhoon, jump: { 3: { and: [real.ITEMS.typhoon.up[2], real.ITEMS.typhoon.up[3]] } } } } };
-test('a jump across a level with onLevel fires that reaction (rat Lv3 → 5 crosses the Lv4 branch; typhoon 1 → 3 crosses the Lv2 check)', () => {
+test('a jump across a level with onLevel fires that reaction (typhoon 1 → 3 crosses the Lv2 station check)', () => {
   const s0 = createState(crossing);
-  // 老鼠 up[5] 看 ratBranch，旗標要到 Lv4 才設：照常玩老鼠在 3 時 jump[5] 不成立，只 +1
-  const rat = { ...s0, lv: { ...s0.lv, rat: 3, chip: 8, token: 7 }, age: { ...s0.age, rat: 3, chip: 8, token: 8 }, held: { ...s0.held, rat: 1, chip: 1, token: 1 }, locked: { chip: true, token: true }, turn: 9 };
-  const plain = advance(rat, crossing);
-  assert.deepEqual(grows(plain).filter(g => g.startsWith('r')), ['rat3>4']); assert.equal(plain.state.flags.ratBranch, 'cyber');
-  // 人工造的狀態（照規則玩不會出現：旗標只在老鼠 Lv4 設）——旗標已經是 alien、颱風 2：3 → 4 → 5 一回合，跨過第 4 級重新分岔（晶片 8 → cyber）
-  const hop5 = advance({ ...rat, lv: { ...rat.lv, typhoon: 2 }, flags: { ratBranch: 'alien' } }, crossing);
-  assert.deepEqual(grows(hop5).filter(g => g.startsWith('r')), ['rat3>4', 'rat4>5J']);
-  assert.equal(hop5.state.flags.ratBranch, 'cyber');
-  // 颱風在 1、燈泡 ≥ 6、沒有大巨蛋：1 → 2 → 3 一回合，跨過第 2 級照樣全島檢查（颱風假、珍奶外送）
-  const ty = { ...s0, lv: { ...s0.lv, typhoon: 1, bulb: 6, milk: 3, boba: 2 }, age: { ...s0.age, typhoon: 1, bulb: 6, milk: 3, boba: 3 }, held: { ...s0.held, typhoon: 1, bulb: 1, milk: 1, boba: 1 }, locked: { bulb: true, milk: true, boba: true }, turn: 9 };
+  // 颱風在 1（放下過一回合）、代幣 2、珍奶 2：1 → 2 → 3 一回合，跨過第 2 級照樣淹水、外送爆單
+  const ty = { ...s0, lv: { ...s0.lv, typhoon: 1, token: 2, milk: 2, boba: 2 }, age: { ...s0.age, typhoon: 1, token: 3, milk: 3, boba: 3 }, held: { ...s0.held, typhoon: 1, token: 1, milk: 1, boba: 1 }, locked: { milk: true, boba: true }, turn: 9 };
   const r = advance(ty, crossing);
   assert.deepEqual(grows(r).filter(g => g.startsWith('t')), ['typhoon1>2', 'typhoon2>3J']);
-  assert.ok(r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.story === '颱風假！小朋友在家看電視'));
+  assert.ok(r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.lock === 'token'), 'the flood still fires');
   assert.ok(r.events.some(e => e.kind === 'fx' && e.delta?.target === 'boba'), 'the boba delivery delta still fires');
 });
 test('the +2 per turn cap still includes deltas', () => {

@@ -16,7 +16,7 @@ test('stats shape', () => {
 test('check returns ok=false with named failures on a spec that has zero full solutions', () => {
   const never = { ...spec, ITEMS: structuredClone(spec.ITEMS) }; never.ITEMS.milk.up[2] = { minLevel: ['milk', 9] };
   const c = check(enumerate(never), never);
-  assert.equal(c.ok, false); assert.ok(c.failures.some(f => /剛好 2/.test(f)));
+  assert.equal(c.ok, false); assert.ok(c.failures.some(f => /剛好 1/.test(f)));
 });
 test('greedyOrder is a permutation of ORDER', () => {
   assert.deepEqual([...greedyOrder(spec)].sort(), [...spec.ORDER].sort());
@@ -46,66 +46,69 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
   assert.ok(check(results, late).failures.some(f => /節奏/.test(f)));
 });
 
-// 物品 v2（2026-10-26）：兩條正解快照、颱風第 8 個、晶片第 8 個的報告項
-// 選擇帶動升級（2026-10-28 §3）：9 回合下颱風一定第 8、老鼠一定第 7；兩條正解只差第 3、4 個先放燈泡（賽博）還是先放代幣（外星）
+// 唯一正解（設計 2026-10-31 §2、§3）：全 MAX 剛好一條，鮮奶 棒球 代幣 燈泡 晶片 颱風 珍奶 老鼠 ⇒ 賽博龐克
 import { chipEighth } from '../src/solver/run.js';
-// 回到 GROW（2026-10-29 設計 §3.2 的表）之後，兩條正解剛好還是這兩條（求解器收到的，見 spec.js 註解）
 const all = enumerate(spec), st = stats(all, spec);
-test('check passes on the shipped spec: exactly two full orders, one cyber one alien (snapshot the two orders)', () => {
+test('check passes: exactly one full order (snapshot), ending cyber', () => {
   const c = check(all, spec);
   assert.deepEqual(c.failures, []);
-  assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]).sort(), [
-    ['milk,baseball,bulb,token,chip,boba,rat,typhoon', 'cyber'],
-    ['milk,baseball,token,bulb,chip,boba,rat,typhoon', 'alien'],
-  ]);
+  assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]), [['milk,baseball,token,bulb,chip,typhoon,boba,rat', 'cyber']]);
+  assert.equal(st.full[0].state.flags.ratBranch, 'cyber');
 });
-// 回到 GROW（2026-10-29 §5）：賽博 t8 棒球、燈泡到 MAX，t9 其餘六個；外星 t8 棒球，t9 其餘七個
-test('both full orders: MAX lands in ≥ 2 turns; cyber maxes baseball+bulb in t8 and the other six in t9, alien baseball in t8 and seven in t9', () => {
-  for (const r of st.full) {
-    const p = pacing([r], spec); assert.ok(p.ok, p.failures.join('\n')); assert.equal(p.maxTurns, 2);
-    assert.equal(p.maxMaxesPerTurn, r.ending.id === 'cyber' ? 6 : 7, r.ending.id);
-  }
+// 設計 §3：MAX 個數分布（試作全枚舉的數字）
+test('MAX-count histogram matches design 2026-10-31 §3', () => {
+  assert.deepEqual(st.maxHist, [3990, 27492, 8516, 179, 92, 37, 11, 2, 1]);
+  assert.ok(st.avgMax <= 3.5);
 });
-test('a typhoon-eighth order is among the full orders (review focus 3)', () => {
-  assert.ok(st.full.some(r => r.order[7] === 'typhoon'));
-  for (const r of st.full) assert.equal(r.state.lv.typhoon, 3, 'the rainbow comes before the missile');
+// 設計 §3：MAX 落在第 8 回合（棒球）與第 9 回合（其餘七個）
+test('the full order: MAX lands in two turns, baseball in t8 and the other seven in t9', () => {
+  const p = pacing(st.full, spec); assert.ok(p.ok, p.failures.join('\n'));
+  assert.equal(p.maxTurns, 2); assert.equal(p.maxMaxesPerTurn, 7);
 });
-test('report: with chip eighth every other item reaches max−1 in some order', () => {
+test('the full order ends with the typhoon cleared (Lv4) before the missile', () => {
+  for (const r of st.full) assert.equal(r.state.lv.typhoon, 4);
+});
+test('report: chipEighth keeps its shape (report item, not an acceptance)', () => {
   const rep = chipEighth(all, spec);
   assert.equal(typeof rep.ok, 'boolean'); assert.ok(rep.best.order[7] === 'chip');
   assert.ok(rep.best.short.every(id => id !== 'chip'));
   assert.equal(rep.ok, rep.best.short.length === 0);
-  assert.equal(rep.ok, true, `best chip-eighth order still leaves ${rep.best.short.join(',')} below max−1`);
 });
 // 審稿第 1 輪故事要求：照正解玩不會看到災難附註；颱風擋飛彈、鮮奶過期都當得上標題（不是永遠被前面的蓋掉）
 function storyGoals(results, s) {
   const out = [];
-  for (const r of s.full) for (const id of ['blackout', 'flood', 'domeRats']) if (r.satisfied.includes(id)) out.push(`${r.order.join(',')} 有 ${id}`);
+  for (const r of s.full) for (const id of ['blackout', 'flood', 'domeFlood', 'domeRats', 'alien']) if (r.satisfied.includes(id)) out.push(`${r.order.join(',')} 有 ${id}`);
   for (const id of ['typhoonDeflect', 'milkExpired']) if (!results.some(r => r.ending.id === id)) out.push(`${id} 從來不是標題`);
   if (results.filter(r => r.satisfied.includes('typhoonDeflect')).every(r => r.satisfied.includes('blackout'))) out.push('颱風擋飛彈的順序都是大停電');
   return out;
 }
-test('story: true solutions carry no disaster extras; typhoonDeflect and milkExpired each title some orders', () => {
+test('story: the true solution carries no disaster extras; typhoonDeflect and milkExpired each title some orders', () => {
   assert.deepEqual(storyGoals(all, st), []);
 });
-
-// 設計 §3.3：兩條正解逐回合的級數（跳級算一步）
-const LV = {
-  cyber: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,2,0,0,0,0,3],[5,0,3,2,0,0,0,4],[6,2,5,4,0,0,0,5],[7,4,6,5,0,0,2,6],[8,6,8,7,0,2,4,7],[9,8,9,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
-  alien: [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,3,0,0,0,4],[6,2,3,4,0,0,0,5],[7,4,5,5,0,0,2,6],[8,5,6,7,0,2,4,7],[9,7,8,8,2,4,6,8],[10,9,9,10,3,5,7,8]],
-};   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
-// t8 珍奶是 6 不是 5：颱風登陸的外送爆單 delta 4 → 5、再自己長 5 → 6（設計附錄的表逐回合重播也是 6；t9 的 7 只能從 6 來）
-test('both solutions follow the design §3.3 level table turn by turn', () => {
-  for (const r of st.full) {
-    let s = createState(spec); const rows = [];
-    for (const step of [...r.order.map(id => x => place(x, id, spec)), x => advance(x, spec)]) { s = step(s).state; rows.push(spec.ORDER.map(id => s.lv[id])); }
-    assert.deepEqual(rows, LV[r.ending.id], r.ending.id);
+// 設計 2026-10-31 §4.5：新壞結局大巨蛋淹水、外星改壞結局，各有順序到得了（也當得上標題）
+test('domeFlood and alien are each reached (and titled) by some order', () => {
+  for (const id of ['domeFlood', 'alien']) {
+    assert.ok(all.some(r => r.satisfied.includes(id)), `${id} reachable`);
+    assert.ok(all.some(r => r.ending.id === id), `${id} titles some order`);
   }
 });
 
-// 2026-10-30 連鎖：使用者那局（捷運淹水、代幣停在 4）——靠捷運的五個物品都停在低級
-test('cascade: the 2026-10-30 recorded order ends with five low items, all pointing at the flooded metro', () => {
+// 設計 §3：正解逐回合的級數（跳級算一步）；欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
+const LV = [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,4,0,0,0,4],[6,2,3,5,0,0,0,5],[7,4,5,6,1,0,0,6],[8,6,6,7,2,0,2,7],[9,8,8,9,3,2,4,8],[10,9,9,10,4,4,6,8]];
+test('the solution follows the design §3 level table turn by turn', () => {
+  for (const r of st.full) {
+    let s = createState(spec); const rows = [];
+    for (const step of [...r.order.map(id => x => place(x, id, spec)), x => advance(x, spec)]) { s = step(s).state; rows.push(spec.ORDER.map(id => s.lv[id])); }
+    assert.deepEqual(rows, LV);
+  }
+});
+
+// 使用者 2026-10-30 那局（晶片、燈泡、珍奶都早於代幣，颱風第 7、老鼠第 8）：代幣第 8 回合先掃到、已經 4（環狀線），
+// 颱風移到車站上空時淹不到；颱風最後停在大巨蛋上空（3）→ 吹歪；晶片停在 6 → 老鼠分岔外星，標題卡是「變異鼠稱王」
+const USER_END = [8, 6, 6, 6, 3, 4, 5, 6];   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
+test('the 2026-10-30 recorded order ends low with the alien bad ending (snapshot)', () => {
   const r = playOrder(['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], spec);
-  assert.deepEqual(spec.ORDER.map(id => r.state.lv[id]), [10, 6, 6, 4, 3, 4, 5, 7]);
-  assert.equal(r.ending.id, 'flood');
+  assert.deepEqual(spec.ORDER.map(id => r.state.lv[id]), USER_END);
+  assert.deepEqual(r.state.locked, {}); assert.deepEqual(r.state.flags, { milkExpired: true, ratBranch: 'alien' });
+  assert.equal(r.ending.id, 'alien'); assert.deepEqual(r.satisfied, ['alien', 'milkExpired', 'typhoonDeflect', 'shieldDown']);
 });

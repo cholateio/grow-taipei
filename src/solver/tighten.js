@@ -30,23 +30,22 @@ export function score(spec = defaultSpec) {
   const results = enumerate(spec);
   if (results.some(r => r.error)) return Infinity;
   const s = stats(results, spec), c = check(results, spec);
-  const ends = s.full.map(r => r.ending.id).sort().join('+');
   const softFails = c.failures.filter(f => /沒有任何順序|晶片未 MAX/.test(f)).length;
   const paceFails = c.failures.filter(f => /^節奏/.test(f)).length;   // 加條件救不了節奏，但 score 0 必須等於 check 通過
-  // 某一種真結局一條都不剩：之後再怎麼加條件都救不回來，重罰
-  const lostEnding = s.full.length > 0 && !['cyber', 'alien'].every(id => s.full.some(r => r.ending.id === id));
-  return Math.abs(s.full.length - 2) * 100 + (ends === 'alien+cyber' ? 0 : 50) + (lostEnding ? 5000 : 0)
+  // 唯一正解（2026-10-31）：全 MAX 剛好一條、結局賽博龐克
+  const notCyber = s.full.some(r => r.ending.id !== 'cyber');
+  return Math.abs(s.full.length - 1) * 100 + (notCyber ? 50 : 0)
     + (s.greedyReachesTrue ? 20 : 0) + Math.max(0, s.avgMax - 3.5) * 10 + softFails * 30 + paceFails * 10;
 }
 
 const fullResults = spec => stats(enumerate(spec), spec).full;
 const fmt = c => `${c.item} up[${c.level}] += ${JSON.stringify(c.cond)}`;
 
-// 便宜的預篩：兩種真結局的正解各自等距抽最多 200 條重播，估計加了子句後各剩幾條。
-// 什麼都沒擋、或把某一種真結局擋光的子句直接淘汰；目標是各剩 1 條。
+// 便宜的預篩：賽博龐克的正解等距抽最多 200 條重播，估計加了子句後剩幾條。
+// 什麼都沒擋、或把正解擋光的子句直接淘汰；目標是剩 1 條（唯一正解 2026-10-31）。
 const SAMPLE = 200;
 function shortlist(spec, cands, full, k) {
-  const groups = ['cyber', 'alien'].map(id => {
+  const groups = ['cyber'].map(id => {
     const all = full.filter(r => r.ending.id === id).map(r => r.order);
     const step = Math.max(1, Math.floor(all.length / SAMPLE));
     const sample = all.filter((_, i) => i % step === 0);
@@ -79,7 +78,7 @@ export function tighten(spec = defaultSpec, { maxSteps = 40, candidateLimit = In
   log(`起始 score ${curScore.toFixed(1)}`);
   for (let step = 0; step < maxSteps && curScore > 0; step++) {
     const full = fullResults(cur);
-    if (full.length <= 2) { log(`正解只剩 ${full.length} 條，加條件無法再改善`); break; }
+    if (full.length <= 1) { log(`正解只剩 ${full.length} 條，加條件無法再改善`); break; }
     const pool = shortlist(cur, candidates(cur).filter(filter).slice(0, candidateLimit), full, shortlistSize);
     let best = null;
     for (const c of pool) {

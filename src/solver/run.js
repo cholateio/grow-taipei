@@ -6,7 +6,7 @@ import * as defaultSpec from '../rules/spec.js';
 import { createState, place, advance } from '../rules/engine.js';
 import { resolve, satisfied, ENDINGS } from '../rules/endings.js';
 
-const BAD = ['blackout', 'flood', 'domeRats', 'typhoonDeflect', 'shieldDown', 'milkExpired', 'bobaSugar'];
+const BAD = ['blackout', 'flood', 'domeFlood', 'domeRats', 'alien', 'typhoonDeflect', 'shieldDown', 'milkExpired', 'bobaSugar'];
 
 const countMax = (state, spec) => spec.ORDER.filter(id => state.lv[id] === spec.ITEMS[id].max).length;
 
@@ -124,10 +124,9 @@ export function stats(results, spec = defaultSpec) {
 
 export function check(results, spec = defaultSpec) {
   const s = stats(results, spec), failures = [];
-  if (s.full.length !== 2) failures.push(`正解數必須剛好 2，目前 ${s.full.length}`);
-  const ends = s.full.map(r => r.ending.id).sort().join('+');
-  const nCyber = s.full.filter(r => r.ending.id === 'cyber').length;
-  if (ends !== 'alien+cyber') failures.push(`兩條正解必須一條賽博龐克、一條外星人，目前賽博龐克 ${nCyber}、外星人 ${s.full.length - nCyber}`);
+  // 唯一正解（設計 2026-10-31 §2、§6）：全 MAX 剛好一條，結局是賽博龐克（老鼠分岔 cyber）
+  if (s.full.length !== 1) failures.push(`正解數必須剛好 1，目前 ${s.full.length}`);
+  for (const r of s.full) if (r.ending.id !== 'cyber') failures.push(`正解 ${r.order.join(',')} 的結局必須是賽博龐克，目前 ${ENDINGS[r.ending.id]?.title ?? r.ending.id}`);
   for (const id of BAD) if (!results.some(r => r.satisfied.includes(id))) failures.push(`壞結局「${ENDINGS[id].title}」沒有任何順序到得了`);
   const chipShort = results.filter(r => r.ending.missile && r.ending.missile !== 'shield').length / results.length;
   if (chipShort < 0.3) failures.push(`晶片未 MAX 的比例必須 ≥ 30%，目前 ${(chipShort * 100).toFixed(1)}%`);

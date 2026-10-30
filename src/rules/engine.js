@@ -106,10 +106,9 @@ export function foldEvent(view, e) {
   return lv === view.lv && flags === view.flags ? view : { lv, flags };
 }
 
-// 颱風登陸：這個事件把颱風從 <2 帶到 2（只有登陸那回合小人躲起來、雨最大）
+// 颱風到了：颱風的放下事件（唯一正解 2026-10-31 §5.1：烏雲放下那回合就到 101 上空、全島躲雨；之後一回合移一站）
 export function landsTyphoon(e) {
-  if (e.kind === 'grow') return e.item === 'typhoon' && e.from < 2 && e.to === 2;
-  return !!e.delta && e.delta.target === 'typhoon' && e.delta.from < 2 && e.delta.to === 2;
+  return e.kind === 'placed' && e.item === 'typhoon';
 }
 
 export const isPlaced = (state, id) => state.lv[id] > 0;

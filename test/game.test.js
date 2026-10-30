@@ -139,7 +139,8 @@ test('reset during the closing turn or the warning: no onFinished, new game play
 test('finaleEvents: warning first; true ending → missile shield + epilogue; chip max but not all max → missile shield only; else missile hit/deflect only', () => {
   const missile = m => ({ kind: 'missile', outcome: m, flag: { name: 'missile', value: m } });
   assert.deepEqual(finaleEvents({ id: 'cyber', missile: 'shield' }), [WARNING, missile('shield'), { kind: 'epilogue', ending: 'cyber', flag: { name: 'epilogue', value: 'cyber' } }]);
-  assert.deepEqual(finaleEvents({ id: 'alien', missile: 'shield' }), [WARNING, missile('shield'), { kind: 'epilogue', ending: 'alien', flag: { name: 'epilogue', value: 'alien' } }]);
+  // 唯一正解（2026-10-31 §4.5）：外星改成壞結局，不演母艦尾聲
+  assert.deepEqual(finaleEvents({ id: 'alien', missile: 'shield' }), [WARNING, missile('shield')]);
   // 晶片滿級但不是全 MAX：壞結局（或再接再厲）照樣 shield，沒有尾聲
   const chipMax = { ...engine.createState(spec) }; chipMax.lv = { ...chipMax.lv, chip: spec.ITEMS.chip.max, milk: 1 };
   const r = endings.resolve(chipMax, spec);

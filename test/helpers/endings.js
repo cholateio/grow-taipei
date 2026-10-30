@@ -7,8 +7,8 @@ import { resolve } from '../../src/rules/endings.js';
 import { finaleEvents } from '../../src/game.js';
 
 export const EXAMPLE = {
-  hit: ['milk', 'chip', 'bulb', 'rat', 'token', 'typhoon', 'boba', 'baseball'],       // 結局 flood（2026-10-30 連鎖重找）
-  deflect: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],   // 結局 blackout（2026-10-30 連鎖重找）
+  hit: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],       // 結局 flood（2026-10-31 唯一正解重找）
+  deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'typhoon', 'baseball'],   // 結局 flood（2026-10-31 唯一正解重找；颱風第 7 個放，最後停在大巨蛋上空）
 };
 
 export function finaleStep(state) {

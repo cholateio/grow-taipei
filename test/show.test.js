@@ -733,9 +733,14 @@ test('placed + grow[2] in the same turn: the placed script then the grow script,
 //   使用者 10-30 的順序（新規則下不淹水，裁決 Task 1）：老鼠第 8 回合放下、當回合生窩，那回合珍奶在等代幣 → 一窩在珍奶店門口；第 9 回合分岔（外星）。
 //   純照級數的順序：第 6 回合代幣在等鮮奶 → 第 7 回合放下的老鼠爬上岸直接跑到車站門口聞一聞；第 7 回合結算沒有人在等 → trouble null，走回窩旁。
 //   （設計原寫「鮮奶等棒球時老鼠在早餐店門口」：那是第 2–4 回合，老鼠還沒放；早餐店那一段在 rat.test 的放置測試）
+//   farNest：老鼠第 8 回合放下、當回合生窩，老鼠 0 在遠處那棟門口——窩的 ♥ 要在畫面裡（labels），在門口的老鼠留在原地。
 test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk back to the nest when it clears; no pops, jumps or walls', async () => {
   const rat = ALL.find(m => m.id === 'rat'), NEST = anchorWorld('rat'), gap = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
-  const ORDERS = { user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'] };
+  const ORDERS = {
+    user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'],
+    // 老鼠最後放、當回合就生窩，那時老鼠 0 在遠處出問題的那棟門口：生窩的 ♥ 冒在窩上（鏡頭平移去的那格），不是老鼠 0 頭上（最終修正）
+    farNest: ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'],
+  };
   const placed = rat.script.placed, sniffs = [];
   rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
   const seen = {};

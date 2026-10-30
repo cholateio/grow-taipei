@@ -231,10 +231,12 @@ export const script = {
   },
   grow: {
     // 一窩：♥ → 閃白鼠窩 → 兩隻從窩邊跑出來（一窩 3 隻）→ 窩旁晃
+    // ♥ 冒在窩上（rat.main 的頭；窩還沒閃出來時退回老鼠格的頭頂，同一點）：老鼠 0 可能正在遠處出問題的那棟門口，
+    // 鏡頭平移去的是老鼠格（最終修正：順序 milk,baseball,chip,token,typhoon,bulb,boba,rat 的 ♥ 整段在畫面外）；門口那隻留在原地
     2(e, s, ctx) {
       const { B } = ctx, out = Array.from({ length: NEST_N - 1 }, (_, k) => k + 1), door = once(c => c.nav.slots(AT, out.length, 0.3)), spot = once(c => c.nav.slots(AT, out.length, 0.75));
       return [
-        B.bubble(rat(0), '♥'), B.apply(e, { only: ['rat.main'] }),
+        B.bubble(B.partHead('rat.main', labelY, ctx), '♥'), B.apply(e, { only: ['rat.main'] }),
         B.apply(e, { only: [KEY], hold: [KEY] }),
         B.together(out.map((i, k) => B.spawn(KEY, c => door(c)[k]))),
         B.together(out.map((i, k) => B.walk(rat(i), c => spot(c)[k]))),

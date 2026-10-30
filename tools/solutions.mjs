@@ -1,4 +1,4 @@
-// 重產 docs/superpowers/plans/solutions.md（劇透）：兩條正解逐回合表（含最後一輪）、壞結局代表順序、統計。
+// 重產 docs/superpowers/plans/solutions.md（劇透）：唯一正解逐回合表（含最後一輪）、壞結局代表順序、統計（唯一正解 2026-10-31）。
 // 「調參紀錄」一節從舊檔原樣保留，新紀錄手動加在後面。  npm run solutions
 import { readFile, writeFile } from 'node:fs/promises';
 import * as spec from '../src/rules/spec.js';
@@ -23,7 +23,7 @@ function table(order) {
 const head = `| 回合 | 放 | ${O.map(name).join(' | ')} | 事件（括號＝因為誰） |\n|---|---|${O.map(() => '---').join('|')}|---|`;
 const sol = id => { const r = s.full.find(x => x.ending.id === id); return `### ${ENDINGS[id].title}\n\n順序：${r.order.map(name).join(' → ')}\n\n${head}\n${table(r.order)}\n`; };
 const first = id => results.find(r => r.ending.id === id);
-const bad = ['blackout', 'flood', 'domeRats', 'shieldDown', 'typhoonDeflect', 'milkExpired', 'bobaSugar', 'tryAgain']
+const bad = ['blackout', 'flood', 'domeFlood', 'domeRats', 'alien', 'shieldDown', 'typhoonDeflect', 'milkExpired', 'bobaSugar', 'tryAgain']
   .map(id => `- **${ENDINGS[id].title}**（${s.byEnding[id] ?? 0} 種）：${first(id)?.order.map(name).join(' → ') ?? '無'}`).join('\n');
 const g = greedyOrder(spec), gr = playOrder(g, spec), p = pacing(s.full, spec);
 const chipShort = results.filter(r => r.ending.missile !== 'shield').length / results.length;
@@ -34,10 +34,9 @@ await writeFile(FILE, `# 台北成長 正解與統計（劇透）
 
 由 \`npm run solutions\` 產生，規則見 \`src/rules/spec.js\`。規則改了就要重產。
 
-## 兩條正解
+## 唯一正解
 
 ${sol('cyber')}
-${sol('alien')}
 ## 各壞結局的代表順序
 
 （取該結局當標題卡的第一條順序）

@@ -391,6 +391,7 @@ test('a rat knocks the cart: it tilts and the owner ！ over his head', async ()
   //   珍奶、燈泡、鮮奶、代幣、颱風、老鼠——放老鼠時珍奶 7、鮮奶 2（沒有棒球，咬得到），那回合沒有撲空
   const h = await headlessShow(), { show, bubblesLog } = h;
   const { n, events } = await liveAt(h, ['boba', 'bulb', 'milk', 'token', 'typhoon', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  assert.equal(show.stage.lv.boba, 7, '颱風外送 +1 已把珍奶推到 7（R8）');
   // 這個放法的前提（審稿）：撞攤車那回合珍奶不長（長了就重建扶正，看不到歪）、老闆不去撲空（站在攤車旁）
   assert.ok(!events.some(e => (e.kind === 'grow' && e.item === 'boba') || (e.kind === 'fx' && e.delta?.target === 'boba')), `boba does not grow in the knock turn: ${events.map(e => `${e.kind} ${e.item ?? e.delta?.target ?? ''}${e.to ?? e.delta?.to ?? ''}`).join(', ')}`);
   assert.ok(!events.some(e => e.kind === 'wait'), 'no miss visit in the knock turn (the owner stays by the cart)');

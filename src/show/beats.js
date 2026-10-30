@@ -134,7 +134,8 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   return {
     kind: 'gesture', dur,
     start(ctx) {
-      // 零件剛套用（apply 之後緊接著 puff）：小彈一下（blink.pop）可能還差最後一幀——先收掉再記 base，不然 base 是 0.999 倍、演完就一直小一點
+      // 零件剛套用（apply 之後緊接著 puff）：小彈一下（blink.pop）可能還差最後一幀——先收掉再記 base，不然 base 是 0.999 倍、演完就一直小一點。
+      // blink.stop 連那個零件的亮一下（glow）也一起收掉，提早一幀熄（看不出來，接受）
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; ctx.blink?.stop(obj); base = obj.scale.clone(); return; }
       m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; }
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉

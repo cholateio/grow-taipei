@@ -410,6 +410,7 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
 test('the placement turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
   const { events, secs, n } = await liveAt(h, ['boba', 'bulb', 'milk', 'token', 'typhoon', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  assert.equal(show.stage.lv.boba, 7, '颱風外送 +1 已把珍奶推到 7（R8）');
   assert.ok(!events.some(e => e.kind === 'grow' && e.item === 'boba'), 'boba does not grow (rebuild) in this turn');
   assert.ok(!events.some(e => e.kind === 'wait'), 'no miss visit in this turn (the premise of the 40 s cap)');
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');

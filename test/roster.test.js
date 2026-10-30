@@ -396,6 +396,26 @@ test('riders on one closed loop space themselves out: bunched riders slow down (
   assert.ok(Math.min(...gaps) >= T / n / 2, `gaps ${gaps.map(g => g.toFixed(2)).join(' ')} of ${T.toFixed(2)}`);
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) assert.ok(gap(ms[i].pos, ms[j].pos) >= 0.25, `riders ${i}–${j} ${gap(ms[i].pos, ms[j].pos).toFixed(2)} apart`);
 });
+// 審查（計畫 9 任務 3 第 1 輪）：間距與煞車只管 path、閉合、n ≥ 2 的名冊——電工（ROAD，n 1，旁邊有人在走）、守塔人（衛星島繞圈 n 1）、
+// 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）都照舊等速：10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢
+test('only path loops with n ≥ 2 space and brake: the electrician, the lighthouse keeper and the playground kids ride at constant speed as before', async () => {
+  const { ROAD } = await import('../src/actors/bulb.js'), sat = await import('../src/actors/satellites.js'), { lv } = await import('./helpers/actors.js');
+  const { roster } = setup(), dt = 1 / 30, sv = sat.view(lv({ bulb: 9, token: 8, milk: 3 }), {});
+  assert.ok(sv['sat.keeper'] && sv['sat.playground'].n === 2);
+  roster.declare('elec', { kind: 'roster', at: ROAD[0], n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5 } });
+  roster.declare('crowd', { kind: 'roster', at: ROAD[1], n: 3, home: { kind: 'wander', at: ROAD[1], r: 0.4 } });   // 電工前面一直有人在走
+  roster.declare('keeper', sv['sat.keeper']); roster.declare('kids', sv['sat.playground']); roster.snap();
+  const [k0, k1] = roster.members('kids'); roster.claim(k1); roster.setPose(k1, { ...k0.pos, x: k0.pos.x + 0.02, walking: false }); roster.home(k1);   // 兩個小孩擠在一起
+  const who = [['elec', 0.5], ['keeper', WANDER_SPEED], ['kids', WANDER_SPEED]].flatMap(([k, v]) => roster.members(k).map(m => [k, m, v]));
+  const slow = [];
+  for (let f = 0; f < 10 / dt; f++) {
+    const before = who.map(([, m]) => ({ x: m.pos.x, z: m.pos.z, on: !!m.cursor }));
+    roster.update(dt, f * dt);
+    who.forEach(([k, m, v], i) => { const b = before[i], d = gap(b, m.pos); if (b.on && m.cursor && d < 0.8 * v * dt) slow.push(`${k}#${m.i} frame ${f} moved ${(d / dt).toFixed(2)} m/s`); });
+  }
+  assert.ok(who.every(([, m]) => m.cursor), 'everyone on a loop');
+  assert.deepEqual(slow.slice(0, 10), [], `${slow.length} slow frames`);
+});
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
 // final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
 test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {

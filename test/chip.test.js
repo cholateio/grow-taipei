@@ -318,13 +318,17 @@ test('Lv7: the staff takes the box off the train while it is held at the station
       if (show.roster.members('token.staff').some(m => m.walker?.gesture?.kind === 'knock')) knocks.push(h.rail.offset - before + dt);   // 停住時時鐘偏移跟時間等速倒退 → 0
       for (const m of show.roster.members('chip.engineers')) if (m.mode === 'script' && Math.hypot(m.pos.x - chip.FOOT.x, m.pos.z - chip.FOOT.z) < 0.3) foot.add(m);
     };
+    // 圖框「晶片」掛在誰頭上：記下 bubbles.show 拿到的 head（演完再問一次，跟抱箱子的工程師的頭同一個位置才算掛在他身上）
+    const heads = [], showBubble = show.bubbles.show;
+    show.bubbles.show = (head, kind, dur) => { if (kind?.icon === 'chip') heads.push(head); return showBubble(head, kind, dur); };
     const { n } = await liveAt(h, order, isChip(7));
     assert.ok(knocks.length > 5, `knock frames ${knocks.length}`);
     assert.ok(knocks.slice(1).every(d => Math.abs(d) < 1e-9), `train held during the knock (${order.join('>')})`);
     assert.equal(foot.size, 1, 'one engineer brings the box to the 101 foot');
     const box = bubblesLog.slice(n).find(b => b.kind?.icon === 'chip'), [m] = foot;
-    // 圖框在他出發時冒（同一拍）：計畫 9 §5 起工程師在園區草地上繞圈，離 101 腳下最近的那台也在 3 公尺外（實測 3.0）——上限 2.5 → 3.5
-    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 3.5, 'carrying the parts (chip icon) toward the foot');
+    // 圖框在他出發時冒（同一拍），掛在抱箱子走到 101 腳下的那個工程師頭上（計畫 9 §5 起工程師在園區草地上繞圈，出發點離 101 腳下 3 公尺上下）
+    assert.ok(box && m && heads.length === 1, 'one chip icon');
+    const hd = heads[0](), mh = m.head(); assert.ok(Math.hypot(hd.x - mh.x, hd.y - mh.y, hd.z - mh.z) < 1e-9, 'the chip icon rides on the carrier');
     assert.ok(show.stage.partKeys().includes('tower.antenna') && m);
   }
 });

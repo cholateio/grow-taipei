@@ -25,7 +25,8 @@
 //   不推也不讓路，走到站定後由 separateStanding 錯開）；兩個走路的人裡沿手畫折線走的那個（m.cursor）不被推，整段由另一個人讓。
 //   推開的橫向分量記進 m.side；橋上跟著同方向的人、或被前面站著的人擋住時，往後推的那一截記成游標倒退（跟在後面慢下來），
 //   迎面走來的兩人各自往右讓 ±BRIDGE_SIDE 錯身（橋上只讓迎面的人）
-// 同一圈上的幾個人（計畫 9 §5，只管閉合折線、同名冊 ≥ 2 人：現在只有晶片 Lv3 起四台 YouBike 繞園區草地）：
+// 同一圈上的幾個人（計畫 9 §5，只管 home.kind 'path'、loop、n ≥ 2 的名冊——現在只有晶片 Lv3 起四台 YouBike 繞園區草地；
+//   電工（n 1）、衛星島上繞圈的 wander（ringHome，遊樂場小孩 n 2 也是）都不放慢、不煞車，照舊等速）：
 //   名冊照「沿環到前一個也在這圈上騎的同伴多遠」放慢——不到 GAP_MIN 停住、到等分間距（total ÷ 在騎的人數）的 SPACED 倍才全速，中間照比例；
 //   只放慢、不加速（不超過 home.speed）。走進來、撲空趕回、劇本放回家的人是接到環上離他最近的那一點、時間各不相同，不這樣拉開就同速一直貼著
 //   （2026-10-30 錄影「卡成一坨」）。煞車讓人：前方 BRAKE_LOOK 內、橫向不到兩人半徑相加有人在走（別的名冊、或同名冊還沒騎上這圈的）
@@ -364,12 +365,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   // 走出去的人（mode 'exit'）、已經拿掉的人不歸劇本：claim／home／setPose 不算數（劇本 once() 快取的人可能已經在退場）
   const out = m => m.mode === 'exit' || m.gone;
-  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; }
+  function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; m.braked = 0; }
   // hurry（計畫 6 撲空）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
   //   不在別人的格子裡站著等焦點回來、回合結束後再用散步速度慢慢晃回去（擠在別格、壓過那一格的人數預算）
   function home(m, { hurry = false } = {}) {
     if (out(m)) return;
-    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
+    m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null; m.braked = 0;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path 的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
@@ -545,8 +546,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 剛走進來（arriving === true）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方；撲空完趕回家的（'hurry'）走到最近的那一點
   function onPath(m, h, dt, spec) {
     if (m.cursor) {
-      const ahead = h.loop && yieldTo(m); m.braked = ahead ? (m.braked ?? 0) + dt : 0;
-      const k = ahead && m.braked <= BRAKE_MAX ? 0 : spaced(m, h);
+      // 間距與煞車只管宣告成 path、閉合、n ≥ 2 的名冊（晶片 Lv3 起的 YouBike）；電工（n 1）、衛星島繞圈的 wander（ringHome）照舊等速
+      const shared = spec.home?.kind === 'path' && h.loop && spec.n >= 2;
+      const ahead = shared && yieldTo(m); m.braked = ahead ? (m.braked ?? 0) + dt : 0;
+      const k = ahead && m.braked <= BRAKE_MAX ? 0 : shared ? spaced(m) : 1;
       m.cursor.advance(h.speed * dt * k); setPose(m, { ...m.cursor.locate(), walking: k > 0 }); return;
     }
     if (m.trip) { walk(m, dt); if (m.trip) return; }
@@ -564,8 +567,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
   // 閉合折線上：同名冊、也在這一圈上騎（日常裡、有游標、沒躲起來）的人裡，前面最近那個離我多遠 → 速度倍數 0..1
   // （同一點上的兩個人：編號小的算在前面）
-  function spaced(m, h) {
-    const g = groups.get(m.key); if (!h.loop || !g || g.members.length < 2) return 1;
+  function spaced(m) {
+    const g = groups.get(m.key); if (!g || g.members.length < 2) return 1;
     const T = m.cursor.total, mine = m.cursor.s; let ahead = Infinity, k = 1;
     for (const o of g.members) {
       if (o === m || !o.cursor || o.mode !== 'home' || o.hidden || o.cursor.total !== T) continue;

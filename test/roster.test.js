@@ -363,18 +363,41 @@ test('home(m, { hurry }) walks a member back at walking speed even outside the f
   assert.ok(Math.hypot(b.pos.x - pb.x, b.pos.z - pb.z) < 1e-6, 'plain home() outside the focus stands still');
 });
 // 審查（任務 4）：path 成員趕回家走到折線上離他最近的那一點接上去——不是剛走進來那種錯開點（i / n，可能在路的另一頭）
-test('home(m, { hurry }) on a path member rejoins the route at its nearest point, not the staggered entry point', async () => {
+test('home(m, { hurry }) on a path member rejoins the route at its nearest point, not the staggered entry point (n = 1 homes)', async () => {
   const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
   const { roster } = setup();
-  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
-  const m = roster.members('eng')[2], a = ENGINEER_ROUTE[0], b = ENGINEER_ROUTE[1], k = 0.3 / Math.hypot(b.x - a.x, b.z - a.z);
-  const near = { x: a.x + (b.x - a.x) * k, y: a.y, z: a.z + (b.z - a.z) * k };   // 路的起點往前 0.3：最近的點就在腳下，錯開點（2/3）在路的另一頭
+  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  const [m] = roster.members('eng'), a = ENGINEER_ROUTE.at(-2), b = ENGINEER_ROUTE.at(-1), k = 0.3 / Math.hypot(b.x - a.x, b.z - a.z);
+  const near = { x: b.x + (a.x - b.x) * k, y: b.y, z: b.z + (a.z - b.z) * k };   // 路的終點往回 0.3：最近的點就在腳下，錯開點（起點）在路的另一頭
   roster.claim(m); roster.setPose(m, { ...near, walking: false }); roster.setFocus([[5, 5]]);
   roster.home(m, { hurry: true });
   let joined = null;
   for (let i = 0; i < 300 && !joined; i++) { roster.update(1 / 30, i / 30); if (m.cursor) joined = { ...m.pos }; }
   assert.ok(joined, 'back on the route');
   assert.ok(gap(joined, near) < 0.3, `rejoined ${gap(joined, near).toFixed(2)} from where it stood`);
+});
+// 計畫 9（2026-10-30 錄影「卡成一坨」）：同一條折線上 ≥ 2 人的名冊，劇本放回來（含 hurry）走回自己錯開的那一點（total × i / n）——
+// 三個工程師在通勤路線上擠在一起被叫去看東西、放回來，10 秒後沿線的「相位」兩兩 ≥ 0.25 × total（開放路徑走到底折返：
+// 相位 = 往前走時的 s、折返時的 2·total − s，在 2·total 的圈上量；沿線位置本身在折返時會短暫交會，live 測試量多久貼著）
+test('path homes with n ≥ 2: members released from a script walk back to their own staggered points, not the nearest one', async () => {
+  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js'), { measurePath } = await import('../src/scene/path.js');
+  const { roster, nav } = setup(), n = 3, dt = 1 / 30;
+  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  const P = nav.ground(ENGINEER_ROUTE, { loop: false }), lens = measurePath(P, false), T = lens.at(-1);
+  const sOf = p => { let best = [Infinity, 0]; for (let i = 0; i + 1 < P.length; i++) { const a = P[i], b = P[i + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2)), d = Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); if (d < best[0]) best = [d, lens[i] + t * (lens[i + 1] - lens[i])]; } return best[1]; };
+  const ms = roster.members('eng'), a = P[0], b = P[1];
+  ms.forEach((m, i) => { roster.claim(m); roster.setPose(m, { x: a.x + (b.x - a.x) * (0.1 + 0.03 * i), y: a.y, z: a.z + (b.z - a.z) * (0.1 + 0.03 * i), walking: false }); });
+  ms.forEach(m => roster.home(m));
+  let prev = ms.map(m => sOf(m.pos)), phase = [];
+  for (let f = 0; f < 10 / dt; f++) {
+    roster.update(dt, f * dt);
+    const s = ms.map(m => sOf(m.pos)); phase = s.map((x, i) => (x >= prev[i] ? x : 2 * T - x)); prev = s;
+  }
+  assert.ok(ms.every(m => m.cursor), 'all back on the route');
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    const d = Math.abs(phase[i] - phase[j]), circ = Math.min(d, 2 * T - d);
+    assert.ok(circ >= 0.25 * T, `members ${i}–${j}: ${circ.toFixed(2)} apart along the route (total ${T.toFixed(2)})`);
+  }
 });
 // 計畫 9 任務 3 審稿：閉合折線上的人照舊等速——電工（ROAD，n 1，前面一直有人在走）、守塔人（衛星島繞圈 n 1）、
 // 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢、不互相等

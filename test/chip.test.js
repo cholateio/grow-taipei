@@ -83,6 +83,38 @@ test('detective: follows the rats, but watches the nest from the next cell and w
   assert.equal(nest.kind, 'stand'); assert.notDeepEqual(cellAt(p.x, p.z), cellAt(at.x, at.z), 'outside the nest cell');
   assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 2, 'close to the nest'); assert.ok(Math.abs(Math.atan2(at.x - p.x, at.z - p.z) - p.yaw) < 1e-9, 'faces the nest');
 });
+// 計畫 9（2026-10-30 錄影「卡成一坨」）：兩條正解整局 live，每回合演完再過 15 秒——劇本放回來的人走回自己錯開的那一點（roster.js），
+// 不再接在同一段走成一串：最近的那一對 < 0.3 每次最多 1 秒（只有交會、沒有並排走）；101 腳下（FOOT 0.5 內）同時兩個不超過 1 秒；
+// 最近的那一對 ≥ 0.3 的幀數：兩個人 ≥ 90%，三個人 ≥ 70%——通勤路線只有 3.64 公尺、走到底折返，三個人兩兩每 total ÷ 0.45 ≈ 8 秒交會一次、
+// 每次 < 0.3 約 0.67 秒（相對速度 0.9），三對加起來約四分之一的時間（實測 73–77%），錯開起步也改不了交會的次數
+test('live, both solutions: the commuting engineers do not walk as a convoy (only brief crossings, never two at the 101 foot for > 1 s)', async () => {
+  const { turnSteps } = await import('./helpers/show.js'), DT = 1 / 30, rows = [];
+  for (const order of SOLUTIONS) {
+    const { show, run } = await headlessShow(); let s = engine.createState(spec), t = 1000;
+    for (const [i, step] of turnSteps(order).entries()) {
+      const r = step(s); s = r.state;
+      await run([...r.events, { kind: 'settle' }]);
+      let frames = 0, apart = 0, both = 0, longest = 0, close = 0, stretch = 0;
+      for (let f = 0; f < 15 / DT; f++) {
+        show.update(DT, t); t += DT; await Promise.resolve();
+        const es = show.roster.members('chip.engineers').filter(m => !m.hidden); if (es.length < 2) continue;
+        let d = Infinity; for (let a = 0; a < es.length; a++) for (let b = a + 1; b < es.length; b++) d = Math.min(d, Math.hypot(es[a].pos.x - es[b].pos.x, es[a].pos.z - es[b].pos.z));
+        frames++; if (d >= 0.3) apart++;
+        close = d < 0.3 ? close + DT : 0; stretch = Math.max(stretch, close);
+        const atFoot = es.filter(m => Math.hypot(m.pos.x - chip.FOOT.x, m.pos.z - chip.FOOT.z) < 0.5).length;
+        both = atFoot >= 2 ? both + DT : 0; longest = Math.max(longest, both);
+      }
+      if (frames) rows.push({ order: order.join('>'), turn: i + 1, chip: s.lv.chip, n: show.roster.members('chip.engineers').length, apart: apart / frames, foot: longest, stretch });
+    }
+  }
+  if (process.env.CONVOY) console.log(JSON.stringify(rows));
+  assert.ok(rows.length >= 6, `${rows.length} turns with ≥ 2 engineers`);
+  for (const r of rows) {
+    assert.ok(r.stretch <= 1, `${r.order} turn ${r.turn}: closest pair < 0.3 for ${r.stretch.toFixed(2)} s in a row`);
+    assert.ok(r.apart >= (r.n >= 3 ? 0.7 : 0.9), `${r.order} turn ${r.turn} (${r.n} engineers): closest pair ≥ 0.3 in only ${(r.apart * 100).toFixed(0)}% of frames`);
+    assert.ok(r.foot <= 1, `${r.order} turn ${r.turn}: two engineers at the 101 foot for ${r.foot.toFixed(2)} s`);
+  }
+});
 test('ENGINEER_ROUTE starts in the chip cell and ends at the tower foot', () => {
   const r = chip.ENGINEER_ROUTE;
   assert.deepEqual(cellAt(r[0].x, r[0].z), [1, 0]); assert.deepEqual(cellAt(r.at(-1).x, r.at(-1).z), [0, 0]);

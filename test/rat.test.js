@@ -369,12 +369,15 @@ test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring 
 });
 // 兩個事件以上的回合整段 live：咬鮮奶、撞珍奶同一回合，名冊都是演到才找。
 // 物品 v2：兩個都是老鼠的放置反應；鮮奶 Lv2（早餐店）時放老鼠，被咬掉一級（箱子翻倒、LEVEL DOWN），攤車撞歪。
-// 珍奶那回合接著長就重建、扶正——挑一個老鼠那回合珍奶不長的放法。回到 GROW（2026-10-29）之後珍奶沒有阻擋、每回合自己長，
-// 只有已經到 MAX（7）才不長：珍奶最先放、晶片第二（珍奶 4 跳級），第六回合放老鼠時珍奶 7；鮮奶沒有棒球停在早餐店（2），照樣被咬
+// 珍奶那回合接著長就重建、扶正——挑一個老鼠那回合珍奶不長的放法（已經到 MAX 7）；鮮奶沒有棒球停在早餐店（2），照樣被咬。
+// 計畫 9 連鎖（2026-10-30）：珍奶 6 要代幣 ≥7，原本的「珍奶、晶片、鮮奶、燈泡、代幣、老鼠」珍奶停在 5，那回合的晶片 6 換成
+//   兩段撲空（晶片<燈泡、珍奶<代幣），整回合 38.2 → 40.7 s，超過這題量的「兩個反應＋珍奶排隊＋小學生跑回校舍」的上限 40。
+//   上限不放寬，改放法：珍奶、燈泡、鮮奶、代幣、颱風、老鼠——颱風的「外送爆單」把珍奶推過 6，放老鼠時珍奶 7，那回合沒有撲空（實測 36.5 s）
 test('the placement turn with both reactions plays live: a rat goes to the crate, another tips the boba cart', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
-  const { events, secs, n } = await liveAt(h, ['boba', 'chip', 'milk', 'bulb', 'token', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
+  const { events, secs, n } = await liveAt(h, ['boba', 'bulb', 'milk', 'token', 'typhoon', 'rat'], e => e.kind === 'placed' && e.item === 'rat', { whole: true });
   assert.ok(!events.some(e => e.kind === 'grow' && e.item === 'boba'), 'boba does not grow (rebuild) in this turn');
+  assert.ok(!events.some(e => e.kind === 'wait'), 'no miss visit in this turn (the premise of the 40 s cap)');
   assert.ok(events.some(e => e.delta?.target === 'milk' && e.cause === 'rat') && events.some(e => e.cause === 'rat' && e.story?.includes('珍奶')), 'both reactions');
   assert.ok(secs >= 8 && secs <= 40, `${secs.toFixed(1)} s`);   // 上限 30 → 40：這回合還有珍奶 Lv2 排隊、被咬的小學生跑回校舍（實測 32.5 s；回合門檻 50 由 pace 管）
   assert.ok(Math.abs(show.stage.partObject('boba.main').rotation.z - 0.25) < 1e-9, 'cart knocked askew');

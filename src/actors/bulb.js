@@ -265,8 +265,9 @@ const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.s
 const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7;
 // 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
 const SEAT_CAR = 0, SEAT_OFF = -0.2;
-// 搭車那段要有列車在跑（任何在跑的列車都行）。回到 GROW（2026-10-29）之後燈泡 7 是 auto，沒放代幣（< 4 沒有環狀線）或淹水停駛時也會長到 7：
+// 搭車那段要有列車在跑（任何在跑的列車都行）。回到 GROW（2026-10-29）時燈泡 7 是 auto，沒放代幣（< 4 沒有環狀線）或淹水停駛時也會長到 7：
 // 建串時就問 token.js 的 hasTrain，沒車改演不搭車的版本（Task 6a 修正輪裁決：見 7 的註解）。
+// 計畫 9 連鎖（2026-10-30）之後燈泡 7 要代幣 ≥5，規則下到不了沒車的 7；退路留著當防呆（設計 §8 R3，bulb.test 用合成狀態驗）。
 // 建串時看得到車、演到時車卻停了（萬一，安全網）：上車那拍（board）start 回 false、整拍跳過；坐車那拍（ride）start 回 false 時
 // 時間軸照樣呼叫 trainStop.end，during 剩下的拍 start → end 跑完——跳下車的 jump.end 把他放到開關箱前（SWITCH_FRONT），不丟錯
 const trainLikely = s => hasTrain(s.lv, s.flags);

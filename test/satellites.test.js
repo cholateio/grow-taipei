@@ -144,7 +144,7 @@ test('the keeper appears on the same frame as the lighthouse light during bulb L
 
 // 物品 v2 任務 11：衛星島的門檻跟著新的階梯與離島鏈——沒有留下舊門檻（燈塔看燈泡 ≥2、小孩看鮮奶 ≥2、分店看珍奶 ≥4）。
 // 小孩坐接駁車來：遊樂場島有小孩的每一個等級，代幣的支線與接駁車都在（代幣 Lv7 支線、Lv8 接駁車），也有小學（鮮奶 ≥3）；
-// 燈塔亮、守塔人、風車轉（沒颱風）都在燈泡 ≥7，而引擎保證燈泡到 7 時代幣已 ≥6（高鐵；支線沒通的話燈泡 Lv7 自己鋪）；石堆綠光圈只在外星
+// 燈塔亮、守塔人、風車轉（沒颱風）都在燈泡 ≥7，而引擎保證燈泡到 7 時代幣已 ≥5（計畫 9 連鎖；支線沒通的話燈泡 Lv7 自己鋪）；石堆綠光圈只在外星
 test('satellite gates follow the island chain: kids ride the shuttle, the light needs the spur, the ring is alien-only', async () => {
   const token = await import('../src/actors/token.js');
   for (let t = 0; t <= 10; t++) for (let m = 0; m <= 10; m++) {
@@ -156,9 +156,10 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
     const v = sat.view(lv({ bulb: b }), {}), on = b >= 7;
     assert.deepEqual([!!v['sat.lighthouse'], !!v['sat.beam'], !!v['sat.keeper'], v['sat.windmill'].speed > 0], [on, on, on, on], `bulb ${b}`);
   }
-  // 回到 GROW（2026-10-29 設計 §3.2）：燈泡 7 是 auto（以前 up[7] 要代幣 ≥6），燈泡到 7 時代幣可能還很低——
-  // 有環狀線（代幣 ≥4）但還沒通車到離島時，風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）
-  assert.ok(!spec.ITEMS.bulb.up[7] || spec.ITEMS.bulb.up[7].always, 'bulb 7 is auto');
+  // 計畫 9 連鎖（2026-10-30 設計 §3）：燈泡 7 要代幣 ≥5（電工搭五節車廂的列車去風車島；回到 GROW 時一度是 auto）——
+  // 燈泡到 7 時有列車（代幣 ≥5）但可能還沒通車到離島（代幣 <7），風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）。
+  // 代幣 4、燈泡 7 在規則下到不了，照舊驗（view 是純函式，退路程式留著當防呆——設計 §8 R3）
+  assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 5] }, 'bulb 7 needs token ≥ 5');
   for (const t of [4, 5, 6, 7]) for (const b of [6, 7]) {
     const tv = token.view(lv({ token: t, bulb: b }), {}, {});
     assert.equal(!!tv['token.spur.windmill'], t >= 7 || b >= 7, `token ${t} bulb ${b}: the windmill spur stands once the electrician rides it`);

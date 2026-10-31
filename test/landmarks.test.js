@@ -89,3 +89,54 @@ test('islanderCount: HOMES.length minus one for the station master only (milk ne
   assert.equal(landmarks.islanderCount({ token: 1 }), all); assert.equal(landmarks.islanderCount({ token: 2 }), all - 1);
   assert.equal(landmarks.islanderCount({ milk: 10, token: 10 }), all - 1);
 });
+// 計畫 13 §設計 4（使用者 2026-11-01「火山太醜請重新設計」）：火山換成自己的 builder——有稜角的低多邊形錐（12 邊 6 段、每個頂點決定性抖動、
+// 平面著色、頂點色三層：沙色、深棕、口緣更深），頂上凹一個碗、碗底一片熔岩、三條熔岩痕從口緣流到高度 0.6；石頭四顆照舊。
+// draw call 不比現在多：一個黏土 mesh（錐、碗、石頭）＋一個發光 mesh（熔岩，走 ctx.glow：白天／大停電歸零）；手機一個 mesh
+test('volcano builder: one faceted clay mesh with three vertex-colour bands + one lava glow mesh (crater pool and three streaks down to 0.6); deterministic; low quality merges to one', async () => {
+  const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
+  const spec = landmarks.view(zero, {})['landmarks.volcano'];
+  assert.equal(spec.kind, 'volcano'); assert.ok(landmarks.builders?.volcano, 'landmarks.builders.volcano');
+  assert.equal(spec.parts.filter(p => p.kind === 'ico').length, 4, 'the four rocks'); assert.ok(!spec.parts.some(p => p.kind === 'frustum'), 'no more frustum cone');
+  const make = (quality = 'high') => { const glow = createGlowRegistry(); return { glow, part: createPartFactory(THREE, { glow, quality, builders: landmarks.builders }).build(spec) }; };
+  const { glow, part } = make(), meshes = part.object.children.filter(o => o.isMesh);
+  assert.equal(meshes.length, 2, 'one clay + one glow mesh'); assert.equal(glow.size, 1, 'lava registered with ctx.glow');
+  assert.deepEqual(part.object.position.toArray(), [spec.at.x, spec.at.y, spec.at.z]);
+  const lava = meshes.find(m => m.material.emissive?.getHex() === 0xdb6a41), clay = meshes.find(m => m !== lava);
+  assert.ok(lava && clay, 'lava glows orange');
+  // 熔岩痕流到高度 0.6；碗底的熔岩在口緣（1.5）下 0.18 左右
+  lava.geometry.computeBoundingBox(); const lb = lava.geometry.boundingBox;
+  assert.ok(lb.min.y <= 0.65 && lb.min.y >= 0.5, `streaks reach down to ${lb.min.y.toFixed(2)}`); assert.ok(lb.max.y <= 1.56, `lava top ${lb.max.y.toFixed(2)}`);
+  // 錐：頂點色三層（沙色在下、口緣最深），平面著色（非索引、每個三角形三個法線一樣）
+  const g = clay.geometry, pos = g.attributes.position, col = g.attributes.color, nor = g.attributes.normal;
+  assert.equal(g.index, null, 'non-indexed');
+  const hex = i => new THREE.Color(col.getX(i), col.getY(i), col.getZ(i)).getHex(), tol = (a, b) => Math.abs(((a >> 16) & 255) - ((b >> 16) & 255)) + Math.abs(((a >> 8) & 255) - ((b >> 8) & 255)) + Math.abs((a & 255) - (b & 255)) <= 6;
+  const bands = [0xd2b48c, 0x6b5a4e, 0x4a3f38], seen = new Set();
+  let low = 0, lowSand = 0, top = 0, topDark = 0;
+  for (let i = 0; i < pos.count; i += 3) {
+    const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, r = Math.hypot(pos.getX(i), pos.getZ(i)), c = hex(i);
+    bands.forEach((b, k) => { if (tol(c, b)) seen.add(k); });
+    if (tol(c, 0xb8a892)) continue;   // 石頭（ico，自己的平滑法線）
+    if (r > 0.7 && y < 0.5) { low++; if (tol(c, bands[0])) lowSand++; }
+    if (r > 0.6 && r < 1.1 && y > 1.42) { top++; if (tol(c, bands[2])) topDark++; }
+    const n0 = [nor.getX(i), nor.getY(i), nor.getZ(i)];
+    if (bands.some(b => tol(c, b))) for (const j of [1, 2]) assert.ok(Math.abs(nor.getX(i + j) - n0[0]) + Math.abs(nor.getY(i + j) - n0[1]) + Math.abs(nor.getZ(i + j) - n0[2]) < 1e-5, 'flat-shaded face');
+  }
+  assert.equal(seen.size, 3, 'three colour bands');
+  assert.ok(low > 20 && lowSand / low > 0.95, `lower slope sand (${lowSand}/${low})`);
+  assert.ok(top > 10 && topDark / top > 0.9, `crater rim darkest (${topDark}/${top})`);
+  // 抖動過：錐腳那一圈頂點離中心不一樣遠（不是正 12 邊形），每次建出來一模一樣
+  const foot = new Set(); for (let i = 0; i < pos.count; i++) if (Math.abs(pos.getY(i)) < 1e-6) foot.add(Math.hypot(pos.getX(i), pos.getZ(i)).toFixed(3));
+  assert.ok(foot.size >= 6, `jittered foot ring (${foot.size} radii)`);
+  const again = make().part.object.children.find(o => o.isMesh && !o.material.emissive?.getHex()).geometry.attributes.position.array;
+  assert.deepEqual([...again], [...pos.array], 'deterministic');
+  part.dispose(); assert.equal(glow.size, 0, 'dispose unregisters the lava');
+  assert.equal(make('low').part.object.children.filter(o => o.isMesh).length, 1, 'phone: one mesh');
+});
+// 平台上的東西不出格：火山錐腳（1.45＋抖動）與四顆石頭都在火山格裡
+test('the volcano foot and rocks stay inside the volcano cell', () => {
+  const spec = landmarks.view(zero, {})['landmarks.volcano'], c = axialToWorld(0, -1), hexIn = 2.5 * Math.sqrt(3) / 2;
+  const edge = p => hexIn - Math.max(...[0, 1, 2, 3, 4, 5].map(k => (p.x - c.x) * Math.cos(k * Math.PI / 3 + Math.PI / 6) + (p.z - c.z) * Math.sin(k * Math.PI / 3 + Math.PI / 6)));
+  for (let k = 0; k < 24; k++) { const a = k / 24 * 2 * Math.PI, p = { x: spec.at.x + Math.cos(a) * 1.55, z: spec.at.z + Math.sin(a) * 1.55 }; assert.ok(cellAt(p.x, p.z)?.join() === '0,-1', `foot ${k}`); }
+  for (const r of spec.parts.filter(p => p.kind === 'ico')) assert.ok(cellAt(spec.at.x + r.pos[0], spec.at.z + r.pos[2])?.join() === '0,-1');
+  assert.ok(edge(spec.at) > 1.55, 'room for the foot');
+});

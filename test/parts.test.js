@@ -29,6 +29,22 @@ test('compound: same-material parts collapse into one mesh and the clay material
   assert.equal(a.object.children.length, 1); assert.equal(a.object.children[0].material, b.object.children[0].material);
   assert.ok(a.object.children[0].geometry.attributes.color, 'vertex colours carry the part colours');
 });
+// 計畫 13 任務 4（火山 builder）：零件也可以直接帶一份非索引的 geometry（builder 自己算的錐）——套位置矩陣、自己有頂點色就留著（沒有就塗 color），
+// 跟 kit 零件併進同一個 mesh；帶 glow 的照樣進發光 mesh
+test('compound: a part may carry its own non-indexed geometry (kept vertex colours) and merges with kit parts', () => {
+  const { f, glow } = setup();
+  const g = new THREE.BoxGeometry(1, 1, 1).toNonIndexed(); g.deleteAttribute('uv');
+  const cols = new Float32Array(g.attributes.position.count * 3).fill(0.5); g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  const lava = new THREE.BoxGeometry(0.2, 0.2, 0.2).toNonIndexed(), before = [...g.attributes.position.array];
+  const p = f.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [
+    { geometry: g, pos: [3, 0, 0] }, { kind: 'box', pos: [0, 0, 0], scale: 1, color: 0xff0000 }, { geometry: lava, pos: [0, 2, 0], color: 0xdb6a41, glow: 0xdb6a41 },
+  ] });
+  assert.equal(p.object.children.length, 2); assert.equal(glow.size, 1);
+  const clay = p.object.children.find(m => !m.material.emissive?.getHex()), c = clay.geometry.attributes.color, q = clay.geometry.attributes.position;
+  let grey = 0; for (let i = 0; i < q.count; i++) if (q.getX(i) > 2 && Math.abs(c.getX(i) - 0.5) < 1e-6) grey++;
+  assert.equal(grey, g.attributes.position.count, 'own vertex colours kept, moved by pos');
+  assert.deepEqual([...g.attributes.position.array], before, 'the source geometry is not modified');
+});
 test('compound applies part position, scale and rotation to the merged geometry', () => {
   const { f } = setup();
   const p = f.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'box', pos: [5, 0, 0], scale: [2, 1, 1], color: 0xffffff }] });

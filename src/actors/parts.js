@@ -144,13 +144,16 @@ export function createPartFactory(THREE, ctx) {
     return unit.get(kind);
   };
 
-  function partGeometry({ kind, pos, scale = 1, rot = [0, 0, 0], color: hex }) {
-    const g = baseGeo(kind).clone(), s = Array.isArray(scale) ? scale : [scale, scale, scale];
+  // geometry：builder 自己算好的非索引幾何（計畫 13 火山錐）代替 kind——一樣套矩陣；自己帶頂點色就留著，沒有才塗 color
+  function partGeometry({ kind, geometry, pos, scale = 1, rot = [0, 0, 0], color: hex }) {
+    const g = (geometry ?? baseGeo(kind)).clone(), s = Array.isArray(scale) ? scale : [scale, scale, scale];
     g.applyMatrix4(m4.compose(new THREE.Vector3(...pos), q.setFromEuler(e.set(...rot)), new THREE.Vector3(...s)));
-    color.setHex(hex);
-    const n = g.attributes.position.count, cols = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { cols[i * 3] = color.r; cols[i * 3 + 1] = color.g; cols[i * 3 + 2] = color.b; }
-    g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    if (!(geometry && g.attributes.color)) {
+      color.setHex(hex);
+      const n = g.attributes.position.count, cols = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { cols[i * 3] = color.r; cols[i * 3 + 1] = color.g; cols[i * 3 + 2] = color.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    }
     if (g.attributes.uv) g.deleteAttribute('uv');
     return g;
   }

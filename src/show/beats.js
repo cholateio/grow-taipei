@@ -13,7 +13,7 @@ import { createPathCursor } from '../scene/path.js';
 import { worldEffects } from '../actors/world.js';
 
 export { together };
-export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6 };
+export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff: 1.5, puff: 0.8, build: 1.6, duck: 1.0 };   // duck：飛彈警告蹲下護頭（計畫 13）
 // 加速上限：一圈 2π / 0.35 ≈ 18 s，車剛開走時要 4.5 倍才趕得上 4 秒內進站（三倍會拖到 6 秒）
 export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');

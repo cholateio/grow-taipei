@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
-import { walkPose, ringPath, SHIRTS, createPeople, WALK_RADIUS, ACCESSORIES } from '../src/scene/people.js';
+import { walkPose, ringPath, SHIRTS, createPeople, WALK_RADIUS, ACCESSORIES, duckPose } from '../src/scene/people.js';
 import { R } from '../src/scene/hex.js';
 test('walkPose amplitudes', () => {
   const p = walkPose(Math.PI / 2); assert.ok(Math.abs(p.leg - .55) < 1e-9); assert.ok(Math.abs(p.arm + .45) < 1e-9); assert.ok(Math.abs(p.bob - .012) < 1e-9);
@@ -240,4 +240,25 @@ test('low quality keeps eye3 in alien mood (the normal eyes stay skipped)', () =
   people.setMood('alien'); people.update(0.1, 0.1, 20);
   assert.equal(partMesh(people, 'eye3').visible, true);
   assert.equal(partMesh(people, 'eyeL').visible, false); assert.equal(partMesh(people, 'eyeR').visible, false);
+});
+// 計畫 13 §設計 5：蹲下護頭（duck，飛彈警告）——整個人下蹲 0.08（腿往前彎）、兩手往前上抬到 −2.6 rad 護住頭；
+// 前 15 % 蹲下去、中間 70 % 停住、最後 15 % 站回來（GESTURE_DUR.duck 1.0 s：0.15 s 進、0.7 s 停、0.15 s 回）
+test("gesture 'duck': crouch 0.08 with bent legs, both arms up to −2.6 rad over the head; 15 % in, 70 % hold, 15 % out", () => {
+  assert.deepEqual(duckPose(0), { drop: 0, arm: 0, knee: 0 });
+  assert.deepEqual(duckPose(1), { drop: 0, arm: 0, knee: 0 });
+  for (const k of [0.15, 0.5, 0.85]) { const d = duckPose(k); assert.ok(Math.abs(d.drop - 0.08) < 1e-9 && Math.abs(d.arm + 2.6) < 1e-9 && d.knee < -0.5, `full crouch at k ${k}`); }
+  assert.ok(duckPose(0.07).drop > 0 && duckPose(0.07).drop < 0.08, 'going down'); assert.ok(duckPose(0.93).drop > 0 && duckPose(0.93).drop < 0.08, 'coming up');
+  const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0, y: 0, z: 0, yaw: 0, walking: false });
+  const m = new THREE.Matrix4();
+  const yOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); return new THREE.Vector3().setFromMatrixPosition(m).y; };
+  const rxOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); return Math.atan2(m.elements[6], m.elements[5]); };
+  people.update(0.016, 0); const rest = { body: yOf('people:body'), head: yOf('people:head'), legL: rxOf('people:legL') };
+  w.gesture = { kind: 'duck', k: 0.5, dur: 1.0 }; people.update(0.016, 0);
+  assert.ok(Math.abs(rest.body - yOf('people:body') - 0.08) < 1e-6 && Math.abs(rest.head - yOf('people:head') - 0.08) < 1e-6, 'the whole figure drops 0.08');
+  for (const a of ['people:armL', 'people:armR']) assert.ok(Math.abs(rxOf(a) + 2.6) < 1e-6, `${a} up to −2.6`);
+  assert.ok(rxOf('people:legL') - rest.legL < -0.5 && rxOf('people:legR') < -0.5, 'legs bent forward');
+  w.gesture = null; people.update(0.016, 0); assert.ok(Math.abs(yOf('people:body') - rest.body) < 1e-9, 'back up');
+  // 躺平時一律不做動作
+  people.setMood('lie'); w.gesture = { kind: 'duck', k: 0.5 }; people.update(0.016, 0); const lying = yOf('people:body'); people.setMood('normal');
+  w.gesture = null; people.setMood('lie'); people.update(0.016, 0); assert.ok(Math.abs(yOf('people:body') - lying) < 1e-9, 'no duck while lying');
 });

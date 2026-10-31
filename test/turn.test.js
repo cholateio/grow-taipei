@@ -85,15 +85,15 @@ test('no montage path remains: buildTurn has no montage/rush branches; a warning
   assert.deepEqual(a, ['focus', 'walk', 'bubble', 'gesture', 'levelUp', 'apply', 'home', 'world', 'focus']);
   assert.deepEqual(b, a, 'montage option is ignored');
   assert.equal(plain.speed, 1); assert.equal(legacy.speed, 1);
-  // 警告：先 mark、finale.script.warning 的拍（紅光 apply 只套 finale.flare → 抬頭＋「！」→ 放回日常）、補的 apply；不補鏡頭平移、不空拍
+  // 警告：先 mark、finale.script.warning 的拍（紅光＋警示燈 apply → 鏡頭到 101、回全景 → 抬頭 →「！」＋蹲下 → 放回日常，計畫 13）、補的 apply；不補鏡頭平移、不空拍
   assert.deepEqual(WARNING, { kind: 'warning', flag: { name: 'alarm', value: 1 } });
   const beats = buildTurn([WARNING, e], base([tower, finale, milk]), fakeCtx({ nav: navOf(2) })), kinds = kindsOf(beats);
   assert.equal(beats[0].kind, 'mark');
-  assert.deepEqual(kinds.slice(0, 4), ['apply', 'together', 'home', 'apply']);
-  assert.deepEqual(noMarks(beats)[0].only, ['finale.flare']);
-  assert.ok(!kinds.slice(0, 4).includes('bubble'), 'no countdown digit');
+  assert.deepEqual(kinds.slice(0, 7), ['apply', 'focus', 'focus', 'together', 'together', 'home', 'apply']);
+  assert.deepEqual(noMarks(beats)[0].only, ['finale.flare', 'finale.beacon']);
+  assert.ok(!kinds.slice(0, 7).includes('bubble'), 'no countdown digit');
   // 鮮奶的事件照常平移（warning 不算「上一個物品」：不空拍）
-  assert.deepEqual(kinds.slice(4, 6), ['focus', 'walk']);
+  assert.deepEqual(kinds.slice(7, 9), ['focus', 'walk']);
   assert.ok(!noMarks(beats).some(b => b.kind === 'wait'), 'no GAP after the warning');
   // 舞台旗標：foldEvent 折進 e.flag（alarm = 1）；劇本查 finale.script.warning
   const seen = [];

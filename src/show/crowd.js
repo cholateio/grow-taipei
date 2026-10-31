@@ -9,11 +9,15 @@ export const islanders = ctx => ctx.roster.keys().flatMap(k => ctx.roster.member
   .filter(m => m.walker && !m.hidden && !m.arriving && m.mode === 'home' && cellAt(m.pos.x, m.pos.z));
 
 // 全島抬頭：最多 max 個島民同時轉頭看 at（gesture 'look'，dur 秒）；演到第一拍才點名（名單記住，release 放同一批人回日常）。
-// look 是 max 個拍（名單不夠的那幾拍目標 null、自己跳過），放進 together 一起演；release：看完馬上放回日常（不凍到回合結束）
+// look 是 max 個拍（名單不夠的那幾拍目標 null、自己跳過），放進 together 一起演；release：看完馬上放回日常（不凍到回合結束）。
+// act(kind, dur)／say(text, dur)：同一批人接著做另一個小動作、頭上冒泡泡（飛彈警告：抬頭之後喊「！」、蹲下護頭，計畫 13），
+// 一樣 max 個拍放進 together（點完名的人已經被 claim 走、不在日常裡，islanders 點不到，所以要用同一份名單）
 export function lookUp(B, at, dur, max = 24) {
   let list = null;
   const who = i => c => (list ??= islanders(c))[i] ?? null;
-  return { look: Array.from({ length: max }, (_, i) => B.gesture(who(i), 'look', dur, { at })), release: B.home(() => list ?? []) };
+  const act = (kind, d) => Array.from({ length: max }, (_, i) => B.gesture(who(i), kind, d));
+  const say = (text, d) => Array.from({ length: max }, (_, i) => B.bubble(who(i), text, d));
+  return { look: Array.from({ length: max }, (_, i) => B.gesture(who(i), 'look', dur, { at })), act, say, release: B.home(() => list ?? []) };
 }
 
 // 一群人同時演，名單演到才算：together 要在建拍時給齊子拍，這裡在 start 才建（名單空的就跳過）

@@ -21,6 +21,14 @@ export function hammerPose(k) {
   return { arm: ARM_UP + (ARM_HIT - ARM_UP) * e, lean: -LEAN_BACK + (LEAN_HIT + LEAN_BACK) * e };
 }
 
+// 蹲下護頭（duck，計畫 13 §設計 5 飛彈警告）：整個人下蹲 DUCK_DROP（腿往前彎 DUCK_KNEE）、兩手往前上抬到 DUCK_ARM 護住頭。
+// 前 DUCK_IN（15 %）蹲下去、中間停住、最後 15 % 站回來（smoothstep）；GESTURE_DUR.duck 1.0 s 就是 0.15 s 進、0.7 s 停、0.15 s 回
+export const DUCK_IN = 0.15, DUCK_DROP = 0.08, DUCK_ARM = -2.6, DUCK_KNEE = -1.2;
+export function duckPose(k) {
+  const u = Math.min(1, Math.max(0, Math.min(k, 1 - k) / DUCK_IN)), e = u * u * (3 - 2 * u);
+  return { drop: DUCK_DROP * e, arm: DUCK_ARM * e + 0, knee: DUCK_KNEE * e + 0 };   // + 0：e = 0 時不留 −0
+}
+
 export function ringPath(center, radius, y, n = 24) {
   return Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; return { x: center.x + Math.cos(a) * radius, y, z: center.z + Math.sin(a) * radius }; });
 }
@@ -138,23 +146,24 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
 
   function place(w, t, k = 1) {
     const lie = mood === 'lie';
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、敲鐵鎚（look、build 帶 yaw 就在 0.2 秒內轉過去）；躺平時一律不做
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、敲鐵鎚（look、build 帶 yaw 就在 0.2 秒內轉過去）、蹲下護頭；躺平時一律不做
     const g = lie ? null : w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
     const i = walkers.indexOf(w), p = locate(w), still = lie || (w.controlled ? !w.pose.walking : w.speed === 0), pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
     if (build !== !!w.hammer) { w.hammer = build; paint(i, w); }   // 拿起、放下鐵鎚時重塗 handle、case 的顏色
-    const hp = build ? hammerPose(gk) : null;
+    const hp = build ? hammerPose(gk) : null, dk = g?.kind === 'duck' ? duckPose(gk) : null;
     const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : hp ? hp.lean : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
     const turn = (g?.kind === 'look' || build) && g.yaw !== undefined ? Math.min(1, g.dur ? gk * g.dur / TURN : 1) : 0;
     const yaw = turn ? p.yaw + turnBy(p.yaw, g.yaw) * turn : p.yaw, wave = g?.kind === 'wave';
     const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾（負的是後仰）
     w.pos = { x: p.x, y: p.y, z: p.z };
-    W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
+    W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump - (dk ? dk.drop * ks : 0), p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
     if (lie) W.multiply(LIE);
-    show(!bike, 'legL', i, tr(-0.025, 0.09, 0), rx(pose.leg), tr(0, -0.045, 0));
-    show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg), tr(0, -0.045, 0));
-    at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
+    const knee = dk ? dk.knee : 0;   // 蹲下：兩腿一起往前彎（髖部降低、腿不插進地面）
+    show(!bike, 'legL', i, tr(-0.025, 0.09, 0), rx(pose.leg + knee), tr(0, -0.045, 0));
+    show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg + knee), tr(0, -0.045, 0));
+    at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(dk ? pose.arm + dk.arm : bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
     // 比讚：右手固定 rx(−2.6)（跟揮手同一個舉手角度），躺下後手往天上斜舉
     if (lie) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-2.6), tr(0, -0.04, 0));
     else if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
@@ -163,7 +172,8 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
       const sw = rx(hp.arm), sh = tr(0.065, 0.2 + lift, 0);
       at('armR', i, L, sh, sw, tr(0, -0.04, 0));
       at('handle', i, L, sh, sw, ...HAMMER_HANDLE); at('case', i, L, sh, sw, ...HAMMER_HEAD);
-    } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
+    } else if (dk) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-pose.arm + dk.arm), tr(0, -0.04, 0));   // 護頭：右手跟左手一起舉
+    else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
     at('body', i, L, tr(0, 0.15 + lift, 0));
     at('head', i, L, tr(0, 0.28 + lift, 0));
     show(acc !== 'helmet', 'hair', i, L, tr(0, 0.292 + lift, -0.006));

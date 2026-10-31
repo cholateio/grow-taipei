@@ -28,8 +28,8 @@ import { roadsterParts } from './token.js';
 
 export const id = 'finale';
 
-// 警告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒（真實秒數；終局回合 1 倍速）
-export const LOOK = 1.2, SHOUT = 0.8;
+// 警告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒、再一起蹲下護頭 DUCK 秒（真實秒數；終局回合 1 倍速）；鏡頭先拉到 101 的 zoom
+export const LOOK = 1.2, SHOUT = 0.8, DUCK = 1.0, TOWER_ZOOM = 0.9;
 
 // 紅光的位置：鏡頭對面（全景沿 −z 看過去）主島西北方、背景環山山腳前的海面上。
 // 設計 §4 寫「背景山之外」，但環山（terrain.js 半徑 25–50 隆起、遠側不壓低）山脊以外的點在 16:9 全景一律投影到 NDC y > 1（出畫），
@@ -40,6 +40,11 @@ export const FLARE_AT = { x: -12, y: 2.5, z: -23 };
 export const FLARE_COLOR = 0xff5a3c, FLARE_R = 0.9, COLUMN_H = 6;
 // 脈動頻率（選擇帶動升級 §4：固定 2 Hz；以前倒數 3／2／1 越閃越快）
 export const FLARE_HZ = 2;
+// 101 頂上的警示燈（計畫 13 §設計 5，使用者 2026-11-01「飛彈發射過來前的警告請優化呈現方式」）：塔尖上 BEACON_UP 一顆紅球（半徑 BEACON_R）
+// ＋一道從球心往外 BEAM_L 長的扁平紅光束，繞 y 軸每秒 BEACON_REV 圈；亮度跟紅光同一個 FLARE_HZ 脈動。
+// 計畫寫「headOf('tower') 之上 0.15」：headOf 是泡泡的位置、比塔尖高 0.6（LABEL_UP），燈會飄在半空——改放塔尖（這一階段塔身的 top）之上 0.15
+export const BEACON_UP = 0.15, BEACON_R = 0.12, BEAM_L = 3, BEACON_REV = 1;
+const BEACON_RED = C.red;
 
 // ── 飛彈（設計 §6）──
 // 真實秒數：拋物線飛 FLIGHT 秒；deflect 的第二段（被風吹歪、邊轉邊掉進溫泉）DEFLECT 秒；結果演完回全景停 HOLD_END 秒
@@ -112,7 +117,11 @@ const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
   // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 1（警告）。脈動頻率固定 FLARE_HZ（builders.flare）
-  if (flags.alarm && !flags.missile) v['finale.flare'] = { kind: 'flare', at: FLARE_AT, shadow: false, footprint: false };
+  if (flags.alarm && !flags.missile) {
+    v['finale.flare'] = { kind: 'flare', at: FLARE_AT, shadow: false, footprint: false };
+    // 警示燈：101 的階段照 tower.js 的算法（stageOfView），站在這一階段的塔尖上
+    v['finale.beacon'] = { kind: 'beacon', at: { x: TOWER.x, y: TOWER.y + towerBody(stageOfView(lv, meta)).top + BEACON_UP, z: TOWER.z }, shadow: false, footprint: false };
+  }
   const o = flags.missile;
   if (o) {
     // 101 的階段照 tower.js 的算法（stageOfView：meta.total，沒給才自己加總）：deflect 的塔頂跟著塔身；
@@ -222,6 +231,28 @@ export const builders = {
       dispose() { orb.geometry.dispose(); beam.geometry.dispose(); orbMat.dispose(); beamMat.dispose(); },
     };
   },
+  // 警示燈：紅球（'lamp'）＋扁平光束（'beam'：圓錐殼從球心往 +x 張開到半徑 0.35、再壓扁成 0.25 倍高，雙面、半透明、不寫深度），
+  // 光束繞 y 每秒 BEACON_REV 圈。跟紅光一樣自己建材質、底強度 1.2 不跟夜晚歸零（白天也看得到、手機畫質照亮），再乘 FLARE_HZ 脈動；不投影
+  beacon(THREE, spec, ctx) {
+    const object = new THREE.Group();
+    const lampMat = new THREE.MeshStandardMaterial({ color: BEACON_RED, emissive: BEACON_RED, roughness: 0.5, metalness: 0 });
+    const beamMat = new THREE.MeshBasicMaterial({ color: BEACON_RED, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide });
+    const lamp = new THREE.Mesh(new THREE.SphereGeometry(BEACON_R, 16, 12), lampMat);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.35, BEAM_L, 16, 1, true).translate(0, BEAM_L / 2, 0).rotateZ(-Math.PI / 2).scale(1, 0.25, 1), beamMat);
+    lamp.name = 'lamp'; beam.name = 'beam';
+    for (const m of [lamp, beam]) { m.castShadow = m.receiveShadow = false; object.add(m); }
+    const pose = t => {
+      const k = (1 + Math.sin(t * Math.PI * 2 * FLARE_HZ)) / 2;
+      lampMat.emissiveIntensity = (1.2 + ctx.glow.intensity) * (0.5 + 0.5 * k);
+      beamMat.opacity = 0.15 + 0.4 * k;
+      beam.rotation.y = t * Math.PI * 2 * BEACON_REV;
+    };
+    pose(0);
+    return {
+      object, materials: [lampMat], update(dt, t) { pose(t); },
+      dispose() { lamp.geometry.dispose(); beam.geometry.dispose(); lampMat.dispose(); beamMat.dispose(); },
+    };
+  },
   // 飛彈：Group 在 at（撞點），機身 compound（'body'）照 missilePath 擺；shield 多帶一發煙火（parts.js fireworks once，'fireworks'），
   // 飛完（t ≥ FLIGHT）那一刻放。建好即終態（t = Infinity：shield 藏起來、煙火放完；hit 卡在彎角；deflect 插在池裡）——
   // 跳過、reduced-motion、截圖、舞台重建零件都直接看到結果。
@@ -272,15 +303,22 @@ const later = (delay, dur, beat) => {
 // 飛彈各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹歪的「？」1.0 再「♪」0.8
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
 
+// 101 的半腰：塔腳（錨點）到頭頂（stage.headOf）的中點，警告時鏡頭對這裡（塔頂的警示燈與島都在畫面裡）
+export const towerWaist = c => { const h = c.stage.headOf('tower'); return { x: h.x, y: (TOWER.y + h.y) / 2, z: h.z }; };
 export const script = {
-  // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）：紅光閃白出現 → 全島（最多 24 人）轉頭看紅光、
-  // 頭上一起冒「！」→ 放回日常。終局回合 1 倍速，秒數就是真實秒數。
-  // together 裡「！」排在抬頭前面：together 依序 start，抬頭會把人 claim 走（mode 不再是 home），排後面的 islanders 就點不到他們了；
-  // 「！」點的是 islanders 的前 24 個——跟 lookUp 同一刻、同一個順序點名，所以是同一批人
+  // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）：紅光與 101 頂上的警示燈一起出現 →
+  // 鏡頭先飛到 101（FOCUS_BEAT 0.8 s，計畫 13）、馬上飛回全景 → 全島（最多 24 人）轉頭看紅光 1.2 s（鏡頭在這段飛回全景）→
+  // 同一批人頭上一起冒「！」、蹲下護頭（duck）1.0 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 3.3 s）。
+  // 計畫寫「！」跟抬頭一起、回全景交給飛彈那段：鏡頭停在 101 時島的兩側與前緣出畫，24 個「！」有 11 個整段在畫面外
+  // （chain.test 的字在畫面裡不變式）——改成鏡頭先回全景、「！」跟蹲下一起冒（鏡頭已經到全景）
   warning(e, s, ctx) {
     const { B } = ctx, up = lookUp(B, FLARE_AT, LOOK);
-    const shout = crowd(B, c => islanders(c).slice(0, up.look.length).map(m => B.bubble(m, '！', SHOUT)));
-    return [B.apply(e, { only: ['finale.flare'] }), B.together([shout, ...up.look]), up.release];
+    return [
+      // 鏡頭對 101 的半腰（地面到頭頂 stage.headOf 的中點）：對那一格的地面（focus('tower')）全景距離 × 0.9 會把塔頂、警示燈切出畫面，
+      // 對頭頂又整座島掉出畫面下緣、只剩背景的山（截圖量的）
+      B.apply(e, { only: ['finale.flare', 'finale.beacon'] }), B.focus(towerWaist, { zoom: TOWER_ZOOM }), B.focus('home'),
+      B.together(up.look), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
+    ];
   },
   // 飛彈（設計 §6，真實秒數，終局回合 1 倍速）：回全景停 0.8 → 紅光熄掉 → 飛彈從紅光的位置發射（replay：套用零件、launch 重飛），
   //   飛到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→ 結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END。

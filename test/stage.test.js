@@ -70,15 +70,23 @@ test('commit reveals the fresh part and blinks it; the old part is dropped', () 
   assert.ok(Math.abs(fresh.scale.y - 0.15) < 1e-9, 'the fresh part grows from 0.15x high'); assert.equal(fresh.scale.x, 1); assert.equal(fresh.scale.z, 1);
   stage.commit('milk.lamp'); assert.ok(lit(blink, stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
   blink.update(0.16); assert.deepEqual(mats(fresh), own, 'the glow is over after BLINK: its own materials again'); assert.ok(blink.has(fresh), 'still growing');
-  assert.ok(fresh.scale.y > 0.5, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
+  assert.ok(fresh.scale.y < 0.3, `a stub while it glowed (${fresh.scale.y.toFixed(2)})`);
+  blink.update(0.25); assert.ok(fresh.scale.y > 0.8, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
   blink.update(GROW_DUR); assert.equal(blink.count, 0); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
 });
-// grow: false（颱風的雨：不是蓋起來的東西）：新零件只亮、不長
-test('a fresh part with grow: false glows but does not grow', () => {
-  const rainy = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? { 'milk.rain': { kind: 'compound', at, grow: false, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }] } } : {}) };
-  const { stage, blink } = setup([rainy]); stage.apply(placed, { deferred: true }); const o = stage.partObject('milk.rain');
-  stage.commit('milk.rain'); assert.ok(lit(blink, o), 'glows'); assert.deepEqual(o.scale.toArray(), [1, 1, 1], 'does not grow');
-  blink.update(BLINK + 0.01); assert.equal(blink.has(o), false, 'done after the glow');
+// 只有建築會長（協調者裁決，stage.js growsOn）：footprint false 的、不是 compound／glb／campus 的、tagAlong 點綴只亮不長；grow: true／false 蓋過
+test('only buildings grow: footprint false, other kinds and tagAlong parts only glow; an explicit grow flag overrides', () => {
+  const box = extra => ({ kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }], ...extra });
+  const cases = { 'milk.a': [box({ footprint: false }), false], 'milk.b': [box({ tagAlong: true }), false], 'milk.c': [box({ footprint: { r: 0.3 }, grow: false }), false],
+    'milk.d': [box({ footprint: false, grow: true }), true], 'milk.e': [box({}), true], 'milk.f': [box({ footprint: { r: 0.3 } }), true] };
+  const mod = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? Object.fromEntries(Object.entries(cases).map(([k, [v]]) => [k, v])) : {}) };
+  const { stage, blink } = setup([mod]); stage.apply(placed, { deferred: true });
+  for (const [k, [, grows]] of Object.entries(cases)) {
+    const o = stage.partObject(k); stage.commit(k); assert.ok(lit(blink, o), `${k} glows`);
+    assert.equal(o.scale.y < 1, grows, `${k} ${grows ? 'grows' : 'does not grow'}`);
+  }
+  blink.update(BLINK + 0.01);
+  for (const [k, [, grows]] of Object.entries(cases)) assert.equal(blink.has(stage.partObject(k)), grows, `${k} done after the glow unless it grows`);
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
 test('a removed part blinks first and is dropped when the blink ends', () => {
@@ -263,4 +271,34 @@ test('a turn with nothing but settle also ends the bite', () => {
   stage.apply({ kind: 'fx', item: 'rat', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } });
   stage.apply({ kind: 'settle' }); stage.apply({ kind: 'settle' });
   assert.equal(stage.meta.bitten, false);
+});
+
+// 協調者裁決（修正批次 2）：整局列舉——正解、外星壞局、攤車被吹走那局的每一個事件之後，所有演員 view 裡會長的零件都是建築
+// （compound／glb／campus、footprint 不是 false、不是 tagAlong）；雨、雲、堤防、彩虹、霓虹、軌道與列車、UFO、光環、被吹走的攤車都不長
+test('every actor view through the solution, the alien game and a blown-cart game: only footprint-bearing buildings grow', async () => {
+  const { growsOn } = await import('../src/actors/stage.js'), { ALL } = await import('./helpers/show.js');
+  const engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
+  const all = enumerate(spec), orders = [stats(all, spec).full[0].order, all.find(r => r.ending.id === 'alien').order, ['milk', 'boba', 'baseball', 'typhoon', 'chip', 'bulb', 'token', 'rat']];
+  const growing = new Map(), still = new Set(), NEVER = k => k === 'typhoon.main' || k.split('.').slice(1).some(seg => /^(rain|levee|rainbow|neon|track|train|ufo|rocksRing|blown|cable|cables|scooter|fleet|ferry|shield)$/i.test(seg));
+  for (const order of orders) {
+    let s = engine.createState(spec), view = { lv: s.lv, flags: {} };
+    for (const step of [...order.map(id => x => engine.place(x, id, spec)), x => engine.advance(x, spec)]) {
+      const r = step(s); s = r.state;
+      for (const e of r.events) {
+        view = engine.foldEvent(view, e);
+        for (const mod of ALL) for (const [k, p] of Object.entries(mod.view(view.lv, view.flags, {}) ?? {})) {
+          if (p.kind === 'roster') continue;
+          if (growsOn(p)) growing.set(k, p.kind); else still.add(k);
+        }
+      }
+    }
+  }
+  for (const [k] of growing) {
+    assert.ok(!NEVER(k), `${k} is not a building but grows`);
+  }
+  for (const k of ['typhoon.rain', 'typhoon.main', 'typhoon.levee', 'typhoon.rainbow', 'boba.main']) assert.ok(still.has(k) || growing.has(k), `${k} seen`);
+  assert.ok(!growing.has('typhoon.levee') && !growing.has('typhoon.rainbow') && !growing.has('typhoon.rain'), 'weather and the levee only glow');
+  assert.ok(growing.has('milk.main') && growing.has('chip.main') && growing.has('baseball.main'), 'the buildings grow');
+  console.log(`# grow: ${[...growing].map(([k, kind]) => `${k}(${kind})`).sort().join(' ')}`);
+  console.log(`# glow only: ${[...still].filter(k => !growing.has(k)).sort().join(' ')}`);
 });

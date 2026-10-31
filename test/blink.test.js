@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { createPeople } from '../src/scene/people.js';
-import { createBlink, GROW_DUR, BLINK, GLOW } from '../src/show/blink.js';
+import { createBlink, GROW_DUR, GROW_HOLD, BLINK, GLOW } from '../src/show/blink.js';
 
 const twoMeshes = () => {
   const g = new THREE.Group(), a = new THREE.MeshStandardMaterial({ color: 0xdb6a41 }), b = new THREE.MeshBasicMaterial({ color: 0x5a88b2 });
@@ -81,26 +81,27 @@ test('nested parts: the later blink skips meshes already glowing; whichever ends
     assert.equal(blink.count, 0);
   }
 });
-// 修正批次 2（使用者：「建築物升級時只會原地閃爍」）：新零件「長出來」——以零件底部為軸（position.y 不動），scale.y 從 0.15 長到 1.06 再回 1，
-// GROW_DUR（0.5 s）；x、z 不動；結束設回記下的 scale（壓扁過的零件也不會被設成 1）
-test('grow: scale.y 0.15 → overshoot 1.06 → 1 of the starting scale over GROW_DUR, from the base (position untouched), x / z unchanged', () => {
-  assert.equal(GROW_DUR, 0.5);
+// 修正批次 2（使用者：「建築物升級時只會原地閃爍」）：新零件「長出來」——以零件底部為軸（position 不動），x、z 不動；
+// 協調者裁決：先在 0.15 倍停 GROW_HOLD（＝亮一下的 BLINK，發亮的矮樁），再 GROW_DUR（0.5 s）以 ease-out-back 長到 1.06、回 1；共 0.65 s 都算 has()
+test('grow: scale.y holds at 0.15 for GROW_HOLD (the glow), then rises over GROW_DUR to an overshoot of 1.06 and settles at 1; the base stays put', () => {
+  assert.equal(GROW_DUR, 0.5); assert.equal(GROW_HOLD, 0.15); assert.equal(GROW_HOLD, BLINK);
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) });
   for (const start of [[1, 1, 1], [1.2, 0.8, 1.2]]) {
     const o = new THREE.Group(); o.scale.set(...start); o.position.set(1, 0.65, 2);
     blink.grow(o); assert.ok(blink.has(o)); assert.equal(blink.count, 1);
     assert.ok(Math.abs(o.scale.y - start[1] * 0.15) < 1e-9, `0.15x at t = 0 (${o.scale.y})`);
     assert.equal(o.scale.x, start[0]); assert.equal(o.scale.z, start[2]);
-    let peak = 0, prev = o.scale.y, rising = true, steps = 0;
-    for (let t = 0; t < GROW_DUR - 0.03; t += 1 / 60) {
-      blink.update(1 / 60); steps++; const k = o.scale.y / start[1]; peak = Math.max(peak, k);
-      if (rising && o.scale.y < prev) rising = false; prev = o.scale.y;
+    let peak = 0, prev = o.scale.y, rising = true, t = 0;
+    for (; t < GROW_HOLD + GROW_DUR - 0.03; t += 1 / 60) {
+      blink.update(1 / 60); const k = o.scale.y / start[1]; peak = Math.max(peak, k);
+      if (t + 1 / 60 <= GROW_HOLD - 1e-9) assert.ok(Math.abs(k - 0.15) < 1e-9, `still a stub during the glow (t ${(t + 1 / 60).toFixed(3)}: ${k.toFixed(3)})`);
+      if (rising && o.scale.y < prev - 1e-12) rising = false; prev = o.scale.y;
       assert.deepEqual(o.position.toArray(), [1, 0.65, 2], 'the base stays put'); assert.equal(o.scale.x, start[0]);
       assert.ok(blink.has(o), 'still growing');
     }
     assert.ok(Math.abs(peak - 1.06) < 0.005, `overshoots to 1.06 (${peak.toFixed(4)})`); assert.ok(!rising, 'and settles back');
     for (let i = 0; i < 3; i++) blink.update(1 / 60);
-    assert.deepEqual(o.scale.toArray(), start, 'exactly the starting scale'); assert.ok(!blink.has(o)); assert.equal(blink.count, 0);
+    assert.deepEqual(o.scale.toArray(), start, 'exactly the starting scale after GROW_HOLD + GROW_DUR'); assert.ok(!blink.has(o)); assert.equal(blink.count, 0);
   }
 });
 test('a part that glows and grows counts once; the glow still fades in BLINK; stop and clear end the grow at its starting scale', () => {

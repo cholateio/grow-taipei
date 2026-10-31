@@ -53,8 +53,8 @@ export function view(lv) {
       { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },
       ...Array.from({ length: 7 }, (_, i) => { const a = i / 7 * Math.PI * 2; return { kind: 'sphere', pos: [Math.cos(a) * 2.2, 4.4 + (i % 2) * 0.2, Math.sin(a) * 2.2], scale: 1.1 - (i % 3) * 0.12, color: STORM }; }),
     ] };
-    // 雨不是蓋起來的東西：出現時只亮、不長（grow: false，stage.js）——放下劇本裡大家等雨亮完才出發去躲，躲進門的那一刻沒有東西在閃
-    v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false, grow: false };
+    // 雨不是建築：出現時只亮、不長（stage.js growsOn）——放下劇本裡大家等雨亮完才出發去躲，躲進門的那一刻沒有東西在閃
+    v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
     // 外送機車：珍奶噴泉廣場以上（≥4）才接得了颱風天的外送（spec.js 颱風 fx；攤車、人龍、珍奶店 ≤3 是被吹走）
     if (lv.boba >= 4) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
     return v;

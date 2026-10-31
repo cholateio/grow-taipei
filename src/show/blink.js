@@ -5,20 +5,22 @@
 //     每幀照原材質當下的強度算（夜晚、大停電調的是原材質）。沒有 emissive 的（MeshBasicMaterial）把 color 往白 lerp 同一個比例。
 //     時間到換回原材質、dispose 複本，再呼叫 onEnd。
 //   grow(object3d, dur = GROW_DUR)：長出來（修正批次 2，取代小彈一下 0.94 → 1：使用者「建築物升級時只會原地閃爍」）——記下呼叫時的 scale，
-//     只動 y：從 GROW_FROM 倍以 ease-out-back 長到 GROW_PEAK 倍再回 1 倍，x、z 不動；零件的原點就是它的底（at，零件從 y 0 往上蓋），
-//     所以是從地面長上來，object.position 不動。結束設回記下的 scale（壓扁過的零件也不會被設成 1）。和亮一下（part）同時開始、亮一下照舊 BLINK 秒淡掉。
+//     只動 y：先在 GROW_FROM 倍停 GROW_HOLD 秒（就是亮一下的那段：玩家看到一截發亮的矮樁），再花 dur 秒以 ease-out-back 長到 GROW_PEAK 倍、
+//     回 1 倍（共 GROW_HOLD + dur）；x、z 不動。零件的原點就是它的底（at，零件從 y 0 往上蓋），所以是從地面長上來，object.position 不動。
+//     結束設回記下的 scale（壓扁過的零件也不會被設成 1）。和亮一下（part）同時開始，亮一下照舊 BLINK 秒淡掉。哪些零件會長由 stage.js growsOn 決定（只有建築）
 //   walker(w, dur)：小人是 InstancedMesh 的一個實例，改用 people.flashInstance 把整個實例塗白、時間到重塗原色（名冊換位置用，照舊）。
 // 亮到一半再亮同一個東西：計時重來，不再複製一次。父子各自 part（巢狀）：後來的那個跳過已經在亮的 mesh（各自換回自己的原材質）。clear()：全部立刻回原樣（跳過、RESET）。
 // stop(object 或 walker)：只把這一個立刻收掉（要拿掉、放回模型池的東西先換回原材質與原大小，複本才不會被帶走）。
 // has(object 或 walker)：這一個現在正在亮或正在長（測試查「換位置的那一幀有閃」）。count：正在亮／長／閃的東西有幾個（同一個東西只算一次）。
 export const BLINK = 0.15;
 export const GLOW = 0.35;
-export const GROW_DUR = 0.5;
+export const GROW_DUR = 0.5, GROW_HOLD = 0.15;   // 長高的秒數；長之前先停在矮樁的秒數（＝亮一下 BLINK，協調者裁決：曲線不藏在白光裡）
 const GROW_FROM = 0.15, GROW_PEAK = 1.06;
 // ease-out-back：f(0) = 0、f(1) = 1，中途衝過頭 1 + 4s³ / (27 (s + 1)²)；s = 1.4 衝到 1.0706，乘上 (1 − GROW_FROM) 剛好是 GROW_PEAK 1.06
 const BACK = 1.4;
 const easeOutBack = k => { const u = k - 1; return 1 + (BACK + 1) * u ** 3 + BACK * u ** 2; };
-const growAt = k => GROW_FROM + (1 - GROW_FROM) * easeOutBack(k);
+// t：從呼叫起算的秒數；前 GROW_HOLD 秒停在 GROW_FROM，之後 dur 秒長上去
+const growAt = (t, dur) => (t <= GROW_HOLD ? GROW_FROM : GROW_FROM + (1 - GROW_FROM) * easeOutBack(Math.min(1, (t - GROW_HOLD) / dur)));
 const easeOut = k => 1 - (1 - k) ** 2;
 
 export function createBlink(THREE, { people }) {
@@ -74,10 +76,10 @@ export function createBlink(THREE, { people }) {
 
   function grow(object, dur = GROW_DUR) {
     const was = grows.get(object);
-    if (was) { was.t = 0; was.dur = dur; } else grows.set(object, { t: 0, dur, scale: object.scale.clone() });
+    if (was) { was.t = 0; was.dur = dur; } else grows.set(object, { t: 0, dur, scale: object.scale.clone() });   // dur 是長高那段，總長 GROW_HOLD + dur
     stretch(object, grows.get(object));
   }
-  function stretch(object, it) { object.scale.set(it.scale.x, it.scale.y * growAt(Math.min(1, it.t / it.dur)), it.scale.z); }
+  function stretch(object, it) { object.scale.set(it.scale.x, it.scale.y * growAt(it.t, it.dur), it.scale.z); }
   function endGrow(object, it) { grows.delete(object); object.scale.copy(it.scale); }
 
   function walker(w, dur = BLINK) {
@@ -89,7 +91,7 @@ export function createBlink(THREE, { people }) {
 
   function update(dt) {
     for (const [o, it] of [...parts]) if ((it.t += dt) >= it.dur - 1e-9) endPart(o, it); else paint(it);
-    for (const [o, it] of [...grows]) if ((it.t += dt) >= it.dur - 1e-9) endGrow(o, it); else stretch(o, it);
+    for (const [o, it] of [...grows]) if ((it.t += dt) >= GROW_HOLD + it.dur - 1e-9) endGrow(o, it); else stretch(o, it);
     for (const [w, it] of [...walkers]) if ((it.t += dt) >= it.dur - 1e-9) endWalker(w);
   }
   function stop(target) {

@@ -43,6 +43,12 @@ export function troubleSpot(item, lv, flags, modules) {
   return anchorWorld(item);
 }
 
+// 長出來（blink.grow，修正批次 2 協調者裁決）只給建築：kind 是 compound／glb／campus、footprint 不是 false、不是 tagAlong 點綴的才長；
+// 其他（footprint false 的雲、雨、纜線、軌道與列車、霓虹、光環、UFO、堤防、彩虹、被吹到海裡的攤車、離島點綴……）只亮不長——
+// 它們的 at 常在地面或原點、畫在高處，從底部長會變成從地面／水裡升上來。零件 spec 可寫 grow: true／false 蓋過
+const GROW_KINDS = new Set(['compound', 'glb', 'campus']);
+export const growsOn = spec => (typeof spec?.grow === 'boolean' ? spec.grow : GROW_KINDS.has(spec?.kind) && spec.footprint !== false && !spec.tagAlong);
+
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   // flags：零件可以每幀讀目前的舞台旗標（getter，不是快照）。以前 finale.flare 照倒數 alarm 變快；選擇帶動升級之後紅光固定 2 Hz，目前沒有零件讀它
@@ -100,15 +106,15 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   // 亮一下／長出來中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
   function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
 
-  // glint：要不要亮一下（commitAll、換裝前收掉舊的 pending 都不亮）。新零件亮一下＋長出來（blink.grow，修正批次 2）；要拿掉的舊零件只亮、不長，亮完才拿掉
+  // glint：要不要亮一下（commitAll、換裝前收掉舊的 pending 都不亮）。新零件亮一下，是建築的再長出來（blink.grow，修正批次 2；見 growsOn）；
+  // 要拿掉的舊零件只亮、不長，亮完才拿掉
   function commit(key, glint = true) {
     const p = pending.get(key); if (!p) return;
     pending.delete(key);
     if (p.fresh) {
       if (p.old) drop(p.old);
       p.fresh.part.object.visible = true;
-      // grow: false（零件 spec 可省）：不是蓋起來的東西（颱風的雨）只亮、不長
-      if (glint) { blink?.part(p.fresh.part.object); if (p.fresh.spec.grow !== false) blink?.grow(p.fresh.part.object); }
+      if (glint) { blink?.part(p.fresh.part.object); if (growsOn(p.fresh.spec)) blink?.grow(p.fresh.part.object); }
     } else if (glint && blink) {
       dying.add(p.old);
       blink.part(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });

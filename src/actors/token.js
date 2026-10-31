@@ -355,6 +355,26 @@ const SLIDE = [offset(PLAYGROUND, 0.1, 1.1), offset(PLAYGROUND, 0.5, 1.1)];
 // （跟 focus 一起演的話，從遊樂場島轉回來的路上字有一半時間在畫面外）
 const ISLAND_ZOOM = 0.8;
 const levelUpAtStation = B => [B.focus('token'), B.levelUp('token')];
+// 捷運站對島心的方位：列車車頭停在站前島緣（同 beats.js 的 STATION_A；beats.js 匯入本檔，這裡自己算一次不繞回去）
+const STATION_A = Math.atan2(AT.z, AT.x);
+// 列車升級（Lv5 五節、Lv6 高鐵；修正批次 fix3 §C）：站務員 ！ 跟列車趕到站前同時演 → 車頭停在站前（STATION_A）停 SWAP_STOP 秒——
+//   停著的那一刻換車（apply），車頭 ♪、站務員 gesture（揮手／跳）→ trainStop 自己讓列車加速開走（SPUR_PULL 0.7 秒），LEVEL UP 跟開走一起演。
+//   一級 ≤ 4.5 秒（裁決 R15）：拍長 = 趕到站前 + 換車 0.15 + ♪ 1.0 + LEVEL UP 1.0。趕路照 trainRun：剛開過站前 π/2 內就倒車回來（倒車要先煞停、
+//   再起步，最慢是 SWAP_IN + 1.25 秒），其餘往前最多 SWAP_BOOST 倍——列車在環上哪裡都 ≤ 2.25 秒到站，整級 ≤ 4.4 秒
+//   （簡報原本的排法 ！ → 停站 → LEVEL UP 一個接一個是 5.4–5.8 秒，超過上限：！ 改跟趕路一起、LEVEL UP 改在停站拍的最後跟開走一起）
+const SWAP_IN = 1.0, SWAP_BOOST = 7.5, SWAP_STOP = 1.2;
+function trainSwap(e, ctx, move) {
+  const { B } = ctx, st = staffOf();
+  return [
+    B.together([
+      B.bubble(st, '！', 0.6),
+      B.trainStop({ at: STATION_A, arrive: SWAP_IN, boost: SWAP_BOOST, stop: SWAP_STOP, back: Math.PI / 2, during: [
+        B.apply(e), B.together([B.bubble(B.trainHead(ctx), '♪', 0.7), B.gesture(st, move)]), B.levelUp('token'),
+      ] }),
+    ]),
+    B.home(st),
+  ];
+}
 const CAR_KEYS = [0, 1, 2].map(i => `token.cars.${i}`);
 // 飛天車起飛：三台錯開 FLY_STAGGER 秒從屋頂斜坡起飛、繞 101 一圈、落回屋頂（零件的 userData.fly）；跳過時 land 立刻停好
 const fly = () => ({
@@ -393,21 +413,12 @@ export const script = {
         B.levelUp('token'), B.home(st),
       ];
     },
-    // 五節：站務員 ！ → 列車閃白加長成 5 節、從站後面駛出（揮手）→ 車頭 ♪ → LEVEL UP
-    5(e, s, ctx) {
-      const { B } = ctx, st = staffOf();
-      // ！ 0.8 → 0.6、♪ 0.9 → 0.7（計畫 5b 任務 4，賽博第 6 回合 ≤ 50 s）
-      return [B.bubble(st, '！', 0.6), B.together([B.apply(e), B.trainDepart(), B.gesture(st, 'wave')]), B.bubble(B.trainHead(ctx), '♪', 0.7), B.levelUp('token'), B.home(st)];
-    },
-    // 高鐵：站務員 ！ → 列車閃白換成白底橘線的高鐵、從站後面駛出 → 車頭 ♪、站務員跳起來 → LEVEL UP
-    6(e, s, ctx) {
-      const { B } = ctx, st = staffOf();
-      return [
-        // ！ 1.0 → 0.8、♪ 1.2 → 1.1（計畫 5b 任務 4，外星第 6 回合 ≤ 50 s；一級至少 3 秒）
-        B.bubble(st, '！', 0.8), B.together([B.apply(e), B.trainDepart()]),
-        B.together([B.bubble(B.trainHead(ctx), '♪', 1.1), B.gesture(st, 'jump')]), B.levelUp('token'), B.home(st),
-      ];
-    },
+    // 五節（修正批次 fix3 §C，使用者 2026-11-01「列車升級時建議先讓列車開到相機前停留，然後升級，再啟動列車」）：
+    //   站務員 ！、列車同時趕到站前（車頭停在站前島緣、鏡頭這一側）→ 停 1.2 秒：停著的時候換成 5 節、車頭 ♪、站務員揮手 →
+    //   列車自己加速開走、LEVEL UP。見 trainSwap
+    5: (e, s, ctx) => trainSwap(e, ctx, 'wave'),
+    // 高鐵：同五節，換成白底橘線的高鐵、站務員跳起來
+    6: (e, s, ctx) => trainSwap(e, ctx, 'jump'),
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   支線 0.8 秒長完（每秒約 3.7 公尺），比支線車速 SPUR_RUSH 3.5 快一點，列車追不上還沒長好的那一段

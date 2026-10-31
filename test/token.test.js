@@ -715,3 +715,50 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9, 10]);
 });
+
+// ── 修正批次 fix3 §C（使用者 2026-11-01「列車升級時建議先讓列車開到相機前停留，然後升級，再啟動列車」）──
+// Lv5（五節）、Lv6（高鐵）：列車先趕到站前（trainStop 停在 STATION_A，停 1.2 s），停著的時候換車（during 第一拍就是 apply）、車頭 ♪，
+// 之後自己開走；不再從站後面直接駛出（沒有 trainDepart）
+test('fix3 C: Lv5 / Lv6 stop the train at the station front (trainStop at STATION_A, stop 1.2) and swap it while it stands (apply first in during); no trainDepart', () => {
+  for (const n of [5, 6]) {
+    const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n }), flags: {} }, fakeCtx));
+    const stop = beats.find(b => b.kind === 'trainStop');
+    assert.ok(stop, `lv${n} has a trainStop`);
+    assert.ok(Math.abs(stop.at - STATION_A) < 1e-12, `lv${n} stops at STATION_A (${stop.at})`);
+    assert.equal(stop.spur, null, `lv${n} on the ring`);
+    assert.equal(stop.during[0].kind, 'apply', `lv${n} the swap is the first thing while it stands`);
+    assert.ok(flat(stop.during).some(b => b.kind === 'bubble') && flat(stop.during).some(b => b.kind === 'levelUp'), `lv${n} ♪ and LEVEL UP while it stands / pulls away`);
+    assert.ok(!beats.some(b => b.kind === 'trainDepart'), `lv${n} no trainDepart`);
+  }
+  // Lv4（第一次有車）照舊從站後面駛出
+  assert.ok(flat(token.script.grow[4]({ kind: 'grow', item: 'token', to: 4 }, { lv: L({ token: 4 }), flags: {} }, fakeCtx)).some(b => b.kind === 'trainDepart'), 'Lv4 still departs from behind the station');
+});
+// live（唯一正解，playItem 單獨演）：Lv5、Lv6 一級 3–4.5 s；apply 的那一幀車頭離站前那一點（環上 STATION_A）≤ 0.3、
+// 之後 1.2 s 內沒動（停著換車）、再過 1 s 已經開走（離開那一點 > 0.3）
+test('fix3 C live: Lv5 / Lv6 play 3–4.5 s; at the swap the head car stands at the station front (≤ 0.3), stays put 1.2 s, then pulls away', async () => {
+  const front = token.trainPose(STATION_A / 0.35, 0, { speed: 0.35 });
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), { show, run } = h, update = show.update, apply = show.stage.apply, seen = {};
+    let now = 0, watch = null;
+    const head = () => token.trainPose(now + h.rail.offset, 0, { speed: 0.35, trip: h.rail.trip });
+    show.stage.apply = (e, opts) => {
+      const r = apply(e, opts);
+      if (e.item === 'token' && e.kind === 'grow' && (e.to === 5 || e.to === 6) && !watch && r.changed.some(c => c.key === 'token.train')) watch = { to: e.to, t0: now, at: head(), path: [] };
+      return r;
+    };
+    show.update = (dt, t) => { now = t; update(dt, t); if (watch) watch.path.push([now - watch.t0, head()]); };
+    await playItem(show, run, order, 'token', (e, secs) => {
+      const to = e.kind === 'grow' ? e.to : 1; if (to !== 5 && to !== 6) return;
+      assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} Lv${to} took ${secs.toFixed(2)} s`);
+      assert.ok(watch?.to === to, `Lv${to} swapped the train`);
+      const d0 = Math.hypot(watch.at.x - front.x, watch.at.z - front.z);
+      assert.ok(d0 <= 0.3, `Lv${to}: head ${d0.toFixed(3)} from the station front at the swap`);
+      const still = watch.path.filter(([u]) => u <= 1.2 - 1 / 30 + 1e-9).map(([, p]) => Math.hypot(p.x - watch.at.x, p.z - watch.at.z));
+      assert.ok(still.length >= 30 && Math.max(...still) < 0.01, `Lv${to}: stands still ${Math.max(...still).toFixed(3)} for 1.2 s after the swap`);
+      const [u1, p1] = watch.path.at(-1), d1 = Math.hypot(p1.x - front.x, p1.z - front.z);
+      assert.ok(u1 >= 1.5 && d1 > 0.3, `Lv${to}: pulled away (${d1.toFixed(2)} from the front ${u1.toFixed(2)} s after the swap, as the level ends)`);
+      seen[to] = +secs.toFixed(2); watch = null;
+    });
+    assert.deepEqual(Object.keys(seen).map(Number), [5, 6], `${order.join('>')}: both levels seen (${JSON.stringify(seen)})`);
+  }
+});

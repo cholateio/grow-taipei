@@ -424,7 +424,7 @@ export function trainStop({ at = STATION_A, stop = TRAIN_STOP, during = [], spur
     cur = null;
   };
   return {
-    kind: 'trainStop', spur, during: subs,   // spur、during 原樣留在拍上（測試看開進哪條支線、裡面的拍）
+    kind: 'trainStop', spur, during: subs, at: spur ? null : at,   // spur、during、at（停在環上哪個角）原樣留在拍上（測試看開進哪條支線、停哪裡、裡面的拍）
     dur: () => arrive + total,
     start(ctx) {
       i = 0; cur = null;

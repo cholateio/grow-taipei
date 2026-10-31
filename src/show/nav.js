@@ -12,7 +12,7 @@ const apart = (a, b) => radiusOf(a) + radiusOf(b);
 export const YIELD_LOOK = 0.5, YIELD_CLEAR = SEPARATION + 0.05;
 // 該橫移多少：沿右手邊（朝 yaw 走時的 (−cos yaw, sin yaw)）的有號距離；前方沒人擋回 0。前方好幾個人照最近的那個讓
 export function yieldOffset(p, yaw, others) { return yieldTarget(p, yaw, others)?.side ?? 0; }
-// 同上，另外回讓的是 others 裡的第幾個（roster 記住他：直到他落在身後超過 SEPARATION 才收回，不在擦身的那一刻就切回路線上）。
+// 同上，另外回讓的是 others 裡的第幾個、從他另一邊過去的橫移（other）（roster 記住他：直到他落在身後超過 SEPARATION 才收回，不在擦身的那一刻就切回路線上）。
 // 半徑（2026-10-28 錄影修正）：others 的點可以帶 r、自己的半徑 r0——要讓開的橫向距離是兩人半徑相加 + 0.05、往前看也多看那麼多
 // （小孩走過變異鼠 r 0.325 要讓到 0.5）；沒帶的當成 SEPARATION / 2，人對人照舊 YIELD_CLEAR、YIELD_LOOK
 export function yieldTarget(p, yaw, others, r0 = SEPARATION / 2) {
@@ -23,7 +23,8 @@ export function yieldTarget(p, yaw, others, r0 = SEPARATION / 2) {
     if (ahead <= 0 || ahead >= YIELD_LOOK + clear - YIELD_CLEAR || Math.abs(lat) >= clear) return;
     if (!best || ahead < best.ahead) best = { ahead, lat, index, clear };
   });
-  return best && { index: best.index, side: best.lat > 0 ? best.lat - best.clear : best.lat + best.clear };
+  // other：從他另一邊過去要橫移到哪（同樣離他 clear；計畫 11 任務 5：讓的那一側走不到時換邊）
+  return best && { index: best.index, side: best.lat > 0 ? best.lat - best.clear : best.lat + best.clear, other: best.lat > 0 ? best.lat + best.clear : best.lat - best.clear };
 }
 // p 前方 yaw 方向上 o 在多遠（負的 = 在身後）
 export const aheadOf = (p, yaw, o) => (o.x - p.x) * Math.sin(yaw) + (o.z - p.z) * Math.cos(yaw);

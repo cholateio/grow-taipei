@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { installFakeDom } from './helpers/fakedom.js';
 import { createPeople } from '../src/scene/people.js';
-import { createNav, SEPARATION } from '../src/show/nav.js';
+import { createNav, SEPARATION, radiusOf } from '../src/show/nav.js';
 import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
@@ -845,8 +845,10 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
 // 計畫 11 任務 5（nav.separate 每幀 SEP_PASSES = 3 輪）：唯一正解這半已經不撞了；剩下的全是外星壞局第 7 回合鼠窩的 rat#1 走回窩
 // 擦過珍奶老闆（站在 (3.80, 5.05)），和下面 (c) 外星局那條是同一段：改前 5 幀、最近 0.02 m，改後 5 幀、最近 0.04 m。
 // 擋住的不是推擠輪數：separate 每幀都把老鼠推到 0.255，但牠讓路（sidestep）要讓的那一側（老闆和走路格南緣之間）走不到，
-// m.side 收回 0，下一幀游標又把牠放回穿過老闆的路線上（名冊每幀限速，推開的那一截只走得到一點點）——要在名冊的讓路／繞路那邊修
-test('live, the solution and the alien bad game: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '外星局第 7 回合 rat#1 走回窩擦過珍奶老闆（多輪後 5 幀、最近 0.04 m；改前 5 幀、0.02 m）：讓路那側走不到、游標拉回路線——要修名冊的讓路' }, async () => {
+// m.side 收回 0，下一幀游標又把牠放回穿過老闆的路線上（名冊每幀限速，推開的那一截只走得到一點點）。
+// 修正第 1 輪（協調者裁決：名冊的讓路也在範圍內）：sidestep 讓的那一側走不到就換另一邊、兩邊都走不到就讓到走得到的最遠點，
+// 再走就踩進站著的人時停住——量到 0 幀，翻回正式（門檻沒動）
+test('live, the solution and the alien bad game: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', async () => {
   const { nestNear, nestFrames } = await livePlay();
   assert.ok(nestFrames > 300, `${nestFrames} nest-rat–person frames`);
   assert.deepEqual([...nestNear].slice(0, 20), [], `${nestNear.size} frames too close`);
@@ -857,7 +859,8 @@ test('live, the solution and the alien bad game: nest rats never overlap a perso
 // 推開又被拉回路線上（11 幀）——HEAD（5f321be）用同一個放法一樣是 11 幀，不是這批改的；門檻不放寬、不刪，外星局那半標 todo，
 // 留給延後的多輪人群那一輪（協調者可改判）。正解那半照舊嚴格。
 // 計畫 11 任務 5 多輪之後量：改前 5 幀、最近 0.02 m（rat#1 對珍奶老闆，同上面鼠窩那條），改後 5 幀、最近 0.04 m——多輪推擠救不了：
-// 每幀 separate 都推到 0.255，是名冊讓路那一側（老闆與走路格南緣之間）走不到、m.side 收回 0、游標把牠拉回穿過老闆的路線
+// 每幀 separate 都推到 0.255，是名冊讓路那一側（老闆與走路格南緣之間）走不到、m.side 收回 0、游標把牠拉回穿過老闆的路線。
+// 修正第 1 輪名冊讓路換邊／停住後 0 幀，翻回正式
 const ALIEN_LABEL = 'milk>chip>bulb>token>baseball>boba>rat>typhoon';
 test('live, the solution: a walking rat never runs through a standing person', async () => {
   const { passStand, passFrames } = await livePlay();
@@ -865,7 +868,7 @@ test('live, the solution: a walking rat never runs through a standing person', a
   const mine = [...passStand].filter(x => !x.startsWith(ALIEN_LABEL));
   assert.deepEqual(mine.slice(0, 20), [], `${mine.length} frames too close`);
 });
-test('live, the alien bad game: a walking rat never runs through a standing person', { todo: '外星局第 7 回合 rat#1 走回窩擦過珍奶老闆（多輪後 5 幀、最近 0.04 m；改前 5 幀、0.02 m）：讓路那側走不到、游標拉回路線——要修名冊的讓路' }, async () => {
+test('live, the alien bad game: a walking rat never runs through a standing person', async () => {
   const { passStand } = await livePlay();
   const alien = [...passStand].filter(x => x.startsWith(ALIEN_LABEL));
   assert.deepEqual(alien.slice(0, 20), [], `${alien.length} frames too close`);
@@ -873,8 +876,8 @@ test('live, the alien bad game: a walking rat never runs through a standing pers
 // (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久——另案，先標 todo
 // 計畫 11 任務 5 多輪：改前 24 幀、最近 0.04 m，改後 16 幀、最近 0.07 m（對島民、偵防師；第 9 回合）。剩下的是兩個都在走的人斜著交會：
 // separate 這一幀推開了，下一幀位置又從游標＋m.side 算（m.side 夾在 YIELD_CLEAR、照走路速度收回），十隻老鼠加島民擠在 101 四周，
-// 推開的那一截收回來又貼上——要在名冊的讓路（兩個都在走的人互相讓）那邊修，不是推擠輪數
-test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與島民、偵防師擦身（多輪後 16 幀、最近 0.07 m；改前 24 幀、0.04 m）：游標＋m.side 下一幀又拉回來——要修名冊的讓路' }, async () => {
+// 推開的那一截收回來又貼上。修正第 1 輪（名冊讓路：走不到的那一側換邊、兩邊都走不到讓到最遠的可走點）後 0 幀，翻回正式
+test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', async () => {
   const { armyNear } = await livePlay();
   assert.deepEqual([...armyNear].slice(0, 20), [], `${armyNear.size} frames too close`);
 });
@@ -1042,6 +1045,42 @@ test('walking past someone standing on the line keeps ≥ 0.23 from them, never 
   const { min, worst } = passRun(roster, ms, 120);
   assert.ok(gap(ms[0].pos, R) < 0.1, 'arrived');
   assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`); assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+});
+
+// 計畫 11 任務 5 修正第 1 輪（使用者 2026-10-31「走路互相重疊」）：站著的人旁邊，讓路要讓的那一側被牆擋住——換從他另一邊過去，
+// 全程不貼著他（≥ 0.25 − 0.02）、不比走路快；兩邊都被牆擋住——停下來等，不穿過他（全程 ≥ 兩人半徑相加 − 0.02），他也不被推動
+test('a walker whose yield side is walled off passes a standing person on the other side, never closer than 0.23', () => {
+  const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  nav.setFootprints([{ x: C.x, z: C.z + 0.5, w: 1.2, d: 0.4 }]);   // 外擴後蓋住 z ∈ [C.z + 0.18, C.z + 0.82]：往 +z 讓（0.29）走不到
+  const S = { ...C, z: C.z - 0.01 };
+  roster.declare('s', { kind: 'roster', at: S, n: 1, home: { kind: 'stand', spots: [S] } }); roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [w] = roster.members('w'), [st] = roster.members('s');
+  let side = 0; const last = { ...w.pos }; let min = Infinity, worst = 0;
+  for (let f = 0; f < 150; f++) {
+    roster.update(1 / 30, f / 30);
+    const d = gap(w.pos, st.pos); if (d < min) { min = d; side = w.pos.z - C.z; }
+    worst = Math.max(worst, gap(w.pos, last) / (w.speed / 30)); Object.assign(last, w.pos);
+  }
+  assert.ok(gap(w.pos, R) < 0.1, `arrived (${w.pos.x.toFixed(2)}, ${w.pos.z.toFixed(2)})`);
+  assert.ok(min >= SEPARATION - 0.02, `closest ${min.toFixed(3)}`);
+  assert.ok(side < -0.15, `went round the open side (z offset ${side.toFixed(2)} at the closest point)`);
+  assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+  assert.ok(gap(st.pos, S) < 1e-9, 'the stander stays put');
+});
+test('a walker who cannot yield either way stops short of a standing person instead of walking through (≥ ra + rb − 0.02 throughout)', () => {
+  const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  nav.setFootprints([{ x: C.x, z: C.z + 0.5, w: 1.2, d: 0.4 }, { x: C.x, z: C.z - 0.5, w: 1.2, d: 0.4 }]);   // 中間只剩 0.36 寬的走道
+  assert.ok(nav.route(L, R).length > 1 && nav.walkable(C.x, C.z), 'the corridor is walkable');
+  roster.declare('s', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } }); roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [w] = roster.members('w'), [st] = roster.members('s'), need = radiusOf(w) + radiusOf(st);
+  let min = Infinity, stopped = 0;
+  for (let f = 0; f < 150; f++) { roster.update(1 / 30, f / 30); min = Math.min(min, gap(w.pos, st.pos)); if (!w.walking && w.pos.x < C.x) stopped++; }
+  assert.ok(min >= need - 0.02, `closest ${min.toFixed(3)} (need ${need})`);
+  assert.ok(stopped > 10, `stopped and waited (${stopped} frames)`);
+  assert.ok(w.pos.x < C.x, `never got past him (${w.pos.x.toFixed(2)} vs ${C.x.toFixed(2)})`);
+  assert.ok(gap(st.pos, C) < 1e-9, 'the stander stays put');
 });
 
 // 2026-10-28 第二輪審稿：站位離已經站好的人不到兩人半徑相加（排隊、觀眾擠一個點）——走過去的人不被「退開整段」推在原地空走，

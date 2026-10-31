@@ -48,6 +48,7 @@ const BRIDGE_SIDE = 0.12;   // 橋上迎面讓路最多橫移多少（橋面半�
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
+const YIELD_WAIT = 1.5, CLIP_STEPS = 20;   // 讓不開、停住等站著的人：最多等 1.5 秒，這一趟就到這裡；讓的那一側走不到時往那邊找走得到的最遠點，切 20 段看（計畫 11 任務 5）
 const CONVOY_PHASE = 1.0, PATH_WAIT = 3;   // 接上折線時離同方向的人 < 1 公尺（相位）就改往回走、兩個方向都太近就站著等 ≤ 3 秒（pathDir）
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度、轉過去／轉回來各 0.2 秒（同小人的 look 轉向）
@@ -444,7 +445,18 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const blocked = Math.hypot(trip.last.x - m.pos.x, trip.last.z - m.pos.z) > trip.speed * dt + 2 * ARRIVE;
       m.trip = null; m.side = 0; m.yielding = null; m.rest = pause(); m.arriving = false; setPose(m, { ...(blocked ? m.pos : trip.last), yaw: m.yaw, walking: false }); return;
     }
-    setPose(m, { ...sidestep(m, trip.cursor.locate(), trip.speed * dt), walking: true });
+    const p = sidestep(m, trip.cursor.locate(), trip.speed * dt);
+    // 兩邊都讓不開、再走就踩進站著的人（計畫 11 任務 5）：這一幀停住（游標退回、位置不動），不穿過去。
+    // 日常裡等了 YIELD_WAIT 秒他還在，這一趟就到這裡（wander／follow 下一幀另挑目標；stand 從這裡重新找路）；
+    // 走出去的人（exit）不能半路拿掉：等過 YIELD_WAIT 就照舊擦身走過去（separate 照樣推開）
+    const late = m.mode !== 'home' && (m.waited ?? 0) > YIELD_WAIT;
+    if (p.wait && !late) {
+      trip.cursor.advance(-ds); trip.left += ds; m.waited = (m.waited ?? 0) + dt;
+      if (m.mode === 'home' && m.waited > YIELD_WAIT) { m.trip = null; m.side = 0; m.yielding = null; m.waited = 0; m.rest = pause(); }
+      setPose(m, { ...m.pos, yaw: m.yaw, walking: false }); return;
+    }
+    if (!p.wait) m.waited = 0;
+    setPose(m, { ...p, walking: true });
   }
   // 正面擦身（任務 12）：前方 YIELD_LOOK 內有人擋著（走著或站著都算）就往旁邊讓開再走過去（nav.yieldOffset），
   // 橫移每幀最多 trip.speed × dt（不瞬移），讓開的那一點走不到就慢慢收回路線上；過了就收回 0
@@ -462,13 +474,36 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 原地空走；同方向的、站著的不讓（跟在後面，見 update 的游標倒退）
     const onBridge = !cellAt(c.x, c.z), cand = onBridge ? others.filter(o => o.walking && Math.cos(o.yaw - c.yaw) < 0) : others;
     const t = yieldTarget(c, c.yaw, cand.map(o => ({ x: o.pos.x, z: o.pos.z, r: radiusOf(o) })), radiusOf(m));
-    if (t) m.yielding = { who: cand[t.index], side: onBridge ? Math.max(-BRIDGE_SIDE, Math.min(BRIDGE_SIDE, t.side)) : t.side };
-    else if (onBridge) m.yielding = null;
+    if (t) {
+      const w = cand[t.index], prev = m.yielding?.who === w ? m.yielding : null;
+      if (onBridge) m.yielding = { who: w, side: Math.max(-BRIDGE_SIDE, Math.min(BRIDGE_SIDE, t.side)) };
+      else if (prev?.swapped) m.yielding = { ...prev, side: t.other, other: t.side };   // 換過邊的同一個人繼續從換過去的那邊讓，不每幀左右換來換去
+      else m.yielding = { who: w, side: t.side, other: t.other };
+    } else if (onBridge) m.yielding = null;
     else if (m.yielding) { const w = m.yielding.who; if (w.gone || w.hidden || aheadOf(c, c.yaw, w.pos) < -(radiusOf(m) + radiusOf(w))) m.yielding = null; }
+    // 計畫 11 任務 5（使用者 2026-10-31「走路互相重疊」）：要讓到的那一點走不到（牆、水、走路格邊）就換從他另一邊過去（同樣離他 clear）。
+    //   換邊要橫越他的那條線，只在他還在前方兩人半徑相加以外時換（貼著他才換會從他身上橫切過去）。
+    //   兩邊都走不到（stuck）：讓到那一側走得到的最遠點（以前是收回路線上、正對著他走過去）；再走就踩進站著的人時 walk 停住（見 p.wait）
+    const y = m.yielding, ok = s => { const q = at(s); return nav.passable(q.x, q.z); };
+    if (y && !onBridge && y.side && !ok(y.side)) {
+      const room = aheadOf(c, c.yaw, y.who.pos) > radiusOf(m) + radiusOf(y.who);
+      if (y.other != null && !y.swapped && room && ok(y.other)) m.yielding = { ...y, side: y.other, other: y.side, swapped: true };
+      else {
+        // 讓到走得到的最遠那一點（從現在的橫移往要讓的那一側，每 1/CLIP_STEPS 段看一次）
+        const cur = m.side ?? 0; let to = ok(cur) ? cur : 0;
+        for (let k = 1; k <= CLIP_STEPS; k++) { const v = cur + (y.side - cur) * k / CLIP_STEPS; if (!ok(v)) break; to = v; }
+        m.yielding = { ...y, side: to, stuck: true };
+      }
+    }
     let side = toward(m.side ?? 0, m.yielding?.side ?? 0), p = at(side);
     if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
     m.side = side;
-    return side ? { ...c, x: p.x, y: nav.groundY(p.x, p.z), z: p.z } : c;
+    const out = side ? { ...c, x: p.x, y: nav.groundY(p.x, p.z), z: p.z } : c;
+    // 兩邊都讓不開（stuck）、要讓的是站著的人（沒在走、也沒有這一趟——停下來等人的不算，不然兩個等的人互等），
+    // 這一步又會踩進他（離他不到兩人半徑相加、又比現在更近）：停住，不穿過去
+    const o = m.yielding?.stuck ? m.yielding.who : null, dOut = o && Math.hypot(o.pos.x - out.x, o.pos.z - out.z);
+    const near = o && !o.walking && !o.trip && dOut < radiusOf(m) + radiusOf(o) && dOut < Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+    return near ? { ...out, wait: true } : out;
   }
   // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）
   const hit = ([q, r]) => focus.some(c => c[0] === q && c[1] === r);

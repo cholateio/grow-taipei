@@ -1,7 +1,7 @@
 // test/nav.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createNav, STEP, SEPARATION, SEP_PASSES } from '../src/show/nav.js';
+import { createNav, STEP, SEPARATION, SEP_PASSES, yieldTarget, YIELD_CLEAR } from '../src/show/nav.js';
 import { axialToWorld, cellTop, R, TOP, PLATEAU_TOP, edgeMidpoint, RING_R } from '../src/scene/hex.js';
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 test('cell centres are walkable, water between cells is not, bridges are', () => {
@@ -363,4 +363,12 @@ test('separate: three walkers bunched in a row all end ≥ ra + rb apart after o
   const multi = row(); nav.separate(multi, 1 / 30);
   assert.ok(closest(multi) >= SEPARATION - 1e-6, `SEP_PASSES passes resolve the row (${closest(multi).toFixed(4)})`);
   assert.ok(multi.every(m => nav.walkable(m.pos.x, m.pos.z)), 'everyone still on walkable ground');
+});
+// 計畫 11 任務 5 修正第 1 輪：yieldTarget 另外回從他另一邊過去的橫移（other）——兩個橫移都離他 clear，一左一右
+test('yieldTarget also returns the far-side offset: both sides clear the person by the same amount, on opposite sides', () => {
+  const t = yieldTarget({ x: 0, z: 0 }, 0, [{ x: 0.05, z: 0.3 }]);   // 朝 +z 走，右手邊是 −x：他在左前方 lat −0.05
+  const lat = -0.05;
+  assert.ok(Math.abs(Math.abs(t.side - lat) - YIELD_CLEAR) < 1e-9 && Math.abs(Math.abs(t.other - lat) - YIELD_CLEAR) < 1e-9, `side ${t.side} other ${t.other}`);
+  assert.ok(Math.sign(t.side - lat) === -Math.sign(t.other - lat), 'opposite sides of him');
+  assert.ok(t.side > 0, 'the near side is away from him');
 });

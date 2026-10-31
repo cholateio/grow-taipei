@@ -40,7 +40,7 @@ import { C } from '../actors/palette.js';
 import { cellAt, worldToAxial } from '../scene/hex.js';
 import { ringPath } from '../scene/people.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
-import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf, radiusOf, OBSTACLE_LOOK, laneNearest } from './nav.js';
+import { SEPARATION, YIELD_CLEAR, yieldTarget, aheadOf, radiusOf, laneNearest } from './nav.js';
 
 export const WALK_SPEED = { people: 1.6, model: 2.0 }, WANDER_SPEED = 0.5, HEAD_Y = { people: 0.5, model: 0.3 };
 // ROUTE_TRIES：散步挑點時路線借道別格就重挑，最多幾次（wanderRoute）；LOW_MODELS：?quality=low 時一份模型名冊最多載幾個 glb（機器鼠軍團，裁決 R18）
@@ -115,7 +115,7 @@ export function modelExtras(md, h) {
 }
 
 // blink：show/blink.js 的閃白（換配件、換模型、換身分時閃一下；新生的、退場的不閃，§13.2）
-// obstacles()：這一幀會動的障礙 [{ x, z, r, ahead?, vx?, vz? }]（世界座標；舞台 stage.obstacles()，零件的 obstacle()——外送機車，修正批次 fix3 §B）
+// obstacles()：這一幀會動的障礙 [{ x, z, r, ahead? }]（世界座標；舞台 stage.obstacles()，零件的 obstacle()——外送機車，修正批次 fix3 §B）
 export function createRoster(THREE, { people, assets, build = null, nav, blink = null, rail = { offset: 0 }, rnd = Math.random, quality = 'high', obstacles = () => [] }) {
   const group = new THREE.Group(); group.name = 'roster:models';
   const groups = new Map();
@@ -710,25 +710,24 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 劇本手上的照拍演（命中劇本的群眾拍在換心情之前就演完了）。這裡每幀讀 people.mood、不存狀態：
     // 心情回 normal（RESET 經 app 的 showWorld、演出層 reset 的 world 拍）下一幀就接著走，roster.reset 也不用另外清
     const lying = people.mood === 'lie', frozen = (m, spec) => lying && !!m.walker && spec?.home?.kind !== 'ride';
-    // 會動的障礙（外送機車，修正批次 fix3 §B）：當成站著的人交給 separate（假成員 obstacle: true；ahead 是它接下來 OBSTACLE_LOOK 秒會經過的點——
-    // 零件自己給（繞圈的機車給一段弧），沒給就用速度 vx、vz 往前一直線）——它不被推、不停下來等；走路的人、站著的人碰上它都由自己讓開
-    // （站著的人被撞到也讓一步；劇本手上的人不動：pinned）。讓開一樣受下面的限速（不瞬移）。
+    // 會動的障礙（外送機車，修正批次 fix3 §B）：當成站著的人交給 separate（假成員 obstacle: true；ahead 是它接下來 OBSTACLE_LOOK 秒會經過的點，
+    // 零件自己給——繞圈的機車給一段弧；沒給就只是一個圓）——它不被推、不停下來等；走路的人、站著的人碰上它都由自己讓開
+    // （站著的人被撞到也讓一步；劇本手上的人、坐車頂的人不動：pinned）。讓開一樣受下面的限速（不瞬移）。
     // 走路的人（走一趟、沿折線）這一幀要踩進車道（離車道不到兩人半徑相加：比這一幀開始時更深、或在車道裡往車身靠近）就停在原地等它過去：
     //   位置退回這一幀開始的地方、這一幀走的那一截退回去（游標照舊）——沿折線走的人下一幀位置又從折線算，只靠推開的話會被拉回車道上
     //   （2026-11-01 量到電工沿主路迎面走進停著的機車）。在車道裡往遠離車身的方向走（被逼在車頭前、往前走開）照走。
     //   等超過 HOLD_MAX 秒（兩邊都是牆、推不開，機車也在等他）就不等了，照走
-    const bikes = obstacles().map(o => ({ pos: { x: o.x, y: 0, z: o.z }, radius: o.r, obstacle: true, walking: false,
-      ahead: o.ahead ?? (o.vx || o.vz ? [{ x: o.x + o.vx * OBSTACLE_LOOK, z: o.z + o.vz * OBSTACLE_LOOK }] : []) }));
+    const bikes = obstacles().map(o => ({ pos: { x: o.x, y: 0, z: o.z }, radius: o.r, obstacle: true, walking: false, ahead: o.ahead ?? [] }));
     const before = m => (bikes.length ? { pos: { ...m.pos }, trip: m.trip, ts: m.trip?.cursor.s, td: m.trip?.cursor.dir, left: m.trip?.left, cursor: m.cursor, cs: m.cursor?.s, cd: m.cursor?.dir } : null);
     // 看的是這一幀真的會走到的點（限速之後：沿折線走的人落後游標時，是從現在的位置直直追過去，不是跳到游標上）
     const holdBack = (m, b, max) => {
-      if (!b || !m.walking) { if (!bikes.length) m.held = 0; return; }
+      if (!b || !m.walking) { if (!bikes.length) m.waitBike = 0; return; }
       const lane = p => Math.min(...bikes.map(o => laneNearest(p, o).d - radiusOf(m) - o.radius));
       const body = p => Math.min(...bikes.map(o => Math.hypot(p.x - o.pos.x, p.z - o.pos.z)));
       const dx = m.pos.x - b.pos.x, dz = m.pos.z - b.pos.z, d = Math.hypot(dx, dz), k = d > max ? max / d : 1, q = { x: b.pos.x + dx * k, z: b.pos.z + dz * k };
       const g = lane(q);
-      if (g >= 0 || (g >= lane(b.pos) && body(q) >= body(b.pos)) || (m.held ?? 0) > HOLD_MAX) { m.held = 0; return; }
-      m.held = (m.held ?? 0) + dt;
+      if (g >= 0 || (g >= lane(b.pos) && body(q) >= body(b.pos)) || (m.waitBike ?? 0) > HOLD_MAX) { m.waitBike = 0; return; }
+      m.waitBike = (m.waitBike ?? 0) + dt;   // 等機車等了幾秒（不是群組的 g.held）
       if (m.trip && m.trip === b.trip && m.trip.cursor.dir === b.td) { m.trip.cursor.advance((b.ts - m.trip.cursor.s) * b.td); m.trip.left = b.left; }
       if (m.cursor && m.cursor === b.cursor && m.cursor.dir === b.cd) m.cursor.advance((b.cs - m.cursor.s) * b.cd);
       setPose(m, { ...b.pos, yaw: m.yaw, walking: false });
@@ -768,7 +767,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 離開折線直直追回去會擦過路燈：fix3 §B 量到電工被機車逼到路邊、追回主路時穿過路燈柱）
     const offLine = m => { if (m.cursor) { const c = m.cursor.locate(); if (Math.hypot(c.x - m.pos.x, c.z - m.pos.z) > 2 * ARRIVE) m.offPath = true; } };
     // 站位（這一趟的終點）就在那個人 ra + rb 內、或這一趟只剩不到 ra + rb：不推，讓他走到站定（第二輪審稿：推開整段會在原地空走）
-    nav.separate(moving, dt, bikes.length ? [...still, ...bikes] : still, (w, s, need) => toSpot(w) && (w.trip.left < need || Math.hypot(w.trip.last.x - s.pos.x, w.trip.last.z - s.pos.z) < need), undefined, { pinned: m => m.mode === 'script' });
+    nav.separate(moving, dt, bikes.length ? [...still, ...bikes] : still, (w, s, need) => toSpot(w) && (w.trip.left < need || Math.hypot(w.trip.last.x - s.pos.x, w.trip.last.z - s.pos.z) < need), undefined, { pinned: m => m.mode === 'script' || current(groups.get(m.key))?.home?.kind === 'ride' });
     if (bikes.length) for (const m of [...moving, ...still]) if (m.mode === 'home') offLine(m);
     moving.forEach((m, i) => {
       const dx = m.pos.x - pushedFrom[i].x, dz = m.pos.z - pushedFrom[i].z;

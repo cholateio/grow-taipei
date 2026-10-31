@@ -82,6 +82,17 @@ test('model members ride the train roof in seats, idle animation pauses while st
   assert.ok(ms.every(m => Math.abs(Math.hypot(m.pos.x, m.pos.z) - 8.3) < 0.2), 'on the ring');
   assert.equal(ms[0].holder.userData.mixer.timeScale, 0);
 });
+// 修正輪 1：坐車頂的成員（ride）不被會動的障礙推（座位每幀照列車算；機車就算貼在旁邊也不動他）
+test('fix3 B: ride members on the train roof are never pushed by a moving obstacle', async () => {
+  let obs = [];
+  const { roster, rail } = setup({ obstacles: () => obs }); rail.offset = 0;
+  roster.declare('rat.pack', { kind: 'roster', at: AT, n: 3, model: { path: 'quat/enemies/Rat.glb', h: 0.2, anim: 'Walk' }, home: { kind: 'ride', cars: 3, speed: 0.35 } });
+  await new Promise(r => setTimeout(r, 0)); roster.update(1 / 30, 1);
+  const ms = roster.members('rat.pack'), seats = ms.map(m => ({ ...m.pos }));
+  obs = ms.map(m => ({ x: m.pos.x + 0.05, z: m.pos.z, r: 0.3 }));
+  roster.update(0, 1);
+  ms.forEach((m, i) => assert.ok(gap(m.pos, seats[i]) < 1e-9, `rat ${i} stays in its seat (${gap(m.pos, seats[i]).toFixed(3)})`));
+});
 test('reset releases every walker and model', async () => {
   const { roster, people, assets } = setup(); roster.declare('a', kids(3)); roster.declare('b', { kind: 'roster', at: AT, n: 2, model: { path: 'x.glb', h: 0.2 }, home: { kind: 'wander', at: AT, r: 1 } });
   await new Promise(r => setTimeout(r, 0)); roster.reset(); assert.equal(people.walkers.length, 0); assert.equal(assets.released.length, 2); assert.equal(roster.count, 0);

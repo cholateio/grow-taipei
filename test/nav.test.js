@@ -394,7 +394,11 @@ test('fix3 B: separate — an obstacle never moves; walkers and standers in its 
   // 沒有 ahead（不動的障礙）：照半徑推開；牆：推過去會進外擴 footprint 就不推
   nav.setFootprints([{ x: o.x, z: o.z + 0.55, w: 2, d: 0.3 }]);
   const still = { pos: { x: o.x, y: o.y, z: o.z }, radius: 0.3, obstacle: true };
-  const wall = { pos: { x: o.x, y: o.y, z: o.z + 0.2 }, walking: false, radius: 0.125 };
+  const wall = { pos: { x: o.x, y: o.y, z: o.z + 0.2 }, walking: false, radius: 0.125 }, w0 = { ...wall.pos };
   nav.separate([], 1 / 30, [still, wall]);
   assert.ok(!nav.inFootprint(wall.pos.x, wall.pos.z), 'not pushed into the padded wall');
+  // 修正輪 1：不是「推了一半停在牆邊、還貼著障礙」——要嘛整段讓開（往旁邊轉、離障礙 ≥ 兩人半徑相加），要嘛留在原地
+  const off = Math.hypot(wall.pos.x - o.x, wall.pos.z - o.z), stayed = wall.pos.x === w0.x && wall.pos.z === w0.z;
+  assert.ok(stayed || off >= 0.3 + 0.125 - 1e-6, `stays put or clears the obstacle (${off.toFixed(3)} away, moved ${!stayed})`);
+  assert.ok(!stayed && Math.abs(wall.pos.z - o.z) < 0.28, 'here it turns aside along the wall (the straight push is walled off)');
 });

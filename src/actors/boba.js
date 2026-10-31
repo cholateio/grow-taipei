@@ -164,11 +164,20 @@ const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: 
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
 
+// 立牌的板子（相對 AT）：靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）。
+// 立牌擋人（修正批次 fix3 §A，使用者 2026-11-01「珍奶店升級時顧客會穿越招牌」：院子以前 footprint false，人龍從碼頭走來時直直穿過立牌）：
+// footprint 只有立牌（0.2 × 0.08，蓋住 0.2 × 0.04 的板子和往後仰的那一截），磚地與遮雨棚照舊走得過去；外擴 PAD 後是 0.44 × 0.32 的框。
+// 板子往西挪 0.15（SHOP 東邊 0.62 → 0.47，貼著店的東牆；Lv3 起板子西端 0.04 靠進牆裡）：店東牆和格邊之間只有一排走路格點（SHOP 東邊 0.71），
+//   板子留在 0.62 的話外擴後的框蓋住那一排，Lv3（店、還沒有噴泉）夜市第二攤（燈泡 ≥4）在北邊時，店東側北半截那兩個格點整個被關起來
+//   （老鼠在燈泡門口晃的家就落在那裡、進場點離家 0.4）。0.47：框的東緣離那排格點 0.02，外擴後不關住任何格點。
+// 人龍站位（攤車前離框 0.29、店門口 0.39）、老闆站位（0.25）、被吹走時岸邊的站位（0.075）、碼頭（≥ 1.6）、電工主路都在框外，站位不用搬；
+// 噴泉（Lv4，SHOP + (0.675, −0.3)、r 0.25）本身離外擴後的框 0.04
+const BOARD = [SHOP.x - AT.x + 0.47, SHOP.z - AT.z + 0.15];
+const SIGN_FOOTPRINT = [{ x: BOARD[0], z: BOARD[1], w: 0.2, d: 0.08 }];
+
 // 遮雨棚、店前的磚地、立牌（Lv2 只有立牌：人龍排頭旁）。fresh（鮮奶 ≥4，跳級條件「鮮奶珍奶」）：立牌白底藍字，否則珊瑚底奶油字
 function yardParts(n, fresh) {
-  // 立牌靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）；
-  // 噴泉（Lv4，SHOP + (0.73, −0.3)、r 0.3）南緣在 sz + 0.0，立牌離噴泉心 0.46
-  const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, board = [sx + 0.62, sz + 0.15];
+  const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, board = BOARD;
   const sign = [
     { kind: 'box', pos: [board[0], 0.22, board[1]], scale: [0.2, 0.28, 0.04], rot: [-0.2, 0, 0], color: fresh ? C.white : C.coral, sign: true },
     { kind: 'box', pos: [board[0], 0.24, board[1] + 0.03], scale: [0.14, 0.05, 0.01], rot: [-0.2, 0, 0], color: fresh ? C.blue : C.cream },
@@ -202,7 +211,8 @@ export function view(lv, flags = {}) {
     if (blown) v['boba.blown'] = blownCart();
   }
   // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
-  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? balloonParts(AT) : [])] };
+  // 只有立牌擋人（SIGN_FOOTPRINT）；院子不是會長的建築（grow false：有了 footprint 也照舊直接出現，Lv6 海岸的氣球不從珍奶格長出來）
+  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: SIGN_FOOTPRINT, grow: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? balloonParts(AT) : [])] };
   if (n >= 4) v['boba.fountain'] = { kind: 'compound', at: FOUNTAIN, footprint: { r: FOUNTAIN_R }, parts: fountainParts() };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）

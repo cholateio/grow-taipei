@@ -469,3 +469,77 @@ test('view: a blown cart lies tipped in the sea off the boba cell, the owner sta
   assert.equal(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.blown'], undefined);
   assert.ok(near(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.main'].at, boba.SHOP, 1e-9), 'not blown: the cart at its stall');
 });
+
+// ── 修正批次 fix3 §A（使用者 2026-11-01「珍奶店升級時顧客會穿越招牌」）：院子的立牌擋人 ──
+// boba.yard 的 footprint 只有立牌（磚地、遮雨棚走得過去），蓋住立牌的板子；院子不因為有了 footprint 就變成會長的建築（照舊直接出現）。
+// 人龍三個站位（攤車前、店門口）、老闆站位、攤車被吹走時岸邊的站位、碼頭入口都在立牌外擴 PAD 之外；噴泉本身不碰外擴後的立牌
+const signPad = async n => {
+  const { PAD } = await import('../src/show/nav.js'), y = boba.view(lv({ boba: n }), {})['boba.yard'], f = [].concat(y.footprint);
+  assert.equal(f.length, 1, `lv${n} one footprint: the sign only`);
+  return { x: y.at.x + f[0].x, z: y.at.z + f[0].z, hx: f[0].w / 2 + PAD, hz: f[0].d / 2 + PAD, body: f[0], yard: y };
+};
+const inBox = (b, p, grow = 0) => Math.abs(p.x - b.x) <= b.hx + grow && Math.abs(p.z - b.z) <= b.hz + grow;
+test('fix3 A: the yard sign blocks walkers (footprint over the board only); every queue / owner / shore / pier spot is outside the padded sign', async () => {
+  const { growsOn } = await import('../src/actors/stage.js');
+  for (const n of [2, 3, 4, 6]) {
+    const b = await signPad(n), board = b.yard.parts.find(p => p.sign), [px, , pz] = board.pos;
+    assert.ok(Math.abs(b.body.x - px) < 1e-9 && Math.abs(b.body.z - pz) < 1e-9, `lv${n} footprint centred on the board`);
+    assert.ok(b.body.w >= board.scale[0] - 1e-9 && b.body.d >= board.scale[2] * 2 - 1e-9, `lv${n} footprint covers the board (${b.body.w} × ${b.body.d})`);
+    assert.equal(growsOn(b.yard), false, `lv${n} the yard still just appears (no grow)`);
+    const v = boba.view(lv({ boba: n }), {});
+    for (const q of [...v['boba.queue'].home.spots, boba.ownerSpot(n), boba.blownSpot(), ...boba.PIER]) assert.ok(!inBox(b, q), `lv${n} spot (${q.x.toFixed(2)}, ${q.z.toFixed(2)}) clear of the padded sign`);
+    if (n >= 4) {
+      const F = boba.FOUNTAIN, gap = Math.hypot(Math.max(0, Math.abs(F.x - b.x) - b.hx), Math.max(0, Math.abs(F.z - b.z) - b.hz));
+      assert.ok(gap > boba.FOUNTAIN_R, `fountain ${(gap - boba.FOUNTAIN_R).toFixed(3)} clear of the padded sign`);
+    }
+  }
+});
+// 整局 live：珍奶 1 → 2（立牌出現、人龍從碼頭走來排隊）與 2 → 3（店開張、人龍挪到店門口）那兩回合整段 live 演，各再過 10 s 日常——
+// 每一幀人龍、老闆都不在外擴後的立牌裡（唯一正解，和一條珍奶早放的順序：第 4 回合 1 → 2、第 6 回合 2 → 3——
+// 修好之前這條順序的 1 → 2 有兩個觀光客從碼頭走來時直直穿過立牌）
+test('fix3 A live: in the boba 1 → 2 and 2 → 3 turns (and 10 s after each) no queue member ever stands inside the padded sign (solution + boba-early order)', async () => {
+  // 立牌的板子（view 的零件，不看 footprint：修好之前也量得到）外擴成 0.2 × 0.08 + PAD 的框
+  const { PAD } = await import('../src/show/nav.js'), y = boba.view(lv({ boba: 3 }), {})['boba.yard'], [px, , pz] = y.parts.find(p => p.sign).pos;
+  const b = { x: y.at.x + px, z: y.at.z + pz, hx: 0.1 + PAD, hz: 0.04 + PAD };
+  const { turnSteps } = await import('./helpers/show.js');
+  for (const order of [...SOLUTIONS, ['milk', 'baseball', 'token', 'boba', 'bulb', 'chip', 'typhoon', 'rat']]) {
+    const h = await headlessShow(), { show, run } = h, update = show.update, hits = [];
+    let frames = 0, on = false, live = 0, s = engine.createState(spec);
+    show.update = (dt, t) => {
+      update(dt, t); if (!on) return; frames++;
+      for (const k of ['boba.queue', 'boba.owner']) for (const m of show.roster.members(k)) if (!m.hidden && inBox(b, m.pos)) hits.push(`${k}#${m.i} ${m.mode} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+    };
+    for (const step of turnSteps(order)) {
+      const r = step(s); s = r.state;
+      on = r.events.some(e => e.kind === 'grow' && e.item === 'boba' && (e.to === 2 || e.to === 3));
+      await run([...r.events, { kind: 'settle' }], { instant: !on });
+      if (on) { live++; for (let i = 0; i < 300; i++) show.update(1 / 30, 200 * live + i / 30); }
+    }
+    assert.equal(live, 2, `${order.join('>')}: both turns played live`); assert.ok(frames > 300, 'frames');
+    assert.deepEqual([...new Set(hits)].slice(0, 5), [], `${order.join('>')}: ${hits.length} frames inside the sign`);
+  }
+});
+// 立牌不關住任何走路格（fix3 §A 實作時量到）：店東牆和格邊之間只有一排格點，立牌的框蓋住那一排的話，Lv3（店、還沒有噴泉）夜市第二攤在北邊時
+// 店東側北半截被整個關起來。每一種珍奶 × 燈泡 × 車站：格子裡每一個可走格點往外淹（nav.edgePoint）都淹得出去（離起點 ≥ 1.5）——沒有立牌時淹得出去的，有了立牌也要
+test('fix3 A: the sign never seals off a pocket of the walking grid (every boba × bulb × station level)', () => {
+  const nav = createNav(), bad = [], toW = i => -9.5 + 0.3 * i;
+  for (let n = 2; n <= 6; n++) for (const b of [0, 2, 4, 9]) for (const t of [0, 9]) {
+    const L = lv({ boba: n, bulb: b, token: t, baseball: 8 }), y = boba.view(L, {})['boba.yard'];
+    const yardFp = [].concat(y.footprint).map(f => ({ ...f, x: y.at.x + f.x, z: y.at.z + f.z }));
+    const others = [boba, bulb, token, baseball].flatMap(m => Object.entries(m.view(L, {}))).filter(([k]) => k !== 'boba.yard')
+      .flatMap(([, p]) => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) })));
+    const out = list => {
+      nav.setFootprints(list);
+      const stuck = new Set();
+      for (let i = 0; i < 64; i++) for (let j = 0; j < 64; j++) {
+        const p = { x: toW(i), z: toW(j) }, c = cellAt(p.x, p.z);
+        if (!c || c[0] !== CELL[0] || c[1] !== CELL[1] || !nav.walkable(p.x, p.z) || nav.inFootprint(p.x, p.z)) continue;
+        const e = nav.edgePoint(CELL, p); if (!e || Math.hypot(e.x - p.x, e.z - p.z) < 1.5) stuck.add(`(${(p.x - AT.x).toFixed(2)}, ${(p.z - AT.z).toFixed(2)})`);
+      }
+      return stuck;
+    };
+    const before = out(others), after = out([...others, ...yardFp]);
+    for (const p of after) if (!before.has(p)) bad.push(`boba ${n} bulb ${b} token ${t}: ${p} sealed off`);
+  }
+  assert.deepEqual(bad, []);
+});

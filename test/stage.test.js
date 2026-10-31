@@ -7,7 +7,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
 const { createStage, diffParts, troubleOf, troubleSpot } = await import('../src/actors/stage.js');
-const { createBlink } = await import('../src/show/blink.js');
+const { createBlink, GROW_DUR, BLINK } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
 // 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
@@ -58,30 +58,42 @@ test('deferred keeps the old part and hides the new until commit; commitAll reve
   stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
   stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
 });
-// §13.2：換零件＝舊的立刻拿掉、新的亮一下；新增＝新的亮一下；移除＝舊的亮一下，亮完才拿掉
+// §13.2：換零件＝舊的立刻拿掉、新的亮一下；新增＝新的亮一下；移除＝舊的亮一下，亮完才拿掉。
+// 修正批次 2：新零件同時「長出來」（blink.grow：scale.y 0.15 → 1.06 → 1、GROW_DUR），拿掉的舊零件只亮不長
 test('commit reveals the fresh part and blinks it; the old part is dropped', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
   stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
+  const mats = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; }, own = mats(fresh);
   stage.commit('milk.main');
   assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.equal(fresh.visible, true); assert.ok(lit(blink, fresh)); assert.equal(blink.count, 1);
-  assert.ok(Math.abs(fresh.scale.y - 0.94) < 1e-9, 'the fresh part pops from 0.94x');
+  const y0 = fresh.position.y;
+  assert.ok(Math.abs(fresh.scale.y - 0.15) < 1e-9, 'the fresh part grows from 0.15x high'); assert.equal(fresh.scale.x, 1); assert.equal(fresh.scale.z, 1);
   stage.commit('milk.lamp'); assert.ok(lit(blink, stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
-  blink.update(0.16); assert.equal(blink.count, 0); assert.ok(!lit(blink, fresh), 'back to its own colours'); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
+  blink.update(0.16); assert.deepEqual(mats(fresh), own, 'the glow is over after BLINK: its own materials again'); assert.ok(blink.has(fresh), 'still growing');
+  assert.ok(fresh.scale.y > 0.5, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
+  blink.update(GROW_DUR); assert.equal(blink.count, 0); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
+});
+// grow: false（颱風的雨：不是蓋起來的東西）：新零件只亮、不長
+test('a fresh part with grow: false glows but does not grow', () => {
+  const rainy = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? { 'milk.rain': { kind: 'compound', at, grow: false, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }] } } : {}) };
+  const { stage, blink } = setup([rainy]); stage.apply(placed, { deferred: true }); const o = stage.partObject('milk.rain');
+  stage.commit('milk.rain'); assert.ok(lit(blink, o), 'glows'); assert.deepEqual(o.scale.toArray(), [1, 1, 1], 'does not grow');
+  blink.update(BLINK + 0.01); assert.equal(blink.has(o), false, 'done after the glow');
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
 test('a removed part blinks first and is dropped when the blink ends', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
   stage.apply(drop, { deferred: true }); assert.ok(parts().includes(lamp), 'old kept while pending');
   stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, blinking'); assert.ok(lit(blink, lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
-  assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'a part going away glows but does not pop');
+  assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'a part going away glows but does not grow');
   blink.update(0.1); assert.ok(parts().includes(lamp));
   blink.update(0.06); assert.ok(!parts().includes(lamp), 'dropped after the blink'); assert.equal(blink.count, 0);
 });
-// 計畫 9 任務 4（任務 2 延後的小項）：彈到一半就被拿掉（下一個套用換掉它）——拿掉之前先收掉 pop，物件回到原本的大小（放回模型池的才不會小一號）
-test('a part dropped mid-pop is restored to its own scale before it goes', () => {
+// 計畫 9 任務 4（任務 2 延後的小項）：長到一半就被拿掉（下一個套用換掉它）——拿掉之前先收掉 grow，物件回到原本的大小（放回模型池的才不會小一號）
+test('a part dropped mid-grow is restored to its own scale before it goes', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed);
   stage.apply(grow(3), { deferred: true }); stage.commit('milk.main'); const fresh = stage.partObject('milk.main');
-  blink.update(0.05); assert.ok(fresh.scale.y < 1 && blink.has(fresh), 'mid-pop');
+  blink.update(0.05); assert.ok(fresh.scale.y < 1 && blink.has(fresh), 'mid-grow');
   stage.apply(drop); assert.ok(!parts().includes(fresh), 'swapped out at once');
   assert.deepEqual(fresh.scale.toArray(), [1, 1, 1], 'back to its own scale'); assert.equal(blink.has(fresh), false);
 });

@@ -278,14 +278,15 @@ test('gesture drives the walker gesture for people, the holder for models, the p
   tl.skip(); assert.equal(cloud.scale.x, 1);
   tl.play([B.gesture('typhoon.gone', 'puff'), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentKind, 'wait', 'missing part → skipped');
 });
-// 計畫 9 任務 4（任務 2 延後的小項）：apply 之後緊接著 puff（颱風雲），小彈一下還差最後一幀時 puff 記 base——先收掉 pop，演完回到原本的 1 倍
-test('puff right after a pop: the gesture ends the pop before recording its base, so the part ends at its own scale', () => {
+// 計畫 9 任務 4（任務 2 延後的小項）：apply 之後緊接著 puff（颱風雲），新零件還在長（修正批次 2：blink.grow，原本是小彈一下）時 puff 記 base——
+// 先收掉 grow，演完回到原本的 1 倍
+test('puff right after a grow: the gesture ends the grow before recording its base, so the part ends at its own scale', () => {
   const { ctx, tl, objects } = fake({ parts: ['typhoon.main'] }), cloud = objects.get('typhoon.main');
   ctx.blink = createBlink(THREE, { people: { flashInstance() {} } });
-  ctx.blink.pop(cloud); ctx.blink.update(BLINK - 1 / 30);
-  assert.ok(cloud.scale.x < 1 && cloud.scale.x > 0.99, `mid-pop ${cloud.scale.x}`);
+  ctx.blink.grow(cloud); ctx.blink.update(BLINK);
+  assert.ok(cloud.scale.y < 1.1 && cloud.scale.y !== 1, `mid-grow ${cloud.scale.y}`);
   tl.play([B.gesture('typhoon.main', 'puff')], ctx); tl.update(0);
-  assert.equal(ctx.blink.has(cloud), false, 'the pop is over');
+  assert.equal(ctx.blink.has(cloud), false, 'the grow is over');
   tl.update(0.8); tl.skip();
   assert.deepEqual(cloud.scale.toArray(), [1, 1, 1]);
 });

@@ -583,7 +583,7 @@ test('live play, the solution: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (scr
   for (const order of SOLUTIONS) {
     const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);
     // 正解的燈泡是 6 → 8 跳級（第 8 回合）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決：風車島不能消失），量的是那個合成的燈泡 8 事件。
-    // 起因閃一下那段（平移到幫手、閃白、平移回目標）不算在內：playLive 像撲空一樣單獨量，掛在事件的 cause 上（Task 3 裁決 B）
+    // 起因閃一下那段（平移到幫手、閃白、平移回目標）不算在內：playLive 單獨量，掛在事件的 cause 上（Task 3 裁決 B）
     const ev = at(8)?.e.jump ? at(8) : at(7), five = at(5);
     assert.ok(ev && ev.key && ev.live <= KEY_MAX, `${order.join('>')} turn ${ev?.turn} bulb ${ev?.e.to}${ev?.e.jump ? ' (merged jump)' : ''}: ${ev?.live.toFixed(2)} s`);
     // 跳級合成一段（回到 GROW 設計 §4.2）之後，跳級的第二級也演自己的劇本（正解的燈泡 5 是第 6 回合 4 → 5 跳級的第二級）
@@ -617,17 +617,6 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9]);
 });
 
-// 最終審稿（裁決 R4 之後）：代表在主島的橋上（走路格上、不在格內）也叫得到——同 show/visit.js 的 onIsland；只有風車島上（Lv7 起）不算。
-// 原本只看 cellAt，巡路的電工剛好走在橋上那一刻拜訪就略過（賽博第 6 回合 燈泡→晶片 3）
-test('bulb rep: the electrician on a main-island bridge counts; on the windmill island he does not', async () => {
-  const { show } = await headlessShow(), nav = show.nav;
-  const bridge = { x: 2.4659, y: 0.75, z: 0 };
-  assert.ok(!cellAt(bridge.x, bridge.z) && nav.walkable(bridge.x, bridge.z), 'precondition: a bridge point');
-  const at = p => { const m = { pos: { ...p }, hidden: false }; return [m, bulb.script.rep({ lv: { bulb: 6 }, flags: {} }, { roster: { members: () => [m] }, nav })]; };
-  const [m1, r1] = at(bridge); assert.equal(r1, m1, 'on the bridge: called');
-  const [, r2] = at(bulb.ISLAND_HOME); assert.equal(r2, null, 'on the windmill island: nobody');
-  const [, r3] = at(anchorWorld('bulb')); assert.ok(r3, 'on a main-island cell: called');
-});
 
 // Task 6a 修正輪（控制者裁決，Critical）：以前 Lv7 劇本在沒列車時直接丟錯，玩家亂放就整局卡死。沒列車演不搭車的版本：
 // 不叫電工，鏡頭到風車島、套用（風車轉、燈塔亮）、回全景、LEVEL UP。

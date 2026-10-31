@@ -129,8 +129,8 @@ test('milk crate tips over (lying on its side, milk spilled) on the bite turn', 
   assert.notDeepEqual(down, up); assert.ok(down.parts.some(p => p.spill), 'spilled milk');
   assert.deepEqual(down.footprint, up.footprint);
 });
-test('script: placed, grow 2–4, fx and rep exist; ◆ Lv4 (branch = final form) is the only key node', () => {
-  assert.ok(rat.script?.placed && [2, 3, 4].every(n => rat.script.grow[n]) && !rat.script.grow[5] && rat.script.fx && rat.script.rep);
+test('script: placed, grow 2–4 and fx exist; ◆ Lv4 (branch = final form) is the only key node', () => {
+  assert.ok(rat.script?.placed && [2, 3, 4].every(n => rat.script.grow[n]) && !rat.script.grow[5] && rat.script.fx);
   assert.deepEqual(Object.entries(rat.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [4]);
 });
 
@@ -533,11 +533,6 @@ test('typhoon dome rats: after the landing turn the real rats settle by the dome
   for (const m of rats) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, GATE, 1.5), `rat ${m.i} by the gate`); }
   for (const m of staff) assert.ok(rats.some(r => near(r.pos, m.pos, 1.2)), 'staff stay with the rats');
   assert.deepEqual(walls.bad, []);
-});
-test('rep is the first rat', async () => {
-  const h = await headlessShow();
-  await h.run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'settle' }], { instant: true });
-  assert.equal(rat.script.rep({}, h.show), h.show.roster.members('rat.pack')[0]);
 });
 // 審查 Important 1：軍團回合（Lv4 最終型態）石堆小島的兩隻老鼠跟著同一次套用收掉（骨架動畫 ≤ 12），LEVEL UP 之後不再閃白
 test('cyber Lv4: the rocks-islet rats go with the army apply, before LEVEL UP; no blink after LEVEL UP', async () => {

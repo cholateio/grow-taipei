@@ -196,8 +196,6 @@ export const script = {
       ];
     },
   },
-  rep: () => null,   // 颱風沒有等待
-  hasRep: () => false,
 };
 // ◆ 關鍵節點（§5.3）：颱風 1（放下：到 101、全島躲雨）、4（放晴）。放下的 ◆ 由 turn.js 讀 script.placed.key
 script.placed.key = script.grow[4].key = true;

@@ -63,7 +63,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   let cause = 0, causeAt = null;
   const scriptElapsed = () => show.elapsed - cam - cause;
   const trackCause = onMark => (e, info) => {
-    if (causeAt) { cause += scriptElapsed() - causeAt.sc - (causeAt.info.gap ?? 0); causeAt = null; }   // 空拍演完才知道（撲空之後的 getter）
+    if (causeAt) { cause += scriptElapsed() - causeAt.sc - (causeAt.info.gap ?? 0); causeAt = null; }
     if (info?.cause) causeAt = { sc: scriptElapsed(), info };
     onMark?.(e, info);
   };
@@ -251,7 +251,7 @@ export function gameInvariants(show, { cam = null } = {}) {
 // 整局 live 演完一條順序（種子 21，跟 tools/pace.mjs 同一把尺）：回傳每個事件 { turn, closing, e, key, secs, live, script, cause }（closing：最後一輪）——
 // secs：事件秒數（含平移、空拍）；live：扣掉物品之間的空拍；script：不含 focus 拍、扣掉空拍（各物品測試的劇本秒數）。
 // 起因段（mark 的 info.cause 到同一個事件下一個 mark，Task 3 裁決 B）單獨量、不算進那個事件：掛在事件上的 cause = { helper, secs, live, script }
-// （live 扣掉空拍——空拍在起因段的 mark 上；沒有起因段是 null）。撲空段（info.miss）照舊是自己一筆
+// （live 扣掉空拍——空拍在起因段的 mark 上；沒有起因段是 null）
 export async function playLive(order, { seed = 21 } = {}) {
   const { show, run, scriptElapsed } = await headlessShow({ seed }), out = [];
   let s = engine.createState(spec);
@@ -270,8 +270,8 @@ export async function playLive(order, { seed = 21 } = {}) {
   return out;
 }
 
-// 拜訪點（計畫 6 設計 §4、§5；拜訪本身 2026-10-29 拿掉了，只剩撲空用它）：照唯一正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
-// 在演完之後（撲空：缺的幫手停在這一級，走去它現在的建築）問一次
+// 拜訪點（計畫 6 設計 §4、§5；拜訪 2026-10-29、撲空 2026-10-31 都拿掉了，只剩 stage.troubleSpot〔老鼠指標〕用它）：照唯一正解一個事件一個事件瞬間演，mod 自己的 placed（Lv1）與 grow（Lv n）事件，
+// 在演完之後問一次
 // visitSpot(n, { lv, flags })——spot 要有 y（＝那一格的 cellTop）、r > 0、落在 cells(n, s) 列的主島格（或給的衛星判定）裡；frontOf(spot, r, nav) 被 nearestWalkable
 // 拉回來不超過 tol。回傳 { bad, seen }：seen 是問到非 null 的「級」（排序過的數字陣列），測試寫死，少一級、多一級都看得到
 export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6 }) {

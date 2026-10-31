@@ -198,11 +198,12 @@ test('on the opening screen no islander stands inside a building and no blink is
   }
 });
 
-// 唯一正解修正輪 1：颱風放下那回合不再整回合躲著——躲一下又出來之後，撲空照常演（計畫 6 設計 §5，取代舊的等待圖框）；沒有任何圖框泡泡
-test('the typhoon placement turn still plays its miss after the shelter gag, with no icon bubble', async () => {
+// 唯一正解修正輪 1：颱風放下那回合不再整回合躲著——躲一下又出來，wait 事件演到時球員已經回到外面；
+// 撲空拿掉了（R10）：wait 不演任何一段；沒有任何圖框泡泡
+test('the typhoon placement turn: the players are back out by the wait, no miss plays, no icon bubble', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  // 棒球、颱風——第二回合就是颱風放下的回合（棒球 Lv1 等鮮奶，球員是代表）
+  // 棒球、颱風——第二回合就是颱風放下的回合（棒球 Lv1 等鮮奶）
   for (const id of ['baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
   const r = place(s, 'typhoon');
   assert.ok(r.events.some(engine.landsTyphoon), 'placing the typhoon');
@@ -210,8 +211,8 @@ test('the typhoon placement turn still plays its miss after the shelter gag, wit
   assert.equal(w?.item, 'baseball', 'baseball waits on the placement turn');
   bubblesLog.length = 0;
   const marks = [], owners = () => show.roster.members('baseball.players');
-  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (info?.miss) assert.ok(owners().length && owners().every(m => !m.hidden), 'the players are back out'); } });
-  assert.ok(marks.some(i => i?.miss), 'the miss segment plays');
+  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().length && owners().every(m => !m.hidden), 'the players are back out'); } });
+  assert.ok(!marks.some(i => i?.miss), 'no miss segment');
   assert.deepEqual(bubblesLog.filter(b => typeof b.kind === 'object'), [], 'no icon bubble');
 });
 

@@ -36,7 +36,7 @@ test('baseball has something new at every level 1–8: sand lot, stands, dome, r
   assert.equal(views[6]['baseball.fireworks'].kind, 'fireworks'); assert.equal(views[5]['baseball.fireworks'], undefined);
   assert.ok(views[7]['baseball.deco'].parts.some(p => p.led) && !views[6]['baseball.deco'].parts.some(p => p.led), 'Lv7 LED band');
   assert.ok(views[8]['baseball.platform'] && !views[7]['baseball.platform'], 'Lv8 platform');
-  assert.ok(baseball.script.placed && [2, 3, 4, 5, 6, 7, 8].every(n => baseball.script.grow[n]) && baseball.script.fx && baseball.script.rep);
+  assert.ok(baseball.script.placed && [2, 3, 4, 5, 6, 7, 8].every(n => baseball.script.grow[n]) && baseball.script.fx);
 });
 // 木看台、巨蛋兩種大小（§7.2：Racing Kit grandStand、Space Kit hangar_roundA／B），經 tint 重上色票
 test('Lv2 stands are Racing Kit grandstands; the dome is hangar_roundA at Lv3–6 and the taller hangar_roundB at Lv7–8, same footprint', () => {

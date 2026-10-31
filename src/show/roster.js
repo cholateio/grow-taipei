@@ -4,7 +4,7 @@
 //   held／pending：hold 住的宣告，等 sync() 才套用；pending 為 null 表示「hold 中被 retire，等 sync 再退」
 // 成員日常（mode 'home'）：wander 在家附近隨機走走停停、stand 走回自己的 spot、ride 坐在列車車頂、
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開；折線先 nav.ground 貼地，過拱橋不陷進橋面）、follow 跟在另一個名冊最近的成員旁邊。
-//   同一條折線上 ≥ 2 人的名冊：劇本放回來（home()，含撲空的 hurry）不接回離他最近的那一點，而是跟剛走進來的人一樣用走路速度、照尋路
+//   同一條折線上 ≥ 2 人的名冊：劇本放回來（home()，含颱風躲雨走出來的 hurry）不接回離他最近的那一點，而是跟剛走進來的人一樣用走路速度、照尋路
 //   走回自己錯開的那一點（total × i / n）再接著走——不然一起被叫去看東西的人放回來就接在同一段、同速一直貼著走（計畫 9，2026-10-30 錄影
 //   「卡成一坨」：工程師在通勤路線上走成一串、在 101 腳下一起折返）。n 1 的（電工、衛星島繞圈）照舊接回最近的那一點
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
@@ -362,14 +362,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   // 走出去的人（mode 'exit'）、已經拿掉的人不歸劇本：claim／home／setPose 不算數（劇本 once() 快取的人可能已經在退場）
   const out = m => m.mode === 'exit' || m.gone;
   function claim(m) { if (out(m)) return; still(m); m.mode = 'script'; m.trip = null; m.cursor = null; m.rest = 0; m.arriving = false; m.settled = null; }
-  // hurry（計畫 6 撲空）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
+  // hurry（計畫 6；撲空拿掉之後只剩颱風躲雨走出來用）：從別處叫來的人回家是有目的的走路——同走進來（arriving）用走路速度、焦點不在家那一格也照走，
   //   不在別人的格子裡站著等焦點回來、回合結束後再用散步速度慢慢晃回去（擠在別格、壓過那一格的人數預算）
   function home(m, { hurry = false } = {}) {
     if (out(m)) return;
     m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
-    // 同一條折線上 ≥ 2 人（晶片工程師、機器鼠）：劇本放回來（含撲空趕回）一律走回自己錯開的那一點（i / n），同剛走進來的人（見檔頭）。
+    // 同一條折線上 ≥ 2 人（晶片工程師、機器鼠）：劇本放回來（含 hurry）一律走回自己錯開的那一點（i / n），同剛走進來的人（見檔頭）。
     // 躲在門裡的（颱風放下躲一下）不標：他不動，放下劇本的 comeOut 讓他露出來再 home（hurry）；跳過、下一回合開始的 showAll({ walk }) 是保險
     else if (spec?.home?.kind === 'path' && spec.n >= 2) { if (!m.hidden) m.arriving = true; }
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path（n 1）的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
@@ -542,7 +542,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function still(m) { if (m.fidgeting) { m.walker.gesture = null; m.fidgeting = false; } }
 
   // path：不在折線上（剛被劇本放回來）就先走到折線上最近的一點，再從那裡沿線來回
-  // 剛走進來（arriving === true）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方；撲空完趕回家的（'hurry'）走到最近的那一點
+  // 剛走進來（arriving === true）的人走到自己錯開的那一點（i / n），不擠在離入口最近的地方；hurry 回家的（'hurry'）走到最近的那一點
   // （n ≥ 2 的折線，劇本放回來的人 home() 標 arriving = true，也走回錯開點）
   function onPath(m, h, dt, spec) {
     if (m.cursor) { m.cursor.advance(h.speed * dt); setPose(m, { ...m.cursor.locate(), walking: true }); return; }

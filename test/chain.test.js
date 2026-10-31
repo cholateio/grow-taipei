@@ -13,9 +13,6 @@ import { enumerate, stats } from '../src/solver/run.js';
 import { missile, resolve } from '../src/rules/endings.js';
 import { headlessShow, turnSteps, overviewRig, gameInvariants, ALL } from './helpers/show.js';
 import { finaleStep, EXAMPLE } from './helpers/endings.js';
-import { MISS_CAP, MISS_WALK, MISS_PER_TURN, SIGH } from '../src/show/visit.js';
-import { cellAt, NEIGHBORS } from '../src/scene/hex.js';
-import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const FLASH = 0.4;   // 測試閃光的峰值 0.55、谷底 0.04；待命的淡輪廓 0.08–0.2 不會越過
@@ -27,7 +24,7 @@ const CHAIN = [['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], 
 // 最後一輪照一般回合演（選擇帶動升級 §4：沒有倒數字）；演完再演終局回合（警告＋飛彈＋尾聲，finale: true），
 // 終局回合演到一半玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：收尾照樣回全景）；不變式一路查到終局回合演完。
 // finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, kinds（整局演到的事件種類）, flags, keys, script（演完還在劇本手上的人數）}
-// 每回合記下每個 mark（info、開演那一刻的秒數）：撲空段的秒數、回合秒數與 ◆ 個數給回合上限查（拜訪 2026-10-29 拿掉了，查沒有 info.visit）
+// 每回合記下每個 mark（info、開演那一刻的秒數）：回合秒數與 ◆ 個數給回合上限查（拜訪 2026-10-29、撲空 2026-10-31 拿掉了，查沒有 info.visit／info.miss）
 async function playChain(order) {
   const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), update = show.update;
   const paced = [];   // paced：每回合 { events, marks, secs }
@@ -194,119 +191,58 @@ test('the solution live: every LEVEL UP label and bubble is on screen for at lea
   assert.deepEqual((await playBoth()).flatMap(({ inv }) => inv.labels), []);
 });
 
-// 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）：唯一正解沒有任何一段拜訪（mark 沒有 info.visit）；
-// 撲空（設計 §5）：正解幾乎沒有 wait，一樣每回合 ≤ MISS_PER_TURN 段、每段 ≤ MISS_CAP（事件秒數扣掉物品之間的空拍）；
+// 拜訪拿掉了（2026-10-29 回到 GROW 設計 §4.2）：唯一正解沒有任何一段拜訪（mark 沒有 info.visit）；撲空也拿掉了（R10，mark 沒有 info.miss）；
 // 放置回合與最後一輪 ≤ 60 + 8 × max(0, ◆ − 1)
-test('the solution: no grow plays a visit; misses ≤ 2 per turn and ≤ 3 s; turns within 60 + 8 × (◆ − 1)', async () => {
+test('the solution: no grow plays a visit, no wait plays a miss; turns within 60 + 8 × (◆ − 1)', async () => {
   for (const [n, { paced }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>');
     for (const [i, { marks, secs }] of paced.entries()) {
       const what = `${name} turn ${i + 1}`;
       assert.deepEqual(marks.filter(m => m.info?.visit).map(m => `${m.e.item}${m.e.to}`), [], `${what}: no visit marks`);
+      assert.deepEqual(marks.filter(m => m.info?.miss).map(m => m.info.item), [], `${what}: no miss marks`);
       const keys = marks.filter(m => m.info?.key).length, cap = 60 + 8 * Math.max(0, keys - 1);
       assert.ok(secs <= cap, `${what}: ${secs.toFixed(1)} s > ${cap} (◆ ${keys})`);
-      const misses = marks.map((m, j) => ({ ...m, next: marks[j + 1] })).filter(m => m.info?.miss);
-      assert.ok(misses.length <= MISS_PER_TURN, `${what}: ${misses.length} misses`);
-      for (const m of misses) assert.ok((m.next?.t ?? secs) - m.t - m.info.gap <= MISS_CAP, `${what}: miss ${m.info.item} ${((m.next?.t ?? secs) - m.t - m.info.gap).toFixed(2)} s`);
     }
   }
 });
 
-// 撲空（計畫 6 設計 §5、§8）：亂放的兩局（EXAMPLE.hit／deflect）整局 live（真鏡頭、種子 21）——每回合撲空 ≤ MISS_PER_TURN 段、是 wait 事件裡前兩個這一級叫得到代表的（照 ORDER；最終審稿 3）、
-// 每段 ≤ MISS_CAP；演了的那幾段代表走到對的地方：缺的幫手那一格跟他同格或相鄰、走得到又在 MISS_WALK 秒內 → 幫手的空地（錨點旁）或拜訪點正面；
-// 否則自己門口（門口超過 MISS_WALK 秒：往門口走了 MISS_WALK 秒那麼遠）；回合 ≤ 60 + 8 × max(0, ◆ − 1)；
+// 亂放的兩局（EXAMPLE.hit／deflect）整局 live（真鏡頭、種子 21）：wait 事件不演撲空（R10）、回合 ≤ 60 + 8 × max(0, ◆ − 1)；
 // 不變式（不穿牆、不瞬移、不靜靜換位置 pops、每回合回全景、字在畫面裡）照查到終局
-const near = (a, b) => !!a && !!b && ((a[0] === b[0] && a[1] === b[1]) || NEIGHBORS.some(([dq, dr]) => a[0] + dq === b[0] && a[1] + dr === b[1]));
-const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-async function playMisses(order) {
-  const cam = overviewRig(), { show, run, bubblesLog } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
-  const mod = id => ALL.find(m => m.id === id), turns = [];
+async function playExample(order) {
+  const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
+  const turns = [];
   let s = engine.createState(spec);
   for (const [i, step] of turnSteps(order).entries()) {
-    const prev = s, r = step(s); s = r.state;
-    const turn = `${order.join('>')} turn ${i + 1}`, segs = [];
-    // wait 事件那一刻的等級（撲空排位子看的就是它：script.hasRep(lv)）
-    let view = { lv: prev.lv, flags: prev.flags };
-    for (const e of r.events) { if (e.kind === 'wait') break; view = engine.foldEvent(view, e); }
+    const r = step(s); s = r.state;
+    const turn = `${order.join('>')} turn ${i + 1}`, misses = [];
     inv.label(turn);
-    let cur = null, keys = 0;
-    const close = () => { if (!cur) return; cur.end = cur.rep && { ...cur.rep.pos }; if (cur.geo?.door) cur.lenDoorEnd = cur.geo.lenFrom(cur.end, cur.geo.door); cur.secs = show.elapsed - cur.t - cur.info.gap; cur.bubbles = bubblesLog.length - cur.from; cur = null; };
+    let keys = 0;
     await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => {
-      close(); inv.label(`${turn} [${e.kind}${e.item ? ` ${e.item}` : ''}]`);
+      inv.label(`${turn} [${e.kind}${e.item ? ` ${e.item}` : ''}]`);
       if (info?.key) keys++;
-      if (!info?.miss) return;
-      // 代表照 miss() 的問法：第三個參數是缺的幫手（鮮奶 Lv2 借離棒球錨點最近的島民）
-      const w0 = e.waits.find(w => w.item === info.item), sv = { lv: { ...show.stage.lv }, flags: show.stage.flags }, rep = mod(info.item).script.rep(sv, { roster: show.roster, nav: show.nav }, w0.for?.[0]);
-      const usable = !!rep && !rep.hidden && !rep.gone && rep.mode === 'home' && (!!cellAt(rep.pos.x, rep.pos.z) || show.nav.walkable(rep.pos.x, rep.pos.z));
-      cur = { e, info, w: w0, sv, rep: usable ? rep : null, start: usable ? { ...rep.pos } : null, t: show.elapsed, from: bubblesLog.length };
-      // 目標點與路線長度在這一刻量（miss() 定案時用的是這一刻的 nav；整局演完之後的 footprint 不一樣，路線長短會差——
-      // 2026-10-29：鮮奶 Lv2 借島民之後，第 7 回合走「往門口走一段」那一支，用整局最後的 nav 量反而以為走得到門口）
-      if (usable) {
-        const nav = show.nav, w = cur.w, h = w.for[0], hl = sv.lv[h];
-        const lenFrom = (from, to) => { const r = nav.route(from, to); return flat(r.at(-1), to) <= 0.3 ? nav.routeLength(r) : Infinity; }, len = to => lenFrom(cur.start, to);
-        const spotOf = (id, n) => { const sp = n > 0 ? mod(id).visitSpot(n, sv) : null; return sp && cellAt(sp.x, sp.z) ? frontOf(sp, sp.r, nav) : null; };
-        const helperAt = h === 'typhoon' || hl === 0 ? null : spotOf(h, hl), door = spotOf(w.item, sv.lv[w.item]);
-        cur.geo = { helperAt, lot: h !== 'typhoon' && hl === 0 ? anchorWorld(h) : null, door, lenDoor: door ? len(door) : Infinity, lenHelper: helperAt ? len(helperAt) : Infinity, lenFrom };
-      }
-      segs.push(cur);
+      if (info?.miss) misses.push(info.item);
     } });
-    close(); inv.turnEnd();
-    turns.push({ events: r.events, segs, secs: show.elapsed, keys, waitLv: view.lv });
+    inv.turnEnd();
+    turns.push({ events: r.events, misses, secs: show.elapsed, keys });
     assert.deepEqual(show.stage.lv, s.lv, `${turn}: stage levels equal the engine`);
   }
   const { events: fin } = finaleStep(s);
   inv.label(`${order.join('>')} finale`);
   await run(fin, { finale: true });
   inv.turnEnd();
-  return { turns, inv, show, mod };
+  return { turns, inv, show };
 }
 
 for (const outcome of ['hit', 'deflect']) {
-  test(`EXAMPLE.${outcome}: every turn plays ≤ 2 misses at the right places, invariants clean`, async () => {
-    const order = EXAMPLE[outcome], { turns, inv, mod } = await playMisses(order);
-    let shown = 0;
-    const kinds = new Set(), milkLot = [];   // 鮮奶 Lv2 等棒球那幾段演成哪一支（最終修正 1：EXAMPLE.hit 一定要有往棒球空地走的）
-    for (const [i, { events, segs, secs, keys, waitLv }] of turns.entries()) {
-      const what = `${outcome} turn ${i + 1}`, wait = events.find(e => e.kind === 'wait');
-      // 最終審稿 3：位子只給這一級叫得到代表的（script.hasRep），照 ORDER 往後補；
-      // 唯一正解修正輪 1：颱風放下的回合不再整回合躲著，撲空照演
-      const want = !wait ? [] : wait.waits.filter(w => mod(w.item)?.script?.rep && mod(w.item).script.hasRep(waitLv[w.item])).slice(0, MISS_PER_TURN).map(w => w.item);
-      assert.deepEqual(segs.map(g => g.w.item), want, `${what}: misses = the first ${MISS_PER_TURN} waits in ORDER that have a rep at their level`);
-      assert.ok(segs.length <= MISS_PER_TURN);
-      for (const g of segs) {
-        const label = `${what} ${g.w.item}<${g.w.for[0]}`;
-        assert.equal(g.bubbles, 0, `${label}: no bubble`);
-        assert.ok(g.secs <= MISS_CAP, `${label}: ${g.secs.toFixed(2)} s`);
-        if (!g.rep) { assert.ok(g.secs < 0.05, `${label}: nobody to send, 0 s (${g.secs.toFixed(2)})`); continue; }
-        shown++;
-        assert.ok(g.secs >= SIGH - 0.05, `${label}: played (${g.secs.toFixed(2)} s)`);
-        // 對的地方：幫手那邊（同格或相鄰、MISS_WALK 秒內走得到）優先，否則自己門口
-        const cap = MISS_WALK * g.rep.speed, here = cellAt(g.start.x, g.start.z) ?? cellOf(g.w.item);
-        const { helperAt, lot, door, lenDoor, lenHelper } = g.geo;
-        let kind;
-        // 幫手還沒放（最終修正 1）：一定往那塊空地走——到了（錨點 1.3 公尺內）是 lot，走不到就是往空地走了一段（toward lot）
-        if (lot && flat(g.end, lot) <= 1.3) kind = 'lot';
-        else if (lot && flat(g.end, lot) < flat(g.start, lot) - 0.05) kind = 'toward lot';
-        else if (helperAt && flat(g.end, helperAt) < 0.2) kind = 'spot';
-        else if (door && flat(g.end, door) < 0.2) kind = 'door';
-        // 往門口走了一段：照路線量（同 lenDoor）——2026-10-31 唯一正解收尾：以前量直線距離，路線先往北繞的那段（燈泡的電工在主島西緣，
-        //   門口在東南、路要先繞過去）走滿 MISS_WALK 也只近了 0.86 公尺直線，被當成沒走對；路線剩下的長度才是「往門口走了」
-        else if (door && lenDoor > cap && g.lenDoorEnd < lenDoor - Math.min(1, cap / 2)) kind = 'toward door';
-        else if (!door) kind = 'here';
-        assert.ok(kind, `${label}: ended at (${g.end.x.toFixed(2)}, ${g.end.z.toFixed(2)}) — not the helper, not its door (start ${g.start.x.toFixed(2)}, ${g.start.z.toFixed(2)})`);
-        // 幫手那邊走得到又近（同格／相鄰、MISS_WALK 秒內）就一定是去幫手那邊
-        if (helperAt && near(cellAt(helperAt.x, helperAt.z), here) && lenHelper <= cap - 0.05) assert.equal(kind, 'spot', `${label}: the helper's stand was within reach`);
-        if (lot) assert.ok(kind === 'lot' || kind === 'toward lot', `${label}: helper not placed → toward its lot, never its own door (${kind})`);
-        if (kind === 'spot') assert.ok(near(cellAt(g.end.x, g.end.z), here), `${label}: helper's stand only when same / adjacent cell`);
-        kinds.add(kind);
-        if (g.w.item === 'milk' && g.w.for[0] === 'baseball') milkLot.push(`turn ${i + 1}: ${kind}`);
-      }
+  test(`EXAMPLE.${outcome}: no miss plays, every turn within the cap, invariants clean`, async () => {
+    const order = EXAMPLE[outcome], { turns, inv } = await playExample(order);
+    for (const [i, { misses, secs, keys }] of turns.entries()) {
+      const what = `${outcome} turn ${i + 1}`;
+      assert.deepEqual(misses, [], `${what}: no miss marks`);
       // 回合上限（設計 §6：60 秒上限在唯一正解與 EXAMPLE 上驗）：60 + 8 × max(0, ◆ − 1)
       assert.ok(secs <= 60 + 8 * Math.max(0, keys - 1), `${what}: ${secs.toFixed(1)} s (◆ ${keys})`);
     }
-    console.log(`# EXAMPLE.${outcome}: ${shown} misses played (${[...kinds].join(', ')}); milk<baseball: ${milkLot.join(', ') || 'none'}`);
-    if (outcome === 'hit') assert.ok(milkLot.some(k => k.endsWith('lot')), `hit: milk<baseball walks toward the sandlot (${milkLot.join(', ')})`);
-    assert.ok(shown >= 3, `${outcome}: misses actually play (${shown})`);
+    assert.ok(turns.some(t => t.events.some(e => e.kind === 'wait')), `${outcome}: the game does have waits`);
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
     assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);

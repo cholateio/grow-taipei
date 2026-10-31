@@ -26,7 +26,7 @@ const kindsOf = beats => noMarks(beats).map(b => b.kind);
 const walker = { pos: { x: 0, y: 0, z: 0 }, speed: 1, head: () => ({ x: 0, y: 1, z: 0 }) };
 const navOf = len => ({ route: () => [{ x: 0, z: 0 }, { x: len, z: 0 }], routeLength: () => len });
 
-test('default scripts: placed → apply; grow → apply + levelUp; knock-back → LEVEL DOWN; a wait without an item rep plays nothing', () => {
+test('default scripts: placed → apply; grow → apply + levelUp; knock-back → LEVEL DOWN; a wait plays nothing', () => {
   // base()：lv chip 1、其他 0（所以 settle 的總等級 1 → 3 不跨 101 門檻，什麼都不演）
   const ctx = fakeCtx();
   const events = [{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'chip', from: 1, to: 2 }, { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, { kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['baseball'] }] }, { kind: 'settle' }];
@@ -41,7 +41,7 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.equal(raw[0].kind, 'mark'); assert.deepEqual(raw.slice(-3).map(b => b.kind), ['home', 'world', 'focus']);
   assert.doesNotThrow(() => marks[0].start({}), 'no onMark → no-op');
   const beats = noMarks(raw), kinds = kindsOf(raw);
-  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件不平移（撲空段自己平移，這裡燈泡沒有模組、沒有代表 → 沒有撲空）；回合最後回全景
+  // 每個有東西演的事件前面平移過去（不同物品之間空 GAP 0.4 s，裁決 R15）；等待事件不平移（撲空拿掉了，R10）；回合最後回全景
   assert.deepEqual(kinds.filter(k => k !== 'apply' && k !== 'mark'), ['focus', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'levelUp', 'wait', 'focus', 'home', 'world', 'focus']);
   assert.equal(beats[kinds.indexOf('levelUp') + 1].kind, 'apply', 'trailing apply after every script'); assert.equal(beats[kinds.lastIndexOf('levelUp')].down, true);
   assert.equal(beats[kinds.indexOf('levelUp')].down, false);
@@ -231,9 +231,9 @@ test('an event with no cell neither pans nor counts as a change of item', () => 
 // 跳級（回到 GROW 設計 §4.2）：同一物品一回合連兩個 grow、第二個 jump: true——合成一段：第一級只有 mark（0 秒），
 // 第二級照一般事件演 n 級的劇本、LEVEL UP 彈兩次，它的 apply 一次套兩級的零件
 const between = (raw, k) => { const at = raw.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return raw.slice(at[k] + 1, at[k + 1] ?? raw.length - 3); };
-// 假模組：幫手（有代表、Lv2 劇本一拍）、晶片（沒有代表、Lv2／Lv3 劇本各一拍＋LEVEL UP）；grow 事件；一串拍裡每個 mark 的 info（start 一次就知道）
-const helperLike = id => ({ id, view() {}, script: { rep: () => walker, grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
-const chipLike = () => ({ id: 'chip', view() {}, script: { rep: () => null, grow: { 2: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], 3: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')] } } });
+// 假模組：幫手（Lv2 劇本一拍）、晶片（Lv2／Lv3 劇本各一拍＋LEVEL UP）；grow 事件；一串拍裡每個 mark 的 info（start 一次就知道）
+const helperLike = id => ({ id, view() {}, script: { grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
+const chipLike = () => ({ id: 'chip', view() {}, script: { grow: { 2: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')], 3: (e, s, c) => [c.B.wait(1), c.B.levelUp('chip')] } } });
 const grow = (item, to, via, extra = {}) => ({ kind: 'grow', item, from: to - 1, to, via, ...extra });
 const marksOf = raw => raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = { e, info }; } }); return got; });
 test('a jump: the first grow plays only a mark (0 s), the second plays level n script with LEVEL UP twice and one apply covering both levels', () => {
@@ -384,7 +384,7 @@ test('no cause flash from a locked helper: flooded token, blacked-out bulb (flag
 });
 // 唯一正解修正輪 1：颱風放下不再讓同一回合後面的事件只演 [apply, LEVEL UP]——躲雨是放下劇本裡的一小段（躲一下又走出來），
 // 後面的升級照一般事件演（劇本、起因閃一下、跳級合成）；放下本身是 ◆（§5.3 颱風 1：mark 標 key，pace 算 ◆ 個數）
-const placedLike = () => { const placed = (e, s, c) => [c.B.wait(1), c.B.focus('home')]; placed.key = true; return { id: 'typhoon', view() {}, script: { rep: () => null, placed } }; };
+const placedLike = () => { const placed = (e, s, c) => [c.B.wait(1), c.B.focus('home')]; placed.key = true; return { id: 'typhoon', view() {}, script: { placed } }; };
 test('after the typhoon placed event the rest of the turn plays normally (scripts, cause flash, merged jump); the placed event is a key event', () => {
   const after = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), placedLike(), chipLike()]), fakeCtx());
   const without = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
@@ -406,134 +406,17 @@ test('a jump wraps every LEVEL UP of its script, inside together too, but never 
   assert.equal(t.during[1].beats[0].twice, true, 'inside trainStop.during');
 });
 
-// 撲空（計畫 6 設計 §5，show/visit.js 的 miss）：wait 事件的前 MISS_PER_TURN 個 waits（照 ORDER）各一段——mark { miss, item }、（換物品空 GAP）、
-// together(平移到代表那一格, 走過去)、失望 sigh、回日常；沒有泡泡、沒有圖框（舊的等待圖框拿掉）
-const { MISS_PER_TURN, SIGH, MISS_WALK, MISS_CAP } = await import('../src/show/visit.js');
-// 一串拍（together 裡也算）有沒有泡泡拍
+// 撲空拿掉了（唯一正解設計 R10，使用者 2026-10-31：走過去低頭嘆氣看不出意義）：wait 事件只剩 mark＋不閃白的 apply——
+// 不平移、不走路、不嘆氣、沒有泡泡（舊的等待圖框也早拿掉了）
 const anyBubble = beats => beats.some(b => b.kind === 'bubble' || (b.kind === 'together' && anyBubble(b.beats)));
-const waitOf = (...items) => ({ kind: 'wait', item: items[0], waits: items.map(item => ({ item, for: ['baseball', 'milk'] })) });
-const repMods = (rep = () => walker) => ['chip', 'bulb', 'token', 'boba'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep } }));
-test('wait event → up to MISS_PER_TURN miss segments in ORDER; no icon bubble anywhere', () => {
-  assert.equal(MISS_PER_TURN, 2); assert.equal(SIGH, 1.0); assert.equal(MISS_CAP, 3);
-  assert.ok(MISS_WALK + SIGH <= MISS_CAP, 'the walk cap leaves room for the sigh');
-  const e = waitOf('chip', 'bulb', 'token');
-  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, e], base([tower, ...repMods()]), fakeCtx());
-  const marks = marksOf(raw);
-  // 前兩個 waits 各一段撲空（照 ORDER：引擎的 waits 本來就照 ORDER 排），第三個不演；之後 wait 事件自己照舊一個 mark
-  assert.deepEqual(marks.map(m => [m.e.kind, !!m.info.miss, m.info.item ?? null]), [['placed', false, null], ['wait', true, 'chip'], ['wait', true, 'bulb'], ['wait', false, null], ['settle', false, null]].slice(0, marks.length));
-  assert.equal(marks.filter(m => m.info.miss).length, 2);
-  assert.ok(Math.abs(marks[1].info.gap - GAP) < 1e-9 && Math.abs(marks[2].info.gap - GAP) < 1e-9, 'a new item: GAP before each miss');
-  // 一段撲空：空拍（代表叫不到就跳過）、together(平移到代表那一格, 走過去)、失望 1.0 s、回日常
+test('a wait event plays only its mark and an apply without a blink: no pan, no walk, no gesture, no bubble', () => {
+  const mods = ['milk', 'chip', 'bulb', 'token', 'boba'].map(id => ({ id, view() {}, visitSpot: () => null, script: {} }));
+  const e = { kind: 'wait', item: 'chip', waits: ['chip', 'bulb', 'token'].map(item => ({ item, for: ['baseball', 'milk'] })) };
+  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, e], base([tower, ...mods]), fakeCtx());
   const seg = between(raw, 1);
-  assert.deepEqual(seg.map(b => b.kind), ['wait', 'together', 'gesture', 'home']);
-  assert.equal(seg[0].dur, GAP);
-  assert.deepEqual(seg[1].beats.map(b => b.kind), ['focus', 'walk']); assert.equal(typeof seg[1].beats[0].target, 'function', 'the pan target is the rep, found at beat time');
-  assert.equal(seg[2].dur, SIGH);
-  // wait 事件自己：只剩不閃白的套用（沒有泡泡、沒有平移）
-  assert.deepEqual(between(raw, 3).map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]], 'its own silent apply and the trailing apply');
-  // 整回合沒有任何泡泡拍（等待圖框拿掉）
+  // 劇本只有不閃白的 apply；後面是每個事件都補的 apply（劇本沒套到的零件閃白補上，沒剩就 0 秒）
+  assert.deepEqual(seg.map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]]);
+  assert.deepEqual(marksOf(raw).map(m => m.e.kind), ['placed', 'wait']);
+  assert.ok(marksOf(raw).every(m => !m.info.miss));
   assert.equal(anyBubble(raw), false, 'no bubble beat for a wait');
-  // 等待物品沒有代表劇本（颱風、這裡的 milk 沒有模組）→ 那一項不插、照 ORDER 往後補（最終審稿 3：兩個位子留給叫得到人的）
-  const some = buildTurn([waitOf('milk', 'chip', 'bulb')], base([tower, ...repMods()]), fakeCtx());
-  assert.deepEqual(marksOf(some).filter(m => m.info.miss).map(m => m.info.item), ['chip', 'bulb']);
-  // 颱風放下之後照樣演撲空（唯一正解修正輪 1：躲雨只是放下劇本裡的一小段）
-  const typhoon = { id: 'typhoon', view() {}, script: { rep: () => null } };
-  const landed = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, waitOf('chip', 'bulb')], base([tower, typhoon, ...repMods()]), fakeCtx());
-  assert.deepEqual(marksOf(landed).filter(m => m.info.miss).map(m => m.info.item), ['chip', 'bulb'], 'misses play after the typhoon is placed');
-  assert.equal(anyBubble(landed), false);
-});
-
-// 最終審稿 3：撲空的兩個位子在建串時就只給「這一級叫得到代表」的物品（各模組的 script.hasRep(lv)：鮮奶 Lv2 起（Lv2 借島民，回到 GROW 裁決）、代幣 Lv2 起才有站務員、
-// 燈泡的電工 Lv7 起住在風車島上、颱風永遠沒有）——原本前兩個 waits 先佔位，叫不到人的那一項吃掉一個位子演 0 秒，
-// 叫得到人的反而被丟掉（計畫 6 的 EXAMPLE.deflect 第 7 回合五個 waits 只看到一次嘆氣）。下面的假模組自己定 hasRep（鮮奶 Lv3 起），只測排位子的規則
-test('miss slots go to the first MISS_PER_TURN waits whose item has a rep at its level (script.hasRep), in ORDER', async () => {
-  const mods = ['milk', 'bulb', 'token', 'rat', 'boba'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep: () => walker, hasRep: { milk: lv => lv >= 3, token: lv => lv >= 2 }[id] ?? (() => true) } }));
-  const lv = { ...zero, milk: 2, bulb: 3, token: 1, rat: 1, boba: 2, chip: 1 };
-  const raw = buildTurn([waitOf('milk', 'bulb', 'token', 'rat', 'boba')], { ...base([tower, ...mods]), lv }, fakeCtx());
-  assert.deepEqual(marksOf(raw).filter(m => m.info.miss).map(m => m.info.item), ['bulb', 'rat'], '(fake) milk Lv2 and token Lv1 have nobody to send: the next two with reps play');
-  // 等級夠了就排得上：鮮奶 Lv3 → 鮮奶、燈泡
-  const up = buildTurn([waitOf('milk', 'bulb', 'token', 'rat', 'boba')], { ...base([tower, ...mods]), lv: { ...lv, milk: 3 } }, fakeCtx());
-  assert.deepEqual(marksOf(up).filter(m => m.info.miss).map(m => m.info.item), ['milk', 'bulb']);
-  // 真的模組：hasRep 照各自的名冊
-  const real = Object.fromEntries(await Promise.all(spec.ORDER.map(async id => [id, (await import(`../src/actors/${id}.js`)).script.hasRep])));
-  assert.deepEqual([real.milk(1), real.milk(2), real.milk(3), real.token(1), real.token(2), real.typhoon(1), real.typhoon(5), real.bulb(6), real.bulb(7)], [false, true, true, false, true, false, false, true, false]);
-  for (const id of ['chip', 'rat', 'boba', 'baseball']) assert.equal(real[id](1), true, `${id} Lv1 has a rep`);
-});
-
-// 回到 GROW 裁決（設計 §4.3 為準）：鮮奶 Lv2 等棒球是謎題最重要的線索，撲空一定要演——Lv2 的代表借最近的島民（hasRep(2) 真），
-// 照 ORDER 佔第一個位子，第二個位子給下一個 wait
-test('milk at Lv2 waiting for baseball has a rep (hasRep(2) true, the nearest islander): its miss plays first, then the next wait in ORDER', async () => {
-  const milkMod = await import('../src/actors/milk.js');
-  assert.equal(milkMod.script.hasRep(2), true); assert.equal(milkMod.script.hasRep(3), true);
-  const raw = buildTurn([{ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }, { item: 'chip', for: ['milk'] }] }], { ...base([quietTower, milkMod, ...repMods()]), lv: { ...zero, milk: 2, chip: 2 } }, fakeCtx());
-  assert.deepEqual(marksOf(raw).filter(m => m.info.miss).map(m => m.info.item), ['milk', 'chip']);
-});
-
-test('miss beats: the rep is found once at beat time; nobody (hidden, busy, walking out) → every beat skipped, the GAP too', () => {
-  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
-  const claimed = [], homed = [], roster = { claim: m => claimed.push(m), home: m => homed.push(m), setPose() {}, setFocus() {}, members: () => [], keys: () => [] };
-  for (const mode of ['script', 'exit']) {   // 劇本手上、正走出去（退場）的人都不是日常
-    const busy = { ...walker, mode }, raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip')], base([tower, ...repMods(() => busy)]), fakeCtx());
-    const seg = between(raw, 1), c = fakeCtx({ roster, nav, rig: { grabbed: false, focus: () => true } });
-    assert.equal(seg[0].start(c), false, `${mode}: the GAP is skipped`);
-    assert.equal(seg[1].beats[0].start(c), false, `${mode}: no pan`); assert.equal(seg[1].beats[1].start(c), false, `${mode}: no walk`);
-    assert.equal(seg[2].start(c), false, `${mode}: no sigh`);
-  }
-  assert.deepEqual(claimed, [], 'a busy rep is never taken'); assert.deepEqual(homed, []);
-  // 叫得到：空拍那拍就定案、拿到劇本手上；平移對著他那一格；回日常
-  let asked = 0;
-  const rep = { ...walker, mode: 'home', pos: { x: 0, y: 0.65, z: 0 } };
-  const raw = buildTurn([{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip')], base([tower, ...repMods(() => { asked++; return rep; })]), fakeCtx());
-  const seg = between(raw, 1), cells = [], c = fakeCtx({ roster: { ...roster, setFocus: x => cells.push(x) }, nav, rig: { grabbed: false, focus: () => true } });
-  assert.notEqual(seg[0].start(c), false); assert.deepEqual(claimed, [rep]);
-  seg[1].beats[0].start(c); assert.deepEqual(cells, [[[0, 0]]], 'the pan goes to the rep\'s cell');
-  seg[3].start(c); assert.deepEqual(homed, [rep]);
-  assert.equal(asked, 1, 'the rep is asked once');
-});
-// 一回合兩段撲空、一段演了一段沒演（兩種順序）：沒演的那段整段 0 秒（連空拍）；之後的空拍看「真的演了的上一段」是哪個物品；
-// 有一段演了，鏡頭就在代表那一格——下一個事件照樣空拍、平移回來
-test('two misses in a turn, one played and one collapsed (both orders): the collapsed one waits nothing, the next event still pans back', () => {
-  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
-  const milk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.wait(1)], grow: { 2: (e, s, c) => [c.B.wait(1)] } } };
-  const events = [{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip', 'bulb'), grow('milk', 2, [])];
-  for (const playing of ['chip', 'bulb']) {
-    const reps = Object.fromEntries(['chip', 'bulb'].map(id => [id, { ...walker, mode: id === playing ? 'home' : 'script', pos: { x: 0, y: 0.65, z: 0 } }]));
-    const mods = ['chip', 'bulb'].map(id => ({ id, view() {}, visitSpot: () => null, script: { rep: () => reps[id] } }));
-    const raw = buildTurn(events, base([tower, milk, ...mods]), fakeCtx());
-    const c = fakeCtx({ roster: { claim() {}, home() {}, setPose() {}, setFocus() {}, members: () => [], keys: () => [] }, nav, rig: { grabbed: false, focus: () => true } });
-    const marks = raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = info; } }); return got; });
-    assert.deepEqual(marks.slice(1, 3).map(m => m.item), ['chip', 'bulb']);
-    const seg = k => between(raw, k), gapOf = k => seg(k).find(b => b.kind === 'wait');
-    // 第一段（晶片）：演了才等空拍
-    assert.equal(gapOf(1).start(c) !== false, playing === 'chip', `${playing}: chip GAP`);
-    for (const b of seg(1).slice(1)) b.start?.(c);
-    // 第二段（燈泡）：演了的話，上一個演了的是晶片（或撲空之前的鮮奶），都不是燈泡 → 空拍；沒演 → 0 秒
-    assert.equal(gapOf(2).start(c) !== false, playing === 'bulb', `${playing}: bulb GAP`);
-    for (const b of seg(2).slice(1)) b.start?.(c);
-    assert.deepEqual([marks[1].gap, marks[2].gap], playing === 'chip' ? [GAP, 0] : [0, GAP], `${playing}: the marks report what was waited`);
-    // 下一個事件（鮮奶 2）：有一段撲空演了，鏡頭在代表那一格 → 空拍、平移回鮮奶格
-    const [gap, pan] = seg(4);
-    assert.deepEqual([gap.kind, pan.kind], ['wait', 'focus']);
-    assert.notEqual(gap.start(c), false, `${playing}: GAP before the next item`); assert.notEqual(pan.start(c), false, `${playing}: pan back`);
-    assert.equal(marks[4].gap, GAP);
-  }
-});
-// 撲空沒演（代表叫不到，整段 0 秒）就不動鏡頭的帳（審稿）：下一個事件照撲空之前的帳——同一個物品不空拍、鏡頭本來就在那一格不再平移；
-// 撲空真的演了：鏡頭在代表那一格，下一個事件空一拍、平移回來
-test('a collapsed miss leaves the camera bookkeeping alone: the next event of the same item gets no GAP and no pan; a played miss does', () => {
-  const nav = { route: (a, b) => [{ x: a.x, z: a.z }, { x: b.x, z: b.z }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), nearestWalkable: p => ({ ...p }), walkable: () => true, inFootprint: () => false, groundY: () => 0, version: 0 };
-  const milk = { id: 'milk', view() {}, script: { placed: (e, s, c) => [c.B.wait(1)], grow: { 2: (e, s, c) => [c.B.wait(1)] } } };
-  const events = [{ kind: 'placed', item: 'milk', to: 1 }, waitOf('chip'), grow('milk', 2, [])];
-  for (const [mode, played] of [['script', false], ['home', true]]) {
-    const rep = { ...walker, mode, pos: { x: 0, y: 0.65, z: 0 } }, focused = [];
-    const raw = buildTurn(events, base([tower, milk, ...repMods(() => rep)]), fakeCtx());
-    const c = fakeCtx({ roster: { claim() {}, home() {}, setPose() {}, setFocus: x => focused.push(x), members: () => [], keys: () => [] }, nav, rig: { grabbed: false, focus: () => true } });
-    const marks = raw.filter(b => b.kind === 'mark').map(b => { let got = null; b.start({ onMark: (e, info) => { got = info; } }); return got; });
-    const g = between(raw, 3), [gap, pan] = g;
-    assert.deepEqual([gap.kind, pan.kind], ['wait', 'focus'], `${mode}: the GAP and the pan are there to decide at beat time`);
-    for (const b of between(raw, 1)) b.start?.(c);   // 撲空段演到（定案代表）
-    assert.equal(gap.start(c) !== false, played, `${mode}: GAP ${played ? 'kept' : 'skipped'}`);
-    assert.equal(pan.start(c) !== false, played, `${mode}: pan ${played ? 'kept' : 'skipped'}`);
-    assert.equal(marks[3].gap, played ? GAP : 0, `${mode}: the mark reports the GAP actually waited`);
-  }
 });

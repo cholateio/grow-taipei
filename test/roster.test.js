@@ -345,7 +345,7 @@ test('setFocus limits idle wandering and fidgets to members whose home cell is i
   for (let i = 0; i < 180; i++) roster.update(1 / 30, 10 + i / 30);
   assert.ok(moved(b, pb), 'null frees everyone');
 });
-// 計畫 6（拜訪、撲空）：從別格叫來的人 home(m, { hurry: true }) 回家是有目的的走路——焦點不在他家那一格也照走、用走路速度（不是散步速度）；
+// 計畫 6（拜訪、撲空；兩者都拿掉了，颱風躲雨走出來照用）：從別格叫來的人 home(m, { hurry: true }) 回家是有目的的走路——焦點不在他家那一格也照走、用走路速度（不是散步速度）；
 // 不帶 hurry 的照舊：焦點外站著不動
 test('home(m, { hurry }) walks a member back at walking speed even outside the focus; plain home() still waits for the focus', () => {
   const { roster } = setup();

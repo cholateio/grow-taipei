@@ -287,34 +287,3 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
-// 回到 GROW 裁決（設計 §4.3）：鮮奶 Lv2 等棒球的撲空一定要演——Lv2 還沒有小孩、也不加早餐店的人（人數預算），
-// 代表借離鮮奶格最近的島民（roster.nearest('landmarks.islanders', 鮮奶錨點)）；Lv3 起照舊是第一個露出來的小孩；Lv1 不排撲空
-test('milk rep: Lv2 borrows the nearest islander (hasRep(2) true, hasRep(1) false); Lv3 is the first visible kid', () => {
-  const ms = milk.script;
-  assert.equal(ms.hasRep(1), false); assert.equal(ms.hasRep(2), true); assert.equal(ms.hasRep(3), true);
-  const islander = { key: 'landmarks.islanders', i: 0 }, kids = [{ key: 'milk.kids', i: 0, hidden: true }, { key: 'milk.kids', i: 1, hidden: false }], asked = [];
-  islander.mode = 'home'; islander.pos = { ...anchorWorld('milk') };
-  const roster = { members: key => { asked.push(key); return key === 'milk.kids' ? kids : key === 'landmarks.islanders' ? [islander] : []; } };
-  assert.equal(ms.rep({ lv: { milk: 2 }, flags: {} }, { roster }), islander);
-  assert.deepEqual(asked, ['landmarks.islanders'], 'asks for the islanders');
-  assert.equal(ms.rep({ lv: { milk: 3 }, flags: {} }, { roster }), kids[1], 'Lv3: the first visible kid');
-});
-// 鮮奶 Lv2 的撲空是整個謎題最關鍵的線索，不能因為最近的島民正在忙（劇本中、走出去、藏起來）就 0 秒演不出來——挑最近的「空著的」
-test('milk rep Lv2: skips busy islanders (script mode / hidden / gone) and picks the nearest one in daily mode; null when none', () => {
-  const A = anchorWorld('milk'), at = d => ({ x: A.x + d, y: A.y, z: A.z });
-  const busy = { i: 0, mode: 'script', pos: at(0.1) }, hid = { i: 1, mode: 'home', hidden: true, pos: at(0.2) }, gone = { i: 2, mode: 'home', gone: true, pos: at(0.3) };
-  const far = { i: 3, mode: 'home', pos: at(3) }, farther = { i: 4, mode: 'home', pos: at(5) };
-  const mk = list => ({ members: key => (key === 'landmarks.islanders' ? list : []) });
-  const st = { lv: { milk: 2 }, flags: {} };
-  assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone, farther, far]) }), far);
-  assert.equal(milk.script.rep(st, { roster: mk([busy, hid, gone]) }), null);
-});
-// 最終修正（整支分支審稿 1）：鮮奶 Lv2 等棒球的撲空要看得出「在等球場」——代表挑離缺的幫手（rep 的第三個參數）錨點最近的空著的島民；
-// 沒給幫手照舊挑離鮮奶錨點最近的
-test('milk rep Lv2 with a helper id: the free islander nearest to that helper anchor; without one, nearest to the milk anchor', () => {
-  const M = anchorWorld('milk'), H = anchorWorld('baseball');
-  const byMilk = { i: 0, mode: 'home', pos: { ...M } }, byLot = { i: 1, mode: 'home', pos: { ...H } }, busy = { i: 2, mode: 'script', pos: { ...H } };
-  const roster = { members: key => (key === 'landmarks.islanders' ? [byMilk, busy, byLot] : []) }, st = { lv: { milk: 2 }, flags: {} };
-  assert.equal(milk.script.rep(st, { roster }, 'baseball'), byLot);
-  assert.equal(milk.script.rep(st, { roster }), byMilk);
-});

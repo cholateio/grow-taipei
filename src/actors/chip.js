@@ -297,8 +297,6 @@ export const script = {
     },
   },
   fx: () => null,   // 晶片自己沒有 onLevel
-  rep: (s, ctx) => ctx.roster.members('chip.engineers').find(m => !m.hidden) ?? ctx.roster.members('chip.worker').find(m => !m.hidden) ?? null,   // 代表（撲空找的人）：藏起來的人（躲進門裡）不算
-  hasRep: lv => lv >= 1,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：Lv1 工人、Lv2 起工程師
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這幾級，也演完整劇本（turn.js）。
 // Lv7 天線、Lv8 矽盾測試（選擇帶動升級裁決 R6）：離島鏈是整局的主線，跳級變多之後兩級常是跳級的第二級（外星 6 → 7、賽博 6 → 8），

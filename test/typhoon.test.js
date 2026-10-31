@@ -120,7 +120,6 @@ test('view: Lv4 splits the rainbow into its own part (no cloud left); the cloud,
   assert.equal(typhoon.script.fx, undefined, 'the island checks are plain apply + LEVEL UP (turn.js), no reaction scripts');
   assert.equal(typhoon.script.placed.key, true, '◆ typhoon 1 (placed)'); assert.equal(typhoon.script.grow[4].key, true, '◆ typhoon 4');
   assert.ok(!typhoon.script.grow[2].key && !typhoon.script.grow[3].key, 'moving between stops is not ◆');
-  assert.equal(typhoon.script.rep(), null);
 });
 test('view: dome-rat staff are a helmeted roster of 2 following the rats; the milk crate goes grey in a blackout', () => {
   const st = baseball.view(lv({ baseball: 3 }), { domeRats: true })['baseball.staff'];

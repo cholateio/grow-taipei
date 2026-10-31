@@ -30,7 +30,7 @@ export function troubleOf(lv, flags, waits, spec) {
   const locked = spec.ORDER.find(id => locks[id] && flags[locks[id]]);   // 鎖的旗標只在那個物品放下了才會立（規則：在場才檢查），不用再看 lv
   return locked ?? waits?.find(w => w.item !== 'rat')?.item ?? null;
 }
-// 出問題那棟的門口：那個物品這一級建築的正面（visitSpot 往鏡頭側走 r，同撲空的 door，不落 nav——老鼠的家用它當散步中心）；
+// 出問題那棟的門口：那個物品這一級建築的正面（visitSpot 往鏡頭側走 r，不落 nav——老鼠的家用它當散步中心）；
 // 正面不在主島格上就用 visitSpot 本身；沒有 visitSpot（颱風、離島那一級）或也不在主島上 → 那個物品的錨點
 export function troubleSpot(item, lv, flags, modules) {
   if (!item) return null;

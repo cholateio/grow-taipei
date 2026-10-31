@@ -4,7 +4,7 @@
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
 // 被老鼠咬那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來）。颱風放下時小孩跟大家一樣跑去門口躲一下又出來（颱風劇本）。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv7、Lv10 ≤ 10 秒、最後回全景定格。
-import { anchorWorld, cellCentre, cellOf } from './anchors.js';
+import { anchorWorld, cellCentre } from './anchors.js';
 import { HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
@@ -209,15 +209,6 @@ function spawnKid(ctx) {
 // 三個小孩一起走到 centre 附近各自的位置（slots 半徑 r）
 const gather = (ctx, centre, r, opts) => ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, r)[i], opts?.(i))));
 
-// 同 roster.nearest，多濾掉忙碌的（不在日常 home、藏著、在劇本手上的）：Lv2 的代表借島民，不能借走正在演的人
-const nearestFree = (roster, p) => {
-  let best = null, bestD = Infinity;
-  for (const m of roster.members('landmarks.islanders')) {
-    if (m.hidden || m.gone || m.mode !== 'home') continue;
-    const d = Math.hypot(m.pos.x - p.x, m.pos.z - p.z); if (d < bestD) { bestD = d; best = m; }
-  }
-  return best;
-};
 export const script = {
   // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下的同時 ♥、揮手
   // （一級 3–4.5 s：最近的島民離箱子 0.5–1.6 s 不等，走路那段至少 0.6 s、♥ 跟閃白一起冒——
@@ -330,15 +321,6 @@ export const script = {
     },
   },
   fx: () => null,   // 鮮奶自己沒有 onLevel
-  // 鮮奶 Lv2 的撲空是整個謎題最關鍵的線索，不能因為離得最近的島民正在忙（劇本中、藏起來、走掉）就 0 秒演不出來——
-  // 所以只挑「空著的」（日常 mode === 'home'、沒藏、沒走）裡最近的；一個都沒有才回 null。
-  // 代表（撲空找的人）：Lv3 起是第一個露出來的小孩（藏起來躲進門裡的不算）；Lv2 還沒有小孩、早餐店也沒有名冊（不加人，人數預算）——
-  // 借離鮮奶格最近的島民（同代幣 placed 劇本的叫法）。回到 GROW 裁決：鮮奶 Lv2 等棒球是整個謎題最重要的線索，撲空一定要演。
-  // helperId（撲空傳缺的幫手 w.for[0]）：Lv2 改挑離那個幫手錨點最近的島民——他往棒球那塊空地走得到、看得出是在等球場（最終修正 1）；
-  // 沒給（或不認得的 id）照舊挑離鮮奶錨點最近的
-  rep: (s, ctx, helperId) => ((s?.lv?.milk ?? 0) >= 3 ? ctx.roster.members('milk.kids').find(m => !m.hidden) ?? null
-    : nearestFree(ctx.roster, helperId && cellOf(helperId) ? anchorWorld(helperId) : AT)),
-  hasRep: lv => lv >= 2,   // 這一級有沒有代表（turn.js 排撲空的位子用，最終審稿 3）：Lv2 借島民、Lv3 起小孩；Lv1 不排（鮮奶 Lv1 不會等）
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這兩級，也演完整劇本（turn.js）
 script.grow[7].key = script.grow[10].key = true;

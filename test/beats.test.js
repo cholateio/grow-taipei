@@ -387,27 +387,6 @@ test('ctx.speed 2: bubble, LEVEL UP and camera flight are handed real-time lengt
   const a = ((ctx.now + rail.offset) * 0.35 - STATION_A) % (2 * Math.PI); assert.ok(Math.abs(a) < 0.05 || Math.abs(a - 2 * Math.PI) < 0.05, `head at the station after 2.2 s (${a.toFixed(3)})`);
   const o = rail.offset; ctx.now += 0.5; tl.update(0.5); assert.ok(Math.abs(rail.offset - (o - 0.5)) < 1e-6, 'held: the train stands still in real time');
 });
-// 失望（計畫 6 設計 §5）：sigh 1.0 秒；小人交給 walker 的 gesture，演完清掉；模型原地慢慢轉一圈，演完回原本的朝向
-test('gesture sigh: 1.0 s on a walker (walker gesture set, cleared at the end); a model member turns once round and keeps its yaw', async () => {
-  const { GESTURE_DUR } = await import('../src/show/beats.js');
-  assert.equal(GESTURE_DUR.sigh, 1.0);
-  const { ctx, tl, member } = fake({ pos: { x: 0, y: 0, z: 0 } });
-  const beat = B.gesture(member, 'sigh');
-  assert.equal(beat.dur, 1.0);
-  tl.play([beat], ctx); tl.update(0); tl.update(0.4);
-  assert.equal(member.walker.gesture.kind, 'sigh'); assert.ok(Math.abs(member.walker.gesture.k - 0.4) < 1e-9);
-  tl.update(0.7); assert.equal(member.walker.gesture, null, 'cleared at the end');
-  const rat = { ...member, kind: 'model', walker: undefined, holder: new THREE.Group(), yaw: 1, pos: { x: 0, y: 2, z: 0 } }; rat.head = () => rat.pos;
-  tl.play([B.gesture(rat, 'sigh')], ctx); tl.update(0); tl.update(0.25);
-  assert.ok(Math.abs(rat.holder.rotation.y - (1 + Math.PI / 2)) < 1e-9, 'a quarter round at a quarter of the way');
-  tl.update(0.5); assert.ok(Math.abs(rat.holder.rotation.y - (1 + 1.5 * Math.PI)) < 1e-9);
-  tl.update(0.5); assert.equal(rat.holder.rotation.y, 1, 'back to its own yaw');
-  // 跳過（玩家按下一個、reduced-motion 的 snap）：演到一半的 sigh 一樣清乾淨——小人的 gesture 拿掉、模型回原本的朝向
-  tl.play([B.gesture(member, 'sigh')], ctx); tl.update(0); tl.update(0.3); assert.equal(member.walker.gesture.kind, 'sigh');
-  tl.skip(); assert.equal(member.walker.gesture, null, 'skip clears the walker sigh'); assert.ok(!tl.busy);
-  tl.play([B.gesture(rat, 'sigh')], ctx); tl.update(0); tl.update(0.3); assert.notEqual(rat.holder.rotation.y, 1);
-  tl.skip(); assert.equal(rat.holder.rotation.y, 1, 'skip puts the model back on its yaw');
-});
 
 // 回到 GROW 設計 §4.2：跳級合成一段，LEVEL UP 彈兩次（第二次晚 0.3 秒、高一點）；起因那棟本體閃白一下（B.flash）
 const fakeCtx = (extra = {}) => ({ stage: { headOf: () => ({ x: 0, y: 1, z: 0 }) }, ...extra });

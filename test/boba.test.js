@@ -51,7 +51,7 @@ test('boba has something new at every level 1–6: cart, queue, shop, fountain, 
   assert.ok(sat.view(lv({ boba: 5 }), {})['sat.lighthouse.stage2'] && !sat.view(lv({ boba: 4 }), {})['sat.lighthouse.stage2'], 'Lv5 lighthouse pier');
   assert.ok(views[6]['boba.fleet'] && !views[5]['boba.fleet'] && views[6]['boba.yard'].parts.some(p => p.coast), 'Lv6 balloons and fleet');
   assert.ok(!views[5]['boba.yard'].parts.some(p => p.coast), 'no balloons before Lv6');
-  assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7] && boba.script.fx && boba.script.rep);
+  assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7] && boba.script.fx);
 });
 // 人數預算（使用者 2026-10-26）：人龍 ≤ 4，不再有閒晃的觀光客
 test('people budget: queue of 3 at every level, no strollers anywhere', () => {

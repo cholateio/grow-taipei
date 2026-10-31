@@ -549,8 +549,10 @@ test('fix3 B: the scooter part reports obstacle() at its rider (r 0.3) with the 
 });
 // 整局 live（珍奶 ≥4 時放颱風的順序）：颱風 Lv1（放下）、Lv2 兩回合整段 live 演，各再過 10 s 日常——
 // 老鼠名冊（rat.pack）與所有小人離機車騎士 ≥ 0.3 + 自己的半徑 − 0.02（印最近距離）；日常的人沒有瞬移。
-// 第二條：老鼠 Lv3 的劇本（走去搭車）從機車的圈上走過（修好之前最近 −0.34）；兩條都有電工沿主路北半圈（跟機車的圈疊在一起）迎面碰上機車
-const SCOOTER_ORDERS = [SCOOTER_ORDER, ['milk', 'token', 'boba', 'baseball', 'chip', 'bulb', 'rat', 'typhoon']];
+// 第二條：老鼠 Lv3 的劇本（走去搭車）從機車的圈上走過（修好之前最近 −0.34）；兩條都有電工沿主路北半圈（跟機車的圈疊在一起）迎面碰上機車。
+// 第三條（修正輪 1 審稿）：前兩條只靠機車自己煞車就過——名冊讓路的接線（show/index.js 的 obstacles）拿掉照樣綠；這一條拿掉接線就紅
+//   （島民 −0.219、電工 −0.195：日常的人走進機車的車道，機車煞不住），驗的是名冊真的拿到障礙、讓開
+const SCOOTER_ORDERS = [SCOOTER_ORDER, ['milk', 'token', 'boba', 'baseball', 'chip', 'bulb', 'rat', 'typhoon'], ['milk', 'chip', 'baseball', 'token', 'boba', 'bulb', 'typhoon', 'rat']];
 test('fix3 B live: in the typhoon Lv1 and Lv2 turns (and 10 s after each) the rats and every person keep ≥ 0.3 + radius − 0.02 from the scooter', async () => {
   const { radiusOf } = await import('../src/show/nav.js');
   for (const order of SCOOTER_ORDERS) {

@@ -78,10 +78,10 @@ export function spawn(key, at) {
   return beat;
 }
 
-// delay：拍開始時就把人拿到劇本手上（原地站著），delay 秒後才出發（一群人排成一列跟著走）
+// delay：拍開始時就把人拿到劇本手上（原地站著），delay 秒後才出發（一群人排成一列跟著走）；可以是 ctx => 秒數（演到這拍才算：誰先走看大家那時在哪）
 // 走到一半 footprint 變了（路上長出建築，§14.1）：從現在的位置重新找路到同一個終點，剩下的時間不變（拍長開始時就定了），繞路就走快一點
 export function walk(who, to, { speed, delay = 0 } = {}) {
-  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0, planned = -1, span = 0;   // span：開始時定的走路秒數（重新找路也不變）
+  let m = null, route = null, cursor = null, s = 0, total = 0, v = 0, idle = 0, planned = -1, span = 0, wait = 0;   // span：開始時定的走路秒數（重新找路也不變）；wait：開始時定的 delay
   const plan = ctx => {
     const mm = memberOf(who, ctx); if (!mm || mm.hidden) return null;   // 躲進門裡的人不拉出來（裁決 R14）
     const r = ctx.nav.route(mm.pos, call(to, ctx));
@@ -89,10 +89,10 @@ export function walk(who, to, { speed, delay = 0 } = {}) {
   };
   return {
     kind: 'walk',
-    dur: () => delay + span,
-    estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : delay + p.len / p.v; },
+    dur: () => wait + span,
+    estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : call(delay, ctx) + p.len / p.v; },
     start(ctx) {
-      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0; idle = delay; span = total / v;
+      const p = plan(ctx); m = p?.mm ?? null; if (!m) return false; route = p.r; total = p.len; v = p.v; s = 0; idle = wait = call(delay, ctx); span = total / v;
       ctx.roster.claim(m);
       if (total < 1e-6) return false;
       cursor = createPathCursor(route, { loop: false }); planned = ctx.nav.version;

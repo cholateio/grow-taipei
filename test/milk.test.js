@@ -12,8 +12,8 @@ import { ROOFS, roofColor, C } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
-import { createNav } from '../src/show/nav.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX, turnSteps } from './helpers/show.js';
+import { createNav, radiusOf } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 
 // 鏡頭（§13.1、計畫 3.8 Task 5）：照 order 瞬間演到 pred 那個事件，單獨 live 演；回傳這個事件的鏡頭軌跡（格子…、'home'）
@@ -198,6 +198,29 @@ test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 �
     });
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `milk events seen: ${seen}`);
   }
+});
+// 計畫 11 最終修正 #3（全分支審稿）：◆ Lv7 三個小孩從操場一起走到拱門前——以前同時出發、走同一條路，兩個疊在一起走了 38 幀（0.000 m）。
+// 唯一正解整局 live 演到鮮奶 7：劇本裡任兩個小孩身體不相碰（≥ 0.64 × 兩人半徑相加）；站位彼此 ≥ 兩人半徑相加
+test('◆ Lv7 live: the three kids walk to the gate without body contact, and their gather spots are ≥ ra + rb apart', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update;
+  let s = engine.createState(spec), on = false, close = Infinity, who = '', seen = false, spot = Infinity;
+  show.update = (dt, t) => {
+    update(dt, t); if (!on) return;
+    const k = show.roster.members('milk.kids').filter(m => !m.hidden && !m.gone && m.mode === 'script'), gathered = k.length === 3 && k.every(m => !m.walking);   // 只量劇本手上的（拍開始前的日常不算）
+    for (let a = 0; a < k.length; a++) for (let b = a + 1; b < k.length; b++) {
+      const d = Math.hypot(k[a].pos.x - k[b].pos.x, k[a].pos.z - k[b].pos.z), need = radiusOf(k[a]) + radiusOf(k[b]);
+      if (d / need < close) { close = d / need; who = `#${a}|#${b} at (${k[a].pos.x.toFixed(2)}, ${k[a].pos.z.toFixed(2)})`; }
+      if (gathered) spot = Math.min(spot, d - need);   // 三個都站在劇本的站位上（走完、跳的時候）
+    }
+  };
+  for (const step of turnSteps(SOLUTIONS[0])) {
+    const r = step(s); s = r.state;
+    await h.run([...r.events, { kind: 'settle' }], { onMark: e => { on = isMilk(7)(e); seen ||= on; } });
+    on = false; if (seen) break;
+  }
+  assert.ok(seen, 'milk 7 reached');
+  assert.ok(close >= 0.64, `kids ${who} came within ${close.toFixed(2)} × (ra + rb)`);
+  assert.ok(Number.isFinite(spot) && spot >= -1e-6, `gather spots ${spot.toFixed(3)} beyond ra + rb`);
 });
 test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP', () => {
   for (const n of [7, 10]) {

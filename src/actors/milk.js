@@ -8,6 +8,7 @@ import { anchorWorld, cellCentre } from './anchors.js';
 import { HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
+import { measurePath, locateOnPath } from '../scene/path.js';
 
 export const id = 'milk';
 export const labelY = 1.4;
@@ -206,8 +207,40 @@ function spawnKid(ctx) {
   beat.start = c => (view(c.stage.lv, c.stage.flags, c.stage.meta)['milk.kids'] ? start(c) : false);
   return beat;
 }
-// 三個小孩一起走到 centre 附近各自的位置（slots 半徑 r）
-const gather = (ctx, centre, r, opts) => ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => c.nav.slots(centre, 3, r)[i], opts?.(i))));
+// 三個小孩走到 centre 附近各自的位置（slots 半徑 r），錯開出發（計畫 11 最終修正 #3：◆ Lv7 從操場走到拱門 3 公尺多，三人同時出發、
+//   同速走同一條路，兩個疊在一起走了 38 幀 0.000 m；Lv3 三人從校門外同一點出發、間隔固定 0.3 s，路線交叉時照樣疊著）。
+//   演到這拍才排：離 centre 路最短的先走、拿離大家最遠的站位（後面的人不從站好的人身邊擠過去）；後面的人照順序挑 delay
+//   （每 FILE_STEP 秒試一次，最多 FILE_MAX）——照各自的路線與走路速度推算整段，跟已經排好的人（還在原地等的、走在路上的、
+//   已經站到站位的）離不到 FILE_CLEAR 的幀數最少的那個（兩人都還站在出發點上的那幾幀不算：同一點出發的人誰都躲不開；
+//   一樣少就挑短的，0 幀就不再試——本來就錯得開的不用等，◆ ≤ 8 s 不多花時間）。走路速度不變；
+//   排好的路線跟 walk 拍自己找的同一條（同一個 nav、同起訖點）
+const FILE_CLEAR = 0.32, FILE_STEP = 0.05, FILE_MAX = 1.2, FILE_DT = 1 / 30, FILE_SPAN = 6;   // FILE_CLEAR：兩人半徑相加 0.25 加 0.07（0.3 時整局 live 的軌跡剛好讓鼠窩老鼠擦過草皮觀眾 1 幀 0.15 m，roster.test）；FILE_SPAN：比任何一段 gather 都長（之後每個人都站在站位上）
+const gather = (ctx, centre, r) => {
+  const plan = once(c => {
+    const ks = KIDS.map(i => kid(ctx, i)(c)), live = KIDS.filter(i => ks[i] && !ks[i].hidden);
+    const toCentre = new Map(live.map(i => [i, c.nav.routeLength(c.nav.route(ks[i].pos, centre))]));
+    live.sort((a, b) => toCentre.get(a) - toCentre.get(b));
+    const from = live.reduce((p, i) => ({ x: p.x + ks[i].pos.x / live.length, z: p.z + ks[i].pos.z / live.length }), { x: 0, z: 0 });
+    const spots = c.nav.slots(centre, 3, r).sort((p, q) => Math.hypot(q.x - from.x, q.z - from.z) - Math.hypot(p.x - from.x, p.z - from.z));
+    const spot = new Map(live.map((i, k) => [i, spots[k]])), delay = new Map(), done = [];
+    for (const i of live) {
+      const path = c.nav.route(ks[i].pos, spot.get(i)), lens = measurePath(path, false), v = ks[i].speed;
+      let best = null;
+      for (let d = 0; d <= FILE_MAX + 1e-9; d += FILE_STEP) {
+        const me = { d, at: t => locateOnPath(path, lens, Math.max(0, (t - d) * v), false) }; let bad = 0;
+        for (let t = 0; t <= d + FILE_SPAN && done.length; t += FILE_DT) {
+          const p = me.at(t);
+          if (done.some(o => !(t <= d && t <= o.d) && Math.hypot(p.x - o.at(t).x, p.z - o.at(t).z) < FILE_CLEAR)) bad++;
+        }
+        if (!best || bad < best.bad) best = { ...me, bad };
+        if (!bad) break;
+      }
+      delay.set(i, best.d); done.push(best);
+    }
+    return { delay: i => delay.get(i) ?? 0, spot: i => spot.get(i) ?? spots[i] };
+  });
+  return ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => plan(c).spot(i), { delay: c => plan(c).delay(i) })));
+};
 
 export const script = {
   // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下的同時 ♥、揮手
@@ -236,7 +269,7 @@ export const script = {
       return [
         B.apply(e, { hold: ['milk.kids'] }),
         spawnKid(ctx), spawnKid(ctx), spawnKid(ctx),
-        gather(ctx, PLAY, 0.45, i => ({ delay: i * 0.3 })),
+        gather(ctx, PLAY, 0.45),   // 一個接一個出發（gather 照路線排 delay）
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♪', 0.6))),
         B.together([B.gesture(kid(ctx, 0), 'jump'), B.levelUp('milk')]), B.home(allKids),
       ];

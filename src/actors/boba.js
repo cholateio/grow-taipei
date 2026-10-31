@@ -278,6 +278,8 @@ function push(w) {
 }
 // 觀光客從碼頭出來（一人一個入口點；被擋就站到最近的可走點）
 const pier = k => c => c.nav.nearestWalkable(PIER[k % PIER.length]);
+// Lv2 人龍從碼頭出發的間隔（秒，計畫 11 最終修正 #2 裁決 ≥ 0.28：一人身寬 0.25 ÷ 0.9 m/s；名冊走路速度 1.6 時前後相距約 0.45 m）
+export const QUEUE_DELAY = 0.28;
 
 // ── Lv5 小船：船身沿 FERRY_PATH 開 SAIL 秒（緩起緩停），坐在船上的兩個觀光客每幀擺在座位上；
 // 一開始在碼頭直接出現（計畫 11 §設計 1：不亮）；end 停在 DOCK（船的零件本來就停在那裡，轉正）。跳過時直接停好、觀光客由後面的 jump 拍落地 ──
@@ -314,10 +316,13 @@ export const script = {
   grow: {
     // 人龍：3 個觀光客從碼頭一個接一個走過來，在攤車前排成一排 → LEVEL UP
     2(e, s, ctx) {
-      const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(k)));
+      // 先出發的站在碼頭西端（離開碼頭的路往西走）：後面的人還在原地等時，前面的人不從他身邊擦過去（計畫 11 最終修正 #2）
+      const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(QUEUE_MAX - 1 - k)));
       return [
         B.apply(e, { hold: ['boba.queue'] }), ...sp,
-        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: k * 0.1 }))),   // 一個接一個出發，間隔 0.25 → 0.15（裁決 R15）→ 0.1（計畫 6 裁決 R2：拜訪之後第 6 回合 ≤ 60 s）
+        // 一個接一個出發，間隔 0.25 → 0.15（裁決 R15）→ 0.1（計畫 6 裁決 R2：拜訪之後第 6 回合 ≤ 60 s）→ QUEUE_DELAY（計畫 11 最終修正 #2：
+        //   0.1 s 時三人從碼頭疊成一串走、相距 0.09 m 走了 2.2 s）
+        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: k * QUEUE_DELAY }))),
         B.home(shown('boba.queue')), B.levelUp('boba'),
       ];
     },

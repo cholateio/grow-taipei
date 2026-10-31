@@ -30,6 +30,10 @@ const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時�
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客改站池子北側、離牠 ≥ 1.9（landmarks.js BATHERS_NORTH，2026-10-28）
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的五隻機器鼠從這裡走出來）
+// 補進來的五隻各自的入口（計畫 11 最終修正 #4：以前五隻同一幀從同一點冒出來、一起走，之後彼此疊著 5–20 幀）：園區門口沿 x 排一列、
+// 間距 PARK_STEP（≥ 兩隻的半徑相加 0.26），名冊依序輪流（rat#5 在最西邊、最靠 101，先走在前面）
+const PARK_STEP = 0.3;
+export const PARK_ENTRIES = [-2, -1, 0, 1, 2].map(k => offset(PARK, k * PARK_STEP, 0));
 // 王冠鼠的站位（看 lv.token）：代幣 Lv9 起坐在賽博站前的懸浮月台上（token.js DECK_AT／PLATFORM：招牌右邊、欄杆後面，身體斜斜面向鏡頭）——
 // 站頂平屋頂 Lv10 停滿三台 Roadster 和三條起飛坡道，沒有牠的位子（計畫 8 任務 5 裁決 (a)）；代幣 Lv9 以前（偏離正解的放法，
 // 賽博 Lv4 可能碰上代幣 4–8）沒有月台也沒有坡道，坐大車站圓頂外的簷角
@@ -89,7 +93,7 @@ export function view(lv, flags, meta) {
     // Lv4 最終型態（原本的 Lv5）：機器鼠軍團 10 隻繞 101＋站頂一隻戴王冠（骨架動畫上限 12：10 + 王冠鼠 + 柴犬；石堆小島的兩隻這時不畫）
     // 賽博尾聲：軍團站上黑塔屋頂（同一個名冊、同一批老鼠，只是家搬了）
     case 'cyber': return {
-      'rat.pack': pack(TOWER, 10, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: PARK }, { tint: GREY, antenna: true }),
+      'rat.pack': pack(TOWER, 10, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: PARK_ENTRIES }, { tint: GREY, antenna: true }),
       'rat.king': { kind: 'king', at: kingSpot(lv), model: { path: RAT, h: 0.2, anim: 'Idle', tint: GREY, antenna: true, crown: true }, footprint: false },
     };
     case 'alien': {

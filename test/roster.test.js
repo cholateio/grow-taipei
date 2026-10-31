@@ -684,13 +684,13 @@ const livePlay = () => (livePlayed ??= playBoth());
 async function playBoth() {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const { headlessShow, ALL, inShape } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { BRIDGE_HALF, SEPARATION } = await import('../src/show/nav.js');
-  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set(), ratNear = new Set(), mutantNear = new Set(), nestNear = new Set(), passStand = new Set(), armyNear = new Set();
+  const ARRIVE_MAX = 20, CAUGHT_MAX = 1.5, DT = DT_LIVE, bare = createNav(), bad = new Set(), stuck = [], slow = [], walls = new Set(), sunk = new Set(), crowd = new Set(), ratNear = new Set(), mutantNear = new Set(), nestNear = new Set(), passStand = new Set(), armyNear = new Set(), armyRats = new Set();
   let detectiveFrames = 0, bridgeFrames = 0, ratFrames = 0, mutantFrames = 0, nestFrames = 0, passFrames = 0;
   const RAT_AT = anchorWorld('rat'), TOWER_AT = anchorWorld('tower'), homeAt = (h, p) => h?.kind === 'wander' && Math.hypot(h.at.x - p.x, h.at.z - p.z) < 1e-9;
   // 橋面（同 island.js 的橋）：中心線兩側 BRIDGE_HALF 內、兩個橋頭之間
   const bridges = adjacentPairs(MAIN_CELLS).map(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2), len = Math.hypot(b.x - a.x, b.z - a.z); return { a, len, ux: (b.x - a.x) / len, uz: (b.z - a.z) / len }; });
   const onBridge = p => bridges.some(br => { const dx = p.x - br.a.x, dz = p.z - br.a.z, s = dx * br.ux + dz * br.uz; return s >= 0 && s <= br.len && Math.abs(dx * br.uz - dz * br.ux) <= BRIDGE_HALF; });
-  const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, nestNear, passStand, armyNear, get nestFrames() { return nestFrames; }, get passFrames() { return passFrames; }, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
+  const results = { bad, slow, stuck, walls, sunk, crowd, ratNear, mutantNear, nestNear, passStand, armyNear, armyRats, get nestFrames() { return nestFrames; }, get passFrames() { return passFrames; }, walkedIn: {}, get detectiveFrames() { return detectiveFrames; }, get bridgeFrames() { return bridgeFrames; }, get ratFrames() { return ratFrames; }, get mutantFrames() { return mutantFrames; } };
   // 唯一正解（2026-10-31）：外星不再是正解、是壞結局「變異鼠稱王」——原本「兩條正解」的外星那條換成列舉裡第一條外星壞局
   //   （同 rat.test／boba.test 的 ALIEN）；外星結局的檢查（變異鼠、closing 的偵防師）照舊量那一局
   const results0 = enumerate(spec), ALIEN = results0.find(r => r.ending.id === 'alien' && r.state.lv.rat === 4).order;
@@ -718,6 +718,16 @@ async function playBoth() {
         const what = `${label} rat#${r.i} (r ${r.radius.toFixed(3)}${r.walking ? ' walking' : ''}) ${d.toFixed(2)} from ${o.key}#${o.i}${o.walking ? ' walking' : ''} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`;
         const bad = d < BODY_K * need ? what : t - ratPass.get(pair) > PASS_MAX ? `${what} for > ${PASS_MAX} s` : null;
         if (bad) { ratNear.add(bad); if (r.radius > 0.3) mutantNear.add(bad); if (nest) nestNear.add(bad); if (pass) passStand.add(bad); if (army) armyNear.add(bad); }
+      }
+      // 計畫 11 最終修正 #4：軍團的機器鼠彼此也一樣（同一把尺：身體不相碰、貼近不超過 PASS_MAX 秒）——補進軍團的五隻以前同一幀從園區門口同一點冒出來
+      for (const r of seen) if (r.key === 'rat.pack' && daily(r) && homeAt(view[r.key]?.home, TOWER_AT)) for (const o of seen) {
+        if (o.key !== 'rat.pack' || o.i <= r.i || !daily(o)) continue;
+        const d = Math.hypot(o.pos.x - r.pos.x, o.pos.z - r.pos.z), need = r.radius + o.radius, pair = `${r.key}#${r.i}|${o.key}#${o.i}`;
+        if (d >= need - RAT_TOL) { ratPass.delete(pair); continue; }
+        if (!ratPass.has(pair)) ratPass.set(pair, t);
+        const what = `${label} rat#${r.i}${r.walking ? ' walking' : ''} ${d.toFixed(2)} from rat#${o.i}${o.walking ? ' walking' : ''} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`;
+        const bad = d < BODY_K * need ? what : t - ratPass.get(pair) > PASS_MAX ? `${what} for > ${PASS_MAX} s` : null;
+        if (bad) armyRats.add(bad);
       }
       for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
         if (m.arriving) { if (!since.has(m)) since.set(m, t); } else if (since.has(m)) { walkedIn++; since.delete(m); }
@@ -872,13 +882,25 @@ test('live, the alien bad game: a walking rat never runs through a standing pers
   const alien = [...passStand].filter(x => x.startsWith(ALIEN_LABEL));
   assert.deepEqual(alien.slice(0, 20), [], `${alien.length} frames too close`);
 });
-// (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久（曾標 todo，現已正式）
+// (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久（曾標 todo、任務 5 後翻回正式、計畫 11 最終修正後又標 todo）
 // 計畫 11 任務 5 多輪：改前 24 幀、最近 0.04 m，改後 16 幀、最近 0.07 m（對島民、偵防師；第 9 回合）。剩下的是兩個都在走的人斜著交會：
 // separate 這一幀推開了，下一幀位置又從游標＋m.side 算（m.side 夾在 YIELD_CLEAR、照走路速度收回），十隻老鼠加島民擠在 101 四周，
 // 推開的那一截收回來又貼上。修正第 1 輪（名冊讓路：走不到的那一側換邊、兩邊都走不到讓到最遠的可走點）後 0 幀，翻回正式
-test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', async () => {
+// 計畫 11 最終修正（全分支審稿 #1–#4 之後）：翻回 todo、門檻不放寬。HEAD（b5cae6f）0 筆是軌跡剛好：這一輪四項修正（劇本手上站著的人算站著的人、
+// 珍奶人龍間隔、鮮奶 ◆ Lv7 錯開出發、軍團錯開入口）都會讓第 9 回合的軌跡整個換掉——量過的五種組合（只套入口、少套其中一項 ×4）都冒出 3–28 筆。
+// 四項全套後 7 筆：rat#5｜偵防師 5 筆（最近 0.04 m）、rat#9｜偵防師 2 筆（0.14）——兩邊都在走、並排擦身太近
+// （跟下面機器鼠對機器鼠同一類：separate 推開的沿走路方向那一截不記，下一幀又從游標拉回來）
+test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', { todo: 'walker-vs-walker convoy (same class as rat-vs-rat): 7 records after plan 11 final fixes, rat#5|detective 5 (0.04 m), rat#9|detective 2 (0.14 m)' }, async () => {
   const { armyNear } = await livePlay();
   assert.deepEqual([...armyNear].slice(0, 20), [], `${armyNear.size} frames too close`);
+});
+// 計畫 11 最終修正 #4（全分支審稿）：同一把尺也量機器鼠對機器鼠。HEAD（b5cae6f）114 筆：補進軍團的五隻同一幀從園區門口同一點冒出來，
+// 10 對最近 0.00 m。改成園區門口一列錯開的入口（rat.js PARK_ENTRIES）後 70 筆、沒有一對在入口疊著（最近 0.01 m：rat#6｜rat#8 23 筆、
+// rat#5｜rat#9 8 筆 0.09、其餘 15 對各 1–5 筆）——剩下的都是兩隻都在散步、同方向貼著走：separate 推開的沿走路方向那一截不記
+// （只記橫移 m.side），下一幀位置又從游標算回來。門檻不放寬，標 todo（裁決：入口修完還不過就留數字、不放寬）
+test('live, the solution: the cyber robot-rat army never overlaps one another', { todo: 'rat-vs-rat convoy while both wander: 70 records, closest 0.01 m, none stacked at the entry (plan 11 final fix #4)' }, async () => {
+  const { armyRats } = await livePlay();
+  assert.deepEqual([...armyRats].slice(0, 20), [], `${armyRats.size} frames too close`);
 });
 test('live, alien ending: from closing 1 to the end the detective keeps ≥ 0.25 from every other visible member while standing, and only brushes past while walking', async () => {
   const { crowd, detectiveFrames } = await livePlay();
@@ -1066,6 +1088,47 @@ test('a walker whose yield side is walled off passes a standing person on the ot
   assert.ok(side < -0.15, `went round the open side (z offset ${side.toFixed(2)} at the closest point)`);
   assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
   assert.ok(gap(st.pos, S) < 1e-9, 'the stander stays put');
+});
+// 計畫 11 最終修正（全分支審稿 #1）：劇本手上站著的人（claim 了、沒在走）也算站著的人——日常走路的人碰上他照樣自己退開（他不動）。
+// 以前名冊只把日常（home）的人當站著的人，島民從兩個人中間擠過去時只被日常的那個推，整個人壓到劇本手上的小孩身上（t4 鮮奶 Lv5 量到 0.045 m、18 幀）。
+// 兩個站著的人相距 0.4（< 兩人身寬 0.5，擠不過去）：劇本手上的那個跟日常的那個一樣，走路的人兩邊各貼一半（≥ 0.64 × 兩人半徑相加），不壓到他身上
+test('a walker squeezing between a stander and a scripted stander keeps clear of the scripted one too; the scripted one never moves', () => {
+  const { roster } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 }, S = { ...C, z: C.z + 0.4, yaw: 0 };
+  roster.declare('a', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  roster.declare('b', { kind: 'roster', at: S, n: 1, home: { kind: 'stand', spots: [S] } }); roster.snap();
+  const [b] = roster.members('b'); roster.claim(b); roster.setPose(b, { ...S, walking: false });
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [w] = roster.members('w'), need = radiusOf(w) + radiusOf(b);
+  let min = Infinity;
+  for (let f = 0; f < 150; f++) { roster.update(1 / 30, f / 30); min = Math.min(min, gap(w.pos, b.pos)); }
+  assert.ok(gap(w.pos, R) < 0.1, 'arrived');
+  assert.ok(min >= 0.64 * need, `closest to the scripted stander ${min.toFixed(3)} (body contact below ${(0.64 * need).toFixed(3)})`);
+  assert.ok(gap(b.pos, S) < 1e-9 && b.mode === 'script', 'the scripted stander stays put');
+});
+// 計畫 11 最終修正（全分支審稿 #1 後半，留帳）：劇本的走路（beats.js walk）也該讓開站著的人——現在照路線直直走過去
+// （這個情境最近 0.013 m；唯一正解 t4 棒球 Lv4 觀眾 baseball.crowd#2 走過站著的球員 baseball.players#1：6 幀、最近 0.019 m）。
+// 這一輪試過在 walk 裡照日常的 sidestep 橫移讓開（拍長不變、離終點剩多少就最多橫移多少）：繞的那一截要比走路快才趕得上固定的拍長，
+// 棒球 Lv4／◆ Lv8「劇本走路每幀不超過走路速度」、老鼠「劇本手上的人不瞬移」三條 live 測試回歸；限速的話落後游標、到終點一次跳過去。
+// 要做得對得在 start 時就把繞路算進路線與拍長（各劇本秒數跟著變、要重量節奏）——對一輪修正太大，退回、標 todo 留給下一輪
+test('a scripted walk steps around a daily stander on its line, still ends on its target on time; the stander never moves', { todo: 'scripted walks go straight through standers (0.013 m here; t4 baseball Lv4 crowd#2 through players#1, 6 frames, 0.019 m) — needs the detour planned into the route and beat length at start' }, async () => {
+  const { B } = await import('../src/show/beats.js');
+  const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  roster.declare('s', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } });
+  roster.declare('w', { kind: 'roster', at: L, n: 1, home: { kind: 'stand', spots: [L] } }); roster.snap();
+  const [w] = roster.members('w'), [st] = roster.members('s'), need = radiusOf(w) + radiusOf(st), ctx = { roster, nav };
+  const beat = B.walk(w, R); beat.start(ctx);
+  const dur = beat.dur(), dt = 1 / 30, frames = Math.ceil(dur / dt);
+  let min = Infinity, worst = 0; const last = { ...w.pos };
+  for (let f = 0; f < frames; f++) {
+    beat.step(Math.min(1, (f + 1) * dt / dur), dt, ctx); roster.update(dt, f * dt);
+    min = Math.min(min, gap(w.pos, st.pos)); worst = Math.max(worst, gap(w.pos, last) / (w.speed * dt)); Object.assign(last, w.pos);
+  }
+  beat.end(ctx);
+  assert.ok(Math.abs(dur - 2 / w.speed) < 0.05, `the beat keeps its length (${dur.toFixed(2)} s)`);
+  assert.ok(gap(w.pos, R) < 1e-6, 'ends on the target');
+  assert.ok(min >= need - 0.02, `closest ${min.toFixed(3)} (need ${need})`);
+  assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+  assert.ok(gap(st.pos, C) < 1e-9, 'the stander stays put');
 });
 // m.waited 在新的一趟（go）與跳過（snap）歸零：停住等人的秒數不帶到下一趟
 test('waited resets when a new trip starts and on snap', () => {

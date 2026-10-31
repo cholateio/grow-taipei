@@ -102,7 +102,11 @@ test('rat is a 4-level item (single path §4.4) and the transition clamp is gone
 // 唯一正解 §4.4：Lv4 分岔就是最終型態——賽博＝原本 Lv5 的軍團＋王冠鼠，外星＝原本 Lv5 的加冕＋UFO
 test('view: Lv4 cyber is ten grey antenna rats wandering round 101 (the extra five come out of the park gate); Lv4 alien is a big green three-eyed crowned waver with a UFO', () => {
   const c = rat.view(lv({ rat: 4 }), { ratBranch: 'cyber' })['rat.pack'];
-  assert.deepEqual(c.home, { kind: 'wander', at: TOWER, r: 1.3, entry: offset(anchorWorld('chip'), -0.5, 1.2) });
+  assert.deepEqual({ ...c.home, entry: undefined }, { kind: 'wander', at: TOWER, r: 1.3, entry: undefined });
+  // 計畫 11 最終修正 #4：補進來的五隻各有自己的入口（園區門口一列，彼此 ≥ 兩隻的半徑相加），不再同一幀從同一點冒出來
+  const park = offset(anchorWorld('chip'), -0.5, 1.2), ent = c.home.entry, rr = 2 * 0.13;
+  assert.equal(ent.length, 5); assert.ok(ent.every(p => Math.hypot(p.x - park.x, p.z - park.z) <= 0.7), 'at the park gate');
+  for (let a = 0; a < 5; a++) for (let b = a + 1; b < 5; b++) assert.ok(Math.hypot(ent[a].x - ent[b].x, ent[a].z - ent[b].z) >= rr, `entries ${a}|${b} ≥ ${rr}`);
   assert.equal(c.model.tint.Grey, 0xc0c8d0); assert.ok(c.model.antenna); assert.equal(c.n, 10);
   const a = rat.view(lv({ rat: 4 }), { ratBranch: 'alien' }), m = a['rat.pack'];
   assert.equal(m.model.glow.Grey, 0x5fcf7a); assert.equal(m.model.tint.Grey, 0x5fcf7a); assert.ok(m.model.eye && m.model.wave && m.model.crown);
@@ -601,7 +605,7 @@ test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the first
   beats.find(b => b.kind === 'spawn').start({ roster: { spawnHeld: (k, p) => { at.push(p); return null; } } });
   assert.ok(near(at[0], landing, 1e-9), 'placed spawns it at the landing');
   const legion = rat.view(lv({ rat: 4, chip: 3 }), { ratBranch: 'cyber' })['rat.pack'];
-  assert.ok(near(legion.home.entry, PARK, 1e-9), 'legion entry at the park gate');
+  assert.ok(legion.home.entry.length === 5 && legion.home.entry.every(p => near(p, PARK, 0.7)), 'legion entries at the park gate');
 });
 const fakeCtx = () => ({ B, roster: { members: () => [] } });
 const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));

@@ -679,7 +679,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     // 劇本手上的照拍演（命中劇本的群眾拍在換心情之前就演完了）。這裡每幀讀 people.mood、不存狀態：
     // 心情回 normal（RESET 經 app 的 showWorld、演出層 reset 的 world 拍）下一幀就接著走，roster.reset 也不用另外清
     const lying = people.mood === 'lie', frozen = (m, spec) => lying && !!m.walker && spec?.home?.kind !== 'ride';
-    const moving = [], standing = [], still = [], was = [];   // still：日常裡沒在走的人（站定的、休息中的散步客、站著等的跟隨者）；was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
+    const moving = [], standing = [], still = [], was = [];   // still：沒在走的人（日常裡站定的、休息中的散步客、站著等的跟隨者，和劇本手上站著的人）；was：[成員, 這幀開始的位置, 每幀最多移動多少]（不瞬移）
     // loose：這幀本來就可能走出走路格（沿手畫的折線、走向格外的終點、已經在格外）；還沒追上游標的 offPath 例外：只有已經在外擴 footprint 裡時才放行（讓他走出來）。
     // gap：loose 只是因為這幀開始時站在走路格的夾縫裡（walkable 假、passable 真：被推到柱子和牆之間）——這種人照樣不准切進外擴 footprint
     //   （2026-10-28 錄影修正量到：島民被推離路線後追游標，直線斜切過校門柱子的 PAD；沿折線、走向格外終點的人不算）
@@ -692,6 +692,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
         if (m.mode === 'home' && !m.hidden && !frozen(m, spec)) { keep(m, spec); idle(m, spec, dt, t); if (m.walking) moving.push(m); else { still.push(m); if (m.settled) standing.push(m); } }   // 藏起來的人（躲在門裡）不動、不推別人
+        // 劇本手上站著的人（claim 了、沒在走、露出來、不坐車頂）也算站著的人：日常走路的人碰上他照樣自己退開，他不動
+        // （計畫 11 最終修正 #1：島民從日常的小孩和劇本手上的小孩中間擠過去，只被日常的那個推，整個人壓到劇本手上那個身上 0.045 m）。
+        // 劇本手上在走的人不進任何一邊：位置照舊由劇本擺，不被推（劇本的走路還不會讓開站著的人：計畫 11 最終修正留帳，見 roster.test 的 todo）
+        else if (m.mode === 'script' && !m.hidden && !m.gone && m.walking !== true && spec?.home?.kind !== 'ride') still.push(m);
         if (m.holder) {
           const mixer = m.holder.userData.mixer; if (mixer) mixer.timeScale = m.walking ? 1 : 0;
           // 揮手的模型（變異鼠）左右搖；劇本的 gesture 'wave'（m.waving）期間搖得大又快（對天揮手）

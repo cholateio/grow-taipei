@@ -104,6 +104,15 @@ test('walk { delay } stands still (claimed) for the delay, then walks; dur and e
   tl.update(0.3); assert.ok(member.walking && Math.abs(Math.hypot(member.pos.x - p0.x, member.pos.z - p0.z) - 0.2 * 1.6) < 0.05, 'walked only the time past the delay');
   tl.skip(); assert.ok(Math.hypot(member.pos.x - to.x, member.pos.z - to.z) < 1e-6 && !member.walking);
 });
+// 計畫 11 最終修正 #3：delay 也可以是 ctx => 秒數（鮮奶 ◆ Lv7 演到這拍才排誰先走），在 start 時算一次，dur 照算出來的
+test('walk { delay: ctx => s } resolves the delay when the beat starts and holds it', () => {
+  const { ctx, tl, member } = fake({ pos: c([-1, 1]) }); const to = c([-1, 0]), p0 = { ...member.pos };
+  const len = ctx.nav.routeLength(ctx.nav.route(c([-1, 1]), to)); let calls = 0;
+  const w = B.walk(member, to, { delay: x => { calls++; assert.equal(x, ctx); return 0.4; } });
+  tl.play([w], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - (0.4 + len / 1.6)) < 1e-6, `dur ${tl.currentDur}`);
+  const n = calls; tl.update(0.3); assert.deepEqual(member.pos, p0); assert.ok(!member.walking, 'still waiting');
+  tl.update(0.2); assert.ok(member.walking, 'walking after the delay'); assert.equal(calls, n, 'resolved once at start');
+});
 // §13.2：apply 不再放白光，舞台 pending 的鍵依序（間隔 0.15 s）commit，commit 由舞台自己閃白 BLINK 秒；拍長 BLINK + 0.15·(n−1)
 test('apply defers the stage change and commits each key 0.15 s apart; it lasts BLINK + 0.15·(n−1)', () => {
   const { ctx, tl, stage, blink } = fake({ changed: ['a', 'b', 'c'] });

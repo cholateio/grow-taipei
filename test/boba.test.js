@@ -16,7 +16,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX, blinkLog } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
-import { createNav, satelliteAt } from '../src/show/nav.js';
+import { createNav, satelliteAt, radiusOf } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
@@ -264,8 +264,20 @@ test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: 
       const i = r.events.findIndex(e => (e.kind === 'grow' && e.item === 'boba' && e.to === to) || (e.delta?.target === 'boba' && e.delta.to === to));
       if (i >= 0) {
         await h.run(r.events.slice(0, i), { instant: true });
+        // 計畫 11 最終修正 #2：三個觀光客從碼頭一個接一個出發（間隔 ≥ 一人身寬 / 走路速度），不疊成一串走——
+        //   整段劇本裡任兩個觀光客身體不相碰（≥ 0.64 × 兩人半徑相加；以前間隔 0.1 s，0.09 m 疊著走了 2.2 s）
+        const update = h.show.update; let close = Infinity, who = '';
+        h.show.update = (dt, t) => {
+          update(dt, t); const q = h.show.roster.members('boba.queue').filter(m => !m.hidden);
+          for (let a = 0; a < q.length; a++) for (let b = a + 1; b < q.length; b++) {
+            const d = Math.hypot(q[a].pos.x - q[b].pos.x, q[a].pos.z - q[b].pos.z) / (radiusOf(q[a]) + radiusOf(q[b]));
+            if (d < close) { close = d; who = `#${a}|#${b}`; }
+          }
+        };
         const secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
+        h.show.update = update;
         assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} lv${to} took ${secs.toFixed(2)} s`);
+        assert.ok(close >= 0.64, `queue ${who} came within ${close.toFixed(2)} × (ra + rb)`);
         assert.equal(h.show.roster.members('boba.queue').length, 3);
         done = true; break;
       }

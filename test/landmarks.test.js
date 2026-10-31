@@ -79,3 +79,11 @@ test('with the mutant rat at the spring (rat ≥ 4, alien) the bathers move to t
   const [a, b] = spots({ rat: 4 }, { ratBranch: 'alien' }); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.25, 'the two bathers apart');
   for (const [lv, flags] of [[{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 3 }, {}], [{ rat: 3 }, { ratBranch: 'alien' }]]) assert.deepEqual(spots(lv, flags), spots({}, {}), `${JSON.stringify(lv)} ${JSON.stringify(flags)}: unchanged`);
 });
+// 計畫 13 §設計 1：島民只被站長轉走一個（代幣 ≥2）；鮮奶不再借島民
+test('islanderCount: HOMES.length minus one for the station master only (milk never takes an islander, plan 13)', () => {
+  const all = landmarks.HOMES.length;
+  assert.equal(landmarks.islanderCount({}), all);
+  for (const milk of [0, 3, 10]) assert.equal(landmarks.islanderCount({ milk }), all, `milk ${milk}`);
+  assert.equal(landmarks.islanderCount({ token: 1 }), all); assert.equal(landmarks.islanderCount({ token: 2 }), all - 1);
+  assert.equal(landmarks.islanderCount({ milk: 10, token: 10 }), all - 1);
+});

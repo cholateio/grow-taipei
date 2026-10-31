@@ -1,4 +1,4 @@
-// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 2 個小孩（送牛奶的島民原地變成小學生、另一個從校門外走進來，裁決 R23）→ 兩層、小孩長高 → 三層、操場多了籃球架 → 鐘塔、棒球帽（有球場就組少棒隊）
+// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 2 個小孩（兩個都從校門外走進來，計畫 13 撤回 R23 的「島民變小學生」）→ 兩層、小孩長高 → 三層、操場多了籃球架 → 鐘塔、棒球帽（有球場就組少棒隊）
 //   → ◆ 大學（校舍拉長、拱門校門、學士帽）→ 研究大樓（玻璃盒）、白袍、校門 YouBike → 畢業典禮（拋學士帽、101 打字）
 //   → ◆ 鮮奶節（全島每格多一個小孩、牛奶箱旁停牛奶車、岸邊觀光船載牛奶箱）。
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
@@ -28,16 +28,7 @@ const HOOP = offset(AT, 0.75, 0.95), SHOT = offset(HOOP, -0.55, 0.1);
 const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（中心、兩根柱子離中心多遠）；右柱離小學生入口 ≥ 0.3（柱子有 footprint）
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
 const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
-// 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡
-// 送牛奶的島民變小學生的地方（裁決 R23）：操場鏡頭側的兩點（西半邊、東半邊），演到那拍挑他走過去路比較短的那點（一級 ≤ 4.5 s：
-// 他可能在牛奶箱那側〔西〕、也可能從中心格那座橋過來〔東〕）；早餐店的桌子外擴之後也站得到；離鮮奶錨點 1.06／1.14，
-// 比別格的島民都近（名冊 pick 'nearest' 搬的就是他）
-export const PUPIL = [offset(AT, -0.35, 1.0), offset(AT, 0.7, 0.9)];
-// 兩點裡從 from 走過去路比較短的那點；走不到的點（nav.route 到不了只回起點，路長 0）不算（同 bulb.js nearestPair）；兩點都走不到用第一點
-export function pupilSpot(nav, from) {
-  const len = p => { const path = nav.route(from, p), last = path.at(-1), end = nav.nearestWalkable(p); return last && Math.hypot(last.x - end.x, last.z - end.z) < 1e-3 ? nav.routeLength(path) : Infinity; };
-  return PUPIL.map(p => [p, len(p)]).reduce((b, x) => (x[1] < b[1] ? x : b))[0];
-}
+// 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡（Lv3 兩個小學生也從這裡一個接一個進場，計畫 13）
 export const KID_ENTRY = offset(AT, 1.65, 0.1);
 // 名冊一次補好幾個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——
 // 三個人疊在同一點生出來會被互推推進右柱的外擴角落，從那裡找路會繞到島北（Task 6a：鮮奶節小孩跑去牛奶車量到 7.1 s）。
@@ -182,10 +173,10 @@ export function view(lv, flags, meta = {}) {
     v['milk.boat'] = { kind: 'glb', at: BOAT, path: MODELS.boat.path, h: 0.35, tint: BOAT_TINT, footprint: false };
   }
   if (n >= 3 && !home) {
-    // 兩個小學生（使用者 2026-10-31「人數還是太多了……初始的牛奶工人直接變成學生」，裁決 R23）：一個是送牛奶的島民（from + pick 'nearest'：
-    //   島民名冊同時少一個，名冊搬離 at 最近的那位、原地換黃衣閃一下），另一個從校門外走進來；之後回家再出來（被老鼠咬的回合）就兩個都從校門外走進來
+    // 兩個小學生（裁決 R23 人數：兩個就好）：計畫 13（使用者 2026-11-01「牛奶工人移除，牛奶直接生出學校和學生，學生維持兩人即可」）起
+    //   兩個都從校門外走進來，不再借島民（沒有 from／pick；島民名冊也不再為鮮奶少一個，landmarks.islanderCount）
     v['milk.kids'] = {
-      kind: 'roster', at, n: 2, shirt: C.yellow, accessory: kidAccessory(n), from: 'landmarks.islanders', pick: 'nearest',
+      kind: 'roster', at, n: 2, shirt: C.yellow, accessory: kidAccessory(n),
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRIES },
     };
     // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
@@ -248,36 +239,27 @@ const gather = (ctx, centre, r) => {
 };
 
 export const script = {
-  // 最近的島民把牛奶箱送來：走到箱子旁、看一眼、閃白放下的同時 ♥、揮手
-  // （一級 3–4.5 s：最近的島民離箱子 0.5–1.6 s 不等，走路那段至少 0.6 s、♥ 跟閃白一起冒——
-  //   選擇帶動升級之後名冊的亂數序列變了，最遠那次整段 4.6 s）
+  // 計畫 13 §設計 1（使用者 2026-11-01「牛奶工人移除，牛奶直接生出學校和學生」）：放置、Lv2、Lv3 沒有人走過來，建築自己長。
+  // 放置：牛奶箱長出來（不亮，計畫 11 §設計 1）→ 長完 ♪ 冒在箱子上方 → 停一下（一級 3–4.5 s）
   placed(e, s, ctx) {
-    const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE));
-    return [
-      B.together([B.walk(islander, offset(CRATE, 0.5, 0.1)), B.wait(0.6)]), B.gesture(islander, 'look', { at: CRATE }),
-      B.together([B.apply(e), B.bubble(islander, '♥', 0.9)]), B.gesture(islander, 'wave'), B.home(islander),
-    ];
+    const { B } = ctx;
+    return [B.apply(e), B.wait(0.9), B.bubble(B.partHead('milk.crate', 0.75, ctx), '♪', 1.2), B.wait(1.0)];
   },
   grow: {
-    // 早餐店：送牛奶的島民走到店門口、揮鐵鎚蓋 → 閃白店面與桌子 → LEVEL UP
+    // 早餐店：店面與桌子長出來 → 停著看它長完 → LEVEL UP（沒有人揮鐵鎚；一級 ≥ 3 s 用 wait 補）
     2(e, s, ctx) {
-      const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE)), front = offset(AT, -0.2, 0.15);
-      return [
-        // 裁決 R15 一級 ≤ 4.5 s：鐵鎚 1.2 → 0.9、閃白的同時 ♥
-        B.together([B.walk(islander, front), B.wait(1.0)]), B.gesture(islander, 'build', 0.9, { at: offset(AT, -0.2, ROW) }),   // 人就在旁邊時也至少 1 秒（一級 ≥ 3 s）
-        B.together([B.apply(e), B.bubble(islander, '♥', 0.8)]), B.levelUp('milk'), B.home(islander),
-      ];
+      const { B } = ctx;
+      return [B.apply(e), B.wait(1.8), B.levelUp('milk')];
     },
-    // 小學（裁決 R23）：送牛奶的島民走到操場鏡頭側 → 校舍長出來、名冊把他原地換成小學生（黃衣、閃一下）、♪，另一個小學生從校門外走進來
-    //   （名冊自己補、背景走進來）→ 兩人走到操場集合 → 跳一下、LEVEL UP
+    // 小學：校舍長出來（小學生的名冊 hold 住）→ 兩個小學生生在校門外的兩個入口（KID_ENTRIES），一個接一個走進來
+    //   （gather 照路線排 delay，同 ◆ Lv7）→ 在操場集合 → ♪ → 跳一下、LEVEL UP；名冊由回合補的 apply 放開
     3(e, s, ctx) {
-      const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE));
+      const { B } = ctx;
       return [
-        // 人就在旁邊時走路那段也至少 1 秒（一級 ≥ 3 s，同 Lv2）
-        B.together([B.walk(islander, c => { const m = islander(c); return m && pupilSpot(c.nav, m.pos); }), B.wait(1.0)]),
-        // ♪ 跟換裝的閃白一起冒在他頭上（同牛奶箱放下時的 ♥）：他的路有時要 1.6 s，♪ 另佔一拍的話整級 4.9 s（> 4.5）
-        B.together([B.apply(e), B.bubble(c => islander(c) ?? kid(ctx, 0)(c), '♪', 0.6)]),
-        gather(ctx, PLAY, 0.45),   // 一個接一個出發（gather 照路線排 delay）
+        B.apply(e, { hold: ['milk.kids'] }),
+        ...KIDS.map(i => B.spawn('milk.kids', c => c.nav.nearestWalkable(KID_ENTRIES[i]))),
+        gather(ctx, PLAY, 0.45),
+        B.bubble(kid(ctx, 0), '♪', 0.6),
         B.together([B.gesture(kid(ctx, 0), 'jump'), B.levelUp('milk')]), B.home(allKids),
       ];
     },

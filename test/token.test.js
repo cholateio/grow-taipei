@@ -611,7 +611,7 @@ test('live, the solution: after token 2 the station master is a former islander 
     assert.deepEqual(now, [by[0]]); assert.equal(st, by[0], 'the islander who walked to the post is the station master');
     assert.ok(Math.hypot(after[0].x - at[0].x, after[0].z - at[0].z) < 1e-6, 'swapped in place');
     assert.equal(st.walker.accessory, 'uniform');
-    assert.equal(show.roster.members('landmarks.islanders').length, 4 - 1 - (show.stage.lv.milk >= 3 ? 1 : 0));
+    assert.equal(show.roster.members('landmarks.islanders').length, 4 - 1, 'only the station master left (milk takes no islander since plan 13)');
     checked = true; break;
   }
   assert.ok(checked, 'token 2 reached');

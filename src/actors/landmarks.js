@@ -22,8 +22,9 @@ const BATHERS = bathersAt([0.93, 2.0]);
 const BATHERS_NORTH = bathersAt([3.75, 4.45]);
 const mutantAtSpring = (lv, flags) => lv.rat >= 4 && flags.ratBranch === 'alien';
 
-// 島民人數：四個人減掉轉成角色的（鮮奶 ≥3 的小學生、代幣 ≥2 的站長）。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減
-export const islanderCount = (lv = {}) => HOMES.length - (lv.milk >= 3 ? 1 : 0) - (lv.token >= 2 ? 1 : 0);
+// 島民人數：四個人減掉轉成角色的（代幣 ≥2 的站長）。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減。
+// 鮮奶不再借島民（計畫 13 §設計 1：兩個小學生都從校門外走進來）
+export const islanderCount = (lv = {}) => HOMES.length - (lv.token >= 2 ? 1 : 0);
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
 
@@ -53,7 +54,7 @@ export function view(lv = {}, flags = {}) {
       footprint: SPRING_FP,
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
-    // 被轉走的島民不補（裁決 R23）：鮮奶 ≥3 一個變小學生（milk.kids）、代幣 ≥2 一個變站長（token.staff），兩個名冊都 from 這裡 pick 'nearest'
+    // 被轉走的島民不補（裁決 R23）：代幣 ≥2 一個變站長（token.staff，from 這裡 pick 'nearest'）；鮮奶不再借島民（計畫 13）
     'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: islanderCount(lv), accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
     // 溫泉客：站在池邊偶爾看一下池子；rescue：萬一池邊被擋住就站到最近的可走點（不站進池子裡）；變異鼠在池前時站北側
     'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: (mutantAtSpring(lv, flags) ? BATHERS_NORTH : BATHERS).map(({ p, yaw }) => ({ ...offset(s, p.x, p.z), yaw })), fidget: 'look', rescue: true } },

@@ -85,9 +85,10 @@ test('milk Lv3/7/8 use the school / university / research glb models with the pa
   assert.ok(width(7) >= 1.8 * width(3), `university ${width(7).toFixed(2)} vs school ${width(3).toFixed(2)}`);
   assert.ok(tallest(8) >= 1.8 * tallest(7) && tallest(7) <= 1.1 * tallest(3), 'the research building towers over the low wings');
 });
-test('milk kids count: 2 from Lv3 (one is the islander who brought the milk, R23); Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', async () => {
+// 計畫 13 §設計 1（部分撤回 R23 的鮮奶那一項）：兩個小學生都從校門外走進來，不再借島民（沒有 from／pick）
+test('milk kids count: 2 from Lv3, both walk in from the gate (no from / pick, plan 13); Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', async () => {
   assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
-  for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 2, `lv${n}`); assert.equal(views[n]['milk.kids'].from, 'landmarks.islanders', `lv${n} from`); assert.equal(views[n]['milk.kids'].pick, 'nearest', `lv${n} pick`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
+  for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 2, `lv${n}`); assert.equal(views[n]['milk.kids'].from, undefined, `lv${n} from`); assert.equal(views[n]['milk.kids'].pick, undefined, `lv${n} pick`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
     assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
@@ -134,45 +135,60 @@ test('typhoon Lv3 (clear sky, 修正批次 2 三級) swaps the school trim (roof
   assert.equal(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 2 }), {})));
   assert.notEqual(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 3 }), {})));
 });
-// 修正批次 roles（裁決 R23，使用者「初始的牛奶工人直接變成學生」）：島民的人數跟著被轉走的人減（鮮奶 ≥3、代幣 ≥2 各少一個），不補
-test('islanders: one fewer from milk 3 and one fewer from token 2 (the islanders who became the pupil and the station master)', () => {
+// 島民的人數只跟著站長減（代幣 ≥2 少一個，裁決 R23）；鮮奶不再借島民（計畫 13 §設計 1），鮮奶幾級都不減
+test('islanders: one fewer from token 2 (the station master); milk never takes one (plan 13)', () => {
   const n = l => landmarks.view(lv(l), {})['landmarks.islanders'].n, all = landmarks.HOMES.length;
   assert.equal(n({}), all); assert.equal(n({ milk: 2, token: 1 }), all);
-  assert.equal(n({ milk: 3 }), all - 1); assert.equal(n({ token: 2 }), all - 1); assert.equal(n({ milk: 10, token: 10 }), all - 2);
+  assert.equal(n({ milk: 3 }), all); assert.equal(n({ token: 2 }), all - 1); assert.equal(n({ milk: 10, token: 10 }), all - 1);
 });
-// 唯一正解整局 live：鮮奶 3 那一回合，送牛奶的島民原地變成小學生（同一個小人、黃衣、閃一下），另一個小學生從校門外走進來；島民少一個
-test('live, the solution: at milk 3 the islander who brought the milk becomes one of the two pupils; the islanders are one fewer', async () => {
-  const h = await headlessShow(), { show } = h;
-  // 審稿 Minor #2：declare 那一刻盯住來源名冊裡劇本手上的那位（走過來的人），搬過去的就是他、原地不動
-  const declare = show.roster.declare, swapped = [];
-  show.roster.declare = (k, sp, opts) => {
-    const by = k === 'milk.kids' && sp?.from ? show.roster.members('landmarks.islanders').filter(m => m.mode === 'script') : null, at = by?.map(m => ({ ...m.pos }));
-    const out = declare(k, sp, opts);
-    if (by?.length) swapped.push({ by, at, after: by.map(m => ({ ...m.pos })), now: show.roster.members('milk.kids') });
-    return out;
-  };
+// 計畫 13 §設計 1：鮮奶的放置、Lv2、Lv3 劇本裡沒有人走過來、揮鐵鎚——建築自己長；Lv3 兩個小學生由劇本從 hold 住的名冊一個接一個生在校門外的入口
+const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+test('milk placed / Lv2 / Lv3 scripts call no islander: no walk or gesture before the kids, Lv3 spawns the two pupils at the gate entries (plan 13)', () => {
+  const noIslander = { B, roster: { members: () => [], nearest: k => { throw new Error(`asked for the nearest ${k}`); } } };
+  const placed = flat(milk.script.placed({ kind: 'placed', item: 'milk', to: 1 }, { lv: lv({ milk: 1 }), flags: {} }, noIslander));
+  const lv2 = flat(milk.script.grow[2]({ kind: 'grow', item: 'milk', to: 2 }, { lv: lv({ milk: 2 }), flags: {} }, noIslander));
+  for (const [name, beats] of [['placed', placed], ['lv2', lv2]]) {
+    assert.deepEqual(beats.filter(b => b.kind === 'walk' || b.kind === 'gesture' || b.kind === 'home').map(b => b.kind), [], `${name}: nobody walks over`);
+    assert.ok(beats.some(b => b.kind === 'apply'), `${name}: the building grows by itself`);
+  }
+  assert.ok(placed.some(b => b.kind === 'bubble'), 'placed: ♪ over the crate');
+  assert.ok(lv2.some(b => b.kind === 'levelUp'), 'lv2: LEVEL UP');
+  const lv3 = flat(milk.script.grow[3]({ kind: 'grow', item: 'milk', to: 3 }, { lv: lv({ milk: 3 }), flags: {} }, noIslander));
+  const held = lv3.find(b => b.kind === 'apply');
+  assert.ok(held && held.only === undefined, 'lv3: one apply for the school');
+  const spawns = lv3.filter(b => b.kind === 'spawn'); assert.equal(spawns.length, 2, 'two pupils spawned');
+  assert.ok(lv3.indexOf(held) < lv3.indexOf(spawns[0]), 'spawned after the school is applied (held)');
+  assert.ok(lv3.slice(0, lv3.indexOf(spawns[0])).every(b => b.kind !== 'walk'), 'nobody walks before the pupils come');
+  assert.ok(lv3.some(b => b.kind === 'levelUp'), 'lv3: LEVEL UP');
+});
+// 唯一正解整局 live（計畫 13 §設計 1）：鮮奶的放置、Lv2、Lv3 沒有島民被劇本叫走；鮮奶 3 那一回合兩個小學生都是新進場的（不是原本的島民），
+// 黃衣；島民一個都沒少（只有代幣 ≥2 的站長轉走一個）
+test('live, the solution: no islander is scripted by the milk placed / Lv2 / Lv3; both pupils at milk 3 are newcomers, the islanders are not fewer', async () => {
+  const h = await headlessShow(), { show } = h, claim = show.roster.claim, claimed = [];
+  let cur = null;
+  show.roster.claim = m => { if (cur && m.key === 'landmarks.islanders') claimed.push(`${cur} #${m.i}`); return claim(m); };
+  const milkEvent = e => e.item === 'milk' && ((e.kind === 'placed') || (e.kind === 'grow' && e.to <= 3));
   let s = engine.createState(spec), checked = false;
   for (const step of turnSteps(SOLUTIONS[0])) {
     const r = step(s); s = r.state;
     const before = new Set(show.roster.members('landmarks.islanders')), was = { ...show.stage.lv };
-    await h.run([...r.events, { kind: 'settle' }]);
+    await h.run([...r.events, { kind: 'settle' }], { onMark: e => { cur = milkEvent(e) ? `${e.kind} ${e.to ?? ''}` : null; } });
+    cur = null;
     if (!(show.stage.lv.milk >= 3 && !(was.milk >= 3))) continue;
     const kids = show.roster.members('milk.kids'), isl = show.roster.members('landmarks.islanders');
     assert.equal(kids.length, 2);
-    assert.equal(kids.filter(m => before.has(m)).length, 1, 'one pupil is a former islander (same member)');
-    assert.equal(swapped.length, 1, 'one swap declaration'); const [{ by, at, after, now }] = swapped;
-    assert.equal(by.length, 1, 'one islander in the script (the one who walked over)');
-    assert.ok(now.includes(by[0]) && kids.includes(by[0]), 'the islander who walked over is the pupil');
-    assert.ok(Math.hypot(after[0].x - at[0].x, after[0].z - at[0].z) < 1e-6, 'swapped in place');
+    assert.equal(kids.filter(m => before.has(m)).length, 0, 'neither pupil is a former islander');
     assert.ok(kids.every(m => m.walker.shirt === C.yellow), 'both in yellow');
-    assert.equal(isl.length, landmarks.HOMES.length - 1 - (show.stage.lv.token >= 2 ? 1 : 0));
-    assert.ok(isl.every(m => before.has(m)), 'no islander walked in to replace him');
+    assert.equal(isl.length, landmarks.HOMES.length - (show.stage.lv.token >= 2 ? 1 : 0), 'the islanders are not fewer');
+    assert.ok([...before].every(m => isl.includes(m)), 'every islander stays an islander');
     checked = true; break;
   }
   assert.ok(checked, 'milk 3 reached');
+  assert.deepEqual(claimed, [], 'no islander scripted by the milk placed / Lv2 / Lv3');
 });
 // 修正輪 1（審稿 Important #1）：代幣 2 比鮮奶 3 早到的局——站長先轉走一個島民（留下的人重新編號），鮮奶 3 再轉走一個：
-// 那一回合留下的島民沒有任何人換配件、閃一下（以前編號變了、配件照新編號換，帽子無緣無故不見還閃一下）
+// 那一回合留下的島民沒有任何人換配件、閃一下（以前編號變了、配件照新編號換，帽子無緣無故不見還閃一下）。
+// 計畫 13 起鮮奶 3 不再轉走島民，這題留著當回歸：鮮奶 3 那一回合島民完全不受影響
 test('live, token 2 before milk 3: in the milk 3 turn no islander who stays changes accessory or blinks', async () => {
   const h = await headlessShow(), { show } = h, order = ['token', 'milk', 'baseball', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
   let s = engine.createState(spec), checked = false;
@@ -187,25 +203,14 @@ test('live, token 2 before milk 3: in the milk 3 turn no islander who stays chan
     if (!(show.stage.lv.milk >= 3 && !(was.milk >= 3))) continue;
     assert.ok(was.token >= 2, 'token 2 came first');
     const stayed = show.roster.members('landmarks.islanders');
-    assert.equal(stayed.length, landmarks.HOMES.length - 2);
+    assert.equal(stayed.length, landmarks.HOMES.length - 1, 'only the station master left the islanders (milk takes none since plan 13)');
     assert.deepEqual(swaps.filter(x => stayed.includes(x.m)).map(x => x.what), [], 'no accessory swap on an islander who stays');
     assert.deepEqual(stayed.filter(m => blinked.has(m.walker)).map(m => m.i), [], 'no blink on an islander who stays');
     checked = true; break;
   }
   assert.ok(checked, 'milk 3 reached');
 });
-// 審稿 Minor #6：Lv3 走去換裝的那一點照路長挑，走不到的點（nav.route 到不了只回起點，路長 0）不算——不然 0 排第一
-test('pupilSpot: the shorter walkable route of the two playground spots; an unreachable spot never wins', () => {
-  const [W, E] = milk.PUPIL, from = { x: 0, y: 0, z: 0 }, d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-  const nav = (stuck = null) => ({
-    nearestWalkable: p => ({ ...p }),
-    route: (a, b) => (stuck && d(b, stuck) < 1e-9 ? [{ ...a }] : [{ ...a }, { ...b }]),
-    routeLength: path => path.slice(1).reduce((t, q, k) => t + d(path[k], q), 0),
-  });
-  const near = d(from, W) < d(from, E) ? W : E, far = near === W ? E : W;
-  assert.equal(milk.pupilSpot(nav(), from), near, 'the shorter walk');
-  assert.equal(milk.pupilSpot(nav(near), from), far, 'the unreachable one (route length 0) is skipped');
-});
+
 test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
   const { people, run } = await headlessShow({ modules: [milk] });
   await run([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'milk', from: 2, to: 3 }], { instant: true });

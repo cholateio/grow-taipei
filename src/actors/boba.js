@@ -11,7 +11,7 @@ import { C, offset } from './palette.js';
 import { island } from './satellites.js';
 import { stormy } from './world.js';
 import { BLINK } from '../show/blink.js';
-import { MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, WATER_Y } from '../scene/hex.js';
+import { MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, WATER_Y, R } from '../scene/hex.js';
 import { measurePath, locateOnPath } from '../scene/path.js';
 
 export const id = 'boba';
@@ -126,6 +126,29 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
   ];
 }).flat();
 
+// ── 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3，flags.cartBlown；珍奶鎖住不長）：攤車翻倒在珍奶格東岸外的淺水裡（格邊之外、
+// 不在走路格、不算 footprint——不擋電工主路，Lv3 放晴的堤防在格面上、離格心 2.08，碰不到），老闆站到岸邊最東的可走點、面向海看著它。
+// 翻倒照拿掉撞攤車之前的寫法：零件自己轉（攤車的零件都沒有 rot，整台繞 z 轉 TIP，頂朝外海）。Lv1–2 是攤車本身（boba.main）被吹走；
+// Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
+const CELL = axialToWorld(0, 1), APOTHEM = R * Math.sqrt(3) / 2;
+export const BLOWN = { x: CELL.x + APOTHEM + 0.1, y: WATER_Y - 0.02, z: AT.z + 0.2 };   // 格邊外 0.1 的水面
+const TIP = -1.2;   // 往海那邊倒（頂朝 +x）
+const cartParts = () => [
+  { kind: 'box', pos: [0, 0.35, 0], scale: [CART.w, 0.5, 0.4], color: C.wall },
+  { kind: 'hip', pos: [0, 0.75, 0], scale: [0.75, 0.25, 0.55], color: C.coral },
+  { kind: 'torus', pos: [-0.2, 0.1, 0.21], scale: 0.2, color: C.ink }, { kind: 'torus', pos: [0.2, 0.1, 0.21], scale: 0.2, color: C.ink },
+  { kind: 'cylinder', pos: [0, 1.0, 0], scale: [0.2, 0.25, 0.2], color: TEA },
+  { kind: 'sphere', pos: [0, 0.92, 0.1], scale: 0.05, color: C.ink },
+];
+const tipped = parts => parts.map(p => {
+  const [x, y, z] = p.pos, c = Math.cos(TIP), sn = Math.sin(TIP);
+  return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: [0, 0, TIP] };
+});
+const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
+// 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.62）疊在一起
+const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
+export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
+
 // 遮雨棚、店前的磚地、立牌（Lv2 只有立牌：人龍排頭旁）。fresh（鮮奶 ≥4，跳級條件「鮮奶珍奶」）：立牌白底藍字，否則珊瑚底奶油字
 function yardParts(n, fresh) {
   // 立牌靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）；
@@ -154,25 +177,21 @@ const fountainParts = () => [
 export function view(lv, flags = {}) {
   const n = lv.boba, v = {};
   if (!n) return v;
-  const fresh = lv.milk >= 4, storm = stormy(lv);
+  const fresh = lv.milk >= 4, storm = stormy(lv), blown = !!flags.cartBlown;
   if (n < 3) {
-    v['boba.main'] = { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: [
-      { kind: 'box', pos: [0, 0.35, 0], scale: [CART.w, 0.5, 0.4], color: C.wall },
-      { kind: 'hip', pos: [0, 0.75, 0], scale: [0.75, 0.25, 0.55], color: C.coral },
-      { kind: 'torus', pos: [-0.2, 0.1, 0.21], scale: 0.2, color: C.ink }, { kind: 'torus', pos: [0.2, 0.1, 0.21], scale: 0.2, color: C.ink },
-      { kind: 'cylinder', pos: [0, 1.0, 0], scale: [0.2, 0.25, 0.2], color: TEA },
-      { kind: 'sphere', pos: [0, 0.92, 0.1], scale: 0.05, color: C.ink },
-    ] };
+    v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: cartParts() };
   } else {
     v['boba.main'] = { kind: 'glb', at: SHOP, path: MODELS.shop.path, h: SHOP_H, tint: SHOP_TINT, labelY: SHOP_H + 0.55, footprint: { w: SHOP_W, d: SHOP_W } };
     v['boba.sign'] = { kind: 'glb', at: offset(SHOP, 0, SHOP_W / 2 - 0.15, SHOP_H), path: MODELS.cup.path, h: 0.32, footprint: false };
+    if (blown) v['boba.blown'] = blownCart();
   }
   // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
   if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? balloonParts(AT) : [])] };
   if (n >= 4) v['boba.fountain'] = { kind: 'compound', at: FOUNTAIN, footprint: { r: FOUNTAIN_R }, parts: fountainParts() };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
-  v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [ownerSpot(n)], fidget: 'wave', rescue: true, entry: PIER[3] } };
+  // 攤車被吹走：老闆走到岸邊、面向海看著翻在水裡的攤車（fidget look：偶爾瞥一下）
+  v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [blown ? blownSpot() : ownerSpot(n)], fidget: blown ? 'look' : 'wave', rescue: true, entry: PIER[3] } };
   // 人龍：攤車前／店門口一排（人數預算 ≤ 3）；從碼頭走來
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
   // Lv5 離島：森林島分店（satellites.js）跟燈塔島旗艦店、小船、觀光客、無人機同一級

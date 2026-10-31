@@ -20,7 +20,9 @@ import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
-const ALIEN = RESULTS.find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（列舉裡第一條）
+const ALIEN = RESULTS.find(r => r.ending.id === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（列舉裡第一條以「變異鼠稱王」為標題的；修正批次 2：攤車被吹走排在外星前面）
+// 糖分超標：列舉裡第一條立了 bobaSugar 的放法（修正批次 2 之後外星局不一定經過珍奶 4）
+const SUGAR = RESULTS.find(r => r.state.flags.bobaSugar).order;
 const AT = anchorWorld('boba'), CELL = cellOf('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
@@ -241,11 +243,12 @@ test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv5, Lv6 6�
       assert.equal(show.roster.members('boba.owner').length, 1, `${what} owner`);
       assert.equal(show.roster.members('boba.queue').length, v['boba.queue']?.n ?? 0, `${what} queue`);
     });
-    // 颱風外送 +1（fx 的 delta）帶上去的 Lv2 不是 grow 事件，不在這裡（下一個測試自己演）
-    assert.deepEqual([...new Set(seen)].sort(), [1, 3, 4, 5, 6], `boba events seen: ${seen}`);
+    // 修正批次 2：颱風外送只給噴泉廣場以上（≥4），正解的珍奶 Lv2 是自己長的 grow 事件（第 7 回合、鮮奶 ≥3）
+    assert.deepEqual([...new Set(seen)].sort(), [1, 2, 3, 4, 5, 6], `boba events seen: ${seen}`);
   }
 });
-// 正解裡不演自己劇本的那一級自己演一次：Lv2 被颱風外送帶上去（fx 的 delta）。照 order 演到上一級，改成 grow 事件單獨演
+// Lv2 單獨演一次（照 order 演到上一級，改成 grow 事件單獨演）。修正批次 2 之前正解的 Lv2 是颱風外送（fx 的 delta）帶上去的；
+// 現在外送只給 ≥4，正解的 Lv2 是 grow，這題照舊留著量單獨演的秒數與人龍
 test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: three tourists queue up', async () => {
   for (const [order, to] of SOLUTIONS.map(o => [o, 2])) {
     const h = await headlessShow();
@@ -372,12 +375,12 @@ test('Lv3: the owner builds, the shop appears, the queue and the owner move to t
   }
 });
 // 物品 v2：糖分超標在珍奶 Lv4（唯一正解 Task 1 裁決：鮮奶 ≤4），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）。
-// 放法：求解器列舉的第一條外星壞局（milk,chip,bulb,token,rat,boba,baseball,typhoon：第 8 回合珍奶 2 → 4 跳級，鮮奶 5 → 4 被咬過）
+// 放法：求解器列舉裡第一條立了糖分超標的（SUGAR）
 test('Lv4 with low milk is the sugar rush: every islander ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let s = engine.createState(spec), e4 = null, rest = [];
-  for (const id of ALIEN) {
-    const r = engine.place(s, id, spec); s = r.state;
+  for (const step of [...SUGAR.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
+    const r = step(s); s = r.state;
     const i = r.events.findIndex(isBoba(4));
     if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e4 = r.events[i]; rest = r.events.slice(i + 1); break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
@@ -411,5 +414,28 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.equal(typeof boba.visitSpot, 'function');
   const { bad, seen } = await visitSpotsThroughSolutions(boba, SOLUTIONS, { cells: () => [[0, 1]] });
   assert.deepEqual(bad, []);
-  assert.deepEqual(seen, [1, 3, 4, 6]);   // Lv2 是颱風外送（fx）、Lv5 在離島（null）
+  assert.deepEqual(seen, [1, 2, 3, 4, 6]);   // Lv5 在離島（null）；修正批次 2：Lv2 是 grow（颱風外送只給 ≥4）
+});
+
+// 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3，flags.cartBlown）：攤車翻倒在珍奶格東岸外的淺水裡（不在島上、沒有 footprint、放晴的堤防碰不到），
+// 老闆站到岸邊走得到的地方、面向海（fidget look）；Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
+test('view: a blown cart lies tipped in the sea off the boba cell, the owner stands on the shore looking at it; at Lv3 the shop stays and the cart is boba.blown', async () => {
+  const { LEVEE_R } = await import('../src/actors/typhoon.js');
+  const c = axialToWorld(...CELL), nav = createNav();
+  for (const n of [1, 2, 3]) {
+    const v = boba.view(lv({ boba: n, milk: 3 }), { cartBlown: true }), cart = n < 3 ? v['boba.main'] : v['boba.blown'];
+    assert.equal(cart.kind, 'compound'); assert.equal(cart.footprint, false, `Lv${n} no footprint`);
+    assert.ok(near(cart.at, boba.BLOWN, 1e-9), `Lv${n} at BLOWN`); assert.equal(cellAt(cart.at.x, cart.at.z), null, 'in the sea, off the island');
+    assert.ok(Math.hypot(cart.at.x - c.x, cart.at.z - c.z) > LEVEE_R + 0.1, 'outside the Lv3 levee');
+    assert.ok(cart.parts.every(p => p.rot?.[2] < -1), 'tipped over toward the sea');
+    assert.ok(cart.parts.some(p => p.pos[1] > 0.2), 'part of it still above the water');
+    const o = v['boba.owner'].home;
+    assert.equal(o.fidget, 'look'); assert.deepEqual(o.spots, [boba.blownSpot()]);
+    assert.ok(nav.walkable(o.spots[0].x, o.spots[0].z), 'the owner spot is walkable');
+    assert.ok(Math.abs(o.spots[0].yaw - Math.atan2(boba.BLOWN.x - o.spots[0].x, boba.BLOWN.z - o.spots[0].z)) < 1e-9, 'facing the cart in the sea');
+  }
+  const shop = boba.view(lv({ boba: 3, milk: 3 }), { cartBlown: true });
+  assert.equal(shop['boba.main'].kind, 'glb', 'the Lv3 shop still stands');
+  assert.equal(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.blown'], undefined);
+  assert.ok(near(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.main'].at, boba.SHOP, 1e-9), 'not blown: the cart at its stall');
 });

@@ -236,20 +236,21 @@ test('placing the chip site live (milk, baseball, chip; seeds 1–20): nobody st
   assert.ok(covered >= 3, `the seeds do cover someone standing in the site (${covered})`);
 });
 
-// 唯一正解修正輪 1：颱風放下那回合不再整回合躲著——躲一下又出來，wait 事件演到時球員已經回到外面；
+// 唯一正解修正輪 1：颱風放下那回合不再整回合躲著——躲一下又出來，wait 事件演到時工程師已經回到外面；
 // 撲空拿掉了（R10）：wait 不演任何一段；沒有任何圖框泡泡
-test('the typhoon placement turn: the players are back out by the wait, no miss plays, no icon bubble', async () => {
+test('the typhoon placement turn: the engineers are back out by the wait, no miss plays, no icon bubble', async () => {
   const { show, run, bubblesLog } = await headlessShow();
   let s = engine.createState(spec);
-  // 棒球、颱風——第二回合就是颱風放下的回合（棒球 Lv1 等鮮奶）
-  for (const id of ['baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  // 晶片、颱風——第二回合就是颱風放下的回合（晶片 Lv2 等燈泡）。修正批次 2：棒球 ≤3 放颱風會淹巨蛋（鎖住、不算在等），改用晶片的工程師
+  for (const id of ['chip']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
   const r = place(s, 'typhoon');
   assert.ok(r.events.some(engine.landsTyphoon), 'placing the typhoon');
+  assert.ok(!r.events.some(e => e.lock), 'no lock: nothing to flood');
   const w = r.events.filter(e => e.kind === 'wait').at(-1)?.waits?.[0];
-  assert.equal(w?.item, 'baseball', 'baseball waits on the placement turn');
+  assert.equal(w?.item, 'chip', 'the chip waits on the placement turn');
   bubblesLog.length = 0;
-  const marks = [], owners = () => show.roster.members('baseball.players');
-  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().length && owners().every(m => !m.hidden), 'the players are back out'); } });
+  const marks = [], owners = () => show.roster.members('chip.engineers');
+  await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { marks.push(info); if (e.kind === 'wait') assert.ok(owners().length && owners().every(m => !m.hidden), 'the engineers are back out'); } });
   assert.ok(!marks.some(i => i?.miss), 'no miss segment');
   assert.deepEqual(bubblesLog.filter(b => typeof b.kind === 'object'), [], 'no icon bubble');
 });
@@ -769,19 +770,21 @@ test('placed + grow[2] in the same turn: the placed script then the grow script,
 
 // 唯一正解 §5.2 老鼠當指標：整局 live，每回合演完、鏡頭回全景後再等老鼠走一會兒（玩家想下一手的時間）——
 // Lv1／Lv2 的老鼠都在 meta.trouble 那棟門口（troubleAt 附近 TROUBLE_R），沒有 trouble 就在窩旁；整局 walls／jumps／pops 都是空的（不閃白、不瞬移、不穿牆）。
-//   使用者 10-30 的順序（新規則下不淹水，裁決 Task 1）：老鼠第 8 回合放下、當回合生窩，那回合珍奶在等代幣 → 一窩在珍奶店門口；第 9 回合分岔（外星）。
+//   使用者 10-30 的順序（修正批次 2：第 7 回合颱風放下，捷運淹水、巨蛋淹水、攤車被吹走一起來）：第 8 回合放下的老鼠爬上岸直接跑到
+//   照 ORDER 第一個被鎖的那棟（車站）門口聞一聞、當回合生窩，一窩在車站前；第 9 回合老鼠等代幣、還是一窩。
 //   純照級數的順序：第 6 回合代幣在等鮮奶 → 第 7 回合放下的老鼠爬上岸直接跑到車站門口聞一聞；第 7 回合結算沒有人在等 → trouble null，走回窩旁。
 //   （設計原寫「鮮奶等棒球時老鼠在早餐店門口」：那是第 2–4 回合，老鼠還沒放；早餐店那一段在 rat.test 的放置測試）
 //   farNest：老鼠第 8 回合放下、當回合生窩，老鼠 0 在遠處那棟門口——窩的 ♥ 要在畫面裡（labels），在門口的老鼠留在原地。
-//   typhoon2nd（設計 §6）：第 4 回合大巨蛋淹水（棒球鎖在 2），第 8 回合放下、生窩的老鼠聚在巨蛋前。
+//   typhoon3rd（設計 §6 的錯局；修正批次 2：颱風第 2 個放已經淹不到——棒球還沒放——改成第 3 個放）：第 3 回合大巨蛋淹水（棒球鎖在 2），
+//   第 8 回合放下、生窩的老鼠聚在巨蛋前。
 test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk back to the nest when it clears; no pops, jumps or walls', async () => {
   const rat = ALL.find(m => m.id === 'rat'), NEST = anchorWorld('rat'), gap = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
   const ORDERS = {
     user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'],
     // 老鼠最後放、當回合就生窩，那時老鼠 0 在遠處出問題的那棟門口：生窩的 ♥ 冒在窩上（鏡頭平移去的那格），不是老鼠 0 頭上（最終修正）
     farNest: ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'],
-    // 設計 §6 的「颱風第二個放」：第 4 回合大巨蛋淹水（棒球鎖在 2），第 8 回合放下的老鼠跑到巨蛋前
-    typhoon2nd: ['milk', 'typhoon', 'baseball', 'token', 'bulb', 'chip', 'boba', 'rat'],
+    // 颱風第 3 個放（修正批次 2：放下那回合棒球 2 → 大巨蛋淹水，鎖在 2），第 8 回合放下的老鼠跑到巨蛋前
+    typhoon3rd: ['milk', 'baseball', 'typhoon', 'token', 'bulb', 'chip', 'boba', 'rat'],
   };
   const placed = rat.script.placed, sniffs = [];
   rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
@@ -814,15 +817,15 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   } finally { rat.script.placed = placed; }
   const at = (name, turn) => seen[name].find(x => x.turn === turn);
   const u8 = at('user1030', 8);
-  assert.deepEqual([u8.mode, u8.trouble], ['nest', 'boba'], 'the nest gathers at the boba shop (boba waits for the token)');
-  assert.equal(u8.sniffs.length, 2, 'turn 7 settled no trouble: the landing keeps the old sniff + look at the dome');
-  assert.equal(at('user1030', 9).mode, 'alien');
+  assert.deepEqual([u8.mode, u8.trouble], ['nest', 'token'], 'the nest gathers at the flooded station (the first locked item in ORDER)');
+  assert.equal(u8.sniffs.length, 1, 'turn 7 settled the flood: the landing rat runs to the station and sniffs once');
+  assert.equal(at('user1030', 9).mode, 'nest', 'the rat waits for the token: still a nest');
   const { frontOf } = await import('../src/actors/anchors.js');
   // 放下劇本讀的是上一回合（第 6 回合）結算的 troubleAt：車站照那一刻的代幣級（2026-10-31 Task 5：原本寫死代幣 3）
-  // 颱風第二個放：第 3 回合棒球放到 2、第 4 回合結算大巨蛋淹水（鎖在 2，到終局都是 2）；第 8 回合的一窩聚在巨蛋前
-  assert.ok(!at('typhoon2nd', 3).flags.domeFlood && at('typhoon2nd', 4).flags.domeFlood, 'the dome floods on turn 4');
-  for (let t = 3; t <= 9; t++) assert.equal(at('typhoon2nd', t).lv.baseball, 2, `turn ${t}: baseball locked at 2`);
-  const t8 = at('typhoon2nd', 8), bb = ALL.find(m => m.id === 'baseball').visitSpot(2, { lv: t8.lv, flags: t8.flags }), dome = frontOf(bb, bb.r);
+  // 颱風第 3 個放：第 2 回合棒球放到 2、第 3 回合颱風放下時大巨蛋淹水（鎖在 2，到終局都是 2）；第 8 回合的一窩聚在巨蛋前
+  assert.ok(!at('typhoon3rd', 2).flags.domeFlood && at('typhoon3rd', 3).flags.domeFlood, 'the dome floods on turn 3, the placement turn');
+  for (let t = 2; t <= 9; t++) assert.equal(at('typhoon3rd', t).lv.baseball, 2, `turn ${t}: baseball locked at 2`);
+  const t8 = at('typhoon3rd', 8), bb = ALL.find(m => m.id === 'baseball').visitSpot(2, { lv: t8.lv, flags: t8.flags }), dome = frontOf(bb, bb.r);
   assert.deepEqual([t8.mode, t8.trouble], ['nest', 'baseball']);
   for (const p of t8.rats) assert.ok(gap(p, dome) <= rat.TROUBLE_R + 0.35, `turn 8: rat (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) at the dome front (${dome.x.toFixed(2)}, ${dome.z.toFixed(2)})`);
   const l6 = at('levels', 6), l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(l6.lv.token, { lv: l6.lv, flags: l6.flags }), front = frontOf(sp, sp.r);

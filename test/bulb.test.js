@@ -483,8 +483,8 @@ test('Lv7 live: the electrician walks to the station, rides the train out to the
       if (firstBuild === null && m.walker?.gesture?.kind === 'build') firstBuild = at;
       const o = h.show.stage.partObject('sat.windmill'), z = o?.visible ? o.children[0].rotation.z : null;
       if (o !== blades) { blades = o; rot = null; }   // 換速度時零件重建（轉角從 0 起算），換過的那一幀不比
-      // 唯一正解：燈泡 7 在第 8 回合，颱風 Lv1–3 的風本來就吹著風車轉（沒電 3、通電 6，±0.4 的搖晃）——看轉速變成通電的轉速
-      const stormy = h.show.stage.lv.typhoon >= 1 && h.show.stage.lv.typhoon <= 3, fast = stormy ? 4.5 : 0;
+      // 唯一正解：燈泡 7 在第 8 回合，颱風 Lv1–2 的風本來就吹著風車轉（沒電 3、通電 6，±0.4 的搖晃）——看轉速變成通電的轉速
+      const stormy = h.show.stage.lv.typhoon >= 1 && h.show.stage.lv.typhoon <= 2, fast = stormy ? 4.5 : 0;
       if (z !== null && rot !== null && Math.abs(z - rot) / dt > fast + 1e-6 && firstSpin === null) firstSpin = at;
       rot = z;
       if (firstLight === null && h.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;

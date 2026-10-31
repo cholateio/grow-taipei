@@ -18,16 +18,14 @@ test('worldEffects keys on the bulb ladder: dusk at 3, night at 5, the neon glow
   assert.ok(at(9).glowScale > 1, 'the island-wide cyber neon glows brighter');
   assert.equal(worldEffects(lv({ bulb: 9 }), { blackout: true }).glowScale, 0, 'a blackout still kills every glow');
 });
-// 唯一正解 2026-10-31 §5.1（修正輪 1：只看等級，沒有 meta.landing）：Lv1（放下那回合）大雨，移站之後（Lv2–3）雨小（LINGER），Lv4 放晴；人從不整群消失
-test('the storm pours at typhoon Lv1 (the placement turn), is lighter while the cloud moves on (Lv2–3), and clears at Lv4', () => {
-  const pour = worldEffects(lv({ typhoon: 1 }), {});
-  assert.equal(pour.storm, 1); assert.equal(pour.rain, 1);
-  assert.equal(pour.peopleVisible, true, 'people hide one by one at their doors (roster), never the whole group');
-  for (const n of [2, 3]) {
-    const linger = worldEffects(lv({ typhoon: n }), {});
-    assert.equal(linger.peopleVisible, true); assert.equal(linger.storm, 0.35, `Lv${n}`); assert.equal(linger.rain, 0.35);
+// 唯一正解 2026-10-31 §5.1（修正輪 1：只看等級，沒有 meta.landing）；修正批次 2：颱風三級——Lv1（放下那回合）、Lv2 都是全島大雨，Lv3 放晴；人從不整群消失
+test('the storm pours island-wide at typhoon Lv1 (the placement turn) and Lv2, and clears at Lv3', () => {
+  for (const n of [1, 2]) {
+    const pour = worldEffects(lv({ typhoon: n }), {});
+    assert.equal(pour.storm, 1, `Lv${n}`); assert.equal(pour.rain, 1);
+    assert.equal(pour.peopleVisible, true, 'people hide one by one at their doors (roster), never the whole group');
   }
-  const after = worldEffects(lv({ typhoon: 4 }), {}); assert.equal(after.storm, 0); assert.equal(after.rain, 0);
+  const after = worldEffects(lv({ typhoon: 3 }), {}); assert.equal(after.storm, 0); assert.equal(after.rain, 0);
   assert.equal(worldEffects(lv({}), {}).storm, 0, 'no typhoon, no storm');
 });
 test('stepWorld eases toward the target: ~98% in one second, snaps when close, never overshoots', () => {

@@ -162,6 +162,10 @@ const CATCH_MIN = 2.1;
 // 分岔（spec.js 老鼠 onLevel 4 的 ratBranch：條件照規則資料編譯，跟引擎同一個判斷，不寫死門檻）。分岔旗標是 grow 之後的 fx 事件才帶來的，
 // grow 4 的劇本先用一個同值的 fx 事件套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
 const BRANCH = ITEMS.rat.onLevel[4].find(a => a.branch).branch, BRANCH_TEST = compile(BRANCH.when, {});
+// 咬鮮奶（spec.js 老鼠 fx：鮮奶 ≤2）：放下那回合接著就要咬——上岸直接跑去牛奶箱旁（BITE_AT，咬的劇本從這裡開始），不先跑去出問題的那棟
+// （修正批次 2：颱風放下那回合就淹水，trouble 常常是車站，從車站再走到牛奶箱的咬鮮奶要 8.7 s）
+const BITE = ITEMS.rat.fx.find(a => a.delta?.target === 'milk' && a.delta.by < 0), BITE_TEST = BITE ? compile(BITE.when, {}) : () => false;
+const BITE_AT = offset(CRATE, 0.45, 0.2);
 export const branchOf = s => (BRANCH_TEST(s) ? BRANCH.then : BRANCH.else);
 const branchEvent = value => ({ kind: 'fx', item: 'rat', cause: 'rat', flag: { name: BRANCH.flag, value } });
 const riding = s => ratMode(s.prev.lv, s.prev.flags) === 'train';   // 這次升級前老鼠在車頂上
@@ -211,7 +215,7 @@ function hopOff(B, s, ids, at, centre, r) {
 function bite(e, ctx) {
   const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), KIDS = [0, 1, 2], down = e.delta.to < e.delta.from;
   return [
-    B.walk(r, offset(CRATE, 0.45, 0.2), { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
+    B.walk(r, BITE_AT, { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
     // 沒掉級：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：閃白換成翻倒的箱子
     down ? B.apply(e, { only: ['milk.crate'] }) : B.tilt('milk.crate', { rz: 0.35, dur: 0.3 }),
     B.together(KIDS.map(i => B.bubble(kid(i), '！', 0.8))),
@@ -224,8 +228,11 @@ export const script = {
   // 老鼠當指標（§5.2）：上一回合結算出有出問題的那棟（meta.troubleAt；劇本在回合開頭建，這時的 meta 就是上一回合的結算）
   //   → 爬上岸直接跑過去（鏡頭同時平移到那裡）聞一聞，在那棟門口晃
   placed(e, s, ctx) {
-    const { B } = ctx, r0 = rat(0), at = ctx.stage?.meta?.troubleAt ?? null;
+    // 有 trouble 但這回合就要咬鮮奶：跑去的是牛奶箱旁（見 BITE_AT），咬的劇本接著聞、！
+    const { B } = ctx, r0 = rat(0), trouble = ctx.stage?.meta?.troubleAt ?? null, biting = !!trouble && BITE_TEST({ lv: s.lv, flags: s.flags ?? {} });
+    const at = biting ? BITE_AT : trouble;
     const ashore = [B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING))];   // 從水裡爬上岸
+    if (biting) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })])];
     if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })]), B.gesture(r0, 'sniff'), B.home(r0)];
     return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0)];
   },

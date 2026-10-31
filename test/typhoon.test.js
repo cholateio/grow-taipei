@@ -8,39 +8,43 @@ import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { cellAt } from '../src/scene/hex.js';
 
-// 唯一正解 2026-10-31 §4.3：四站——Lv1 101 上空、Lv2 捷運站上空、Lv3 大巨蛋上空（暴風圈＋雨，有珍奶就有外送機車），Lv4 放晴（沒有雲、有彩虹）
-// 修正輪 1：Lv1 停在颱風錨點（101 那一格、塔的旁邊）——停在塔正上方會被完工的 101 塔頂穿過
-test('view: Lv1–3 the spinning storm ring sits next to 101 (typhoon anchor) / over the station / over the dome with rain; Lv4 no cloud, a rainbow and the riverside park', () => {
+// 唯一正解 2026-10-31 §4.3；修正批次 2：三級——Lv1、Lv2 暴風圈都停在颱風錨點（101 那一格、塔的旁邊）、全島大雨，Lv3 放晴（沒有雲、有彩虹）
+// 修正輪 1：停在塔正上方會被完工的 101 塔頂穿過
+test('view: Lv1–2 the spinning storm ring sits next to 101 (typhoon anchor) with rain, no moving; Lv3 no cloud, a rainbow and the riverside park', () => {
   const near = (p, q) => Math.hypot(p.x - q.x, p.z - q.z) < 1e-9;
   const t = anchorWorld('typhoon'), tw = anchorWorld('tower');
   assert.deepEqual(cellOf('typhoon'), cellOf('tower')); assert.ok(Math.hypot(t.x - tw.x, t.z - tw.z) > 1, 'next to the tower, not over its top');
-  for (const [n, id] of [[1, 'typhoon'], [2, 'token'], [3, 'baseball']]) {
+  assert.equal(spec.ITEMS.typhoon.max, 3);
+  assert.equal(typhoon.STOPS, undefined, 'no stops: the cloud does not move');
+  for (const n of [1, 2]) {
     const v = typhoon.view(lv({ typhoon: n }), {});
     assert.deepEqual(Object.keys(v), ['typhoon.main', 'typhoon.rain'], `Lv${n}`);
     assert.equal(v['typhoon.main'].kind, 'cloud'); assert.ok(v['typhoon.main'].spin > 0); assert.ok(v['typhoon.main'].parts.length >= 8);
     assert.ok(v['typhoon.main'].parts.every(p => p.pos[1] >= 4), 'high above the island');
-    assert.ok(near(v['typhoon.main'].at, anchorWorld(id)), `Lv${n} over ${id}`);
+    assert.ok(near(v['typhoon.main'].at, t), `Lv${n} over the typhoon anchor`);
     assert.equal(v['typhoon.rain'].kind, 'rain');
   }
-  const v4 = typhoon.view(lv({ typhoon: 4 }), {});
-  assert.equal(v4['typhoon.main'], undefined); assert.equal(v4['typhoon.rain'], undefined);
-  assert.equal(v4['typhoon.rainbow'].parts.filter(p => p.kind === 'rail').length, 3);
-  const park = landmarkWorld('park'); assert.ok(Math.hypot(v4['typhoon.park'].at.x - park.x, v4['typhoon.park'].at.z - park.z) < 1e-9);
+  const v3 = typhoon.view(lv({ typhoon: 3 }), {});
+  assert.equal(v3['typhoon.main'], undefined); assert.equal(v3['typhoon.rain'], undefined);
+  assert.equal(v3['typhoon.rainbow'].parts.filter(p => p.kind === 'rail').length, 3);
+  const park = landmarkWorld('park'); assert.ok(Math.hypot(v3['typhoon.park'].at.x - park.x, v3['typhoon.park'].at.z - park.z) < 1e-9);
 });
-test('delivery scooter rides in the rain at Lv1–3 with boba placed, gone at Lv4', () => {
-  for (const n of [1, 2, 3]) {
+// 外送機車（修正批次 2）：珍奶噴泉廣場以上（≥4）才接得了颱風天的外送——攤車、人龍、珍奶店（≤3）是被吹走
+test('delivery scooter rides in the rain at Lv1–2 only with boba ≥ 4 (the delivery), gone once it clears', () => {
+  for (const n of [1, 2]) {
     assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.scooter'], undefined);
-    assert.equal(typhoon.view(lv({ typhoon: n, boba: 1 }), {})['typhoon.scooter'].kind, 'scooter');
+    for (const boba of [1, 2, 3]) assert.equal(typhoon.view(lv({ typhoon: n, boba }), {})['typhoon.scooter'], undefined, `boba ${boba}: no delivery`);
+    assert.equal(typhoon.view(lv({ typhoon: n, boba: 4 }), {})['typhoon.scooter'].kind, 'scooter');
   }
-  assert.equal(typhoon.view(lv({ typhoon: 4, boba: 1 }), {})['typhoon.scooter'], undefined);
+  assert.equal(typhoon.view(lv({ typhoon: 3, boba: 5 }), {})['typhoon.scooter'], undefined);
 });
-// 堤防（物品 v2 §4.5；唯一正解 Lv4）：主島外圍每條靠海的格邊一道矮牆（棒球格西南邊留給巨蛋捷運站的月台），在格面上、走路格外，
+// 堤防（物品 v2 §4.5；修正批次 2：放晴是 Lv3）：主島外圍每條靠海的格邊一道矮牆（棒球格西南邊留給巨蛋捷運站的月台），在格面上、走路格外，
 // 不算 footprint、一個零件一種顏色（1 個 draw call）
-test('Lv4 levee: a low wall on every sea-facing edge of the main island, on the rim outside the walking grid; no footprint, one draw call', async () => {
+test('Lv3 levee: a low wall on every sea-facing edge of the main island, on the rim outside the walking grid; no footprint, one draw call', async () => {
   const { createNav } = await import('../src/show/nav.js');
   const { MAIN_CELLS, NEIGHBORS, cellTop } = await import('../src/scene/hex.js');
-  for (const n of [1, 2, 3]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.levee'], undefined);
-  const v = typhoon.view(lv({ typhoon: 4 }), {})['typhoon.levee'], nav = createNav();
+  for (const n of [1, 2]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.levee'], undefined);
+  const v = typhoon.view(lv({ typhoon: 3 }), {})['typhoon.levee'], nav = createNav();
   assert.equal(v.kind, 'compound'); assert.equal(v.footprint, false);
   assert.ok(v.parts.every(p => !p.glow) && new Set(v.parts.map(p => p.color)).size === 1, 'one colour, no glow: 1 draw call');
   const seaEdges = MAIN_CELLS.flatMap(c => NEIGHBORS.filter(([dq, dr]) => !MAIN_CELLS.some(m => m[0] === c[0] + dq && m[1] === c[1] + dr))).length;
@@ -59,7 +63,7 @@ test('Lv4 levee: a low wall on every sea-facing edge of the main island, on the 
 test('the levee leaves a gap where the first rat climbs out of the sea', async () => {
   const { createNav } = await import('../src/show/nav.js');
   const { RAT_LANDING } = await import('../src/actors/rat.js');
-  const v = typhoon.view(lv({ typhoon: 4 }), {})['typhoon.levee'], nav = createNav(), to = nav.nearestWalkable(RAT_LANDING);
+  const v = typhoon.view(lv({ typhoon: 3 }), {})['typhoon.levee'], nav = createNav(), to = nav.nearestWalkable(RAT_LANDING);
   // 每一道牆當成一條線段（中心 ± 半長），爬上來的線段離每一道牆 ≥ 0.15
   const segDist = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
   for (const p of v.parts) {
@@ -78,10 +82,10 @@ test('rain part: 240 instances, none cast shadows, drops fall', () => {
 test('cloud spins and scooter circles the centre cell', () => {
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders });
   const c = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.main']); c.update(0.5, 1); assert.notEqual(c.object.children[0].rotation.y, 0);
-  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 1 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
+  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 4 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
-// 計畫 3.6：放下之後移站的回合雨變小（app 把 weather.rain 淡到 0.35）
+// 雨的濃度跟著 app 的 weather.rain（app 每幀淡入淡出；修正批次 2 之後 Lv1–2 都是 1，放晴淡到 0）
 test('rain shows fewer, fainter drops when weather.rain is low', () => {
   const weather = { rain: 1 }, f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders, weather });
   const p = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.rain']), mesh = p.object.children[0];
@@ -97,10 +101,10 @@ import * as engine from '../src/rules/engine.js';
 import { offset } from '../src/actors/palette.js';
 import * as baseball from '../src/actors/baseball.js';
 import * as milk from '../src/actors/milk.js';
-import { worldEffects, LINGER } from '../src/actors/world.js';
+import { worldEffects } from '../src/actors/world.js';
 import { B } from '../src/show/beats.js';
-import { headlessShow, playItem, turnSteps, overviewRig, gameInvariants, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
-// 唯一正解（§3）：颱風第 6 回合放下（到 101）、第 7 回合到車站、第 8 回合到巨蛋、最後一輪放晴
+import { headlessShow, playItem, turnSteps, overviewRig, gameInvariants, KEY_MAX } from './helpers/show.js';
+// 唯一正解（§3；修正批次 2）：颱風第 6 回合放下（到 101、全部檢查）、第 7 回合 Lv2 暴風圈還在、第 8 回合放晴
 const SOLUTION = ['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
 const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
 const fakeCtx = () => ({ B, roster: { members: () => [], keys: () => [] }, stage: {} });
@@ -108,18 +112,18 @@ const placedE = { kind: 'placed', item: 'typhoon', to: 1 }, growE = to => ({ kin
 const landing = engine.landsTyphoon;   // 颱風到了 = 放下事件
 const isGrow = n => e => e.kind === 'grow' && e.item === 'typhoon' && e.to === n;
 
-test('view: Lv4 splits the rainbow into its own part (no cloud left); the cloud, rain and scooter have no footprint; ◆ placed and Lv4', () => {
-  const v4 = typhoon.view(lv({ typhoon: 4, boba: 1 }), {});
-  assert.equal(v4['typhoon.main'], undefined, 'no cloud at Lv4');
-  assert.equal(v4['typhoon.rainbow'].footprint, false); assert.equal(v4['typhoon.rainbow'].parts.length, 3);
-  assert.equal(Object.keys(v4)[0], 'typhoon.rainbow', 'rainbow first: LEVEL UP hangs on it');
-  for (const n of [1, 2, 3]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.rainbow'], undefined);
-  for (const n of [1, 2, 3]) { const v = typhoon.view(lv({ typhoon: n, boba: 1 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
-  assert.ok(typhoon.script?.placed && typhoon.script.grow[2] && typhoon.script.grow[3] && typhoon.script.grow[4]);
+test('view: Lv3 splits the rainbow into its own part (no cloud left); the cloud, rain and scooter have no footprint; ◆ placed and Lv3', () => {
+  const v3 = typhoon.view(lv({ typhoon: 3, boba: 4 }), {});
+  assert.equal(v3['typhoon.main'], undefined, 'no cloud at Lv3');
+  assert.equal(v3['typhoon.rainbow'].footprint, false); assert.equal(v3['typhoon.rainbow'].parts.length, 3);
+  assert.equal(Object.keys(v3)[0], 'typhoon.rainbow', 'rainbow first: LEVEL UP hangs on it');
+  for (const n of [1, 2]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.rainbow'], undefined);
+  for (const n of [1, 2]) { const v = typhoon.view(lv({ typhoon: n, boba: 4 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
+  assert.ok(typhoon.script?.placed && typhoon.script.grow[2] && typhoon.script.grow[3]); assert.equal(typhoon.script.grow[4], undefined);
   assert.equal(typhoon.script.stall, undefined, 'no stall: the typhoon never waits (no delay)');
-  assert.equal(typhoon.script.fx, undefined, 'the island checks are plain apply + LEVEL UP (turn.js), no reaction scripts');
-  assert.equal(typhoon.script.placed.key, true, '◆ typhoon 1 (placed)'); assert.equal(typhoon.script.grow[4].key, true, '◆ typhoon 4');
-  assert.ok(!typhoon.script.grow[2].key && !typhoon.script.grow[3].key, 'moving between stops is not ◆');
+  assert.equal(typhoon.script.fx, undefined, 'the island checks play as default fx beats (turn.js lockBeats), no reaction scripts');
+  assert.equal(typhoon.script.placed.key, true, '◆ typhoon 1 (placed)'); assert.equal(typhoon.script.grow[3].key, true, '◆ typhoon 3');
+  assert.ok(!typhoon.script.grow[2].key, 'Lv2 (still storming) is not ◆');
 });
 test('view: dome-rat staff are a helmeted roster of 2 following the rats; the milk crate goes grey in a blackout', () => {
   const st = baseball.view(lv({ baseball: 3 }), { domeRats: true })['baseball.staff'];
@@ -131,8 +135,8 @@ test('view: dome-rat staff are a helmeted roster of 2 following the rats; the mi
   assert.notDeepEqual(lit.parts.map(p => p.color), dark.parts.map(p => p.color));
   assert.ok(dark.parts.every(p => { const r = p.color >> 16, g = (p.color >> 8) & 255, b = p.color & 255; return Math.max(r, g, b) - Math.min(r, g, b) < 24; }), 'grey');
 });
-// 劇本的拍（建拍就看得到）：放下＝飄進來＋大雨＋全島躲門口、沒有 LEVEL UP；移站＝move 1.5 s＋LEVEL UP；放晴＝停雨
-test('beats: placed flies in, pours (storm 1, rain 1) and sends the crowd to the doors without a LEVEL UP; Lv2/3 move 1.5 s then LEVEL UP; Lv4 stops the storm', () => {
+// 劇本的拍（建拍就看得到）：放下＝飄進來＋大雨＋全島躲門口、沒有 LEVEL UP；Lv2＝對著雲、鼓一下、……、LEVEL UP（沒有 move）；放晴＝停雨
+test('beats: placed flies in, pours (storm 1, rain 1) and sends the crowd to the doors without a LEVEL UP; Lv2 puffs and mutters …… then LEVEL UP; Lv3 stops the storm', () => {
   const s = n => ({ lv: lv({ typhoon: n }), flags: {} });
   const placed = flat(typhoon.script.placed(placedE, s(1), fakeCtx()));
   assert.ok(placed.some(b => b.kind === 'move' && b.dur === 2.5), 'flies in');
@@ -143,28 +147,26 @@ test('beats: placed flies in, pours (storm 1, rain 1) and sends the crowd to the
   const k = placed.findIndex(b => b.kind === 'wait');
   assert.ok(k > 0 && placed[k].dur > 0 && placed[k].dur <= 1 && placed.slice(k + 1).some(b => b.kind === 'home'), 'a short huddle, then everyone comes back out');
   assert.equal(placed.at(-1).kind, 'home', 'coming out is the last beat (the walk home is background)');
-  for (const n of [2, 3]) {
-    const beats = flat(typhoon.script.grow[n](growE(n), s(n), fakeCtx())), mv = beats.find(b => b.kind === 'move');
-    assert.ok(mv && mv.dur === typhoon.HOP && typhoon.HOP === 1.5, `Lv${n} move 1.5 s`);
-    assert.equal(beats.at(-1).kind, 'levelUp', `Lv${n} ends with LEVEL UP`);
-    assert.ok(beats.findIndex(b => b.kind === 'move') < beats.findIndex(b => b.kind === 'levelUp'));
-  }
-  const clear = flat(typhoon.script.grow[4](growE(4), s(4), fakeCtx()));
+  const two = typhoon.script.grow[2](growE(2), s(2), fakeCtx());
+  assert.deepEqual(two.map(b => b.kind), ['focus', 'gesture', 'bubble', 'apply', 'levelUp'], 'cloudFocus → puff → …… → LEVEL UP');
+  assert.equal(two[1].dur, 0.8, 'puff (GESTURE_DUR.puff)'); assert.equal(two[2].dur, 0.8, '…… 0.8 s');
+  assert.ok(!flat(two).some(b => b.kind === 'move' || b.kind === 'world'), 'the cloud stays put and the rain keeps on');
+  const clear = flat(typhoon.script.grow[3](growE(3), s(3), fakeCtx()));
   assert.ok(clear.some(b => b.kind === 'world' && b.effects?.storm === 0 && b.effects?.rain === 0)); assert.equal(clear.at(-1).kind, 'levelUp');
 });
-// 鏡頭（§13.1）：放下對著 101 上空，移站對著新的那一站上空，放晴是全島的事
+// 鏡頭（§13.1）：放下與 Lv2 對著 101 旁邊上空的雲（颱風錨點，101 那一格），放晴是全島的事
 const firstFocus = beats => { assert.equal(beats[0].kind, 'focus', 'the script starts with its own focus'); return beats[0].target === 'home' ? 'home' : focusCell(beats[0], fakeCtx()); };
-test('focus: the cloud frames the 101 cell when placed, the station cell at Lv2, the dome cell at Lv3; clearing is island-wide', () => {
+test('focus: the cloud frames the 101 cell when placed and at Lv2; clearing is island-wide', () => {
   const s = n => ({ lv: lv({ typhoon: n }), flags: {} });
   assert.deepEqual(firstFocus(typhoon.script.placed(placedE, s(1), fakeCtx())), cellOf('tower'));
-  assert.deepEqual(firstFocus(typhoon.script.grow[2](growE(2), s(2), fakeCtx())), cellOf('token'));
-  assert.deepEqual(firstFocus(typhoon.script.grow[3](growE(3), s(3), fakeCtx())), cellOf('baseball'));
-  assert.equal(firstFocus(typhoon.script.grow[4](growE(4), s(4), fakeCtx())), 'home');
+  assert.deepEqual(firstFocus(typhoon.script.grow[2](growE(2), s(2), fakeCtx())), cellOf('tower'));
+  assert.equal(firstFocus(typhoon.script.grow[3](growE(3), s(3), fakeCtx())), 'home');
 });
 
 const people = show => show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.kind === 'people');
-// 一級的劇本秒數（不含鏡頭 focus 拍）：◆ 放下與放晴 ≤ KEY_MAX（8 s），移站 ≤ SCRIPT_MAX（4.5 s）
-const BOUNDS = { 1: [3, KEY_MAX], 2: [1.5, SCRIPT_MAX], 3: [1.5, SCRIPT_MAX], 4: [3, KEY_MAX] };
+// 一級的劇本秒數（不含鏡頭 focus 拍）：◆ 放下與放晴 ≤ KEY_MAX（8 s），Lv2（暴風圈還在）≤ 3 s（修正批次 2）
+const LV2_MAX = 3;
+const BOUNDS = { 1: [3, KEY_MAX], 2: [1.5, LV2_MAX], 3: [3, KEY_MAX] };
 function checkTyphoon({ show, bubblesLog }, e, secs, n) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`, [lo, hi] = BOUNDS[to];
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
@@ -176,7 +178,7 @@ function checkTyphoon({ show, bubblesLog }, e, secs, n) {
   // 修正輪 1：躲雨是放下劇本裡的一小段——每一級演完都沒有人藏著
   assert.ok(people(show).every(m => !m.hidden), `${what} nobody hidden`);
 }
-test('scripts: typhoon placed ◆ / Lv2 / Lv3 / Lv4 ◆ in the solution play within budget, LEVEL UP on the typhoon (not for placed), everyone home', async () => {
+test('scripts: typhoon placed ◆ / Lv2 / Lv3 ◆ in the solution play within budget, LEVEL UP on the typhoon (not for placed), everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
@@ -185,8 +187,8 @@ test('scripts: typhoon placed ◆ / Lv2 / Lv3 / Lv4 ◆ in the solution play wit
     const to = e.kind === 'grow' ? e.to : 1; seen.add(to); checkTyphoon(h, e, secs, n);
     const o = show.stage.partObject('typhoon.main'); if (o) at[to] = { x: o.position.x, z: o.position.z };
   });
-  assert.deepEqual([...seen].sort(), [1, 2, 3, 4], `typhoon events seen: ${[...seen]}`);
-  for (const [n, id] of [[1, 'typhoon'], [2, 'token'], [3, 'baseball']]) { const p = anchorWorld(id); assert.ok(Math.hypot(at[n].x - p.x, at[n].z - p.z) < 1e-6, `Lv${n}: the cloud ends over the ${id} anchor`); }
+  assert.deepEqual([...seen].sort(), [1, 2, 3], `typhoon events seen: ${[...seen]}`);
+  for (const n of [1, 2]) { const p = anchorWorld('typhoon'); assert.ok(Math.hypot(at[n].x - p.x, at[n].z - p.z) < 1e-6, `Lv${n}: the cloud ends over the typhoon anchor`); }
 });
 
 // 照 order 放（再長 CLOSING_TURNS 回合）到 pred 命中的那一回合為止（之前的回合瞬間演），回傳那一回合的事件（含 settle）
@@ -220,6 +222,7 @@ async function playLanding(h, evs, opts = {}) {
       // 放下那一段演完（下一個事件開始）的那一刻：沒有人還藏著
       if (hiddenAfter === null && marks.some(([x]) => landing(x)) && !landing(e)) hiddenAfter = people(show).filter(m => m.hidden).length;
       marks.push([e, show.elapsed, bubblesLog.length]);
+      opts.onMark?.(e);
     } });
   } finally { show.roster.hide = hide; show.roster.show = unhide; show.bubbles.levelUp = levelUp; }
   const i0 = marks.findIndex(([e]) => landing(e)), at = k => marks[k]?.[1] ?? show.elapsed;
@@ -265,58 +268,83 @@ test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards
   assert.ok(milk7 && milk7[1] > 4, `◆ milk 7 plays its whole script (${milk7?.[1].toFixed(1)} s)`);
   assert.ok(walking.size >= 2, `the kids walk to the arch (${walking.size})`);
 });
-// 移站回合（§4.3）：車站上空淹水（代幣 ≤3）＋外送爆單；巨蛋上空大巨蛋淹水（棒球 ≤3）或鼠災
-for (const [name, order, n, need] of [
-  ['flood and delivery', ['token', 'typhoon', 'boba'], 2, ['flooded', 'boba']],
-  ['dome flood', ['milk', 'baseball', 'typhoon', 'chip', 'bulb'], 3, ['domeFlood']],   // 巨蛋（棒球 Lv3）蓋好了、還沒開賽
-  ['dome rats', ['milk', 'token', 'rat', 'baseball', 'typhoon', 'chip', 'bulb'], 3, ['domeRats']],
+// 放下那回合的檢查（§4.3，修正批次 2：全部在放下那回合）：捷運淹水（代幣 ≤3）、攤車被吹走（珍奶 ≤3）、大巨蛋淹水（棒球 ≤3）、鼠災、外送爆單（珍奶 ≥4）。
+// 放下劇本（躲雨）演完之後，鎖住的反應照 turn.js lockBeats 演：平移到被鎖的那一格、閃白套用、等那個物品的名冊走到新站位；
+// 量的是每一拍演完那一刻（下一個 mark）的樣子
+for (const [name, order, need] of [
+  ['flood and the blown cart', ['token', 'boba', 'typhoon'], ['flooded', 'cartBlown']],
+  ['dome flood', ['milk', 'baseball', 'chip', 'typhoon'], ['domeFlood']],   // 巨蛋（棒球 Lv3）蓋好了、還沒開賽
+  ['dome rats', ['milk', 'token', 'baseball', 'rat', 'chip', 'typhoon'], ['domeRats']],
+  ['delivery', ['milk', 'chip', 'baseball', 'token', 'boba', 'bulb', 'typhoon'], ['boba']],   // 珍奶 ≥4 外送爆單（同回合也大停電）
 ]) {
-  test(`Lv${n} turn with reactions (${name}, real engine) live: the cloud flies in from the last stop, ≤ 4.5 s, nobody hides, the reactions play; invariants clean`, async () => {
-    const h = await headlessShow(), { show, run, worldLog } = h;
-    const evs = await turnWith(run, order, isGrow(n)), reacts = evs.filter(e => e.kind === 'fx' && e.cause === 'typhoon').map(e => e.flag?.name ?? e.delta?.target);
+  test(`placement turn with ${name} (real engine) live: the reactions play after the landing, the lock beats end with their rosters in place; invariants clean`, async () => {
+    const { LOCK_HOLD } = await import('../src/show/turn.js');
+    const h = await headlessShow(), { show, run } = h;
+    const evs = await turnWith(run, order, landing), reacts = evs.filter(e => e.kind === 'fx' && e.cause === 'typhoon').map(e => e.flag?.name ?? e.delta?.target);
     assert.ok(need.every(k => reacts.includes(k)), `reactions ${reacts}`);
     const inv = gameInvariants(show);
-    const prev = anchorWorld(n === 2 ? 'typhoon' : 'token'), stop = anchorWorld(n === 2 ? 'token' : 'baseball'), trail = [], marks = [], w0 = worldLog.length;
-    const update = show.update;
-    show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('typhoon.main'); if (o && show.stage.lv.typhoon === n) trail.push({ x: o.position.x, z: o.position.z }); };
-    // 鎖住的反應（大巨蛋淹水鎖棒球，turn.js 的 lockBeats）演完那一刻（下一個 mark）記下球員的位置
-    let lockEnd = null, inLock = false;
-    const snapPlayers = () => show.roster.members('baseball.players').map(m => ({ ...m.pos }));
+    const snap = () => ({
+      players: show.roster.members('baseball.players').map(m => ({ ...m.pos })),
+      owner: show.roster.members('boba.owner').map(m => ({ ...m.pos, yaw: m.yaw, mode: m.mode, arriving: m.arriving })),
+      swimmers: show.roster.members('token.swimmers').length, staff: show.roster.members('token.staff').length,
+    });
+    const update = show.update, cloud = [];
+    show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('typhoon.main'); if (o) cloud.push({ x: o.position.x, z: o.position.z }); };
+    const ends = {}, times = {};
+    let inLock = null, t0 = 0;
     try {
-      await run(evs, { onMark: e => {
-        if (inLock && !lockEnd) lockEnd = snapPlayers();
-        inLock = e.kind === 'fx' && e.lock === 'baseball';
-        marks.push([e, show.elapsed]);
+      await playLanding(h, evs, { onMark: e => {
+        if (inLock && !ends[inLock]) { ends[inLock] = snap(); times[inLock] = show.elapsed - t0; }
+        inLock = e.kind === 'fx' && e.lock ? e.lock : null; t0 = show.elapsed;
       } });
     } finally { show.update = update; }
-    if (inLock && !lockEnd) lockEnd = snapPlayers();
-    const k = marks.findIndex(([e]) => isGrow(n)(e)), secs = (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1];
-    assert.ok(secs <= SCRIPT_MAX + 0.8 + 0.4, `Lv${n} live ${secs.toFixed(1)} s (script ≤ 4.5 plus its pan / gap)`);
-    assert.ok(trail.length && Math.hypot(trail[0].x - prev.x, trail[0].z - prev.z) < 0.3, 'the cloud starts at the previous stop');
-    assert.ok(Math.hypot(trail.at(-1).x - stop.x, trail.at(-1).z - stop.z) < 1e-6, 'and ends over the new stop');
-    assert.ok(people(show).every(m => !m.hidden), 'nobody hides on a moving turn');
-    const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
-    assert.ok(live.some(w => w.storm === LINGER) && live.every(w => w.storm !== 0), `lighter rain while the storm moves on (${live.map(w => w.storm)})`);
-    if (reacts.includes('flooded')) { assert.equal(show.roster.members('token.staff').length, 0); assert.equal(show.roster.members('token.swimmers').length, 2); }
+    if (inLock && !ends[inLock]) { ends[inLock] = snap(); times[inLock] = show.elapsed - t0; }
+    const at = anchorWorld('typhoon');
+    assert.ok(cloud.length && cloud.slice(-20).every(p => Math.hypot(p.x - at.x, p.z - at.z) < 1e-6), 'the cloud stays over the typhoon anchor');
+    for (const [id, t] of Object.entries(times)) assert.ok(t <= LOCK_HOLD + 0.8 + 0.4 + 0.2, `${id} lock beat ${t.toFixed(2)} s (hold ≤ ${LOCK_HOLD} plus its pan / gap)`);
+    if (reacts.includes('flooded')) { assert.equal(ends.token.staff, 0); assert.equal(ends.token.swimmers, 2, 'the station is a pool with two swimmers'); }
+    if (reacts.includes('cartBlown')) {
+      const boba = await import('../src/actors/boba.js'), o = show.stage.partObject('boba.main'), spot = boba.blownSpot();
+      assert.ok(o && Math.hypot(o.position.x - boba.BLOWN.x, o.position.z - boba.BLOWN.z) < 1e-6, 'the cart lies in the sea off the boba cell');
+      assert.ok(Math.abs(o.position.y - boba.BLOWN.y) < 1e-6);
+      const [m] = ends.boba.owner;
+      assert.ok(m && Math.hypot(m.x - spot.x, m.z - spot.z) < 0.35, `the owner reached the shore by the end of the lock beat (${m?.x.toFixed(2)}, ${m?.z.toFixed(2)})`);
+      assert.equal(show.stage.lv.boba, 1, 'the boba stays locked at its level');
+    }
     if (reacts.includes('boba')) assert.ok(show.stage.partObject('typhoon.scooter')?.visible, 'delivery scooter out in the rain');
     if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
     if (reacts.includes('domeFlood')) {
-      // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳。
-      // 撲空拿掉之後（R10）回合在淹水之後就結束了：量的是鎖住的反應那一拍（turn.js lockBeats：平移、閃白、等名冊走到新站位）演完那一刻
+      // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳；
+      // 量的是鎖住的反應那一拍（turn.js lockBeats）演完那一刻
+      assert.equal(show.stage.lv.baseball, 3, 'precondition: the dome stands');
       assert.ok(show.stage.partObject('baseball.field'), 'the field is a pool');
-      const roof = lockEnd ?? [], dome = anchorWorld('baseball'), top = dome.y + baseball.DOME_H.a;
+      const roof = ends.baseball?.players ?? [], dome = anchorWorld('baseball'), top = dome.y + baseball.DOME_H.a;
       assert.equal(roof.length, 2);
       assert.ok(roof.every(p => p.y >= top - 0.05 && Math.hypot(p.x - dome.x, p.z - dome.z) < 0.4), `players up on the roof by the end of the lock beat (${roof.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`)})`);
     }
     assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} silent relocations`);
     assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} frame jumps`);
     assert.deepEqual([...inv.walls].slice(0, 10), [], `${inv.walls.size} inside a building`);
-    for (const kk of show.roster.keys()) for (const m of show.roster.members(kk)) assert.equal(m.mode, 'home', kk);
   });
 }
+// Lv2（修正批次 2：暴風圈還在、雲不移站）：正解第 7 回合——雲整回合停在颱風錨點、全島照樣大雨（storm 1），劇本 ≤ 3 s，沒有人躲
+test('Lv2 turn (the solution, turn 7) live: the cloud stays over the typhoon anchor, the rain keeps pouring (storm 1), the script ≤ 3 s, nobody hides', async () => {
+  const h = await headlessShow(), { show, run, worldLog, scriptElapsed } = h;
+  const evs = await turnWith(run, SOLUTION, isGrow(2)), at = anchorWorld('typhoon'), cloud = [], w0 = worldLog.length, marks = [];
+  const update = show.update;
+  show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('typhoon.main'); if (o) cloud.push({ x: o.position.x, z: o.position.z }); };
+  try { await run(evs, { onMark: (e, info) => marks.push([e, scriptElapsed(), info]) }); } finally { show.update = update; }
+  assert.ok(cloud.length > 30 && cloud.every(p => Math.hypot(p.x - at.x, p.z - at.z) < 1e-6), 'the cloud never moves');
+  const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
+  assert.ok(live.length && live.every(w => w.storm === 1 && w.rain === 1), `full rain all turn (${live.map(w => w.storm)})`);
+  const k = marks.findIndex(([e]) => isGrow(2)(e)), secs = (marks[k + 1]?.[1] ?? scriptElapsed()) - marks[k][1] - (marks[k][2]?.gap ?? 0);
+  assert.ok(secs <= LV2_MAX, `Lv2 script ${secs.toFixed(2)} s`);
+  assert.ok(people(show).every(m => !m.hidden), 'nobody hides on Lv2');
+});
 // 放下的反應（自己堆的狀態）：燈泡 Lv2（≤2）在場、鮮奶在場 → 大停電＋颱風假
 test('placement with the blackout (crafted state) live as one turn: the landing 3–8 s; the blackout plays as apply + LEVEL DOWN', async () => {
-  const h = await headlessShow(), LV = { bulb: 2, milk: 3, boba: 2, rat: 2, baseball: 3 };
+  // 修正批次 2：珍奶 ≤3、棒球 ≤3 在放下那回合也會被吹走／淹水——這裡只堆停電要的燈泡、鮮奶（和一窩老鼠）
+  const h = await headlessShow(), LV = { bulb: 2, milk: 3, rat: 2 };
   await h.run([...Object.entries(LV).flatMap(([item, to]) => [{ kind: 'placed', item, to: 1 }, ...Array.from({ length: to - 1 }, (_, i) => ({ kind: 'grow', item, from: i + 1, to: i + 2 }))]), { kind: 'settle' }], { instant: true });
   const st = engine.createState(spec);
   for (const [id, n] of Object.entries(LV)) { st.lv[id] = n; st.age[id] = 0; st.locked[id] = true; }
@@ -326,13 +354,13 @@ test('placement with the blackout (crafted state) live as one turn: the landing 
   assert.ok(seg >= 3 && seg <= KEY_MAX, `landing took ${seg.toFixed(1)} s`);
   for (const [e, t] of after) if (e.kind === 'fx') assert.ok(t <= 2.6, `${e.flag?.name ?? e.story ?? ''} took ${t.toFixed(2)} s`);
 });
-// 選擇帶動升級（計畫 5b 任務 3）：♪ 只給主島上的人——正解的最後一輪真的有人冒 ♪（不是篩完空了）
-test('Lv4: the sky clears, nobody is hidden, the rainbow is standing, and the main-island crowd sings ♪', async () => {
+// 選擇帶動升級（計畫 5b 任務 3）：♪ 只給主島上的人——正解放晴那回合（修正批次 2：第 8 回合 Lv3）真的有人冒 ♪（不是篩完空了）
+test('Lv3: the sky clears, nobody is hidden, the rainbow is standing, and the main-island crowd sings ♪', async () => {
   const h = await headlessShow(), { show, run, worldLog, bubblesLog } = h;
-  const evs = await turnWith(run, SOLUTION, isGrow(4));
+  const evs = await turnWith(run, SOLUTION, isGrow(3));
   const w0 = worldLog.length, notes = [];
   let from = null;
-  await run(evs, { onMark: e => { if (from !== null) { notes.push(...bubblesLog.slice(from)); from = null; } if (isGrow(4)(e)) from = bubblesLog.length; } });
+  await run(evs, { onMark: e => { if (from !== null) { notes.push(...bubblesLog.slice(from)); from = null; } if (isGrow(3)(e)) from = bubblesLog.length; } });
   if (from !== null) notes.push(...bubblesLog.slice(from));
   const live = worldLog.slice(w0).filter(([, instant]) => !instant).map(([w]) => w);
   assert.ok(live.some(w => w.storm === 0 && w.rain === 0), JSON.stringify(live));
@@ -341,7 +369,7 @@ test('Lv4: the sky clears, nobody is hidden, the rainbow is standing, and the ma
   assert.equal(show.stage.partObject('typhoon.main'), null);
   assert.equal(show.stage.partObject('typhoon.rainbow').scale.y, 1);
   const sing = notes.filter(b => b.kind === '♪');
-  assert.ok(sing.length >= 3, `${sing.length} ♪ in the Lv4 crowd`);
+  assert.ok(sing.length >= 3, `${sing.length} ♪ in the Lv3 crowd`);
   assert.ok(sing.every(b => cellAt(b.at.x, b.at.z)), '♪ only over the main island');
 });
 test('skip during the door walks: everyone home and visible, world snapped to the storm, typhoon at Lv1', async () => {
@@ -453,9 +481,9 @@ test('landing turn with the camera dragged mid-turn: no home before the turn-end
 });
 
 
-// 正解整局 live（真的鏡頭 rig）：共用不變式乾淨（不穿牆、不瞬移、換位置閃白、回全景、標籤在畫面裡）；颱風四段——◆ 放下與放晴 live ≤ 8 s，
-// 移站劇本 ≤ 4.5 s；第 6 回合放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）
-test('the solution live with the real rig: invariants clean; ◆ placed / Lv4 ≤ 8 s live, Lv2 / Lv3 scripts ≤ 4.5 s', async () => {
+// 正解整局 live（真的鏡頭 rig）：共用不變式乾淨（不穿牆、不瞬移、換位置閃白、回全景、標籤在畫面裡）；颱風三段（修正批次 2）——◆ 放下與放晴 live ≤ 8 s，
+// Lv2 劇本 ≤ 3 s；第 6 回合放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）
+test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 ≤ 8 s live, the Lv2 script ≤ 3 s', async () => {
   const cam = overviewRig(), { show, run, scriptElapsed } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
   let s = engine.createState(spec);
   const seg = {};
@@ -471,11 +499,11 @@ test('the solution live with the real rig: invariants clean; ◆ placed / Lv4 �
       seg[to] = { turn: i + 1, key: !!info?.key, live: (next?.[1] ?? show.elapsed) - t - (info?.gap ?? 0), script: (next?.[2] ?? scriptElapsed()) - sc - (info?.gap ?? 0) };
     });
   }
-  assert.deepEqual(Object.keys(seg).map(Number), [1, 2, 3, 4]);
-  assert.deepEqual([seg[1].turn, seg[2].turn, seg[3].turn, seg[4].turn], [6, 7, 8, 9]);
-  assert.ok(seg[1].key && seg[4].key && !seg[2].key && !seg[3].key, '◆ placed and Lv4');
-  for (const n of [1, 4]) assert.ok(seg[n].live <= KEY_MAX, `◆ typhoon ${n} live ${seg[n].live.toFixed(2)} s`);
-  for (const n of [2, 3]) assert.ok(seg[n].script <= SCRIPT_MAX, `typhoon ${n} script ${seg[n].script.toFixed(2)} s`);
+  assert.deepEqual(Object.keys(seg).map(Number), [1, 2, 3]);
+  assert.deepEqual([seg[1].turn, seg[2].turn, seg[3].turn], [6, 7, 8]);
+  assert.ok(seg[1].key && seg[3].key && !seg[2].key, '◆ placed and Lv3');
+  for (const n of [1, 3]) assert.ok(seg[n].live <= KEY_MAX, `◆ typhoon ${n} live ${seg[n].live.toFixed(2)} s`);
+  assert.ok(seg[2].script <= LV2_MAX, `typhoon 2 script ${seg[2].script.toFixed(2)} s`);
   assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
   assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
   assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);

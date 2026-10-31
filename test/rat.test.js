@@ -20,7 +20,7 @@ import { headlessShow, solo, turnSteps, SCRIPT_MAX, KEY_MAX, ALL } from './helpe
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);
 const CYBER = stats(RESULTS, spec).full.find(r => r.ending.id === 'cyber').order;   // 正解（老鼠在 Lv4 分岔成機器鼠）
-const ALIEN = RESULTS.find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（變異鼠稱王）
+const ALIEN = RESULTS.find(r => r.ending.id === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（列舉裡第一條以「變異鼠稱王」為標題的；修正批次 2：攤車被吹走排在外星前面）
 const BRANCHES = [CYBER, ALIEN];   // 兩種分岔的劇本都量
 const MAXED = Object.fromEntries(spec.ORDER.map(id => [id, spec.ITEMS[id].max]));   // 全 MAX（尾聲）
 const RAT = 'quat/enemies/Rat.glb', AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
@@ -96,7 +96,7 @@ test('view: Lv1 / Lv2 homes follow meta.trouble — flooded → in front of the 
   assert.deepEqual(rat.view(lv({ rat: 2 }), { domeRats: true }, wm)['rat.pack'].home, { kind: 'wander', at: GATE, r: 0.9 });
 });
 test('rat is a 4-level item (single path §4.4) and the transition clamp is gone', async () => {
-  assert.equal(spec.ITEMS.rat.max, 4); assert.equal(spec.ITEMS.typhoon.max, 4);
+  assert.equal(spec.ITEMS.rat.max, 4); assert.equal(spec.ITEMS.typhoon.max, 3);   // 修正批次 2：颱風三級
   await assert.rejects(import('../src/actors/clamp.js'), 'clamp.js deleted');
 });
 // 唯一正解 §4.4：Lv4 分岔就是最終型態——賽博＝原本 Lv5 的軍團＋王冠鼠，外星＝原本 Lv5 的加冕＋UFO
@@ -473,14 +473,15 @@ test('the placement turn plays live: a rat goes to the crate and bites (no cart 
   assert.deepEqual(walls.bad, []); assert.ok(walls.frames > 20);
 });
 // 老鼠當指標（§5.2）：上一回合結算出有出問題的那棟，放下老鼠時爬上岸直接跑過去聞一聞（不先在巨蛋旁 …… ！）、在那棟門口晃。
-// 放法同上：放颱風那回合鮮奶 2 還在等棒球（燈泡已經 3，沒有停電）——放老鼠那回合 trouble 是鮮奶（早餐店門口）
+// 放法：鮮奶、棒球、晶片、代幣——第 4 回合晶片 2 在等燈泡（鮮奶 5，咬不到）：放老鼠那回合 trouble 是晶片（廠房門口）。
+// 修正批次 2：原本的放法鮮奶 2（等棒球）放老鼠會接著咬鮮奶——那種回合老鼠直接跑去牛奶箱（下一題）
 test('placed with trouble: the first rat runs from the landing to the front of the trouble building and sniffs there', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, walls = watchWalls(h);
   let st = engine.createState(spec);
-  for (const id of ['milk', 'chip', 'bulb', 'token', 'typhoon']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.equal(show.stage.meta.trouble, 'milk'); const at = show.stage.meta.troubleAt;
-  const shop = modOf('milk').visitSpot(2, { lv: show.stage.lv, flags: show.stage.flags });
-  assert.deepEqual(at, frontOf(shop, shop.r), 'the breakfast-shop front');
+  for (const id of ['milk', 'baseball', 'chip', 'token']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.meta.trouble, 'chip'); assert.ok(show.stage.lv.milk >= 3, 'nothing to bite'); const at = show.stage.meta.troubleAt;
+  const shop = modOf('chip').visitSpot(show.stage.lv.chip, { lv: show.stage.lv, flags: show.stage.flags });
+  assert.deepEqual(at, frontOf(shop, shop.r), 'the chip works front');
   const sniffs = [], placed = rat.script.placed;
   rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
   try {
@@ -488,11 +489,28 @@ test('placed with trouble: the first rat runs from the landing to the front of t
     await run([r.events.find(e => e.kind === 'placed')]);
     assert.equal(sniffs.length, 1, 'one sniff, no look-at-the-dome');
     const goal = show.nav.nearestWalkable(at);
-    assert.ok(near(sniffs[0], goal, 0.3), `sniffs at the breakfast-shop front (${sniffs[0].x.toFixed(2)}, ${sniffs[0].z.toFixed(2)}) vs (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
+    assert.ok(near(sniffs[0], goal, 0.3), `sniffs at the chip works front (${sniffs[0].x.toFixed(2)}, ${sniffs[0].z.toFixed(2)}) vs (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
     assert.ok(!bubblesLog.slice(n).some(b => b.kind === '……'), 'no catching-breath bubble on the trouble run');
     const [m] = show.roster.members('rat.pack'); assert.equal(m.mode, 'home');
     assert.deepEqual(show.roster.members('rat.pack').length, 1);
   } finally { rat.script.placed = placed; }
+  assert.deepEqual(walls.bad, []);
+});
+// 修正批次 2：有 trouble、這回合又要咬鮮奶（鮮奶 ≤2）——上岸直接跑去牛奶箱旁（不先跑去出問題的那棟，再走一趟去咬），咬的那段 ≤ 4.5 s。
+// 放法：鮮奶、晶片、燈泡、代幣、颱風（第 5 回合捷運淹水，trouble 是車站）→ 放老鼠：鮮奶 2 被咬
+test('placed with trouble on a biting turn: the rat runs straight to the milk crate, and the bite plays ≤ 4.5 s', async () => {
+  const h = await headlessShow(), { show, run } = h, walls = watchWalls(h);
+  let st = engine.createState(spec);
+  for (const id of ['milk', 'chip', 'bulb', 'token', 'typhoon']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.meta.trouble, 'token', 'the flooded station'); assert.ok(show.stage.lv.milk <= 2, 'milk to bite');
+  const r = engine.place(st, 'rat', spec), bite = r.events.find(e => e.kind === 'fx' && e.cause === 'rat' && e.delta?.target === 'milk');
+  assert.ok(bite, 'the rat bites the milk this turn');
+  const marks = [];
+  await run([r.events.find(e => e.kind === 'placed'), bite], { onMark: e => marks.push([e, show.elapsed]) });
+  const [m] = show.roster.members('rat.pack'), crate = show.nav.nearestWalkable(offset(milk.CRATE, 0.45, 0.2));
+  const k = marks.findIndex(([e]) => e === bite), secs = show.elapsed - marks[k][1];
+  assert.ok(secs <= SCRIPT_MAX + 0.8 + 0.4, `the bite ${secs.toFixed(2)} s (≤ 4.5 plus its pan / gap)`);
+  assert.ok(near(m.pos, crate, 0.6), `the rat ends by the crate (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
   assert.deepEqual(walls.bad, []);
 });
 // 沒有 trouble（ctx 沒舞台、或 meta.troubleAt null）：照舊——爬上岸、……、聞一聞、看巨蛋 ！、回窩旁
@@ -523,8 +541,8 @@ test('a bite that costs milk a level: crate tips, kids ！ run to the school gat
 // 之後日常自己走過去：老鼠在門口晃、工作人員跟著牠們
 test('typhoon dome rats: after the landing turn the real rats settle by the dome gate and the staff stay with them', async () => {
   const h = await headlessShow(), { show } = h, walls = watchWalls(h);
-  // 唯一正解之後重找（鼠災在颱風移到大巨蛋 Lv3：老鼠 ≥3、棒球 ≥4）：同 typhoon.test 的鼠災那局
-  const { events } = await liveAt(h, ['milk', 'token', 'rat', 'baseball', 'typhoon', 'chip', 'bulb'], e => e.flag?.name === 'domeRats', { whole: true });
+  // 修正批次 2 重找（鼠災在颱風放下那回合：老鼠 ≥3、棒球 ≥4）：同 typhoon.test 的鼠災那局
+  const { events } = await liveAt(h, ['milk', 'token', 'baseball', 'rat', 'chip', 'typhoon'], e => e.flag?.name === 'domeRats', { whole: true });
   assert.ok(events.some(e => e.flag?.name === 'domeRats'));
   const rats = show.roster.members('rat.pack'), staff = show.roster.members('baseball.staff');
   assert.equal(rats.length, 5); assert.equal(staff.length, 2);
@@ -619,14 +637,16 @@ test('Lv3 train live: the camera goes to the nest, then home', async () => {
   await liveAt(h, SOLUTIONS[0], isRat(3));
   assert.deepEqual(focusTrail(h.rig.log, r0).map(String), [String(cellOf('rat')), 'home']);
 });
-// 外星壞局（變異鼠稱王）：老鼠 2 → 4 合併跳級在最後一輪（照一般回合演）；整回合 live 演，◆ 關鍵級演完——UFO 從天上降下、變異鼠戴王冠、石堆島綠光圈
+// 外星壞局（變異鼠稱王）：老鼠 2 → 4 合併跳級在最後一輪（照一般回合演）；整回合 live 演，◆ 關鍵級演完——UFO 從天上降下、變異鼠戴王冠、石堆島綠光圈。
+// 修正批次 2：ALIEN 的老鼠 Lv4 落在第 8 回合，這題自己找列舉裡第一條老鼠最後放、以「變異鼠稱王」為標題的放法（老鼠 Lv4 一定在最後一輪）
+const ALIEN_LAST = RESULTS.find(r => r.ending.id === 'alien' && r.state.lv.rat === 4 && r.order.at(-1) === 'rat').order;
 test('alien bad ending: the merged rat 2 → 4 in the last round still plays the UFO coming down, the crown and the ring', async () => {
   const h = await headlessShow(), { show, run } = h;
   let s = engine.createState(spec), evs = null;
-  const steps = [...ALIEN.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
+  const steps = [...ALIEN_LAST.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
-    if (r.events.some(isRat(4))) { evs = [...r.events, { kind: 'settle' }]; assert.ok(i >= ALIEN.length, 'the last round'); break; }
+    if (r.events.some(isRat(4))) { evs = [...r.events, { kind: 'settle' }]; assert.ok(i >= ALIEN_LAST.length, 'the last round'); assert.ok(r.events.find(isRat(4)).jump, 'merged 2 → 4'); break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
   assert.ok(evs && s.flags.ratBranch === 'alien');

@@ -6,7 +6,7 @@ import { installFakeDom } from './helpers/fakedom.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
-const { createStage, diffParts, troubleOf, troubleSpot, growsOn } = await import('../src/actors/stage.js');
+const { createStage, diffParts, troubleOf, troubleSpot, growsOn, TROUBLE_IN } = await import('../src/actors/stage.js');
 const { createBlink, GROW_DUR, GROW_HOLD, BLINK, SHRINK_DUR } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
@@ -271,11 +271,12 @@ test('settle folds the wait event of its turn into meta.trouble (+ the spot in f
   assert.equal(stage.meta.trouble, null, 'the wait event alone does not settle anything');
   stage.apply({ kind: 'settle' });
   const sp = chip.visitSpot(2, { lv: stage.lv, flags: stage.flags });
-  assert.equal(stage.meta.trouble, 'chip'); assert.deepEqual(stage.meta.troubleAt, frontOf(sp, sp.r));
+  assert.equal(stage.meta.trouble, 'chip'); assert.deepEqual(stage.meta.troubleAt, troubleSpot('chip', stage.lv, stage.flags, [chip]));
   stage.apply({ kind: 'settle' });
   assert.equal(stage.meta.trouble, null, 'the next turn had no wait event'); assert.equal(stage.meta.troubleAt, null);
-  // 沒有 visitSpot（颱風、離島那一級）→ 錨點
-  assert.deepEqual(troubleSpot('typhoon', { ...LV }, {}, [fakeMilk]), anchorWorld('typhoon'));
+  // 沒有 visitSpot（颱風、離島那一級）→ 錨點（錨點離格心 > TROUBLE_IN 時照樣沿格心方向拉回 1.3）
+  const ty = troubleSpot('typhoon', { ...LV }, {}, [fakeMilk]), ta = anchorWorld('typhoon');
+  assert.ok(Math.abs(ty.x / ta.x - ty.z / ta.z) < 1e-9 && Math.hypot(ty.x, ty.z) <= 1.3 + 1e-9, `the typhoon anchor pulled toward the centre cell's heart (${ty.x.toFixed(2)}, ${ty.z.toFixed(2)})`);
   stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }); stage.reset();
   stage.apply({ kind: 'settle' }); assert.equal(stage.meta.trouble, null, 'reset forgets the wait event too');
 });
@@ -325,4 +326,22 @@ test('every actor view through the solution, the alien game and a blown-cart gam
   assert.ok(growing.has('milk.main') && growing.has('chip.main') && growing.has('baseball.main'), 'the buildings grow');
   console.log(`# grow: ${[...growing].map(([k, kind]) => `${k}(${kind})`).sort().join(' ')}`);
   console.log(`# glow only: ${[...still].filter(k => !growing.has(k)).sort().join(' ')}`);
+});
+
+// 老鼠的散步中心不貼格邊（使用者 2026-11-01 截圖：路燈的門口點落在橋頭，老鼠一直走上橋）：每個物品每一級的 troubleSpot 離所在格心 ≤ TROUBLE_IN 1.3
+// （走路格內切半徑約 1.95、老鼠繞 0.4，留 0.65 餘裕）；本來就在 1.3 內的不動（晶片 Lv2 的正面點照舊）
+test('troubleSpot keeps the rats\' wander centre ≤ TROUBLE_IN from the cell centre at every level of every item; nearer spots are untouched', async () => {
+  const { ALL } = await import('./helpers/show.js'), { axialToWorld, cellAt } = await import('../src/scene/hex.js'), { frontOf } = await import('../src/actors/anchors.js');
+  const spec = await import('../src/rules/spec.js');
+  assert.equal(TROUBLE_IN, 1.3);
+  let pulled = 0;
+  for (const id of spec.ORDER) for (let n = 1; n <= spec.ITEMS[id].max; n++) {
+    const lv = Object.fromEntries(spec.ORDER.map(i => [i, 0])); lv[id] = n;
+    const p = troubleSpot(id, lv, {}, ALL), cell = cellAt(p.x, p.z); if (!cell) continue;
+    const c = axialToWorld(...cell), d = Math.hypot(p.x - c.x, p.z - c.z);
+    assert.ok(d <= TROUBLE_IN + 1e-9, `${id} ${n}: ${d.toFixed(2)} from the cell centre`);
+    const mod = ALL.find(m => m.id === id), sp = mod.visitSpot?.(n, { lv, flags: {} });
+    if (sp) { const f = frontOf(sp, sp.r ?? 0); if (cellAt(f.x, f.z) && Math.hypot(f.x - c.x, f.z - c.z) > TROUBLE_IN) pulled++; else if (cellAt(f.x, f.z)) assert.deepEqual(p, f, `${id} ${n} untouched`); }
+  }
+  assert.ok(pulled >= 3, `the lamp, the crate and the nest door are pulled in (${pulled})`);
 });

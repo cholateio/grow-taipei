@@ -8,7 +8,7 @@
 import { createPartFactory } from './parts.js';
 import { anchorWorld, frontOf } from './anchors.js';
 import { foldEvent, lockFlags } from '../rules/engine.js';
-import { cellAt } from '../scene/hex.js';
+import { cellAt, axialToWorld } from '../scene/hex.js';
 
 export function diffParts(prev, next) {
   const same = k => k in prev && k in next && JSON.stringify(prev[k]) === JSON.stringify(next[k]);
@@ -33,15 +33,24 @@ export function troubleOf(lv, flags, waits, spec) {
 }
 // 出問題那棟的門口：那個物品這一級建築的正面（visitSpot 往鏡頭側走 r，不落 nav——老鼠的家用它當散步中心）；
 // 正面不在主島格上就用 visitSpot 本身；沒有 visitSpot（颱風、離島那一級）或也不在主島上 → 那個物品的錨點
+// 老鼠的散步中心離格心最多 TROUBLE_IN（使用者 2026-11-01 截圖：路燈的門口點剛好落在格邊的橋頭，老鼠繞著它晃就一直走上橋、兩隻在窄橋上互相讓不開）：
+//   走路格的格內切半徑約 1.95（橋頭在那裡），老鼠繞 TROUBLE_R 0.4，留 0.65 的餘裕 → 門口點超過 1.3 就沿格心方向拉回 1.3
+export const TROUBLE_IN = 1.3;
 export function troubleSpot(item, lv, flags, modules) {
   if (!item) return null;
   const n = lv[item] ?? 0, sp = n > 0 ? modules.find(m => m.id === item)?.visitSpot?.(n, { lv, flags }) : null;
   if (sp) {
     const f = frontOf(sp, sp.r ?? 0);
-    if (cellAt(f.x, f.z)) return f;
-    if (cellAt(sp.x, sp.z)) return { x: sp.x, y: sp.y, z: sp.z };
+    if (cellAt(f.x, f.z)) return pullIn(f);
+    if (cellAt(sp.x, sp.z)) return pullIn({ x: sp.x, y: sp.y, z: sp.z });
   }
-  return anchorWorld(item);
+  return pullIn(anchorWorld(item));
+}
+function pullIn(p) {
+  const cell = cellAt(p.x, p.z); if (!cell) return p;
+  const c = axialToWorld(...cell), d = Math.hypot(p.x - c.x, p.z - c.z);
+  if (d <= TROUBLE_IN) return p;
+  const k = TROUBLE_IN / d; return { x: c.x + (p.x - c.x) * k, y: p.y, z: c.z + (p.z - c.z) * k };
 }
 
 // 長出來（blink.grow，修正批次 2 協調者裁決）只給建築：kind 是 compound／glb／campus、footprint 不是 false、不是 tagAlong 點綴的才長；

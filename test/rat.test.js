@@ -698,3 +698,29 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4]);
 });
+
+// 使用者 2026-11-01 截圖：老鼠「卡在」橋上——trouble 是路燈（燈泡 Lv1–3）時門口點在橋頭，老鼠繞著它晃就走上窄橋、互相讓不開。
+// troubleSpot 把中心拉回格內（stage.js TROUBLE_IN）之後：鼠窩那回合演完再放 30 s 日常，走到路燈之後（10 s 起）老鼠一幀都不在橋上（cellAt null），也沒有誰停超過 6 s
+// （拉回之前：30 s 裡在橋上 4.5／1.9／3.5 s）
+test('live: rats loitering at the lamp door (trouble = bulb) never step onto a bridge and never freeze', async () => {
+  const { headlessShow } = await import('./helpers/show.js'), spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js');
+  const { cellAt } = await import('../src/scene/hex.js');
+  const { show, run } = await headlessShow({ seed: 21 });
+  let s = engine.createState(spec);
+  for (const id of ['milk', 'bulb', 'rat', 'chip']) { const r = engine.place(s, id, spec); s = r.state; await run([...r.events, { kind: 'settle' }]); }
+  assert.equal(show.stage.meta.trouble, 'bulb');
+  const rats = show.roster.members('rat.pack'); assert.equal(rats.length, 3);
+  let t = show.elapsed; const dt = 1 / 30, bridge = new Map(), still = new Map();
+  for (let f = 0; f < 30 * 30; f++) {
+    show.update(dt, t += dt);
+    for (const m of rats) {
+      if (f >= 30 * 10 && !cellAt(m.pos.x, m.pos.z)) bridge.set(m, (bridge.get(m) ?? 0) + dt);   // 前 10 s 是從窩走去路燈（過橋是正常的）
+      const r = still.get(m) ?? { pos: { ...m.pos }, since: t, max: 0 }; still.set(m, r);
+      if (Math.hypot(m.pos.x - r.pos.x, m.pos.z - r.pos.z) > 0.03) { r.pos = { ...m.pos }; r.since = t; } else r.max = Math.max(r.max, t - r.since);
+    }
+  }
+  for (const m of rats) {
+    assert.equal(bridge.get(m) ?? 0, 0, `rat#${m.i} spent ${(bridge.get(m) ?? 0).toFixed(1)} s on a bridge`);
+    assert.ok(still.get(m).max < 6, `rat#${m.i} froze for ${still.get(m).max.toFixed(1)} s`);
+  }
+});

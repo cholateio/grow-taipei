@@ -14,6 +14,8 @@
 // （老闆搖杯）；stand 帶 rescue 的 spot 在走路格外就站到最近的可走點。不認得的 home 先當成站在 spec.at。
 // setFocus(cells)（§13.4 背景減量）：演出中只有家在焦點格裡的人做日常（wander 挑新目標、繞圈、沿折線走、stand 小動作），
 //   path 成員只要折線經過焦點格就照走（整條路都不在鏡頭裡才停）；其他人走完手上這一趟就站著；劇本手上的人、走回站位的人照樣動；ride、follow 不受限。null = 全部恢復。
+// 換身分（from）：目標名冊從來源名冊搬人、原地換裝閃一下；pick 'nearest' 搬離 spec.at 最近、而且是來源這次讓出來的人
+//   （來源要在同一次 sync 裡先 declare，見 pickNearest）。編號變了但沒換身分的人（頂位、重新編號）不換配件、衣服，不閃（accFor／shirtFor）。
 // 進場（§13.2）：新成員出現在入口點（home.entry，陣列依 i 輪流；沒給就用家所在格子邊上離家最遠、走得到的點；入口被擋就用最近的可走點），
 //   在背景走回家（arriving：wander 走到第一個散步點、path 走到自己錯開的那一點、stand 走回 spot），焦點不在這格也照走、不閃；
 //   家不在主島走路格上（衛星島、橋上）、ride 照舊直接在家出現。宣告的家搬了，留下來的人一樣走過去，不重生。
@@ -321,7 +323,9 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   }
 
   // pick 'nearest'（修正批次 roles，裁決 R23：送牛奶的島民原地變小學生、等車的島民變站長）：來源的成員與待退的人裡
-  //   （藏起來的不算）離 p 最近的那個；選中的是留下來的成員，就由最後一個待退的人頂他的位子（同一個編號，家不變），來源人數照宣告
+  //   （藏起來的不算）離 p 最近的那個；選中的是留下來的成員，就由最後一個待退的人頂他的位子（同一個編號，家不變），來源人數照宣告。
+  //   只搬來源「這次讓出來的」人（待退的人數，見 apply）——所以來源名冊要在同一次 sync 裡、比目標名冊先 declare（人數先減），
+  //   不然還沒有待退的人、什麼都不搬，目標從入口補人、來源之後才退一個。島民是 landmarks 的名冊，landmarks 是舞台的第一個模組
   function pickNearest(src, p) {
     const d = m => Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
     let best = null;
@@ -741,7 +745,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const dx = m.pos.x - pushedFrom[i].x, dz = m.pos.z - pushedFrom[i].z;
       if ((!dx && !dz) || !m.trip) return;
       // 橋上（只有 0.5 寬，橫向推不開）：往後推的那一截（沿走路方向的負分量）記成游標倒退——被前面的人擋住就跟在後面慢下來，
-      // 不會下一幀又被游標拉進他身上（第二輪審稿：偵防師在窄橋上跟著通勤的工程師貼著走 0.09）。格子裡照舊記成橫移繞過去
+      // 不會下一幀又被游標拉進他身上（第二輪審稿：窄橋上跟著沿折線走的人貼著走 0.09）。格子裡照舊記成橫移繞過去
       // （格子裡也倒退的話，站著的人擋在路上就永遠過不去）
       if (!cellAt(m.pos.x, m.pos.z)) {
         // 只在跟著同方向的人、或被前面站著的人擋住時倒退；迎面的人（朝向相反）兩邊各自讓開走過去（sidestep），身後站著的人不擋

@@ -143,6 +143,14 @@ test('islanders: one fewer from milk 3 and one fewer from token 2 (the islanders
 // 唯一正解整局 live：鮮奶 3 那一回合，送牛奶的島民原地變成小學生（同一個小人、黃衣、閃一下），另一個小學生從校門外走進來；島民少一個
 test('live, the solution: at milk 3 the islander who brought the milk becomes one of the two pupils; the islanders are one fewer', async () => {
   const h = await headlessShow(), { show } = h;
+  // 審稿 Minor #2：declare 那一刻盯住來源名冊裡劇本手上的那位（走過來的人），搬過去的就是他、原地不動
+  const declare = show.roster.declare, swapped = [];
+  show.roster.declare = (k, sp, opts) => {
+    const by = k === 'milk.kids' && sp?.from ? show.roster.members('landmarks.islanders').filter(m => m.mode === 'script') : null, at = by?.map(m => ({ ...m.pos }));
+    const out = declare(k, sp, opts);
+    if (by?.length) swapped.push({ by, at, after: by.map(m => ({ ...m.pos })), now: show.roster.members('milk.kids') });
+    return out;
+  };
   let s = engine.createState(spec), checked = false;
   for (const step of turnSteps(SOLUTIONS[0])) {
     const r = step(s); s = r.state;
@@ -152,6 +160,10 @@ test('live, the solution: at milk 3 the islander who brought the milk becomes on
     const kids = show.roster.members('milk.kids'), isl = show.roster.members('landmarks.islanders');
     assert.equal(kids.length, 2);
     assert.equal(kids.filter(m => before.has(m)).length, 1, 'one pupil is a former islander (same member)');
+    assert.equal(swapped.length, 1, 'one swap declaration'); const [{ by, at, after, now }] = swapped;
+    assert.equal(by.length, 1, 'one islander in the script (the one who walked over)');
+    assert.ok(now.includes(by[0]) && kids.includes(by[0]), 'the islander who walked over is the pupil');
+    assert.ok(Math.hypot(after[0].x - at[0].x, after[0].z - at[0].z) < 1e-6, 'swapped in place');
     assert.ok(kids.every(m => m.walker.shirt === C.yellow), 'both in yellow');
     assert.equal(isl.length, landmarks.HOMES.length - 1 - (show.stage.lv.token >= 2 ? 1 : 0));
     assert.ok(isl.every(m => before.has(m)), 'no islander walked in to replace him');
@@ -181,6 +193,18 @@ test('live, token 2 before milk 3: in the milk 3 turn no islander who stays chan
     checked = true; break;
   }
   assert.ok(checked, 'milk 3 reached');
+});
+// 審稿 Minor #6：Lv3 走去換裝的那一點照路長挑，走不到的點（nav.route 到不了只回起點，路長 0）不算——不然 0 排第一
+test('pupilSpot: the shorter walkable route of the two playground spots; an unreachable spot never wins', () => {
+  const [W, E] = milk.PUPIL, from = { x: 0, y: 0, z: 0 }, d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+  const nav = (stuck = null) => ({
+    nearestWalkable: p => ({ ...p }),
+    route: (a, b) => (stuck && d(b, stuck) < 1e-9 ? [{ ...a }] : [{ ...a }, { ...b }]),
+    routeLength: path => path.slice(1).reduce((t, q, k) => t + d(path[k], q), 0),
+  });
+  const near = d(from, W) < d(from, E) ? W : E, far = near === W ? E : W;
+  assert.equal(milk.pupilSpot(nav(), from), near, 'the shorter walk');
+  assert.equal(milk.pupilSpot(nav(near), from), far, 'the unreachable one (route length 0) is skipped');
 });
 test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
   const { people, run } = await headlessShow({ modules: [milk] });

@@ -383,7 +383,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
       for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
         const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
         if (d >= need) continue;
-        // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）不推：另一個人自己退開整段（第二輪：偵防師和通勤的工程師在橋上擦身）
+        // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）不推：另一個人自己退開整段（第二輪：跟隨的人和沿折線走的人在橋上擦身）
         if (!!walkers[i].cursor !== !!walkers[j].cursor) { const [w, r] = walkers[i].cursor ? [walkers[j], walkers[i]] : [walkers[i], walkers[j]]; stepOff(w, r, need); continue; }
         const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
         const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];

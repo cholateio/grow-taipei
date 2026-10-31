@@ -32,7 +32,12 @@ const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車�
 // 送牛奶的島民變小學生的地方（裁決 R23）：操場鏡頭側的兩點（西半邊、東半邊），演到那拍挑他走過去路比較短的那點（一級 ≤ 4.5 s：
 // 他可能在牛奶箱那側〔西〕、也可能從中心格那座橋過來〔東〕）；早餐店的桌子外擴之後也站得到；離鮮奶錨點 1.06／1.14，
 // 比別格的島民都近（名冊 pick 'nearest' 搬的就是他）
-const PUPIL = [offset(AT, -0.35, 1.0), offset(AT, 0.7, 0.9)];
+export const PUPIL = [offset(AT, -0.35, 1.0), offset(AT, 0.7, 0.9)];
+// 兩點裡從 from 走過去路比較短的那點；走不到的點（nav.route 到不了只回起點，路長 0）不算（同 bulb.js nearestPair）；兩點都走不到用第一點
+export function pupilSpot(nav, from) {
+  const len = p => { const path = nav.route(from, p), last = path.at(-1), end = nav.nearestWalkable(p); return last && Math.hypot(last.x - end.x, last.z - end.z) < 1e-3 ? nav.routeLength(path) : Infinity; };
+  return PUPIL.map(p => [p, len(p)]).reduce((b, x) => (x[1] < b[1] ? x : b))[0];
+}
 export const KID_ENTRY = offset(AT, 1.65, 0.1);
 // 名冊一次補好幾個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——
 // 三個人疊在同一點生出來會被互推推進右柱的外擴角落，從那裡找路會繞到島北（Task 6a：鮮奶節小孩跑去牛奶車量到 7.1 s）。
@@ -269,7 +274,7 @@ export const script = {
       const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE));
       return [
         // 人就在旁邊時走路那段也至少 1 秒（一級 ≥ 3 s，同 Lv2）
-        B.together([B.walk(islander, c => { const m = islander(c); return m && PUPIL.map(p => [p, c.nav.routeLength(c.nav.route(m.pos, p))]).sort((a, b) => a[1] - b[1])[0][0]; }), B.wait(1.0)]),
+        B.together([B.walk(islander, c => { const m = islander(c); return m && pupilSpot(c.nav, m.pos); }), B.wait(1.0)]),
         // ♪ 跟換裝的閃白一起冒在他頭上（同牛奶箱放下時的 ♥）：他的路有時要 1.6 s，♪ 另佔一拍的話整級 4.9 s（> 4.5）
         B.together([B.apply(e), B.bubble(c => islander(c) ?? kid(ctx, 0)(c), '♪', 0.6)]),
         gather(ctx, PLAY, 0.45),   // 一個接一個出發（gather 照路線排 delay）

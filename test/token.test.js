@@ -590,6 +590,14 @@ test('Lv2: the station master is the nearest islander (from + pick nearest); the
 });
 test('live, the solution: after token 2 the station master is a former islander (same member) and the islanders are one fewer', async () => {
   const h = await headlessShow(), { show } = h;
+  // 審稿 Minor #2：declare 那一刻盯住來源名冊裡劇本手上的那位（走到崗位的人），搬過去的就是他、原地不動
+  const declare = show.roster.declare, swapped = [];
+  show.roster.declare = (k, sp, opts) => {
+    const by = k === 'token.staff' && sp?.from ? show.roster.members('landmarks.islanders').filter(m => m.mode === 'script') : null, at = by?.map(m => ({ ...m.pos }));
+    const out = declare(k, sp, opts);
+    if (by?.length) swapped.push({ by, at, after: by.map(m => ({ ...m.pos })), now: show.roster.members('token.staff') });
+    return out;
+  };
   let s = engine.createState(spec), checked = false;
   for (const step of [...SOLUTIONS[0].map(id => st => engine.place(st, id, spec))]) {
     const r = step(s); s = r.state;
@@ -598,6 +606,10 @@ test('live, the solution: after token 2 the station master is a former islander 
     if (!(show.stage.lv.token >= 2 && !(was.token >= 2))) continue;
     const [st, ...more] = show.roster.members('token.staff');
     assert.equal(more.length, 0); assert.ok(before.has(st), 'the staff was an islander');
+    assert.equal(swapped.length, 1, 'one swap declaration'); const [{ by, at, after, now }] = swapped;
+    assert.equal(by.length, 1, 'one islander in the script (the one who walked to the post)');
+    assert.deepEqual(now, [by[0]]); assert.equal(st, by[0], 'the islander who walked to the post is the station master');
+    assert.ok(Math.hypot(after[0].x - at[0].x, after[0].z - at[0].z) < 1e-6, 'swapped in place');
     assert.equal(st.walker.accessory, 'uniform');
     assert.equal(show.roster.members('landmarks.islanders').length, 4 - 1 - (show.stage.lv.milk >= 3 ? 1 : 0));
     checked = true; break;

@@ -148,7 +148,7 @@ test('re-declaring with a new scale updates the walker scale and headY in place'
   blink.update(1); assert.ok(now.every(m => !m.walker.white));
 });
 
-// 晶片工程師通勤：path 日常沿折線來回（開放路徑走到底折返），起點依 i / n 錯開
+// path 日常：沿折線來回（開放路徑走到底折返），起點依 i / n 錯開
 const ROUTE = [{ x: AT.x - 1, y: AT.y, z: AT.z }, { x: AT.x + 0.2, y: AT.y, z: AT.z }, { x: AT.x + 0.2, y: AT.y, z: AT.z + 0.8 }];   // 總長 2.0
 const toRoute = p => Math.min(...ROUTE.slice(1).map((b, k) => {
   const a = ROUTE[k], dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz)));
@@ -256,10 +256,19 @@ test('from + pick nearest takes only what the source gives up: no surplus → th
   assert.equal(r2.members('dst')[0], a.near, 'one moved over'); assert.equal(r2.members('dst').length, 2);
   assert.deepEqual(r2.members('src'), [a.far]); assert.equal(p2.walkers.length, 3, 'one walks in');
 });
-test('from + pick nearest skips a hidden source member', () => {
-  const { roster, nav } = setup(), { near, far } = islandersAt(roster, nav);
-  roster.hide(near); roster.declare('src', isle(1)); roster.declare('dst', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
-  assert.deepEqual(roster.members('dst'), [far]); assert.deepEqual(roster.members('src'), [near]);
+// 審稿 Minor #7：藏起來的人（颱風躲進門裡）不搬——最近的那個藏著就挑下一個；待退的那個剛好藏著、選中的是留下的成員時，
+// 照樣由他頂位（同編號，還是藏著、不閃），來源人數照宣告、沒人走出去
+test('from + pick nearest skips the hidden nearest member; a hidden leaver still stays in place of the one who moved', () => {
+  const { roster, people, blink, nav } = setup(); roster.declare('src', isle(3)); roster.flush();
+  const [a, b, c] = roster.members('src'), at = (dx, dz) => nav.nearestWalkable({ x: AT.x + dx, y: AT.y, z: AT.z + dz });
+  roster.setPose(a, { ...at(0.2, 0.2) }); roster.setPose(b, { ...at(0.8, 0.3) }); roster.setPose(c, { ...at(3.5, 0) });
+  roster.hide(a); roster.hide(c);
+  roster.declare('src', isle(2)); roster.declare('dst', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('dst'), [b], 'the nearest visible one');
+  assert.deepEqual(roster.members('src'), [a, c], 'the hidden leaver takes his place');
+  assert.equal(c.i, 1); assert.ok(c.hidden, 'still hidden');
+  assert.equal(people.walkers.length, 3, 'nobody walks out, nobody new');
+  assert.ok(!blink.log.some(([k, w]) => k === 'walker' && (w === a.walker || w === c.walker)), 'no blink on the two who stayed');
 });
 // 修正輪 1（審稿 Important #1）：配件照 i 輪流的名冊（島民 ['none', 'cap']），pick 讓待退的人頂位、take 重新編號之後，
 // 他的編號變了但人沒換身分——陣列裡本來就有他現在的配件就不換、不閃（以前下一次 apply 才發現不一樣：setAccessory ＋ glint，帽子無緣無故不見）
@@ -444,7 +453,7 @@ test('home(m, { hurry }) on a path member rejoins the route at its nearest point
   assert.ok(gap(joined, near) < 0.3, `rejoined ${gap(joined, near).toFixed(2)} from where it stood`);
 });
 // 計畫 9（2026-10-30 錄影「卡成一坨」）：同一條折線上 ≥ 2 人的名冊，劇本放回來（含 hurry）走回自己錯開的那一點（total × i / n）——
-// 三個工程師在通勤路線上擠在一起被叫去看東西、放回來，10 秒後沿線的「相位」兩兩 ≥ 0.25 × total（開放路徑走到底折返：
+// 同一條開放折線上的三個人擠在一起被叫去看東西、放回來，10 秒後沿線的「相位」兩兩 ≥ 0.25 × total（開放路徑走到底折返：
 // 相位 = 往前走時的 s、折返時的 2·total − s，在 2·total 的圈上量；沿線位置本身在折返時會短暫交會，live 測試量多久貼著）
 test('path homes with n ≥ 2: members released from a script walk back to their own staggered points, not the nearest one', async () => {
   const { measurePath } = await import('../src/scene/path.js');
@@ -466,7 +475,7 @@ test('path homes with n ≥ 2: members released from a script walk back to their
     assert.ok(circ >= 0.25 * T, `members ${i}–${j}: ${circ.toFixed(2)} apart along the route (total ${T.toFixed(2)})`);
   }
 });
-// 2026-10-31（唯一正解收尾，chip.test 工程師扎堆）：錯開點只錯開接上去的那一點——別人剛好同方向經過，兩人就同速貼著走一整局。
+// 2026-10-31（唯一正解收尾，當時沿開放折線來回的兩個人扎堆）：錯開點只錯開接上去的那一點——別人剛好同方向經過，兩人就同速貼著走一整局。
 // 接上開放折線時看同一條線上的人的相位（同上一個測試）：同方向 < 1 公尺就往回走；端點上兩個方向是同一個相位，先站著等別人走遠（≤ 3 秒）
 test('path homes with n ≥ 2: a member rejoining next to a same-direction walker turns back, and at an end of the line waits until the other is ≥ 1 m ahead', async () => {
   const { createPathCursor } = await import('../src/scene/path.js');
@@ -862,7 +871,7 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
   assert.deepEqual(stuck, []);
   assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building`);
 });
-// 最終審查修正：手畫的折線（當時的工程師通勤路線＝routeBetween 接起來的路、老鼠、電工主路 ROAD）唯一正解每一級都在外擴 PAD 的 footprint 外
+// 最終審查修正：手畫的折線（routeBetween 接起來的路、老鼠、電工主路 ROAD）唯一正解每一級都在外擴 PAD 的 footprint 外
 // （每 0.02 取樣，閉合的折線含最後接回起點那段）——沿折線走的人不檢查走路格，路本身要畫在建築外
 test('every hand-drawn path home stays outside every padded footprint at every level of the solution', async () => {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
@@ -895,7 +904,7 @@ test('every hand-drawn path home stays outside every padded footprint at every l
   assert.deepEqual([...seen].sort(), ['bulb.electrician']);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
-// 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子
+// 最終審查修正：沿手畫折線（開放折線、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子
 test('live, the solution and the alien bad game: everyone on a bridge stays on the deck (y within 0.01 of nav.groundY; ≤ 0.05 blips at the ends for ≤ 0.1 s)', async () => {
   const { sunk, bridgeFrames } = await livePlay();
   assert.ok(bridgeFrames > 1000, `${bridgeFrames} member-frames on bridges`);

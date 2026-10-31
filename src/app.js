@@ -56,7 +56,7 @@ export const SHIBA = { path: 'quat/animals/ShibaInu.glb', opts: { h: 0.22, anim:
 // 延到第一幀畫出來之後才載的點綴（路徑；startup-bytes 不算進開局）：柴犬 528 KB，比開局其他模型加起來還大（計畫 12）
 export const DEFERRED_DECOR = [SHIBA.path];
 
-// 第一幀畫出來之後才做的事（純點綴的模型不擋開局）：add 收集；每幀迴圈在 render 之後呼叫 drawn()，第一次才交給 schedule
+// 第一幀畫出來之後才做的事（純點綴的大模型不跟開局的樹、船搶頻寬；首畫本來就不等 glb）：add 收集；每幀迴圈在 render 之後呼叫 drawn()，第一次才交給 schedule
 // （閒置時跑，最多等 0.5 秒）。done：收集的事都做了（截圖回報 draw call 要等它，見下面的 sampleCalls）
 const idle = fn => (globalThis.requestIdleCallback ? globalThis.requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 0));
 export function createLater(schedule = idle) {

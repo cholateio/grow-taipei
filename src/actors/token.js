@@ -203,7 +203,8 @@ export const CAR_CONTACTS = [[-CAR_L / 2, RIDE_H], [-WHEEL_Z, 0], [WHEEL_Z, 0], 
 // Roadster 的零件（尾聲的紅色跑車 finale.car 也用這一份）——楔形：
 //   黑色底盤（全長、離地 RIDE_H）→ 車漆：後半是平的後車廂，前半是往下壓 8° 的引擎蓋（車鼻比後車廂低）→ 後緣一片薄擾流板；
 //   座艙是一顆壓扁的深藍玻璃橢球（往後擺）；四輪在四角，比車側凸出、比底盤低（全景看得到），淺色輪轂；
-//   車鼻兩顆白色小頭燈、車尾一條發光的紅色燈條（一台車只有一種發光色：一台 = 黏土一個 + 紅光一個 draw call）；
+//   車鼻兩顆白色小頭燈、車尾一條紅色燈條——不發光（計畫 11 §設計 3：計畫 10 R7 預留的第一刀，一台只剩黏土一個 draw call，
+//   三台省下的 3 個讓給珍奶離島店的杯子招牌）；
 //   車底四個噴嘴（錐口朝下）夾在前後輪之間，比底盤低 NOZZLE_DROP
 export const roadsterParts = color => [
   { kind: 'box', pos: [0, RIDE_H + CHASSIS_H / 2, 0], scale: [CHASSIS_W, CHASSIS_H, CAR_L], color: C.ink },   // 底盤（暗色車底）
@@ -215,7 +216,7 @@ export const roadsterParts = color => [
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * WHEEL_X, WHEEL_R, sz * WHEEL_Z], scale: [WHEEL_R * 2, WHEEL_W, WHEEL_R * 2], rot: [0, 0, Math.PI / 2], color: C.ink })),
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [sx * (WHEEL_X + WHEEL_W / 2 + HUB_W / 2 - 0.001), WHEEL_R, sz * WHEEL_Z], scale: [HUB_R * 2, HUB_W, HUB_R * 2], rot: [0, 0, Math.PI / 2], color: C.curb })),   // 輪轂
   ...[-1, 1].map(sx => ({ kind: 'box', pos: [sx * 0.09, 0.042, CAR_L / 2 + 0.003], scale: [0.045, 0.014, 0.008], color: C.white })),   // 頭燈
-  { kind: 'box', pos: [0, DECK_TOP - 0.011, -CAR_L / 2 - 0.004], scale: [CHASSIS_W, 0.012, 0.008], color: C.red, glow: C.red },   // 尾燈條
+  { kind: 'box', pos: [0, DECK_TOP - 0.011, -CAR_L / 2 - 0.004], scale: [CHASSIS_W, 0.012, 0.008], color: C.red },   // 尾燈條（不發光，計畫 11 §設計 3）
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, RIDE_H - NOZZLE_DROP + NOZZLE_H / 2, sz * 0.08], scale: [0.035, NOZZLE_H, 0.035], color: C.curb })),   // 噴嘴
 ];
 // 環狀線上有列車在跑（view 的 token.train：代幣 ≥4；淹水時 speed 0 停駛）——別的劇本建串時要知道能不能搭車（燈泡 Lv7）就問這個

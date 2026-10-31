@@ -1,7 +1,7 @@
 // 珍奶（唯一正解 §4.4，max 6）：路邊攤車 → 人龍 3 人（攤車前一排）→ 珍奶店（Quaternius 兩層店面、Kenney 茶杯招牌、遮雨棚；人龍改排店門口）
 //   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）
 //   → ◆ 離島：森林島分店＋燈塔島旗艦店同一級（原本的 Lv5 連鎖店＋Lv6 旗艦店併成一級：小森林島分店、觀光船多兩艘、茶屋桌椅（satellites.js）；
-//     燈塔島開店，兩個觀光客坐小船從碼頭過去、住在島上，棧橋；外送無人機兩台繞著店飛）
+//     燈塔島開店，兩個觀光客坐小船從碼頭過去、住在島上，棧橋；外送無人機兩台繞著店飛；兩座離島店都是主島那款店面＋杯子招牌，計畫 11）
 //   → ◆ 世界珍奶節（原本的 Lv7；全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
 // 人數預算（使用者 2026-10-26）：人龍最多 3 人（2026-10-28 錄影修正：4 → 3，珍奶格太擠）、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；颱風外送是颱風模組的劇本，不在這裡（老鼠撞翻攤車：唯一正解 §5.2 拿掉了）。
@@ -47,7 +47,6 @@ const PUSH_END = offset(SHOP, -HANDLE, 0);
 // 珍奶店（Lv3 起）：Quaternius 兩層店面 2Story_Sign_Mat（原始 2.2 × 2.7 × 2.2），高 1.0 → 佔地 0.81 見方；招牌杯立在屋頂前緣
 export const MODELS = {
   shop: { path: 'quat/buildings/2Story_Sign_Mat.glb', size: [2.2, 2.7, 2.2] },
-  flagship: { path: 'quat/buildings/1Story_Sign_Mat.glb', size: [2.15, 1.79, 2.15] },
   cup: { path: 'kenney/food/cup-tea.glb', size: [0.24, 0.2, 0.29] },
   boat: { path: 'quat/ships/Boat.glb' },
   drone: { path: 'kenney/space/craft_miner.glb', size: [1.8, 0.7, 2.6] },
@@ -55,6 +54,23 @@ export const MODELS = {
 const SHOP_H = 1.0, SHOP_W = MODELS.shop.size[0] * SHOP_H / MODELS.shop.size[1];
 // 店面重上色票：牆奶油、磚與深色飾邊木色、招牌與木作珊瑚（和鮮奶的早餐店分得出來：早餐店磚邊沙色、牆奶油）
 const SHOP_TINT = { '^DarkWood$': C.coral, '^DarkBrown$': C.wood, '^Dark$': C.wood, '^Bricks$': C.wood, '^Main$': C.cream, '^Light$': C.yellow, '^White$': C.white, '^Black$': C.ink, '^Glass$': C.glass };
+// 珍奶店體：店面 glb（高 h）＋屋頂前緣的杯子招牌（高 cupH；離前緣 0.15 × h / SHOP_H）——主島的店與兩座離島店（森林島分店 sat.forest.shop、
+// 燈塔島旗艦店，計畫 11 §設計 3：原本是三角屋頂小屋與早餐店那款一層店面）共用。回傳 [店, 杯子]，呼叫端再補 footprint、grow、low。
+// 函數宣告（會提升）：satellites.js 和本檔互相匯入，它的 view 執行時本檔早就跑完（碰得到下面的 const）
+export function storefront(at, h, cupH) {
+  const w = MODELS.shop.size[0] * h / MODELS.shop.size[1];
+  return [
+    { kind: 'glb', at, path: MODELS.shop.path, h, tint: SHOP_TINT },
+    { kind: 'glb', at: offset(at, 0, w / 2 - 0.15 * h / SHOP_H, h), path: MODELS.cup.path, h: cupH, footprint: false },
+  ];
+}
+// 離島店：高 0.8、杯子 0.26。店是建築（衛星島沒有走路格，footprint false → 寫 grow: true 才長出來，stage.js growsOn）；
+// 杯子是點綴，手機不畫（low: false：兩座店各 +1 個 draw call，手機全 MAX 本來就快 150）
+export const ISLET_SHOP_H = 0.8, ISLET_CUP_H = 0.26;
+export function isletShop(at) {
+  const [shop, sign] = storefront(at, ISLET_SHOP_H, ISLET_CUP_H);
+  return [{ ...shop, footprint: false, grow: true }, { ...sign, low: false }];
+}
 // 老闆日常站在攤車／店的東南角外（面向排頭）：攤車後面（北邊）離夜市太近；推車的位置會被 Lv3 的店面蓋住
 // （跳級 1→3 沒有劇本，人在建築裡會穿牆走出來）；店東側和格邊之間那條縫走路格（0.3 一格）走不進去。
 // 這一點在攤車、店、噴泉外擴 PAD 之外，南邊接著人龍那排，每一級都走得到（§14.1）
@@ -70,7 +86,6 @@ export const FOUNTAIN = offset(SHOP, 0.675, -0.3), FOUNTAIN_R = 0.25;
 // ── 燈塔島（Lv5 旗艦店）：燈塔在島中心（底座半徑 0.5）、守塔人繞 0.6 一圈、東南有一棵樹；旗艦店在西南（朝主島、靠鏡頭那側）──
 const LIGHT = island('lighthouse');
 export const FLAGSHIP = offset(LIGHT, -1.15, 0.85);
-const FLAGSHIP_H = 0.7;
 // 兩個觀光客住在旗艦店門前（面向店）
 export const TOURIST_SPOTS = [offset(LIGHT, -1.3, 1.5), offset(LIGHT, -0.95, 1.6)].map(p => ({ ...p, yaw: Math.atan2(FLAGSHIP.x - p.x, FLAGSHIP.z - p.z) }));
 // 小船（裁決 R10：燈塔島沒有支線，觀光客坐船去）：從珍奶格東岸外的碼頭出發，經環狀線兩根橋墩之間（方位 0.42，橋墩在 0.13 和 0.65）
@@ -181,8 +196,9 @@ export function view(lv, flags = {}) {
   if (n < 3) {
     v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: cartParts() };
   } else {
-    v['boba.main'] = { kind: 'glb', at: SHOP, path: MODELS.shop.path, h: SHOP_H, tint: SHOP_TINT, labelY: SHOP_H + 0.55, footprint: { w: SHOP_W, d: SHOP_W } };
-    v['boba.sign'] = { kind: 'glb', at: offset(SHOP, 0, SHOP_W / 2 - 0.15, SHOP_H), path: MODELS.cup.path, h: 0.32, footprint: false };
+    const [shop, sign] = storefront(SHOP, SHOP_H, 0.32);
+    v['boba.main'] = { ...shop, labelY: SHOP_H + 0.55, footprint: { w: SHOP_W, d: SHOP_W } };
+    v['boba.sign'] = sign;
     if (blown) v['boba.blown'] = blownCart();
   }
   // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
@@ -196,7 +212,8 @@ export function view(lv, flags = {}) {
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
   // Lv5 離島：森林島分店（satellites.js）跟燈塔島旗艦店、小船、觀光客、無人機同一級
   if (n >= 5) {
-    v['boba.flagship'] = { kind: 'glb', at: FLAGSHIP, path: MODELS.flagship.path, h: FLAGSHIP_H, tint: SHOP_TINT, footprint: false };
+    // 旗艦店：跟主島同一款店面＋杯子招牌（計畫 11 §設計 3）；杯子緊接在店後面（apply 的 stagger 照鍵的順序，店先長、杯子 0.15 s 後出現）
+    [v['boba.flagship'], v['boba.flagship.sign']] = isletShop(FLAGSHIP);
     v['boba.ferry'] = { kind: 'glb', at: DOCK, path: MODELS.boat.path, h: FERRY_H, ry: DOCK_YAW, tint: BOAT_TINT, footprint: false };
     // 坐船過去的兩個觀光客住在燈塔島上（衛星島沒有走路格：stand 的站位直線走回去，同 sat.forest）
     v['boba.tourists'] = { kind: 'roster', at: FLAGSHIP, n: 2, accessory: 'suitcase', shirt: SHIRTS.slice(4), home: { kind: 'stand', spots: TOURIST_SPOTS } };
@@ -318,15 +335,16 @@ export const script = {
       ];
     },
     // ◆ 離島（原本的 Lv5 分店＋Lv6 旗艦店併成一段，唯一正解 §5.3；◆ ≤ 8 s：拿掉老闆的 ……／圖框「小島」兩個泡泡，走位與船程不動）：
-    //   鏡頭到小森林島（zoom 0.8）→ 閃白分店、茶屋桌椅（離島三段第一段 sat.forest.stage1，分店是基座）、觀光客 2 人 →
+    //   鏡頭到小森林島（zoom 0.8）→ 分店長出來＋杯子招牌（sat.forest.shop／sign）、茶屋桌椅（離島三段第一段 sat.forest.stage1）、觀光客 2 人 →
     //   鏡頭到燈塔島 → 小船載著兩個觀光客在珍奶格東岸外出現、開到燈塔島（SAIL 秒；棧橋 sat.lighthouse.stage2 同時閃白）→ 兩人跳上岸 →
-    //   閃白旗艦店、店屋頂兩台外送無人機、觀光船多 2 艘 → 回珍奶格，無人機起飛繞店一圈、LEVEL UP
+    //   旗艦店長出來＋杯子招牌、店屋頂兩台外送無人機、觀光船多 2 艘 → 回珍奶格，無人機起飛繞店一圈、LEVEL UP
     5(e, s, ctx) {
       const { B } = ctx, sp = [0, 1].map(i => B.spawn('boba.tourists', () => seatAt(0, i)));
       const hop = B.together([0, 1].map(i => B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5)));
       return [
         // 分店閃完停 0.3 s 再飛去燈塔島（審稿：一閃完就飛走看不清分店）
-        B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.stage1', 'sat.forest'] }), B.wait(0.3),
+        // 分店（計畫 11 §設計 3：主島那款店面，長出來）→ 0.15 s 後屋頂杯子招牌出現（跟主島 Lv3 的店與 boba.sign 一樣各佔一格；◆ 7.53 → 7.83 s）
+        B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1', 'sat.forest'] }), B.wait(0.3),
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,
         B.together([sail(), B.apply(e, { only: ['sat.lighthouse.stage2'] })]), hop, B.home([passenger(0), passenger(1)]),

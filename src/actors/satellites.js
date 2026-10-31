@@ -7,7 +7,7 @@ import { C } from './palette.js';
 import { builders as ratBuilders } from './rat.js';
 import { kidAccessory } from './milk.js';
 import * as spec from '../rules/spec.js';
-import { DOCK } from './boba.js';
+import { DOCK, isletShop } from './boba.js';
 import { stormy } from './world.js';
 import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
@@ -83,7 +83,8 @@ export function view(lv, flags) {
 
 // ── 離島三段（計畫 6 §7）：每座島 = 空島（island.js 的 kit）→ 第一段 → 第二段，觸發固定照表、兩段各自獨立（亂放時第二段可以先出現）。
 // 零件：一段一個零件 sat.<島>.stage1／stage2（裁決 R7：下一段出現時已經站著的東西不重閃）。同一級一起出現的基座跟第一段併在一起：
-// 階梯丘的營區（晶片 Lv3）在 sat.pyramid.stage1、小森林的分店（珍奶 Lv5）在 sat.forest.stage1——基座手機照畫，點綴零件標 low: false（與 stage: 1／2）。
+// 階梯丘的營區（晶片 Lv3）在 sat.pyramid.stage1——基座手機照畫，點綴零件標 low: false（與 stage: 1／2）。小森林的分店（珍奶 Lv5）原本也併在
+// sat.forest.stage1，計畫 11 §設計 3 改成主島珍奶店的 glb，自己兩個零件 sat.forest.shop／sign（glb 不能併進 compound）。
 // 寶箱島的海鷗是自己的 sat.chest.stage1（不併進寶箱：寶箱開箱時才變）。會動的段：鞦韆（架子＋座位一個 mesh）、旋轉木馬、金幣，
 // 第二支風機的轉子在 sat.windmill 裡（rig：幾組各繞 pivot 動的零件併成一個 mesh）。
 // footprint: false（衛星島沒有走路格）；零件位置都相對島心（at = island(kind)）。
@@ -93,13 +94,14 @@ export function view(lv, flags) {
 //   石堆島：四顆石頭（最大的 (-0.4, 0.3)）、兩隻老鼠站在兩顆大石頭頂上、綠光圈半徑 1.1
 //   階梯丘：五層梯田（最上層半徑 0.27、頂 0.9；營區在頂上）
 //   遊樂場島：溜滑梯 (0.3, 0) 往南、樹 (-0.7, 0.3)、小孩繞 (-0.2, 0.3) r 0.5、支線停在西南 (-0.5, 0.87)
-//   小森林：五棵樹、分店 (1.0, 0.9)、觀光客 (0.3, 1.1)／(-0.2, 1.25)
+//   小森林：五棵樹、分店 (0.93, 1.03)（店身 0.65 見方）、觀光客 (0.3, 1.1)／(-0.2, 1.25)
 //   寶箱島：寶箱 (0.2, 0.2)、樹 (-0.6, -0.3)
 // draw call：每個零件黏土一個 + 每種發光色一個；每座島的衛星零件 ≤ 6（satellites.test）。全 MAX 一般畫質截圖（計畫 6 任務 6 修正第 1 輪實測）：
 //   wide-end 249 → 245、end 246 → 243、alien 208 → 205（手機 143／137 不變）；省下來的是營區／分店併第一段、鞦韆與兩支轉子各一個 mesh（裁決 R7：≤ 246）。
 //   low: false——?quality=low（手機）不畫點綴：全 MAX 的手機截圖本來就 143（≤ 150），十幾個點綴放不下（併進黏土也一段一個）
 // tagAlong：跟同一拍第一個閃的零件一起閃、不多佔 stagger（beats.apply）——加了點綴，劇本與整局的時間一格不變。
-//   含基座的第一段（階梯丘、小森林）不標：營區、分店是那一級的主角，跟原本的 sat.camp／sat.forestShop 一樣自己佔一格
+//   含基座的第一段（階梯丘）不標：營區是那一級的主角，跟原本的 sat.camp 一樣自己佔一格（小森林的分店 sat.forest.shop 自己佔一格，第一段 tagAlong）。
+//   計畫 11 §設計 3：分店 glb＋杯子招牌 +2（wide-end 加回到 248：Roadster 尾燈不再發光省 4，含尾聲紅色跑車）
 export const STAGE = { lighthouse: [['bulb', 7], ['boba', 5]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
   playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;
@@ -211,18 +213,18 @@ function stages(lv, flags, on) {
       { kind: 'rbox', pos: [x, 0.2, z], scale: [0.06, 0.08, 0.14], rot: [0, -a, 0], color: [C.white, C.blue, C.yellow, C.wall][i] },
     ]; }),
   ] });
-  // 小森林：基座是分店（珍奶 Lv5，原本的 sat.forestShop；手機照畫）；1：茶屋桌椅——分店北邊兩張圓桌、四張小凳；
+  // 小森林：分店（珍奶 Lv5）是主島珍奶店那款店面＋屋頂杯子招牌（計畫 11 §設計 3：原本是併在第一段裡的三角屋頂小屋）——
+  // glb 不能併進 compound，自己兩個零件 sat.forest.shop／sign（店會長出來、手機照畫；杯子手機不畫，boba.js isletShop）；
+  // 店挪到 (0.93, 1.03)（店身 0.65 見方，比原本的小屋大）：北緣離 (0.7, 0.4) 那棵樹的樹冠（半徑 ≈ 0.3）、西緣離觀光客都 ≥ 0.3，東南角在步道環內（六角半徑 2.08 < 2.11）；
+  // 1：茶屋桌椅——分店北邊兩張圓桌、四張小凳（第一段只剩點綴：tagAlong、手機不畫）；
   // 2：燈籠串——兩棵樹之間（西南那棵到東邊那棵）一條往鏡頭側彎的繩子掛六顆燈籠（暖黃發光；大停電時暗）
   const lit = !flags.blackout, bez = k => { const P0 = [-0.45, 0.62, 0.62], C1 = [0.05, 0.5, 0.95], P2 = [0.55, 0.62, 0.55], u = 1 - k; return P0.map((a, j) => u * u * a + 2 * u * k * C1[j] + k * k * P2[j]); };
   const lamps = Array.from({ length: 6 }, (_, i) => bez((i + 0.5) / 6)), knots = Array.from({ length: 7 }, (_, i) => bez(i / 6));
-  const shop = shift([
-    { kind: 'box', pos: [0, 0.22, 0], scale: [0.45, 0.44, 0.35], color: C.wall }, { kind: 'hip', pos: [0, 0.55, 0], scale: [0.55, 0.2, 0.45], color: C.coral },
-    { kind: 'cylinder', pos: [0, 0.78, 0], scale: [0.16, 0.22, 0.16], color: 0xc9a27c },
-  ], [1.0, 0, 0.9]);
+  if (has('forest', 0)) [v['sat.forest.shop'], v['sat.forest.sign']] = isletShop(at('forest', 0.93, 1.03));
   put('forest', 0, () => [0, 1].flatMap(i => { const x = 1.25 + i * 0.2, z = 0.2 - i * 0.5; return [   // 六角半徑 ≤ 1.9：離島緣的步道環（2.11 起）遠
     { kind: 'cylinder', pos: [x, 0.17, z], scale: [0.24, 0.025, 0.24], color: C.wood }, { kind: 'cylinder', pos: [x, 0.08, z], scale: [0.04, 0.16, 0.04], color: C.wood },
     { kind: 'cylinder', pos: [x - 0.18, 0.06, z + 0.05], scale: [0.1, 0.12, 0.1], color: C.coral }, { kind: 'cylinder', pos: [x + 0.18, 0.06, z - 0.05], scale: [0.1, 0.12, 0.1], color: C.coral },
-  ]; }), { base: shop });
+  ]; }));
   put('forest', 1, () => [
     ...knots.slice(1).map((b, i) => { const a = knots[i], dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l = Math.hypot(dx, dy, dz);
       return { kind: 'box', pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.06, (a[2] + b[2]) / 2], scale: [0.012, 0.012, l], rot: [-Math.asin(dy / l), Math.atan2(dx, dz), 0], color: C.ink }; }),

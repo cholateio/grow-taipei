@@ -234,6 +234,8 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
 
 // 會動的零件：鞦韆會盪、旋轉木馬會轉、第二支風機跟第一支一樣通電才轉、金幣噴泉的金幣會上下
 const builtFactory = (quality) => createPartFactory(THREE, { glow: createGlowRegistry(), builders: sat.builders, quality });
+// glb 零件（離島珍奶店與杯子招牌）：assets 把整個模型併成一個黏土 mesh（沒有發光色）＝ 1 個 draw call；手機不畫 low: false 的（測試的工廠沒有 assets，照這個算）
+const glbCalls = (quality, d) => (quality === 'low' && d.low === false ? 0 : 1 + (d.glow ? 1 : 0));
 const posesOf = o => { const out = []; o.traverse(x => { out.push([x.position.x, x.position.y, x.position.z, x.rotation.x, x.rotation.y, x.rotation.z].map(n => n.toFixed(4)).join()); if (x.isInstancedMesh) out.push(Array.from(x.instanceMatrix.array).map(n => n.toFixed(3)).join()); }); return out.join('|'); };
 test('islet stages that move: the swing swings, the carousel turns, the second turbine turns only when powered, the coins bob', () => {
   const f = builtFactory();
@@ -296,6 +298,7 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
         if (!k.startsWith('sat.') || k === 'sat.boats' || d.kind === 'roster') continue;
         let n = 0;
         if (d.kind === 'rats') n = d.n;
+        else if (d.kind === 'glb') n = glbCalls(quality, d);
         else { const p = f.build(d); p.object.traverse(o => { if (o.isMesh) n++; }); p.dispose(); }
         const isl = SATELLITES.map(s => s.kind).find(s => { const c = sat.island(s); return Math.hypot(d.at.x - c.x, d.at.z - c.z) < R; });
         per[isl] = (per[isl] ?? 0) + n;
@@ -311,7 +314,8 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
   for (const v of [sat.view(allMax, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 3, baseball: 6 }), {})])
     for (const [k, d] of Object.entries(v)) {
       if (!/\.stage\d$/.test(k)) continue;
-      const based = k === 'sat.pyramid.stage1' || k === 'sat.forest.stage1';   // 含基座（營區、分店）：那一級的主角，不 tagAlong、手機照畫基座
+      // 含基座（營區）：那一級的主角，不 tagAlong、手機照畫基座。小森林的分店（計畫 11 §設計 3）改成自己的 glb 零件 sat.forest.shop，第一段只剩點綴
+      const based = k === 'sat.pyramid.stage1';
       assert.equal(!!d.tagAlong, !based, k);
       if (based) for (const p of d.parts.filter(p => p.stage)) assert.equal(p.low, false, `${k} stage part: not drawn on ?quality=low`);
       else assert.equal(d.low, false, `${k}: not drawn on ?quality=low (phone budget ≤ 150)`);
@@ -371,12 +375,15 @@ test('carousel stops in a blackout; coins shrink to nothing at the wrap (no pop)
 // draw call 頭寸（計畫 6 任務 6、裁決 R7）：全 MAX 一般畫質截圖 249 → ≤ 246。一段一個零件（下一段出現時已經站著的不重閃），
 // 同一級出現的基座（營區、分店）併在第一段；會動的段（鞦韆、旋轉木馬、金幣、兩支風機的轉子）各一個 draw call；手機照舊不畫點綴，基座照畫
 const meshesOf = (f, d) => { const p = f.build(d); let n = 0; p.object.traverse(o => { if (o.isMesh) n++; }); p.dispose(); return n; };
-const satCalls = (f, v) => Object.entries(v).filter(([k, d]) => k !== 'sat.boats' && d.kind !== 'roster').reduce((a, [, d]) => a + (d.kind === 'rats' ? d.n : meshesOf(f, d)), 0);
-test('islet draw calls: full MAX satellites ≤ 24 (was 27) on normal quality, unchanged on phones; animated stages one mesh each', () => {
+const satCalls = (f, v, quality) => Object.entries(v).filter(([k, d]) => k !== 'sat.boats' && d.kind !== 'roster').reduce((a, [, d]) => a + (d.kind === 'rats' ? d.n : d.kind === 'glb' ? glbCalls(quality, d) : meshesOf(f, d)), 0);
+// 計畫 11 §設計 3：小森林分店從第一段的黏土裡拿出來，改成主島珍奶店的 glb＋杯子招牌（+2；第一段只剩桌椅，照舊一個黏土）→ 24 → 26；
+// 手機照舊（分店 glb 照畫、第一段整個不畫、杯子 low: false 不畫）
+const SAT_MAX = 26;
+test('islet draw calls: full MAX satellites ≤ 26 (24 before the plan-11 shop) on normal quality, unchanged on phones; animated stages one mesh each', () => {
   for (const flags of [{ ratBranch: 'cyber', epilogue: 'cyber' }, { ratBranch: 'alien', epilogue: 'alien' }]) {
     const v = sat.view(allMax, flags);
-    assert.ok(satCalls(builtFactory(), v) <= 24, `${flags.ratBranch}: ${satCalls(builtFactory(), v)}`);
-    assert.equal(satCalls(builtFactory('low'), v), flags.ratBranch === 'alien' ? 7 : 6, `${flags.ratBranch} phone`);
+    assert.ok(satCalls(builtFactory(), v) <= SAT_MAX, `${flags.ratBranch}: ${satCalls(builtFactory(), v)}`);
+    assert.equal(satCalls(builtFactory('low'), v, 'low'), flags.ratBranch === 'alien' ? 7 : 6, `${flags.ratBranch} phone`);
     for (const k of ['sat.windmill', 'sat.playground.stage1', 'sat.playground.stage2', 'sat.chest.stage2']) assert.equal(meshesOf(builtFactory(), v[k]), 1, k);
   }
   // 手機：基座照畫、點綴不畫（階梯丘第一段 = 只有營區那幾塊）
@@ -418,4 +425,39 @@ test('rigged islet parts move their own vertices: the swing seats swing, the fra
   const w = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']), c = vertsOf(w); w.update(0.5, 0.5); const d = vertsOf(w);
   const half = c.length / 2; assert.ok(c.slice(half).some((x, i) => Math.abs(x - d[half + i]) > 1e-6), 'twin rotor vertices turned');
   const dark = f.build(sat.view(lv({}), {})['sat.windmill']), e0 = vertsOf(dark); dark.update(0.5, 0.5); assert.deepEqual(vertsOf(dark), e0, 'unpowered: still');
+});
+
+// 珍奶離島店體（計畫 11 §設計 3；使用者 2026-10-31：森林島分店、燈塔島旗艦店看起來只是三角屋）：兩座店都是主島珍奶店的 glb
+// （boba.MODELS.shop、同一套 tint、高 0.8）＋屋頂前緣一個杯子招牌（boba.MODELS.cup、高 0.26，手機不畫）；店是建築，會長出來（growsOn），
+// 杯子直接出現；小森林第一段只剩茶屋桌椅（點綴：tagAlong、手機不畫）
+import * as boba from '../src/actors/boba.js';
+import { growsOn } from '../src/actors/stage.js';
+test('boba islet shops: the forest branch and the lighthouse flagship are the main-island shop glb (h 0.8, same tint) with a cup sign (h 0.26) on the roof; the shops grow', () => {
+  const main = boba.view(lv({ boba: 3 }), {})['boba.main'], v = { ...sat.view(lv({ boba: 5 }), {}), ...boba.view(lv({ boba: 5 }), {}) };
+  for (const [shopKey, signKey, isl] of [['sat.forest.shop', 'sat.forest.sign', 'forest'], ['boba.flagship', 'boba.flagship.sign', 'lighthouse']]) {
+    const shop = v[shopKey], sign = v[signKey], c = sat.island(isl);
+    assert.ok(shop && sign, `${shopKey} / ${signKey} at boba 5`);
+    assert.deepEqual([shop.kind, shop.path, shop.h, shop.footprint], ['glb', boba.MODELS.shop.path, 0.8, false], shopKey);
+    assert.deepEqual(shop.tint, main.tint, `${shopKey}: same tint as the main-island shop`);
+    assert.ok(growsOn(shop), `${shopKey}: a building, grows`); assert.notEqual(shop.low, false, `${shopKey}: drawn on phones`);
+    assert.ok(Math.hypot(shop.at.x - c.x, shop.at.z - c.z) < R && Math.abs(shop.at.y - c.y) < 1e-9, `${shopKey} on the ${isl} island`);
+    assert.deepEqual([sign.kind, sign.path, sign.h, sign.footprint, sign.low], ['glb', boba.MODELS.cup.path, 0.26, false, false], signKey);
+    const w = boba.MODELS.shop.size[0] * shop.h / boba.MODELS.shop.size[1];
+    assert.ok(Math.abs(sign.at.y - (shop.at.y + shop.h)) < 1e-9, `${signKey} on the roof`);
+    assert.ok(Math.abs(sign.at.x - shop.at.x) < 1e-9 && sign.at.z > shop.at.z && sign.at.z < shop.at.z + w / 2, `${signKey} at the front edge of the roof`);
+  }
+  // 小森林第一段：只剩桌椅（沒有屋頂、牆）、整段是點綴
+  const s1 = v['sat.forest.stage1'];
+  assert.ok(s1.parts.every(p => p.stage === 1 && p.kind === 'cylinder'), 'forest stage 1: tables and stools only');
+  assert.equal(s1.tagAlong, true); assert.equal(s1.low, false);
+  // 珍奶 Lv4 以下都沒有
+  const v4 = { ...sat.view(lv({ boba: 4 }), {}), ...boba.view(lv({ boba: 4 }), {}) };
+  for (const k of ['sat.forest.shop', 'sat.forest.sign', 'boba.flagship', 'boba.flagship.sign']) assert.equal(v4[k], undefined, k);
+  // 分店不壓到島上的樹（kit：(0.7, 0.4) 縮 0.8 那棵，樹冠半徑 ≈ 0.3）與觀光客的站位、也不出島緣步道（六角半徑 ≤ 2.11）
+  const f = v['sat.forest.shop'], c = sat.island('forest'), w = boba.MODELS.shop.size[0] * f.h / boba.MODELS.shop.size[1];
+  const box = { x0: f.at.x - c.x - w / 2, x1: f.at.x - c.x + w / 2, z0: f.at.z - c.z - w / 2, z1: f.at.z - c.z + w / 2 };
+  const gap = (x, z) => Math.hypot(Math.max(box.x0 - x, 0, x - box.x1), Math.max(box.z0 - z, 0, z - box.z1));
+  assert.ok(gap(0.7, 0.4) >= 0.3, `tree ${gap(0.7, 0.4).toFixed(2)}`);
+  for (const s of v['sat.forest'].home.spots) assert.ok(gap(s.x - c.x, s.z - c.z) >= 0.3, `tourist ${gap(s.x - c.x, s.z - c.z).toFixed(2)}`);
+  for (const [x, z] of [[box.x0, box.z0], [box.x1, box.z0], [box.x0, box.z1], [box.x1, box.z1]]) assert.ok(hexR(x, z) < 2.11, `corner hex r ${hexR(x, z).toFixed(2)}`);
 });

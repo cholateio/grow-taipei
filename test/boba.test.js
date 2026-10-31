@@ -14,7 +14,7 @@ import { diffParts } from '../src/actors/stage.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX, blinkLog } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
 import { createNav, satelliteAt } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
@@ -32,7 +32,7 @@ const views = Array.from({ length: 7 }, (_, n) => boba.view(lv({ boba: n }), {})
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => keys.includes(k)));
 // 珍奶看得見的東西：自己的零件＋小森林島分店、觀光船（衛星島）
-const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.forest.stage1', 'sat.forest', 'sat.boats']) });
+const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1', 'sat.forest', 'sat.boats']) });
 // 鏡頭方向（水平）：OVERVIEW_DIR 指向鏡頭
 const CAM = (() => { const n = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z); return { x: OVERVIEW_DIR.x / n, z: OVERVIEW_DIR.z / n }; })();
 
@@ -45,7 +45,7 @@ test('boba has something new at every level 1–6: cart, queue, shop, fountain, 
   assert.equal(views[2]['boba.queue'].n, 3);
   assert.equal(views[3]['boba.main'].kind, 'glb'); assert.equal(views[2]['boba.main'].kind, 'compound');
   assert.ok(views[4]['boba.fountain'] && !views[3]['boba.fountain'], 'Lv4 fountain');
-  assert.ok(whole(5)['sat.forest.stage1'] && !whole(4)['sat.forest.stage1'], 'Lv5 forest branch');
+  assert.ok(whole(5)['sat.forest.shop'] && whole(5)['sat.forest.stage1'] && !whole(4)['sat.forest.shop'] && !whole(4)['sat.forest.stage1'], 'Lv5 forest branch');
   assert.equal(whole(5)['sat.boats'].n, whole(4)['sat.boats'].n + 2, 'Lv5 two more tour boats');
   // 同一級：森林島分店、燈塔島旗艦店、小船、觀光客、無人機、棧橋
   assert.ok(views[5]['boba.flagship'] && !views[4]['boba.flagship'], 'Lv5 flagship');
@@ -107,7 +107,7 @@ test('Lv3 shop: Quaternius Sign_Mat building with the palette tint, a Kenney cup
   assert.ok(m.path.startsWith('quat/buildings/') && m.path.includes('_Sign_Mat'), m.path);
   for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `tint ${c.toString(16)}`);
   assert.equal(v['boba.sign'].path, 'kenney/food/cup-tea.glb'); assert.ok(v['boba.sign'].at.y >= m.at.y + m.h - 1e-9, 'cup on the roof');
-  for (const p of [m.path, v['boba.sign'].path, boba.MODELS.flagship.path, boba.MODELS.drone.path, boba.MODELS.boat.path]) assert.ok(existsSync(new URL(`../assets/${p}`, import.meta.url)), p);
+  for (const p of [m.path, v['boba.sign'].path, boba.MODELS.drone.path, boba.MODELS.boat.path]) assert.ok(existsSync(new URL(`../assets/${p}`, import.meta.url)), p);
   assert.ok(v['boba.yard'].parts.filter(p => p.rot?.[0] > 0.3).length >= 3, 'awning strips over the door');
   assert.ok(m.footprint.w > 0.7 && m.footprint.d > 0.7, 'the shop blocks walkers');
 });
@@ -189,7 +189,7 @@ test('every boba footprint corner and every main-island part stays inside the bo
       const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
       for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), CELL, `lv${n} ${key} corner`);
     }
-    if (['boba.flagship', 'boba.ferry', 'boba.tourists', 'boba.fleet'].includes(key)) continue;
+    if (['boba.flagship', 'boba.flagship.sign', 'boba.ferry', 'boba.tourists', 'boba.fleet'].includes(key)) continue;
     const pts = s.kind === 'compound' ? worldPoints(s).filter((p, i) => !s.parts[i]?.coast) : [s.at, ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   }
@@ -277,6 +277,12 @@ test('◆ Lv5 and Lv6 are the key nodes; Lv6 puts 世界珍奶節 over 101 and e
   const homes = beats.map((b, i) => (b.kind === 'focus' && b.target === 'home' ? i : -1)).filter(i => i >= 0);
   assert.ok(homes.length && beats[homes.at(-1)].dur >= 1 && beats.at(-1).kind === 'levelUp', 'holds the overview, then LEVEL UP');
 });
+// 計畫 11 §設計 3：鏡頭對著小森林島時那一拍就長出分店與杯子招牌（不是留到回珍奶格的最後一拍才出現在畫面外）
+test('◆ Lv5: the forest shop and its cup sign appear in the beat right after the camera reaches the forest island', () => {
+  const ctx = { B, roster: { members: () => [] } }, beats = boba.script.grow[5]({ kind: 'grow', item: 'boba', to: 5 }, { lv: lv({ boba: 5 }), flags: {} }, ctx);
+  const i = beats.findIndex(b => b.kind === 'apply' && Array.isArray(b.only) && b.only.includes('sat.forest.stage1'));
+  assert.equal(beats[i - 1].kind, 'focus'); assert.ok(['sat.forest.shop', 'sat.forest.sign', 'sat.forest'].every(k => beats[i].only.includes(k)), String(beats[i].only));
+});
 // 審稿（計畫 4 最後一輪）：「世界珍奶節」打在 101 頭頂上——鏡頭停在全景（裝得下 101 頭頂，§14.4）時打字；
 // 原本跟 focus('tower') 一起演，拉近 101 格把頭頂切掉、字在畫面外
 test('Lv6: 世界珍奶節 goes up over 101 while the camera holds the overview (the label never shares a beat with a focus)', () => {
@@ -307,6 +313,8 @@ test('Lv5 live: the forest branch appears, then the ferry carries two tourists f
       const b = show.stage.partObject('boba.ferry'), ts = show.roster.members('boba.tourists');
       frames.push({ boat: b && { x: b.position.x, z: b.position.z }, ts: ts.map(m => ({ ...m.pos })), drone: show.stage.partObject('boba.drones.0')?.children[0]?.position.y });
     };
+    const log = blinkLog(show), mark = () => log.calls.length;
+    let from = 0; const run2 = h.run; h.run = (evs, o) => { if (!o?.instant) from = mark(); return run2(evs, o); };
     const { r } = await liveAt(h, order, isBoba(5));
     const what = order.join('>'), moving = frames.filter((f, i) => i && f.boat && frames[i - 1].boat && Math.hypot(f.boat.x - frames[i - 1].boat.x, f.boat.z - frames[i - 1].boat.z) > 1e-4);
     assert.ok(moving.length / 30 >= 1.5 && moving.length / 30 <= 5, `${what}: sailed ${(moving.length / 30).toFixed(2)} s`);
@@ -322,6 +330,11 @@ test('Lv5 live: the forest branch appears, then the ferry carries two tourists f
     assert.deepEqual(trail.slice(-4), [String(worldToAxial(FC.x, FC.z)), String(worldToAxial(LIGHT.x, LIGHT.z)), String(CELL), 'home'], `${what}: ${trail}`);
     assert.equal(show.roster.members('sat.forest').length, 2); assert.ok(show.stage.partObject('sat.forest.stage1'), `${what}: forest branch`);
     assert.ok(show.stage.partObject('sat.lighthouse.stage2') && show.stage.partObject('boba.flagship'), `${what}: pier and flagship`);
+    // 計畫 11 §設計 3：兩座離島店是建築——亮一下＋長出來；屋頂的杯子招牌直接出現（不亮）
+    assert.ok(show.stage.partObject('sat.forest.shop') && show.stage.partObject('sat.forest.sign') && show.stage.partObject('boba.flagship.sign'), `${what}: both shops have a cup sign`);
+    const grew = new Set(log.calls.slice(from).filter(c => c.fn === 'part' && c.grows).map(c => c.key));
+    for (const k of ['sat.forest.shop', 'boba.flagship']) assert.ok(grew.has(k), `${what}: ${k} grows (${[...grew]})`);
+    for (const k of ['sat.forest.sign', 'boba.flagship.sign']) assert.ok(!log.calls.slice(from).some(c => c.key === k), `${what}: ${k} just appears`);
     const ys = frames.map(f => f.drone).filter(y => y != null); assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
   }
 });

@@ -176,11 +176,12 @@ test('flooded (token ≤ 2): the station is a pool with two swimmers (≤ 3), no
     assert.deepEqual([v['token.swimmers'].kind, v['token.swimmers'].n, v['token.swimmers'].from], ['roster', 2, 'token.staff']);
   }
 });
-// 計畫 8 任務 5：Lv10 多一片屋頂斜坡（token.ramp，一個 compound）、三台 Roadster 各多一個紅色尾燈的發光 mesh → Lv10 上限 24，其餘照舊 ≤ 20
-test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp and tail lights ≤ 24)', () => {
+// 計畫 8 任務 5：Lv10 多一片屋頂斜坡（token.ramp，一個 compound）→ Lv10 上限 21，其餘照舊 ≤ 20。
+// 計畫 11 §設計 3：三台 Roadster 的紅色尾燈不再發光（計畫 10 R7 預留的第一刀，−3 draw call 讓給珍奶離島店的杯子招牌）——上限 24 → 21
+test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp ≤ 21)', () => {
   for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
     const d = drawCalls(token.view(L({ token: n }), { flooded }));
-    assert.ok(d <= (n === 10 ? 24 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
+    assert.ok(d <= (n === 10 ? 21 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
   }
 });
 test('every token station part and every footprint corner stays inside the token cell (track, spurs, trains and flying cars are on the water / in the sky)', () => {
@@ -416,7 +417,7 @@ test('Lv10 live: the three roadsters take off from the roof ramp, fly a lap roun
 // ── 計畫 8 任務 5：飛天車改 Tesla Roadster（設計 §4.6）──
 const RAMP_A = 20 * Math.PI / 180, toTower = p => Math.atan2(TOWER.x - p.x, TOWER.z - p.z);
 const angErr = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body, 4 wheels r 0.045, one dark canopy, glowing tail bar, 4 cone nozzles, no glb; parked facing 101', () => {
+test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body, 4 wheels r 0.045, one dark canopy, red (unlit) tail bar, 4 cone nozzles, no glb; parked facing 101', () => {
   const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]);
   assert.deepEqual(cars.map(c => c.model.parts[1].color), [C.coral, C.white, C.ink], 'red, white, graphite bodies');
   assert.deepEqual(cars[0].model.parts, token.roadsterParts(C.coral), 'built from the shared roadsterParts');
@@ -433,8 +434,8 @@ test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body
     assert.equal(cones.length, 4, 'four nozzles'); assert.ok(cones.every(p => p.color === C.curb && bottom(p) < bottom(chassis)), 'curb-grey nozzles peeking below the chassis');
     const canopy = ps.filter(p => p.kind === 'sphere'); assert.equal(canopy.length, 1, 'one canopy'); assert.equal(canopy[0].color, C.navy, 'dark glass');
     const hood = ps.find(p => p.rot && p.rot[0] > 0.1 && p.kind === 'box'); assert.ok(hood && hood.pos[2] > 0 && top(hood) < top(ps[1]), 'a hood pitched down in front of the rear deck (wedge)');
-    assert.ok(ps.some(p => p.glow === C.red && p.pos[2] < -token.CAR_L / 2), 'a glowing red tail bar');
-    assert.equal(new Set(ps.filter(p => p.glow).map(p => p.glow)).size, 1, 'one glow colour per car (draw calls)');
+    assert.ok(ps.some(p => p.color === C.red && p.pos[2] < -token.CAR_L / 2), 'a red tail bar');
+    assert.equal(ps.filter(p => p.glow).length, 0, 'no glow at all: one clay mesh per car (plan 11 §3, draw calls)');
     assert.equal(ps.filter(p => p.color === C.white && p.pos[2] > token.CAR_L / 2 - 0.01).length, 2, 'two headlights at the nose');
     for (const p of car.model.parts) assert.ok(PALETTE.has(p.color), `car ${i} ${p.kind} ${p.color.toString(16)}`);
     assert.ok(angErr(car.park.yaw, toTower(car.park)) < 0.05, `car ${i} parked facing 101 (${car.park.yaw.toFixed(3)})`);

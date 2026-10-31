@@ -308,3 +308,30 @@ export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6
   }
   return { bad: [...new Set(bad)], seen: [...seen].sort((a, b) => a - b) };
 }
+
+// 亮一下量表（計畫 11 Task 1）：掛在 show.blink 上，記下每一次 part／grow／shrink 的呼叫——
+// { label, key（舞台零件鍵；名冊模型是 `<鍵>#<i> (roster)`；找不到是 null）, fn, dur, grows（同一個零件緊接著 blink.grow）,
+//   cause（演到起因閃一下的拍，show.currentKind === 'flash'）, member（名冊的人的模型 holder，不是零件）, from（呼叫端的檔案:行號）}。
+// 零件物件 → 鍵每幀更新一次（舊零件 swap 時已經離開舞台，靠上一幀記下的對照找回來）。label(text)：之後的呼叫都標這個字串
+export function blinkLog(show) {
+  const calls = [], keyOf = new Map(), holders = new WeakSet(), blink = show.blink, update = show.update;
+  let label = '';
+  const snap = () => {
+    for (const k of show.stage.partKeys()) { const o = show.stage.partObject(k); if (o) keyOf.set(o, k); }
+    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) if (m.holder) { keyOf.set(m.holder, `${k}#${m.i} (roster)`); holders.add(m.holder); }
+  };
+  const from = () => (new Error().stack.split('\n').slice(3).find(l => !l.includes('/helpers/show.js') && !l.includes('/show/blink.js')) ?? '').replace(/^.*\/(src|test)\//, '').replace(/\)$/, '').trim();
+  const hook = fn => {
+    const orig = blink[fn];
+    if (!orig) return;
+    blink[fn] = (o, dur, ...rest) => {
+      if (!keyOf.has(o)) snap();
+      if (fn === 'grow') { const last = calls.at(-1); if (last?.object === o && last.fn === 'part') last.grows = true; }
+      else calls.push({ label, object: o, key: keyOf.get(o) ?? null, fn, dur, grows: false, cause: show.currentKind === 'flash', member: holders.has(o), from: from() });
+      return orig(o, dur, ...rest);
+    };
+  };
+  for (const fn of ['part', 'grow', 'shrink']) hook(fn);
+  show.update = (dt, t) => { snap(); return update(dt, t); };
+  return { calls, label(text) { label = text; } };
+}

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { createPeople } from '../src/scene/people.js';
-import { createBlink, GROW_DUR, GROW_HOLD, BLINK, GLOW } from '../src/show/blink.js';
+import { createBlink, GROW_DUR, GROW_HOLD, BLINK, GLOW, SHRINK_DUR, SHRINK_TO } from '../src/show/blink.js';
 
 const twoMeshes = () => {
   const g = new THREE.Group(), a = new THREE.MeshStandardMaterial({ color: 0xdb6a41 }), b = new THREE.MeshBasicMaterial({ color: 0x5a88b2 });
@@ -146,4 +146,47 @@ test('clear restores at once', () => {
   const w = people.spawn({ controlled: true, shirt: 0xdb6a41 });
   blink.part(g, 5); blink.walker(w, 5); assert.equal(blink.count, 2);
   blink.clear(); assert.equal(blink.count, 0); assert.deepEqual(meshes().map(m => m.material), [a, b]); assert.equal(colourOf(people, 'body', 0), 0xdb6a41);
+});
+
+// 計畫 11 §設計 1：縮下去（要拿掉的零件不亮）——scale.y 從呼叫時的大小以 ease-in 花 SHRINK_DUR 縮到 SHRINK_TO 倍，x、z 不動，材質不換；
+// 軸是零件自己的底（包圍盒最低點）：原點就是底的建築 position 不動；畫在高處的（雲：原點在地面、本體在 3 公尺高）在自己的底部壓扁、不掉到地上。
+// 縮的期間 has() 為真；時間到先回原大小、原位置再呼叫 onEnd（舞台在 onEnd 拿掉它）
+const boxAt = y => { const g = new THREE.Group(), a = new THREE.MeshStandardMaterial({ color: 0xdb6a41 }), m = new THREE.Mesh(new THREE.BoxGeometry(), a); m.position.y = y; g.add(m); return { g, a, m }; };
+const bottom = o => new THREE.Box3().setFromObject(o).min.y;
+test('shrink: scale.y eases in to 0.15x over SHRINK_DUR with no glow and its own bottom fixed; has() while shrinking; then scale and position come back and onEnd runs', () => {
+  assert.equal(SHRINK_DUR, 0.2); assert.equal(SHRINK_TO, 0.15);
+  const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), parent = new THREE.Group();
+  // 建築（底在原點：box 從 0 蓋到 1）、雲（原點在地面、本體在 2.5–3.5）
+  for (const [name, y0, keepsPosition] of [['building', 0.5, true], ['cloud', 3, false]]) {
+    const x = boxAt(y0), ends = []; parent.add(x.g); x.g.scale.set(1.2, 0.8, 1.2); x.g.position.set(1, 0.65, 2);
+    const foot = bottom(x.g);
+    blink.shrink(x.g, undefined, () => ends.push([x.g.scale.toArray(), x.g.position.toArray()]));
+    assert.ok(blink.has(x.g)); assert.equal(blink.count, 1); assert.equal(x.g.scale.y, 0.8, `${name}: full height at t = 0`);
+    let prev = 0.8, t = 0;
+    for (; t + 1 / 60 < SHRINK_DUR - 1e-9; ) {
+      blink.update(1 / 60); t += 1 / 60;
+      const k = x.g.scale.y / 0.8, want = 1 - (1 - SHRINK_TO) * (t / SHRINK_DUR) ** 2;
+      assert.ok(Math.abs(k - want) < 1e-9, `${name}: ease-in at ${t.toFixed(3)} s: ${k.toFixed(4)} vs ${want.toFixed(4)}`);
+      assert.ok(x.g.scale.y < prev, 'keeps shrinking'); prev = x.g.scale.y;
+      assert.ok(Math.abs(bottom(x.g) - foot) < 1e-9, `${name}: its bottom stays put (${bottom(x.g).toFixed(3)} vs ${foot.toFixed(3)})`);
+      assert.equal(x.g.position.x, 1); assert.equal(x.g.position.z, 2); assert.equal(x.g.scale.x, 1.2); assert.equal(x.g.scale.z, 1.2);
+      if (keepsPosition) assert.ok(Math.abs(x.g.position.y - 0.65) < 1e-9, 'a building shrinks about its origin');
+      else assert.ok(bottom(x.g) > 2.5, 'a cloud squashes up in the sky, it does not fall to the ground');
+      assert.equal(x.m.material, x.a, 'no glow: its own material'); assert.ok(blink.has(x.g)); assert.deepEqual(ends, []);
+    }
+    assert.ok(prev / 0.8 < 0.3, `${name}: nearly flat at the end (${(prev / 0.8).toFixed(2)})`);
+    blink.update(1 / 60);
+    assert.deepEqual(ends, [[[1.2, 0.8, 1.2], [1, 0.65, 2]]], `${name}: onEnd once, after scale and position came back`); assert.ok(!blink.has(x.g)); assert.equal(blink.count, 0);
+  }
+});
+test('stop and clear end a shrink at once: the scale comes back and onEnd runs once; a shrink over a grow starts from the full scale', () => {
+  const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), x = twoMeshes(), y = twoMeshes(), z = twoMeshes(), ends = [];
+  blink.shrink(x.g, 0.2, () => ends.push('x')); blink.shrink(y.g, 0.2, () => ends.push('y')); blink.update(0.1);
+  assert.ok(x.g.scale.y < 1 && y.g.scale.y < 1);
+  blink.stop(x.g); assert.deepEqual(x.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x']); assert.ok(!blink.has(x.g)); assert.ok(blink.has(y.g));
+  blink.stop(x.g); assert.deepEqual(ends, ['x'], 'stopping twice is harmless');
+  blink.clear(); assert.deepEqual(y.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x', 'y']); assert.equal(blink.count, 0);
+  blink.grow(z.g); blink.update(0.05); assert.ok(z.g.scale.y < 0.5, 'mid-grow');
+  blink.shrink(z.g, 0.2, () => ends.push('z')); assert.equal(z.g.scale.y, 1, 'the grow is ended first: shrinks from its own height'); assert.equal(blink.count, 1);
+  blink.update(0.25); assert.deepEqual(z.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x', 'y', 'z']);
 });

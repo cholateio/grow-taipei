@@ -325,7 +325,7 @@ test('Lv5 live: the forest branch appears, then the ferry carries two tourists f
     const ys = frames.map(f => f.drone).filter(y => y != null); assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
   }
 });
-// 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走來；每一幀攤車都在他面前 0.3–0.6；攤車在出發點閃白出現、停在 SHOP
+// 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走來；每一幀攤車都在他面前 0.3–0.6；攤車在出發點出現（計畫 11 §設計 1：不亮，直接出現）、停在 SHOP
 test('placed: the owner pushes the cart in at walking speed — every frame the cart is just in front of him — and it parks; ♪', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, frames = [], blinks = [];
   const part = show.blink.part; show.blink.part = (o, ...rest) => { if (o === show.stage.partObject('boba.main')) blinks.push({ x: o.position.x, z: o.position.z }); return part(o, ...rest); };
@@ -344,7 +344,7 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
     assert.ok(d >= 0.3 && d <= 0.6, `frame ${i}: cart ${d.toFixed(2)} from the owner`); assert.ok(dot > 0, `frame ${i}: cart in front`);
   }
   assert.ok(Math.hypot(frames[0].o.x - AT.x, frames[0].o.z - AT.z) > 3, 'starts far away');
-  assert.ok(cart0 && blinks.some(q => near(q, cart0, 0.1)), 'the cart appears with a blink where it starts');
+  assert.ok(cart0 && near(cart0, frames[0].c, 0.1), 'the cart appears where it starts'); assert.deepEqual(blinks, [], 'without a glow');
   const cart = show.stage.partObject('boba.main');
   assert.ok(near(cart.position, boba.SHOP, 1e-9) && cart.rotation.z === 0, 'cart parked');
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '♪'));

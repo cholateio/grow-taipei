@@ -68,7 +68,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
       playing = null;
       if (ctx.instant) { snap({ home: panned }); return; }   // reduced-motion：瞬間演完；鏡頭只在拍移動過時才拉回
       // 照常演完：把還沒 commit 的換上、hold 住的名冊套用、走路格跟著新零件；名冊全部恢復日常（某一拍丟錯沒演到 focus('home') 也一樣）
-      stage.commitAll(); roster.syncAll(); roster.setFocus(null); refresh();
+      stage.commitAll({ shrinking: true }); roster.syncAll(); roster.setFocus(null); refresh();   // 縮到一半的零件縮完自己走
     };
     return done.then(end, err => { end(); throw err; });
   }

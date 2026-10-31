@@ -163,7 +163,8 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 }
 
 // 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
-// commit 由舞台自己亮一下 BLINK 秒（移除的亮完才拿掉），拍長 BLINK + 0.15·(n−1)。
+// commit 由舞台演（會長的建築亮一下＋長出來、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK + 0.15·(n−1)——
+// 不亮的鍵照樣佔一格 stagger：拍長不變（整局的走位與節奏門檻對時間很敏感）。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
 // stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻閃（大停電：電一斷整區一起暗，拍長 BLINK）
 // tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個閃的零件一起閃、不多佔一格 stagger：
@@ -190,7 +191,8 @@ export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
       t += dt;
       while (fired < keys.length && t >= stagger * fired - 1e-9) { if (!fired) for (const a of along) ctx.stage.commit(a); ctx.stage.commit(keys[fired++]); }
     },
-    end(ctx) { ctx.stage.commitAll(); ctx.nav.setFootprints(ctx.stage.footprints()); },
+    // 照常演完：縮到一半的零件（SHRINK_DUR 比 BLINK 長）縮完自己走；跳過時 show/index.js 的 snap 會再 commitAll 立刻拿掉
+    end(ctx) { ctx.stage.commitAll({ shrinking: true }); ctx.nav.setFootprints(ctx.stage.footprints()); },
   };
 }
 

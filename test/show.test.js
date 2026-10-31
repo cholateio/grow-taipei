@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig, gameInvariants } from './helpers/show.js';
+import { headlessShow, ALL, turnSteps, towerCrossings, overviewRig, gameInvariants, blinkLog } from './helpers/show.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
@@ -493,6 +493,51 @@ test('the solution live with merged jumps and cause flashes: invariants clean, �
     assert.deepEqual(inv.labels, []);
   }
 });
+
+// 計畫 11 §設計 1（亮一下只剩兩種）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 不是會長的建築（同一個零件緊接著 blink.grow）
+// 就是起因提示（flash 拍）——其餘零件直接出現、拿掉的縮下去（blink.shrink）。名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。
+// 量表印在 diagnostic；共用不變式照樣乾淨
+test('the solution live: every blink.part on a stage part is a growing building or the cause flash; removals shrink; invariants clean', async t => {
+  for (const order of SOLUTIONS) {
+    const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), log = blinkLog(show);
+    let s = engine.createState(spec);
+    for (const [i, step] of turnSteps(order).entries()) {
+      const r = step(s); s = r.state;
+      const what = `${order.join('>')} turn ${i + 1}`;
+      inv.label(what); log.label(`${i + 1}`);
+      await run([...r.events, { kind: 'settle' }], { onMark: e => { const ev = `${e.kind} ${e.item ?? ''}${e.to ?? ''}`; inv.label(`${what} [${ev}]`); log.label(`${i + 1} ${ev}`); } });
+      inv.turnEnd();
+    }
+    const row = c => `${c.label} | ${c.fn}${c.dur ? ` ${c.dur}` : ''} | ${c.key ?? '?'} | ${c.grows ? 'grow' : ''}${c.cause ? 'cause' : ''}${c.member ? 'member' : ''} | ${c.from}`;
+    t.diagnostic(`${order.join('>')}: ${log.calls.length} calls\n${log.calls.map(row).join('\n')}`);
+    const parts = log.calls.filter(c => c.fn === 'part' && !c.member);
+    assert.deepEqual(parts.filter(c => !c.grows && !c.cause).map(row), [], 'only growing buildings and cause flashes glow');
+    assert.ok(parts.some(c => c.grows) && parts.some(c => c.cause), 'buildings still glow as they grow; the cause flash is still there');
+    assert.ok(log.calls.some(c => c.fn === 'shrink'), 'removed parts shrink');
+    assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
+    assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
+    assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);
+    assert.deepEqual(inv.camera, []);
+    assert.deepEqual(inv.labels, []);
+  }
+});
+
+// 計畫 11 Review Focus 2：縮到一半的零件，跳過／RESET 時立刻回原大小並拿掉，不留半截（唯一正解第 3 回合棒球 3 收掉壘線與看台）
+for (const how of ['skip', 'reset']) {
+  test(`${how} mid-shrink: the shrinking part is restored and dropped at once`, async () => {
+    const { show, run } = await headlessShow(), steps = turnSteps(SOLUTIONS[0]);
+    let s = engine.createState(spec);
+    for (const step of steps.slice(0, 2)) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+    const r = steps[2](s), shrinking = [], shrink = show.blink.shrink;
+    show.blink.shrink = (o, ...rest) => { shrinking.push(o); return shrink(o, ...rest); };
+    const p = show.turn([...r.events, { kind: 'settle' }]);
+    for (let t = 0; t < 60 && !(shrinking.length && show.blink.has(shrinking[0]) && shrinking[0].scale.y < 0.9); t += 1 / 30) { show.update(1 / 30, t); await Promise.resolve(); }
+    assert.ok(shrinking.length && shrinking[0].scale.y < 0.9, 'caught a part mid-shrink');
+    if (how === 'skip') { show.skip(); await p; } else { show.reset(); await p.catch(() => {}); }
+    for (const o of shrinking) { assert.equal(o.parent, null, 'dropped'); assert.equal(o.scale.y, 1, 'restored first'); assert.ok(!show.blink.has(o)); }
+    assert.equal(show.blink.count, 0);
+  });
+}
 
 // Task 3 裁決 B（Task 6 落實）：起因段（mark 的 info.cause：空拍、平移到幫手、閃白、平移回目標）自己一個 mark、單獨量——
 // 有起因的升級，劇本秒數（不含 focus 拍、扣掉空拍）跟同一回合把 via 拿掉（沒有起因段）演出來的一樣（差 ≤ 0.2 s：日常的人位置不同）；

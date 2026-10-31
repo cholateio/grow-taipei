@@ -6,8 +6,8 @@ import { installFakeDom } from './helpers/fakedom.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
-const { createStage, diffParts, troubleOf, troubleSpot } = await import('../src/actors/stage.js');
-const { createBlink, GROW_DUR, BLINK } = await import('../src/show/blink.js');
+const { createStage, diffParts, troubleOf, troubleSpot, growsOn } = await import('../src/actors/stage.js');
+const { createBlink, GROW_DUR, BLINK, SHRINK_DUR } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
 // 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
@@ -58,14 +58,15 @@ test('deferred keeps the old part and hides the new until commit; commitAll reve
   stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
   stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
 });
-// §13.2：換零件＝舊的立刻拿掉、新的亮一下；新增＝新的亮一下；移除＝舊的亮一下，亮完才拿掉。
-// 修正批次 2：新零件同時「長出來」（blink.grow：scale.y 0.15 → 1.06 → 1、GROW_DUR），拿掉的舊零件只亮不長
+// §13.2：換零件＝舊的立刻拿掉（新的矮樁蓋住它，不縮）、新的亮一下；新增＝新的亮一下；移除＝舊的縮下去，縮完才拿掉（計畫 11 §設計 1）。
+// 修正批次 2：新零件同時「長出來」（blink.grow：scale.y 0.15 → 1.06 → 1、GROW_DUR）
 test('commit reveals the fresh part and blinks it; the old part is dropped', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
   stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
   const mats = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; }, own = mats(fresh);
   stage.commit('milk.main');
-  assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.equal(fresh.visible, true); assert.ok(lit(blink, fresh)); assert.equal(blink.count, 1);
+  assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.ok(!blink.has(old), 'replaced: the old part does not shrink');
+  assert.deepEqual(old.scale.toArray(), [1, 1, 1]); assert.equal(fresh.visible, true); assert.ok(lit(blink, fresh)); assert.equal(blink.count, 1);
   const y0 = fresh.position.y;
   assert.ok(Math.abs(fresh.scale.y - 0.15) < 1e-9, 'the fresh part grows from 0.15x high'); assert.equal(fresh.scale.x, 1); assert.equal(fresh.scale.z, 1);
   stage.commit('milk.lamp'); assert.ok(lit(blink, stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
@@ -74,28 +75,35 @@ test('commit reveals the fresh part and blinks it; the old part is dropped', () 
   blink.update(0.25); assert.ok(fresh.scale.y > 0.8, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
   blink.update(GROW_DUR); assert.equal(blink.count, 0); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
 });
-// 只有建築會長（協調者裁決，stage.js growsOn）：footprint false 的、不是 compound／glb／campus 的、tagAlong 點綴只亮不長；grow: true／false 蓋過
-test('only buildings grow: footprint false, other kinds and tagAlong parts only glow; an explicit grow flag overrides', () => {
+// 只有建築會長（協調者裁決，stage.js growsOn）：footprint false 的、不是 compound／glb／campus 的、tagAlong 點綴不長；grow: true／false 蓋過（tagAlong 不行）。
+// 計畫 11 §設計 1（亮一下只剩兩種）：只有會長的零件亮一下；其餘直接出現——不亮、不長、blink 不管它
+test('only buildings grow and only growing parts glow: footprint false, other kinds and tagAlong parts just appear; an explicit grow flag overrides', () => {
   const box = extra => ({ kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }], ...extra });
   const cases = { 'milk.a': [box({ footprint: false }), false], 'milk.b': [box({ tagAlong: true }), false], 'milk.c': [box({ footprint: { r: 0.3 }, grow: false }), false],
-    'milk.d': [box({ footprint: false, grow: true }), true], 'milk.e': [box({}), true], 'milk.f': [box({ footprint: { r: 0.3 } }), true] };
+    'milk.d': [box({ footprint: false, grow: true }), true], 'milk.e': [box({}), true], 'milk.f': [box({ footprint: { r: 0.3 } }), true],
+    'milk.g': [box({ tagAlong: true, grow: true }), false] };
   const mod = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? Object.fromEntries(Object.entries(cases).map(([k, [v]]) => [k, v])) : {}) };
   const { stage, blink } = setup([mod]); stage.apply(placed, { deferred: true });
-  for (const [k, [, grows]] of Object.entries(cases)) {
-    const o = stage.partObject(k); stage.commit(k); assert.ok(lit(blink, o), `${k} glows`);
-    assert.equal(o.scale.y < 1, grows, `${k} ${grows ? 'grows' : 'does not grow'}`);
+  const own = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; };
+  for (const [k, [v, grows]] of Object.entries(cases)) {
+    const o = stage.partObject(k), mats = own(o); stage.commit(k);
+    assert.equal(growsOn(v), grows, `${k} growsOn`); assert.equal(o.visible, true, `${k} shown`);
+    if (grows) assert.ok(lit(blink, o) && o.scale.y < 1, `${k} glows and grows`);
+    else { assert.ok(!blink.has(o), `${k} just appears`); assert.deepEqual(own(o), mats, `${k} keeps its own materials (no glow)`); assert.equal(o.scale.y, 1); }
   }
-  blink.update(BLINK + 0.01);
-  for (const [k, [, grows]] of Object.entries(cases)) assert.equal(blink.has(stage.partObject(k)), grows, `${k} done after the glow unless it grows`);
+  assert.equal(blink.count, Object.values(cases).filter(([, g]) => g).length, 'only the growing parts are in blink');
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
-test('a removed part blinks first and is dropped when the blink ends', () => {
+// 計畫 11 §設計 1：移除的零件不亮，縮下去（blink.shrink，SHRINK_DUR），縮完才拿掉（回原大小再放掉）
+test('a removed part shrinks without a glow and is dropped when the shrink ends', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  const own = []; lamp.traverse(m => { if (m.isMesh) own.push(m.material); });
   stage.apply(drop, { deferred: true }); assert.ok(parts().includes(lamp), 'old kept while pending');
-  stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, blinking'); assert.ok(lit(blink, lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
-  assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'a part going away glows but does not grow');
-  blink.update(0.1); assert.ok(parts().includes(lamp));
-  blink.update(0.06); assert.ok(!parts().includes(lamp), 'dropped after the blink'); assert.equal(blink.count, 0);
+  stage.commit('milk.lamp'); assert.ok(parts().includes(lamp), 'still there, shrinking'); assert.ok(blink.has(lamp)); assert.ok(!stage.pendingKeys().includes('milk.lamp'));
+  assert.ok(!lit(blink, lamp), 'no glow'); const mats = []; lamp.traverse(m => { if (m.isMesh) mats.push(m.material); }); assert.deepEqual(mats, own);
+  blink.update(0.1); assert.ok(parts().includes(lamp)); assert.ok(lamp.scale.y < 1 && lamp.scale.y > 0.15, `shrinking (${lamp.scale.y.toFixed(2)})`);
+  blink.update(SHRINK_DUR - 0.1 + 0.01); assert.ok(!parts().includes(lamp), 'dropped after the shrink'); assert.equal(blink.count, 0);
+  assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'back to its own scale before it went');
 });
 // 計畫 9 任務 4（任務 2 延後的小項）：長到一半就被拿掉（下一個套用換掉它）——拿掉之前先收掉 grow，物件回到原本的大小（放回模型池的才不會小一號）
 test('a part dropped mid-grow is restored to its own scale before it goes', () => {
@@ -105,16 +113,23 @@ test('a part dropped mid-grow is restored to its own scale before it goes', () =
   stage.apply(drop); assert.ok(!parts().includes(fresh), 'swapped out at once');
   assert.deepEqual(fresh.scale.toArray(), [1, 1, 1], 'back to its own scale'); assert.equal(blink.has(fresh), false);
 });
-test('commitAll commits without blinking and drops a blinking removal at once, restored first', () => {
+test('commitAll commits without blinking and drops a shrinking removal at once, restored first', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
-  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); assert.equal(blink.count, 1);
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); assert.equal(blink.count, 1); blink.update(0.1);
   stage.commitAll(); assert.ok(!parts().includes(lamp), 'removal dropped at once'); assert.ok(parts().every(o => o.visible));
-  assert.equal(blink.count, 0, 'commitAll blinks nothing and restores the removal before dropping it'); assert.ok(!lit(blink, lamp));
+  assert.equal(blink.count, 0, 'commitAll blinks nothing and restores the removal before dropping it'); assert.deepEqual(lamp.scale.toArray(), [1, 1, 1]);
 });
-test('reset drops a part that is blinking out', () => {
+// 拍照常演完（beats.apply 的 end、回合照常結束）：commitAll({ shrinking: true }) 讓縮到一半的零件縮完自己走——不在 0.15 s 的拍尾截斷成半截再消失
+test('commitAll({ shrinking: true }) commits the rest but lets a shrinking removal finish on its own', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
-  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); stage.reset();
-  assert.ok(!parts().includes(lamp)); assert.ok(!lit(blink, lamp), 'restored before it was dropped'); assert.deepEqual(stage.partKeys(), []);
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); blink.update(0.1);
+  stage.commitAll({ shrinking: true }); assert.deepEqual(stage.pendingKeys(), []); assert.ok(parts().includes(lamp), 'still shrinking'); assert.ok(blink.has(lamp));
+  blink.update(SHRINK_DUR); assert.ok(!parts().includes(lamp), 'gone once the shrink is over');
+});
+test('reset drops a part that is shrinking out, restored first', () => {
+  const { stage, parts, blink } = setup(); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');
+  stage.apply(drop, { deferred: true }); stage.commit('milk.lamp'); blink.update(0.1); stage.reset();
+  assert.ok(!parts().includes(lamp)); assert.deepEqual(lamp.scale.toArray(), [1, 1, 1], 'restored before it was dropped'); assert.equal(blink.count, 0); assert.deepEqual(stage.partKeys(), []);
 });
 test('a stage without blink commits as before', () => {
   const { stage, parts } = setup([fakeMilk], null, { blink: false }); stage.apply(placed); stage.apply(grow(3)); const lamp = stage.partObject('milk.lamp');

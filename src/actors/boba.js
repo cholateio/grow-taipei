@@ -232,7 +232,7 @@ const ISLAND_ZOOM = 0.8;
 const FROM = offset(AT, -1.0, -3.65), TURN = 12;
 const start = c => { const p = c.nav.nearestWalkable(FROM); return { ...p, yaw: Math.atan2(PUSH_END.x - p.x, PUSH_END.z - p.z) }; };
 const ahead = (p, yaw) => ({ x: p.x + Math.sin(yaw) * HANDLE, y: p.y, z: p.z + Math.cos(yaw) * HANDLE });
-// 攤車在出發點（老闆面前）出現、閃白 BLINK 秒
+// 攤車在出發點（老闆面前）出現，停 BLINK 秒（計畫 11 §設計 1：攤車不是會長的建築，直接出現、不亮；拍長不變）
 function cartIn() {
   let obj = null;
   return {
@@ -240,7 +240,6 @@ function cartIn() {
     start(c) {
       obj = c.stage.partObject('boba.main'); if (!obj) return false;
       const p = start(c), q = ahead(p, p.yaw); obj.position.set(q.x, p.y, q.z); obj.visible = true;
-      c.blink.part(obj);
     },
     end() { if (obj) obj.visible = true; },
   };
@@ -264,7 +263,7 @@ function push(w) {
 const pier = k => c => c.nav.nearestWalkable(PIER[k % PIER.length]);
 
 // ── Lv5 小船：船身沿 FERRY_PATH 開 SAIL 秒（緩起緩停），坐在船上的兩個觀光客每幀擺在座位上；
-// 一開始在碼頭閃白出現；end 停在 DOCK（船的零件本來就停在那裡，轉正）。跳過時直接停好、觀光客由後面的 jump 拍落地 ──
+// 一開始在碼頭直接出現（計畫 11 §設計 1：不亮）；end 停在 DOCK（船的零件本來就停在那裡，轉正）。跳過時直接停好、觀光客由後面的 jump 拍落地 ──
 const ease = k => k * k * (3 - 2 * k);
 const ferryAt = k => locateOnPath(FERRY_PATH, FERRY_LENS, FERRY_LEN * ease(Math.min(1, Math.max(0, k))), false);
 // 船在 k（0–1）時第 i 個座位的位置（沿船身前後錯開）
@@ -277,7 +276,7 @@ function sail() {
   };
   return {
     kind: 'sail', dur: SAIL,
-    start(c) { obj = c.stage.partObject('boba.ferry'); if (!obj) return false; put(c, 0); c.blink.part(obj); },
+    start(c) { obj = c.stage.partObject('boba.ferry'); if (!obj) return false; put(c, 0); },
     step(k, dt, c) { put(c, k); },
     end(c) { if (!obj) return; put(c, 1); obj.position.set(DOCK.x, DOCK.y, DOCK.z); obj.rotation.y = 0; },
   };

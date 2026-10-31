@@ -1,8 +1,9 @@
 // 舞台：演員的外觀只由「等級向量 + 旗標 + meta」決定（§7.1）。每個模組 view(lv, flags, meta) → { key: partSpec }，
 // 舞台比對前後兩份 view：沒變的零件不動，變了的立刻換掉，並回報換了哪些鍵（動畫全交給演出層：閃白揭露、泡泡出 LEVEL UP）。
-// deferred：新零件先藏著、舊零件先留著，等演出層 commit(key) 才換（§13.2）：換零件＝舊的立刻拿掉、新的閃白；
-//   新增＝新的閃白；移除＝舊的閃白，閃完才拿掉。commitAll（跳過、回合收尾）不閃，閃到一半要拿掉的也立刻拿掉。
-// blink：show/blink.js 的閃白；沒給（單元測試）就不閃，移除的立刻拿掉。
+// deferred：新零件先藏著、舊零件先留著，等演出層 commit(key) 才換（§13.2）：換零件＝舊的立刻拿掉（新的矮樁蓋住它）、新的出現；
+//   新增＝新的出現；移除＝舊的縮下去（blink.shrink），縮完才拿掉。新零件只有會長的建築（growsOn）亮一下＋長出來，其餘直接出現（計畫 11 §設計 1）。
+//   commitAll（跳過、回合收尾）不亮，縮到一半要拿掉的也立刻拿掉；commitAll({ shrinking: true })（拍照常演完）讓縮到一半的縮完自己走。
+// blink：show/blink.js 的亮一下；沒給（單元測試）就不亮，移除的立刻拿掉。
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
 import { anchorWorld, frontOf } from './anchors.js';
@@ -44,10 +45,10 @@ export function troubleSpot(item, lv, flags, modules) {
 }
 
 // 長出來（blink.grow，修正批次 2 協調者裁決）只給建築：kind 是 compound／glb／campus、footprint 不是 false、不是 tagAlong 點綴的才長；
-// 其他（footprint false 的雲、雨、纜線、軌道與列車、霓虹、光環、UFO、堤防、彩虹、被吹到海裡的攤車、離島點綴……）只亮不長——
-// 它們的 at 常在地面或原點、畫在高處，從底部長會變成從地面／水裡升上來。零件 spec 可寫 grow: true／false 蓋過
+// 其他（footprint false 的雲、雨、纜線、軌道與列車、霓虹、光環、UFO、堤防、彩虹、被吹到海裡的攤車、離島點綴……）不長也不亮（計畫 11 §設計 1：直接出現）——
+// 它們的 at 常在地面或原點、畫在高處，從底部長會變成從地面／水裡升上來。零件 spec 可寫 grow: true／false 蓋過；tagAlong 點綴寫了也不長（跟著主零件，不另外亮）
 const GROW_KINDS = new Set(['compound', 'glb', 'campus']);
-export const growsOn = spec => (typeof spec?.grow === 'boolean' ? spec.grow : GROW_KINDS.has(spec?.kind) && spec.footprint !== false && !spec.tagAlong);
+export const growsOn = spec => !spec?.tagAlong && (typeof spec?.grow === 'boolean' ? spec.grow : GROW_KINDS.has(spec?.kind) && spec.footprint !== false);
 
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
@@ -103,21 +104,23 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     partsGroup.add(part.object);
     return { spec: s, part, fp: footprintOf(s, part.object) };
   }
-  // 亮一下／長出來中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
+  // 亮一下／長出來／縮下去中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
   function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
 
-  // glint：要不要亮一下（commitAll、換裝前收掉舊的 pending 都不亮）。新零件亮一下，是建築的再長出來（blink.grow，修正批次 2；見 growsOn）；
-  // 要拿掉的舊零件只亮、不長，亮完才拿掉
+  // glint：要不要演（commitAll、換裝前收掉舊的 pending 都不演，直接換）。計畫 11 §設計 1（亮一下只剩兩種）：
+  //   新零件是會長的建築（growsOn）才亮一下＋長出來（blink.grow，修正批次 2），其餘直接出現、不亮——
+  //   使用者 2026-10-31「建築物還是會閃一下」：鏡頭對著正面時，背面的點綴（圍欄、路燈、煙、離島三段……）換掉也在亮；
+  //   換零件的舊的立刻拿掉（新的矮樁蓋住它）；只拿掉的舊零件縮下去（blink.shrink），縮完才拿掉、不亮
   function commit(key, glint = true) {
     const p = pending.get(key); if (!p) return;
     pending.delete(key);
     if (p.fresh) {
       if (p.old) drop(p.old);
-      p.fresh.part.object.visible = true;
-      if (glint) { blink?.part(p.fresh.part.object); if (growsOn(p.fresh.spec)) blink?.grow(p.fresh.part.object); }
+      const o = p.fresh.part.object; o.visible = true;
+      if (glint && growsOn(p.fresh.spec)) { blink?.part(o); blink?.grow(o); }
     } else if (glint && blink) {
       dying.add(p.old);
-      blink.part(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });
+      blink.shrink(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });
     } else drop(p.old);
   }
   function dropDying() { for (const d of [...dying]) { dying.delete(d); drop(d); } }
@@ -177,7 +180,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       return sync(opts);
     },
     commit,
-    commitAll() { for (const key of [...pending.keys()]) commit(key, false); dropDying(); },
+    // shrinking：拍照常演完（beats.apply 的 end、回合照常結束）時傳 true——縮到一半的零件縮完自己走（不在拍尾截成半截再消失）；
+    // 跳過、中止、RESET（show/index.js snap）不傳：立刻拿掉
+    commitAll({ shrinking = false } = {}) { for (const key of [...pending.keys()]) commit(key, false); if (!shrinking) dropDying(); },
     pendingKeys: () => [...pending.keys()],
     footprints: () => [...live.values()].flatMap(e => e.fp),
     update(dt, t) {

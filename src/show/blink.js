@@ -8,27 +8,35 @@
 //     只動 y：先在 GROW_FROM 倍停 GROW_HOLD 秒（就是亮一下的那段：玩家看到一截發亮的矮樁），再花 dur 秒以 ease-out-back 長到 GROW_PEAK 倍、
 //     回 1 倍（共 GROW_HOLD + dur）；x、z 不動。零件的原點就是它的底（at，零件從 y 0 往上蓋），所以是從地面長上來，object.position 不動。
 //     結束設回記下的 scale（壓扁過的零件也不會被設成 1）。和亮一下（part）同時開始，亮一下照舊 BLINK 秒淡掉。哪些零件會長由 stage.js growsOn 決定（只有建築）
+//   shrink(object3d, dur = SHRINK_DUR, onEnd?)：縮下去（計畫 11 §設計 1：要拿掉的零件不亮）——記下呼叫時的 scale 與位置，只動 y：以 ease-in 花 dur 秒
+//     從 1 倍縮到 SHRINK_TO 倍，材質不換。軸是零件自己的底（呼叫時包圍盒的最低點）：建築的原點就是底，position 不動；
+//     畫在高處的（颱風雲、煙、雨——原點在地面）在自己的底部壓扁，不會整團掉到地上。包圍盒是空的（還沒載到的模型）就用原點。
+//     時間到先設回記下的 scale 與位置再呼叫 onEnd（舞台在 onEnd 拿掉它）。正在長的先收掉 grow（從自己的高度縮）。stop／clear：立刻回原樣並呼叫 onEnd
 //   walker(w, dur)：小人是 InstancedMesh 的一個實例，改用 people.flashInstance 把整個實例塗白、時間到重塗原色（名冊換位置用，照舊）。
+// 哪些東西會亮（計畫 11 §設計 1，亮一下只剩兩種）：長出來的建築（stage.js commit，growsOn）與起因提示（beats.flash）；名冊的人換位置／換裝照舊閃。
 // 亮到一半再亮同一個東西：計時重來，不再複製一次。父子各自 part（巢狀）：後來的那個跳過已經在亮的 mesh（各自換回自己的原材質）。clear()：全部立刻回原樣（跳過、RESET）。
 // stop(object 或 walker)：只把這一個立刻收掉（要拿掉、放回模型池的東西先換回原材質與原大小，複本才不會被帶走）。
-// has(object 或 walker)：這一個現在正在亮或正在長（測試查「換位置的那一幀有閃」）。count：正在亮／長／閃的東西有幾個（同一個東西只算一次）。
+// has(object 或 walker)：這一個現在正在亮、正在長或正在縮（測試查「換位置的那一幀有閃」）。count：正在亮／長／縮／閃的東西有幾個（同一個東西只算一次）。
 export const BLINK = 0.15;
 export const GLOW = 0.35;
 export const GROW_DUR = 0.5, GROW_HOLD = 0.15;   // 長高的秒數；長之前先停在矮樁的秒數（＝亮一下 BLINK，協調者裁決：曲線不藏在白光裡）
 const GROW_FROM = 0.15, GROW_PEAK = 1.06;
+export const SHRINK_DUR = 0.2, SHRINK_TO = 0.15;   // 縮下去的秒數；縮到幾倍高（之後拿掉）
 // ease-out-back：f(0) = 0、f(1) = 1，中途衝過頭 1 + 4s³ / (27 (s + 1)²)；s = 1.4 衝到 1.0706，乘上 (1 − GROW_FROM) 剛好是 GROW_PEAK 1.06
 const BACK = 1.4;
 const easeOutBack = k => { const u = k - 1; return 1 + (BACK + 1) * u ** 3 + BACK * u ** 2; };
 // t：從呼叫起算的秒數；前 GROW_HOLD 秒停在 GROW_FROM，之後 dur 秒長上去
 const growAt = (t, dur) => (t <= GROW_HOLD ? GROW_FROM : GROW_FROM + (1 - GROW_FROM) * easeOutBack(Math.min(1, (t - GROW_HOLD) / dur)));
 const easeOut = k => 1 - (1 - k) ** 2;
+const shrinkAt = k => 1 - (1 - SHRINK_TO) * Math.min(1, k) ** 2;   // ease-in：一開始慢、越縮越快
 
 export function createBlink(THREE, { people }) {
   const parts = new Map();     // object3d → { t, dur, saved: [[mesh, 原材質（或陣列）]], clones: Map(原材質 → 複本), onEnd }
   const active = new Set();    // 正在用的複本：巢狀的 part（父子各亮一次）跳過已經在亮的 mesh——不然會複製複本，先結束的那個換回去之後另一個再換回已 dispose 的複本
   const grows = new Map();     // object3d → { t, dur, scale: 呼叫時的 scale }
+  const shrinks = new Map();   // object3d → { t, dur, scale: 呼叫時的 scale, onEnd }
   const walkers = new Map();   // walker → { t, dur }
-  const WHITE = new THREE.Color(1, 1, 1);
+  const WHITE = new THREE.Color(1, 1, 1), box = new THREE.Box3(), foot = new THREE.Vector3();
   const lit = m => m.emissive && m.emissive.getHex() !== 0 && m.emissiveIntensity > 0;
 
   // 複本：Material.copy 不帶 onBeforeCompile（assets.js 的多色發光靠它乘頂點色），自己補上
@@ -82,6 +90,29 @@ export function createBlink(THREE, { people }) {
   function stretch(object, it) { object.scale.set(it.scale.x, it.scale.y * growAt(it.t, it.dur), it.scale.z); }
   function endGrow(object, it) { grows.delete(object); object.scale.copy(it.scale); }
 
+  // 零件的底（父座標的 y）：包圍盒最低點；空的就是原點
+  function baseOf(object) {
+    box.setFromObject(object);
+    if (box.isEmpty()) return object.position.y;
+    foot.set((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2);
+    if (object.parent) { object.parent.updateWorldMatrix(true, false); object.parent.worldToLocal(foot); }
+    return foot.y;
+  }
+  function shrink(object, dur = SHRINK_DUR, onEnd = null) {
+    const g = grows.get(object); if (g) endGrow(object, g);   // 長到一半就要拿掉：從自己的高度縮
+    const was = shrinks.get(object);
+    if (was) { was.t = 0; was.dur = dur; if (onEnd) was.onEnd = onEnd; }
+    else shrinks.set(object, { t: 0, dur, scale: object.scale.clone(), y: object.position.y, base: baseOf(object), onEnd });
+    squash(object, shrinks.get(object));
+  }
+  // y 方向乘 k，底（base）不動：position.y 跟著往底部靠（原點就是底的零件 position 不動）
+  function squash(object, it) {
+    const k = shrinkAt(it.t / it.dur);
+    object.scale.set(it.scale.x, it.scale.y * k, it.scale.z); object.position.y = it.base - k * (it.base - it.y);
+  }
+  // 先離開 shrinks 再呼叫 onEnd：onEnd 拿掉零件時會 stop 它，不會再進來一次
+  function endShrink(object, it) { shrinks.delete(object); object.scale.copy(it.scale); object.position.y = it.y; it.onEnd?.(); }
+
   function walker(w, dur = BLINK) {
     const was = walkers.get(w);
     if (was) { was.t = 0; was.dur = dur; return; }
@@ -92,21 +123,24 @@ export function createBlink(THREE, { people }) {
   function update(dt) {
     for (const [o, it] of [...parts]) if ((it.t += dt) >= it.dur - 1e-9) endPart(o, it); else paint(it);
     for (const [o, it] of [...grows]) if ((it.t += dt) >= GROW_HOLD + it.dur - 1e-9) endGrow(o, it); else stretch(o, it);
+    for (const [o, it] of [...shrinks]) if ((it.t += dt) >= it.dur - 1e-9) endShrink(o, it); else squash(o, it);
     for (const [w, it] of [...walkers]) if ((it.t += dt) >= it.dur - 1e-9) endWalker(w);
   }
   function stop(target) {
     const it = parts.get(target); if (it) endPart(target, it);
     const g = grows.get(target); if (g) endGrow(target, g);
+    const sh = shrinks.get(target); if (sh) endShrink(target, sh);
     if (walkers.has(target)) endWalker(target);
   }
   function clear() {
     for (const [o, it] of [...parts]) endPart(o, it);
     for (const [o, it] of [...grows]) endGrow(o, it);
+    for (const [o, it] of [...shrinks]) endShrink(o, it);
     for (const w of [...walkers.keys()]) endWalker(w);
   }
-  const has = target => parts.has(target) || grows.has(target) || walkers.has(target);
+  const has = target => parts.has(target) || grows.has(target) || shrinks.has(target) || walkers.has(target);
   return {
-    part, grow, walker, update, stop, clear, has,
-    get count() { return new Set([...parts.keys(), ...grows.keys(), ...walkers.keys()]).size; },
+    part, grow, shrink, walker, update, stop, clear, has,
+    get count() { return new Set([...parts.keys(), ...grows.keys(), ...shrinks.keys(), ...walkers.keys()]).size; },
   };
 }

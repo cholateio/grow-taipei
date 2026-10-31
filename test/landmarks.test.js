@@ -125,7 +125,7 @@ test('volcano builder: one faceted clay mesh with three vertex-colour bands and 
   }
   assert.equal(seen.size, 3, 'three colour bands');
   // 修正輪 0b：三道細熔岩剛從口緣溢出來（各一面寬、兩段、暗一階的橘），不流到山腰
-  assert.ok(streak >= 6 && streakLow >= 0.75, `lava streaks painted on the cone: ${streak} vertices, lowest ${streakLow.toFixed(2)}`);
+  assert.ok(streak === 18 && streakLow >= 0.95, `lava streaks painted on the cone: ${streak} vertices, lowest ${streakLow.toFixed(2)}`);
   assert.ok(streak <= 3 * 2 * 3, `thin streaks: one face per segment (${streak} vertices)`);
   assert.ok(low > 20 && lowSand / low > 0.95, `lower slope sand (${lowSand}/${low})`);
   assert.ok(top > 10 && topDark / top > 0.9, `crater rim darkest (${topDark}/${top})`);

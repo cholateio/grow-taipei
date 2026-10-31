@@ -188,6 +188,13 @@
   - 目視：立牌貼著店東牆（修正輪 1：板子改窄 0.16、中心 SHOP 東邊 0.50，西端在牆外 0.01，不再插進牆，`boba-6`）；颱風天外送機車遇到人會煞車、停住、原地迴轉往回騎，有人直直走過來時會往前或倒退一小步（live 才看得到，`live-storm` 不一定拍到）；代幣 5／6 列車在站前停住換車、♪、站務員揮手／跳、開走時 LEVEL UP（`token-6`），趕得急時列車繞圈的速度最多 7.5 倍（比 Lv7 的 4.5 倍快）；**剛開過站前（π/2 內）的列車會在鏡頭裡倒車回來，最快約 4.8 倍**（`back` π/2、`arrive` 1.0：倒退 π/2 要在 1 s 內跑完）——請看是否可以接受，參數先不改。
 
 - R25（2026-11-01）：**大停電不再打鮮奶**（使用者：「為什麼颱風會讓學校降級…不要降級」）——颱風放下時燈泡 ≤2 只鎖燈泡、立 blackout（故事句「全島大停電！」），沒有 delta；規則裡剩下的負向 delta 只有老鼠咬鮮奶。全枚舉仍剛好一解（§3 分布重算）。同日：**老鼠的散步中心不貼格邊**（截圖：老鼠「卡在」橋上——路燈 Lv1–3 的門口點 frontOf(錨點, 0.8) 落在格邊橋頭，老鼠繞 0.4 就走上窄橋、兩隻互相讓不開）：`stage.troubleSpot` 把離格心 > `TROUBLE_IN` 1.3 的點沿格心方向拉回 1.3（走路格內切半徑約 1.95，留 0.65）；拉到的有路燈、牛奶箱、鼠窩門口與颱風錨點。
+- R26（2026-11-01，計畫 12 `2026-11-01-12-phone-retry.md`）：**手機上玩完直接再玩**。結局卡同日已拿掉（終局演完畫面就是結局，沒有標題與文字）；圖鑑、分享圖不做（使用者：不給文字描述）。
+  - 跳過鍵：頂欄 `.tools` 最左一顆「跳過」（`data-act=skip`），只在 `show.skippable`（時間軸忙著、不在終局前的 `hold`）時顯示，按下 `show.skip()`；畫布不再聽 click（手機上點畫面常常只是想轉鏡頭；拖鏡頭的 pointerdown 照舊）。顯示／隱藏不做動畫；`?auto` 截圖不會出現（瞬間套用不忙），`?live` 截圖會出現。窄手機（≤ 420）工具鍵左右邊距 14 → 10、間距 8 → 6，高度照舊 44。
+  - RESET 醒目：`game.finished`（onFinished）後 RESET 加 `glow`——珊瑚底白字、每 1.6 s 放大到 1.06 一次，`prefers-reduced-motion` 不動；RESET 後拿掉。沒有新文字，玩家看物品列的 Lv.n／MAX 自己發現沒全 MAX。
+  - 部署：`.github/workflows/pages.yml`（push main → `npm run dist`〔rsync index.html、src、vendor、assets 到 dist/〕→ upload-pages-artifact → deploy-pages；Pages 沒開時寫出去 Settings → Pages 開；og:image 換成 `base_url` 完整網址）。`index.html` 補 description、og:*、twitter:card；`assets/og.png` 是 wide-end 構圖以 0.5 倍裝置像素拍的 1280×540。`serve.mjs`／`shot.mjs` 加 `--root dist`。不建 remote、不 push。
+  - 開局載入（`npm run startup`）：開局模型 6 個 0.66 MB → 5 個 0.12 MB——柴犬（528 KB）改由 `createLater` 在第一幀 render 之後閒置時載（最多等 0.5 s）；`?auto` 回報 draw call 等它開始載（`later.done`），phone-end 142 不變、截圖照樣有狗。JS 62 檔 2.24 MB（gzip 0.62 MB），其中 three.module.js 1.31 MB（gzip 0.27 MB），沒動。
+  - 目視：手機上跳過鍵出現時頂欄排得下（390 寬時跟品牌卡之間約 6 px，`phone-live`）；終局停格那 2 秒沒有跳過鍵；結束後 RESET 珊瑚色輕輕跳（`phone-end`、`wide-end`）；按 RESET 之後恢復奶油色；開局幾百毫秒內柴犬才出現在中央步道。
+
 ## 附錄：試作的規則表（2026-10-31，全枚舉剛好一解）
 
 ```js

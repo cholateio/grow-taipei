@@ -309,7 +309,7 @@ export async function visitSpotsThroughSolutions(mod, orders, { cells, tol = 0.6
   return { bad: [...new Set(bad)], seen: [...seen].sort((a, b) => a - b) };
 }
 
-// 亮一下量表（計畫 11 Task 1）：掛在 show.blink 上，記下每一次 part／grow／shrink 的呼叫（各自一筆；fn 'grow' 就是 blink.grow——
+// 亮一下量表（計畫 11 Task 1）：掛在 show.blink 上，記下每一次 part／grow／shrink／nod 的呼叫（各自一筆；fn 'grow' 就是 blink.grow——
 //   使用者 2026-10-31「閃一下」之後長出來的建築不再同時 blink.part，所以 part 和 grow 不再配對）——
 // { label, key（舞台零件鍵；名冊模型是 `<鍵>#<i> (roster)`；找不到是 null）, fn, dur,
 //   cause（演到起因閃一下的拍，show.currentKind === 'flash'）, member（名冊的人的模型 holder，不是零件）, from（呼叫端的檔案:行號）}。
@@ -327,13 +327,13 @@ export function blinkLog(show) {
     if (!orig) return;
     blink[fn] = (o, dur, ...rest) => {
       if (!keyOf.has(o)) snap();
-      // 起因：只算 B.flash（show/beats.js）自己那一次 blink.part——同一拍裡別處（例如舞台 commit）呼叫的不算
+      // 起因：只算 B.flash（show/beats.js）自己那一次 blink.nod（裁決 R21，不再亮）——同一拍裡別處呼叫的不算
       const src = from();
-      calls.push({ label, object: o, key: keyOf.get(o) ?? null, fn, dur, cause: fn === 'part' && show.currentKind === 'flash' && src.startsWith('show/beats.js'), member: holders.has(o), from: src });
+      calls.push({ label, object: o, key: keyOf.get(o) ?? null, fn, dur, cause: fn === 'nod' && show.currentKind === 'flash' && src.startsWith('show/beats.js'), member: holders.has(o), from: src });
       return orig(o, dur, ...rest);
     };
   };
-  for (const fn of ['part', 'grow', 'shrink']) hook(fn);
+  for (const fn of ['part', 'grow', 'shrink', 'nod']) hook(fn);
   show.update = (dt, t) => { snap(); return update(dt, t); };
   return { calls, label(text) { label = text; } };
 }

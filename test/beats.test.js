@@ -409,8 +409,9 @@ test('levelUp twice: beat lasts 1.55 s, pops the label twice (second after 0.55 
   assert.ok(Math.abs((calls[1].dy ?? 0) - (calls[0].dy ?? 0) - 0.35) < 1e-9);
   assert.equal(B.levelUp('chip').dur, 1.0, 'a single LEVEL UP stays 1 s');
 });
-test('flash: blinks the named part for CAUSE_FLASH; missing part → start returns false', () => {
-  const blinked = [], ctx = fakeCtx({ stage: { partObject: k => (k === 'milk.main' ? { id: 1 } : null) }, blink: { part: (o, d) => blinked.push([o, d]) } });
-  assert.equal(B.flash('milk.main', 0.4).start(ctx), undefined); assert.deepEqual(blinked, [[{ id: 1 }, 0.4]]);
+// 裁決 R21：起因提示不再亮（blink.part），改彈一下（blink.nod）——使用者 2026-10-31 19:58 錄影裡「學校閃了好幾次」就是它
+test('flash: nods the named part for CAUSE_FLASH without a glow; missing part → start returns false', () => {
+  const nodded = [], ctx = fakeCtx({ stage: { partObject: k => (k === 'milk.main' ? { id: 1 } : null) }, blink: { part: () => assert.fail('the cause hint must not glow'), nod: (o, d) => nodded.push([o, d]) } });
+  assert.equal(B.flash('milk.main', 0.4).start(ctx), undefined); assert.deepEqual(nodded, [[{ id: 1 }, 0.4]]);
   assert.equal(B.flash('typhoon.main', 0.4).start(ctx), false);
 });

@@ -218,8 +218,9 @@ export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false
   };
 }
 
-// 起因閃一下（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟亮一下 dur 秒（同升級用的 blink.part，計畫 9 §4）。
-// 這一級沒有那個零件（被鎖、淹水換了站體……）或瞬間演（跳過、reduced-motion）→ 0 秒、不閃
+// 起因提示（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟彈一下 dur 秒（blink.nod：壓一下再彈過頭，不亮——裁決 R21，
+// 使用者 2026-10-31 19:58 錄影：亮 0.4 s 看起來就是「學校閃了好幾次」）。拍的 kind 仍叫 flash（turn.js／pace／測試都認這個名字）。
+// 這一級沒有那個零件（被鎖、淹水換了站體……）或瞬間演（跳過、reduced-motion）→ 0 秒、不彈
 export const CAUSE_FLASH = 0.4;
 export function flash(key, dur = CAUSE_FLASH) {
   return {
@@ -227,7 +228,7 @@ export function flash(key, dur = CAUSE_FLASH) {
     start(ctx) {
       if (ctx.instant) return false;
       const o = ctx.stage.partObject?.(key); if (!o) return false;
-      ctx.blink.part(o, dur);
+      ctx.blink.nod(o, dur);
     },
   };
 }

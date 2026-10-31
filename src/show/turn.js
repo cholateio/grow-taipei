@@ -20,8 +20,8 @@
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key；放下事件看 script.placed.key，唯一正解 §5.3 颱風放下）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
 //   跳級合成時演 {n−1, n} 裡最高的 ◆：n 不是 ◆、n−1 是 ◆ 就演 n−1 的 ◆ 劇本（協調者裁決 2026-10-29：燈泡 Lv7 的風車島不能消失），mark 標 key。
 //   n−1 和 n 都是 ◆ 就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 的矽盾測試）：兩級照一般事件接著演、各自的 ◆ 劇本、各一個 LEVEL UP，起因只在第一級前面。
-// 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
-//   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）亮一下 CAUSE_FLASH 秒，再照常平移到被升級的那一格。
+// 起因提示（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 劇本前面先（換物品的空拍之後）平移到 via[0] 那一格
+//   （鏡頭已經在那一格就不動）、那棟本體（CAUSE_HELPER_KEY = <id>.main）彈一下 CAUSE_FLASH 秒（裁決 R21：不亮，blink.nod），再照常平移到被升級的那一格。
 //   via 兩個以上只閃第一個（引擎把第一級的幫手排在前面）。颱風當 via（天氣）、跳級的第一級、終局回合都不插。
 //   幫手這一級沒有本體零件（演到才知道）→ 不閃、不停鏡頭，平移照沒有起因時的帳。起因段前面另一個 mark（info.cause: via[0]），劇本前面再一個 mark——pace 單獨量起因段（≤ CAUSE_CAP）。
 // 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空（計畫 6 設計 §5，走過去低頭嘆氣）2026-10-31 也拿掉了
@@ -35,7 +35,7 @@ import { B, together, CAUSE_FLASH } from './beats.js';
 import { BLINK } from './blink.js';
 
 export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁決 R15 0.6 → 0.4）
-// 起因閃一下（見檔頭）：閃幾秒（beats.js 的 B.flash 預設同一個數）、閃哪個零件（每個演員模組的本體都是 <id>.main）
+// 起因提示（見檔頭）：彈幾秒（beats.js 的 B.flash 預設同一個數）、彈哪個零件（每個演員模組的本體都是 <id>.main）
 export { CAUSE_FLASH };
 export const CAUSE_HELPER_KEY = id => `${id}.main`;
 // 被鎖住的幫手不當起因閃（淹水的捷運站還有 token.main，是游泳池；最終修正 2）：鎖↔旗標的對照是 engine.js 的 lockFlags（stage.js 也用）

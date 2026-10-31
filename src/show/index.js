@@ -21,7 +21,8 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   const blink = createBlink(THREE, { people }), bubbles = createBubbles(THREE, { group: labels });
   // 名冊先建：模型成員的天線／眼睛要用舞台的零件工廠，等舞台建好才用得到（載入模型是非同步的，那時舞台早就在了）
   let stage = null;
-  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, blink, rail, rnd, quality });
+  // obstacles：舞台上會動的障礙（外送機車，修正批次 fix3 §B）——名冊每幀問，讓路
+  const roster = createRoster(THREE, { people, assets, build: s => stage.build(s), nav, blink, rail, rnd, quality, obstacles: () => stage?.obstacles() ?? [] });
   scene.add(roster.group);
   stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow, weather, rail, quality }, roster, blink });
 

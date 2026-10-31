@@ -53,7 +53,8 @@ export const growsOn = spec => !spec?.tagAlong && (typeof spec?.grow === 'boolea
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
   // flags：零件可以每幀讀目前的舞台旗標（getter，不是快照）。以前 finale.flare 照倒數 alarm 變快；選擇帶動升級之後紅光固定 2 Hz，目前沒有零件讀它
-  const factory = createPartFactory(THREE, { ...ctx, builders, THREE, flags: () => flags });
+  // crowd：零件每幀讀名冊裡露出來的人（roster.bodies()：{ x, z, r, dx, dz }；外送機車看前面有沒有人、要不要煞車，修正批次 fix3 §B）
+  const factory = createPartFactory(THREE, { ...ctx, builders, THREE, flags: () => flags, crowd: () => roster?.bodies?.() ?? [] });
   const root = new THREE.Group(), partsGroup = new THREE.Group();
   root.name = 'stage'; partsGroup.name = 'stage:parts';
   root.add(partsGroup); scene.add(root);
@@ -186,6 +187,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     commitAll({ shrinking = false } = {}) { for (const key of [...pending.keys()]) commit(key, false); if (!shrinking) dropDying(); },
     pendingKeys: () => [...pending.keys()],
     footprints: () => [...live.values()].flatMap(e => e.fp),
+    // 會動的障礙（修正批次 fix3 §B）：零件 builder 回傳的物件帶 obstacle()（回這一幀的 { x, z, r, ahead? } 或陣列、世界座標）就收進來——
+    // 外送機車；名冊每幀拿去讓路。還沒露出來（deferred 藏著）的零件不算
+    obstacles: () => [...live.values()].filter(e => e.part.obstacle && e.part.object.visible).flatMap(e => [].concat(e.part.obstacle() ?? [])),
     update(dt, t) {
       for (const e of live.values()) e.part.update?.(dt, t);
       for (const p of pending.values()) p.old?.part.update?.(dt, t);

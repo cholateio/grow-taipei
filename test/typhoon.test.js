@@ -82,7 +82,9 @@ test('rain part: 240 instances, none cast shadows, drops fall', () => {
 test('cloud spins and scooter circles the centre cell', () => {
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders });
   const c = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.main']); c.update(0.5, 1); assert.notEqual(c.object.children[0].rotation.y, 0);
-  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 4 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
+  // 角度自己積分（fix3 §B 煞車）：一幀一幀推 1 秒
+  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 4 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone();
+  for (let i = 1; i <= 30; i++) s.update(1 / 30, i / 30);
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
 // 雨的濃度跟著 app 的 weather.rain（app 每幀淡入淡出；修正批次 2 之後 Lv1–2 都是 1，放晴淡到 0）
@@ -517,4 +519,64 @@ test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 �
 test('visitSpot(n, s) is null for every typhoon level (nobody visits the weather)', () => {
   assert.equal(typeof typhoon.visitSpot, 'function');
   for (let n = 0; n <= spec.ITEMS.typhoon.max; n++) for (const flags of [{}, { blackout: true }, { flooded: true }]) assert.equal(typhoon.visitSpot(n, { lv: lv({ typhoon: n }), flags }), null);
+});
+
+// ── 修正批次 fix3 §B（使用者 2026-11-01「老鼠和外送員也會重疊」）：外送機車是會動的障礙 ──
+// 珍奶 ≥4 時放颱風、老鼠先放的順序（第 8 回合放颱風、第 9 回合〔最後一輪〕颱風 2）
+const SCOOTER_ORDER = ['milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'rat', 'typhoon'], spec0 = spec;
+// scooter 零件回報 obstacle()：機車騎士現在的世界座標（零件 at + 車身的位置）、半徑 0.3、接下來 OBSTACLE_LOOK 秒沿圈會經過的點（照順序、在圈上）；
+// 舞台 stage.obstacles() 收集這一幀所有零件的障礙（還沒露出來的零件不算）
+test('fix3 B: the scooter part reports obstacle() at its rider (r 0.3) with the arc it rides next; stage.obstacles() collects it', async () => {
+  const { OBSTACLE_LOOK } = await import('../src/show/nav.js');
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders }), spec = typhoon.view(lv({ typhoon: 1, boba: 4 }), {})['typhoon.scooter'];
+  const s = f.build(spec), body = s.object.children[0], w = new THREE.Vector3();
+  for (const t of [0, 0.7, 3.1, 10]) {
+    s.update(1 / 30, t); s.object.updateMatrixWorld(true); body.getWorldPosition(w);
+    const o = s.obstacle();
+    assert.ok(Math.hypot(o.x - w.x, o.z - w.z) < 1e-9, `t ${t}: obstacle at the scooter (${o.x.toFixed(2)}, ${o.z.toFixed(2)}) vs (${w.x.toFixed(2)}, ${w.z.toFixed(2)})`);
+    assert.equal(o.r, 0.3);
+    assert.ok(o.ahead.length >= 2 && o.ahead.every(p => Math.abs(Math.hypot(p.x - spec.at.x, p.z - spec.at.z) - 1.95) < 1e-9), 'the arc ahead is on the ring');
+    const arc = [o, ...o.ahead].reduce((d, p, i, a) => d + (i ? Math.hypot(p.x - a[i - 1].x, p.z - a[i - 1].z) : 0), 0);
+    assert.ok(Math.abs(arc - 1.2 * 1.95 * OBSTACLE_LOOK) < 0.02, `looks ${arc.toFixed(2)} m ahead`);
+  }
+  const h = await headlessShow(), { show, run } = h;
+  let st = engine.createState(spec0);
+  for (const step of turnSteps(SCOOTER_ORDER).slice(0, 8)) { const r = step(st); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  show.update(1 / 30, 1);
+  const obs = show.stage.obstacles(), sc = show.stage.partObject('typhoon.scooter');
+  assert.ok(sc, 'the scooter is out (typhoon 1, boba ≥ 4)'); assert.equal(obs.length, 1, 'one obstacle on the stage');
+  sc.updateMatrixWorld(true); sc.children[0].getWorldPosition(w); assert.ok(Math.hypot(obs[0].x - w.x, obs[0].z - w.z) < 1e-9, 'at the scooter');
+});
+// 整局 live（珍奶 ≥4 時放颱風的順序）：颱風 Lv1（放下）、Lv2 兩回合整段 live 演，各再過 10 s 日常——
+// 老鼠名冊（rat.pack）與所有小人離機車騎士 ≥ 0.3 + 自己的半徑 − 0.02（印最近距離）；日常的人沒有瞬移。
+// 第二條：老鼠 Lv3 的劇本（走去搭車）從機車的圈上走過（修好之前最近 −0.34）；兩條都有電工沿主路北半圈（跟機車的圈疊在一起）迎面碰上機車
+const SCOOTER_ORDERS = [SCOOTER_ORDER, ['milk', 'token', 'boba', 'baseball', 'chip', 'bulb', 'rat', 'typhoon']];
+test('fix3 B live: in the typhoon Lv1 and Lv2 turns (and 10 s after each) the rats and every person keep ≥ 0.3 + radius − 0.02 from the scooter', async () => {
+  const { radiusOf } = await import('../src/show/nav.js');
+  for (const order of SCOOTER_ORDERS) {
+    const h = await headlessShow(), { show, run } = h, inv = gameInvariants(show), update = show.update, near = {};
+    let st = engine.createState(spec0), on = false, live = 0, frames = 0;
+    show.update = (dt, t) => {
+      update(dt, t); if (!on) return;
+      for (const o of show.stage.obstacles()) { frames++; for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+        if (m.hidden || m.gone || (k !== 'rat.pack' && m.kind !== 'people')) continue;
+        const d = Math.hypot(m.pos.x - o.x, m.pos.z - o.z) - (o.r + radiusOf(m));
+        if (d < (near[k]?.d ?? Infinity)) near[k] = { d, what: `${k}#${m.i} ${m.mode}${m.walking ? ' walking' : ''} (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})` };
+      } }
+    };
+    for (const [i, step] of turnSteps(order).entries()) {
+      const r = step(st); st = r.state;
+      on = r.events.some(e => e.item === 'typhoon' && (e.kind === 'placed' || (e.kind === 'grow' && e.to === 2)));
+      inv.label(`turn ${i + 1}`);
+      await run([...r.events, { kind: 'settle' }], { instant: !on });
+      if (on) { live++; for (let k = 0; k < 300; k++) show.update(1 / 30, 300 * live + k / 30); }
+    }
+    const what = order.join('>'), worst = Object.entries(near).sort((a, b) => a[1].d - b[1].d);
+    assert.equal(live, 2, `${what}: typhoon Lv1 and Lv2 played live`);
+    assert.ok(frames > 300, `${what}: the scooter was out for ${frames} frames`);
+    console.log(`${what} closest to the scooter: rats ${near['rat.pack']?.d.toFixed(3)} (${near['rat.pack']?.what}) | `, worst.slice(0, 3).map(([, v]) => `${v.d.toFixed(3)} ${v.what}`).join(' | '));
+    assert.ok(near['rat.pack'], `${what}: rats were out`);
+    for (const [k, v] of worst) assert.ok(v.d >= -0.02, `${what} ${k}: ${v.d.toFixed(3)} past contact — ${v.what}`);
+    assert.deepEqual([...inv.jumps].slice(0, 3), [], `${what}: nobody teleports`);
+  }
 });

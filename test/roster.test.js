@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { installFakeDom } from './helpers/fakedom.js';
 import { createPeople } from '../src/scene/people.js';
-import { createNav, SEPARATION, radiusOf } from '../src/show/nav.js';
+import { createNav, SEPARATION, radiusOf, OBSTACLE_LOOK } from '../src/show/nav.js';
 import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
@@ -24,7 +24,7 @@ const queue = (n, entry = QENTRY) => ({ kind: 'roster', at: Q, n, home: { kind: 
 const run = (roster, frames, t0 = 0) => { for (let i = 0; i < frames; i++) roster.update(1 / 30, t0 + i / 30); };
 
 // 真 people、真 nav、真 blink（blink.log 記下每次 walker／part 的對象）；假 assets（holder 帶一個假 mixer，記錄 spawn／release）
-function setup() {
+function setup({ obstacles } = {}) {
   const people = createPeople(THREE, { max: 48 }), spawned = [], released = [];
   const assets = {
     spawned, released,
@@ -35,7 +35,7 @@ function setup() {
   const { walker, part } = blink; blink.log = [];
   blink.walker = (w, dur) => { blink.log.push(['walker', w]); walker(w, dur); };
   blink.part = (o, dur, end) => { blink.log.push(['part', o]); part(o, dur, end); };
-  const roster = createRoster(THREE, { people, assets, build: null, nav, blink, rail, rnd: mulberry32(11) });
+  const roster = createRoster(THREE, { people, assets, build: null, nav, blink, rail, rnd: mulberry32(11), ...(obstacles && { obstacles }) });
   return { roster, people, assets, blink, nav, rail };
 }
 
@@ -1327,4 +1327,30 @@ test('a model roster whose wander home moves to another cell walks there frame b
   assert.ok(worst <= 1 + 1e-6, `never faster than walking (worst ${worst.toFixed(2)}× a walking step)`);
   for (const m of ms) assert.ok(gap(m.pos, DOOR) <= 0.4 + 0.3, `rat ${m.i} at the new home (${gap(m.pos, DOOR).toFixed(2)})`);
   assert.deepEqual(blink.log, [], 'no blink');
+});
+
+// ── 修正批次 fix3 §B（使用者 2026-11-01「老鼠和外送員也會重疊」）：會動的障礙（obstacles，零件回報的機車騎士）──
+// 假障礙（半徑 0.3、跟外送機車一樣每秒 2.34 公尺）在一格裡繞半徑 1 的圈：圈上站著一個人、另一個人從格子西邊走到東邊（兩次穿過圈）。
+// 兩個人全程離障礙 ≥ 0.3 + 自己的半徑 − 0.02、每幀不比走路快（不瞬移）；走路的人照樣走到
+test('fix3 B: a fake obstacle circling at scooter speed passes a stander and a walker — both keep ≥ r + radius − 0.02 from it and never move faster than walking speed', () => {
+  const C = centre([-1, 0]), RING = 1.0, W = 2.34 / RING, obs = { x: C.x + RING, z: C.z, r: 0.3 };
+  const { roster } = setup({ obstacles: () => [obs] });
+  const S = { ...C, x: C.x, z: C.z + RING, yaw: 0 }, L = { ...C, x: C.x - 1.5, yaw: 0 }, R = { ...C, x: C.x + 1.5, yaw: 0 };
+  roster.declare('s', { kind: 'roster', at: S, n: 1, home: { kind: 'stand', spots: [S] } }); roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [st] = roster.members('s'), [w] = roster.members('w'), min = new Map(), last = new Map();
+  let worst = 0;
+  for (let f = 0; f < 240; f++) {
+    const a = W * f / 30, at = b => ({ x: C.x + Math.cos(b) * RING, z: C.z + Math.sin(b) * RING });
+    Object.assign(obs, { ...at(a), ahead: [1, 2, 3, 4].map(k => at(a + W * OBSTACLE_LOOK * k / 4)) });   // 繞圈的障礙給接下來 OBSTACLE_LOOK 秒的一段弧
+    roster.update(1 / 30, f / 30);
+    for (const m of [st, w]) {
+      const d = Math.hypot(m.pos.x - obs.x, m.pos.z - obs.z) - (obs.r + radiusOf(m)); if (d < (min.get(m) ?? Infinity)) min.set(m, d);
+      const p = last.get(m); if (p) worst = Math.max(worst, gap(m.pos, p) / (m.speed / 30)); last.set(m, { ...m.pos });
+    }
+  }
+  assert.ok(min.get(st) >= -0.02, `stander closest ${min.get(st).toFixed(3)} past contact`);
+  assert.ok(min.get(w) >= -0.02, `walker closest ${min.get(w).toFixed(3)} past contact`);
+  assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
+  assert.ok(gap(w.pos, R) < 0.1, `the walker still arrives (${w.pos.x.toFixed(2)}, ${w.pos.z.toFixed(2)})`);
 });

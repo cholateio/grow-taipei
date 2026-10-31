@@ -10,10 +10,17 @@ import { mulberry32 } from '../scene/random.js';
 import { C } from './palette.js';
 import { RAT_LANDING } from './rat.js';
 import { crowd } from '../show/crowd.js';   // 一群人同時演，名單演到才算
+import { OBSTACLE_LOOK } from '../show/nav.js';
 
 export const id = 'typhoon';
 export const labelY = 1.0;
-const STORM = 0x6b7280, SCOOTER_R = 1.95;
+const STORM = 0x6b7280, SCOOTER_R = 1.95, SCOOTER_W = 1.2;
+// 外送機車當障礙（fix3 §B）：騎士半徑 0.3（車身 0.42 長、0.14 寬，騎士在車身中間）；往前看的弧切 4 段
+const SCOOTER_BODY = 0.3, AHEAD_N = 4;
+// 煞車（fix3 §B）：往前看 0.6 公尺（每 0.05 公尺看一點）；離擋路的人 0.5 公尺內按比例放慢；起步每秒最多加速到全速的 3 倍（約 0.33 秒加滿）
+const BRAKE_LOOK = 0.6, BRAKE_STEP = 0.05, BRAKE_EASE = 0.5, RAMP = 3;
+// 停住超過 0.8 秒就迴轉（0.5 秒轉 180°，原地、不動）
+const TURN_AFTER = 0.8, TURN_DUR = 0.5;
 
 // 雲停在颱風錨點（101 那一格、離塔 1.5——修正輪 1：停在塔正上方會被完工的 101 塔頂穿過）；修正批次 2：Lv1、Lv2 都在這裡，不移站
 const AT = anchorWorld('typhoon');
@@ -99,7 +106,13 @@ export const builders = {
       dispose() { mesh.geometry.dispose(); mesh.material.dispose(); },
     };
   },
-  // 颱風天外送：珊瑚色機車載著戴黃安全帽的騎士，沿中心格的步道繞圈
+  // 颱風天外送：珊瑚色機車載著戴黃安全帽的騎士，沿中心格的步道繞圈（半徑 SCOOTER_R、全速每秒 SCOOTER_W 弧度，逆時針）。
+  // obstacle()（修正批次 fix3 §B，使用者 2026-11-01「老鼠和外送員也會重疊」）：會動的障礙——騎士這一幀的世界座標、半徑 SCOOTER_BODY、
+  //   接下來 OBSTACLE_LOOK 秒（全速）沿圈會經過的點（ahead，名冊照這段弧讓路：擋在前面的人往弧的側邊讓開，不是被車頭往前推）。
+  // 煞車：讓不開的人（劇本手上在走、在站的人，被牆夾住的人）名冊推不動——騎士看前方 BRAKE_LOOK 公尺的弧上會不會碰到人（ctx.crowd()，
+  //   兩人半徑相加 − 0.01，只算越走越近的），碰得到就停在碰到之前，前面越空騎越快（離擋路的人 BRAKE_EASE 公尺內按比例放慢、起步每秒最多加速 RAMP 倍）；
+  //   停住超過 TURN_AFTER 秒（迎面的人也讓不開）就原地迴轉、往另一個方向騎；已經有人貼在車身上（劇本手上的人直直走過來）就往前或倒退一步閃開。
+  //   角度自己積分（第一幀從 t × SCOOTER_W 接起），不再直接拿時鐘算（停過之後不會跳回時鐘那一點）
   scooter(THREE, spec, ctx) {
     const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [
       { kind: 'box', pos: [0, 0.14, 0], scale: [0.14, 0.12, 0.42], color: C.coral },
@@ -109,9 +122,51 @@ export const builders = {
       { kind: 'sphere', pos: [0, 0.43, 0.02], scale: 0.12, color: C.skin }, { kind: 'dome', pos: [0, 0.44, 0.02], scale: 0.15, color: C.yellow },
     ] }), object = new THREE.Group();
     object.add(part.object);
+    let a = null, k = 1, dir = 1, stuck = 0, turn = 0;   // a：現在的角度；k：速度（全速的幾倍）；dir：+1 逆時針、−1 順時針；stuck：停住幾秒了；turn：迴轉還剩幾秒
+    const at = b => ({ x: object.position.x + Math.cos(b) * SCOOTER_R, z: object.position.z + Math.sin(b) * SCOOTER_R });
+    // 從角 a 沿圈往 d（預設 dir）多少弧度還不會碰到人（BRAKE_LOOK 內都沒人擋回 Infinity）。走路的人照他上一幀的步子往前推算
+    // （全速騎到第 i 個取樣點要 f 幀，他那時在 b + f × 步子）；同一個人只算越走越近的
+    const room = (bodies, d = dir, dt = 1 / 30) => {
+      if (!bodies.length) return Infinity;
+      const here = at(a), near = bodies.filter(b => Math.hypot(b.x - here.x, b.z - here.z) < BRAKE_LOOK + SCOOTER_BODY + b.r + 0.5);
+      for (let i = 1; i * BRAKE_STEP <= BRAKE_LOOK; i++) {
+        const q = at(a + d * i * BRAKE_STEP / SCOOTER_R), f = i * BRAKE_STEP / (SCOOTER_W * SCOOTER_R * dt);
+        for (const b of near) {
+          const bx = b.x + (b.dx ?? 0) * f, bz = b.z + (b.dz ?? 0) * f, dd = Math.hypot(bx - q.x, bz - q.z);
+          if (dd < SCOOTER_BODY + b.r - 0.01 && dd < Math.hypot(b.x - here.x, b.z - here.z)) return (i - 1) * BRAKE_STEP / SCOOTER_R;
+        }
+      }
+      return Infinity;
+    };
+    // 車頭朝前進方向；迴轉中從原本的方向轉 180°
+    const pose = () => {
+      part.object.position.set(Math.cos(a) * SCOOTER_R, 0, Math.sin(a) * SCOOTER_R);
+      part.object.rotation.y = Math.atan2(-Math.sin(a) * dir, Math.cos(a) * dir) - Math.PI * (turn / TURN_DUR);
+    };
     return {
       object,
-      update(dt, t) { const a = t * 1.2; part.object.position.set(Math.cos(a) * SCOOTER_R, 0, Math.sin(a) * SCOOTER_R); part.object.rotation.y = Math.atan2(-Math.sin(a), Math.cos(a)); },
+      update(dt, t) {
+        if (a === null || !(dt > 0)) { a ??= t * SCOOTER_W; pose(); return; }
+        const bodies = ctx.crowd?.() ?? [], here = at(a), full = SCOOTER_W * dt;
+        // 有人已經貼在車身上（劇本手上走路的人推不動，直直走過來）：往前或倒退一步（全速），挑離他比較遠的那邊閃開
+        //（他下一幀照上一幀的步子走：看的是那時候的距離）；兩邊都沒有比較遠就照常（煞車）
+        const touching = bodies.filter(b => Math.hypot(b.x + (b.dx ?? 0) - here.x, b.z + (b.dz ?? 0) - here.z) < SCOOTER_BODY + b.r - 0.01);
+        if (touching.length) {
+          const gap = q => Math.min(...touching.map(b => Math.hypot(b.x + (b.dx ?? 0) - q.x, b.z + (b.dz ?? 0) - q.z) - b.r));
+          let best = 0, bestG = gap(here) + 1e-9;
+          for (const d of [dir, -dir]) { const g = gap(at(a + d * full)); if (g > bestG) { best = d; bestG = g; } }
+          if (best) { a += best * full; k = 0; stuck = 0; pose(); return; }
+        }
+        if (turn > 0) { turn = Math.max(0, turn - dt); pose(); return; }
+        const free = room(bodies, dir, dt), want = Math.min(1, free * SCOOTER_R / BRAKE_EASE);
+        k = want < k ? want : Math.min(want, k + dt * RAMP);
+        const step = Math.min(full * k, free); a += dir * step;
+        // 前面的人讓不開（窄路上迎面走來的電工：主路北半圈跟機車的圈疊在一起）、停住超過 TURN_AFTER 秒：原地迴轉，往另一個方向騎
+        stuck = step < SCOOTER_W * dt * 0.05 ? stuck + dt : 0;
+        if (stuck > TURN_AFTER) { dir = -dir; stuck = 0; k = 0; turn = TURN_DUR; }
+        pose();
+      },
+      obstacle: () => { const b = a ?? 0; return { ...at(b), r: SCOOTER_BODY, ahead: Array.from({ length: AHEAD_N }, (_, j) => at(b + dir * SCOOTER_W * OBSTACLE_LOOK * (j + 1) / AHEAD_N)) }; },
       dispose: part.dispose,
     };
   },

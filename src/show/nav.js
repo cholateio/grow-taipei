@@ -36,6 +36,21 @@ const ROUND = [0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5];   // separate：推離站著
 const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
 // separate 每幀最多幾輪、一輪裡沒人動超過多少就停（計畫 11 任務 5）
 export const SEP_PASSES = 3;
+// 會動的障礙（修正批次 fix3 §B：外送機車；零件的 obstacle()，名冊每幀塞進 standing）往前看幾秒：障礙的 ahead 是它接下來 OBSTACLE_LOOK 秒會經過的點。
+// 機車每秒 2.34 公尺、人讓開的速度最多走路速度（小人 1.6、老鼠 2.0）：正擋在車道中間的人要橫移 0.3 + 0.125 = 0.425，1.6 公尺／秒要 0.27 秒——
+// 往前看 0.4 秒（車道約 0.94 公尺）車頭到之前就讓開了
+export const OBSTACLE_LOOK = 0.4;
+// 車道上離 p 最近的那一點（車道：障礙 o.pos → o.ahead 的折線）：{ d, cx, cz, front（不是車道起點：在車頭前方）, nx, nz（那一段的法線）}
+export function laneNearest(p, o) {
+  const pts = [o.pos, ...(o.ahead ?? [])];
+  let best = { d: Math.hypot(p.x - o.pos.x, p.z - o.pos.z), cx: o.pos.x, cz: o.pos.z, front: false, nx: 0, nz: 0 };
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], ax = b.x - a.x, az = b.z - a.z, L2 = ax * ax + az * az; if (!L2) continue;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * ax + (p.z - a.z) * az) / L2)), cx = a.x + ax * t, cz = a.z + az * t, d = Math.hypot(p.x - cx, p.z - cz);
+    if (d < best.d - 1e-12) { const L = Math.sqrt(L2); best = { d, cx, cz, front: i > 1 || t > 0, nx: -az / L, nz: ax / L }; }
+  }
+  return best;
+}
 const SEP_STILL = 1e-4;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
@@ -360,8 +375,16 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   //   三個人擠成一串時，推開 A、B 又把 B 推回 C 身上，只做一輪就留著重疊到下一幀（下一幀游標又拉回來）。
   //   一輪裡沒人移動超過 SEP_STILL 就停。規則照舊（cursor 不推、can() 不推進牆／水、keep 放過的照樣放過）；
   //   不另外限每幀推多少：名冊在 separate 之後本來就把每個人這一幀的總位移限在走路速度 × dt（不瞬移）
-  function separate(members, _dt, standing = [], keep = () => false, passes = SEP_PASSES) {
+  // 會動的障礙（修正批次 fix3 §B）：standing 裡 { pos, radius, obstacle: true, ahead? } 的假成員（零件回報的機車騎士）——它自己不被推、
+  //   也不推別人（不進上面兩種推法）；離它不到兩人半徑相加的人一律由自己讓：走路的人（含沿手畫折線走的——名冊另外讓他停下來等，不被游標拉回車道）、
+  //   站著的人（障礙不會停下來等，被撞到就讓開一步——名冊照樣把每幀的位移限在走路速度 × dt）。opts.pinned(m) 回 true 的（劇本手上的人）不動。
+  //   ahead（障礙接下來 OBSTACLE_LOOK 秒會經過的點，照順序）：障礙是一條車道（沿這條折線、半徑 r 的膠囊；繞圈的機車就是一段弧），
+  //   在車道前段的人往車道的側邊讓（垂直最近的那一段，站哪一側讓哪一側）——
+  //   不是被車頭往前推著跑；在車身旁邊、後面的照半徑推開。推不過去（外擴 footprint、水）就繞著那一點轉方向試，都不行就不推
+  function separate(members, _dt, standing = [], keep = () => false, passes = SEP_PASSES, { pinned = () => false } = {}) {
     const walkers = members.filter(m => m.walking === true);
+    const obstacles = standing.filter(s => s.obstacle), people = obstacles.length ? standing.filter(s => !s.obstacle) : standing;
+    const dodgers = obstacles.length ? [...walkers, ...people.filter(s => !s.walking && !pinned(s))] : [];
     const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
     const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
     // w 自己退到離 s 兩人半徑相加（s 不動）。直直退開會撞牆（s 背後是池子、牆，或兩人在窄橋上）：繞著 s 往旁邊轉，找第一個推得過去的方向
@@ -372,9 +395,26 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
         if (can(p, x, z)) { put(p, x, z); return; }
       }
     };
+    // m 讓開障礙 o：車道（o.pos → o.ahead 的折線）上離 m 最近的那一點 c；c 在車頭前方（不是車道起點）就沿那一段的法線往 m 那一側讓到 need，
+    // 否則從 c 直直退開（車身旁邊、後面）
+    const dodge = (m, o) => {
+      const p = m.pos, need = apart(m, o), { d, cx, cz, front, nx, nz } = laneNearest(p, o); if (d >= need) return;
+      const side = (p.x - cx) * nx + (p.z - cz) * nz;
+      const a0 = front ? Math.atan2(side < 0 ? -nz : nz, side < 0 ? -nx : nx) : Math.atan2(p.z - cz, p.x - cx) || 0;
+      // 正方向（a0）推不過去（牆、水）就繞著 c 轉方向試，挑走得到、離他現在最近、而且真的離開整條車道的那一點（只看第一個推得過去的方向的話，
+      // 夾在牆和停著的機車之間的人每幀換邊、來回抖：2026-11-01 量到島民在 101 外牆和機車中間一幀往北、一幀往南；轉過頭的方向可能落回車身旁邊）。
+      // 都不行就不推：停在原地（名冊讓他等），機車自己煞車、迴轉
+      let best = null, bestD = Infinity;
+      for (const da of [...ROUND, Math.PI]) {
+        const x = cx + Math.cos(a0 + da) * (need + 1e-6), z = cz + Math.sin(a0 + da) * (need + 1e-6), dd = Math.hypot(x - p.x, z - p.z);
+        if (dd < bestD && can(p, x, z) && laneNearest({ x, z }, o).d >= need - 1e-9) { best = [x, z]; bestD = dd; }
+      }
+      if (best) put(p, ...best);
+    };
     for (let pass = 0; pass < passes; pass++) {
       const before = walkers.map(m => [m.pos.x, m.pos.z]);
-      for (const w of walkers) for (const s of standing) {
+      for (const o of obstacles) for (const m of dodgers) dodge(m, o);
+      for (const w of walkers) for (const s of people) {
         if (s === w || s.walking || w.cursor) continue;
         const need = apart(w, s);
         if (Math.hypot(w.pos.x - s.pos.x, w.pos.z - s.pos.z) >= need || keep(w, s, need)) continue;

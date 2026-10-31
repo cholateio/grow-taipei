@@ -372,3 +372,29 @@ test('yieldTarget also returns the far-side offset: both sides clear the person 
   assert.ok(Math.sign(t.side - lat) === -Math.sign(t.other - lat), 'opposite sides of him');
   assert.ok(t.side > 0, 'the near side is away from him');
 });
+
+// ── 修正批次 fix3 §B（使用者 2026-11-01「老鼠和外送員也會重疊」）：會動的障礙 ──
+// standing 裡的 { obstacle: true }（零件回報的機車騎士，名冊每幀塞進來）：它自己不被推；走路的人、站著的人（沒被 pinned 釘住的）都由自己讓開，
+// 讓到離障礙 ≥ 兩人半徑相加。障礙帶 ahead（它接下來 OBSTACLE_LOOK 秒會經過的點）時，擋在車道上的人往車道的側邊讓（不是被往前推著跑）；
+// 推過去會進外擴 footprint 的不推；pinned（劇本手上的人）不動
+test('fix3 B: separate — an obstacle never moves; walkers and standers in its way step aside (sideways off its lane), pinned ones stay; never into a padded footprint', async () => {
+  const { OBSTACLE_LOOK } = await import('../src/show/nav.js');
+  assert.ok(OBSTACLE_LOOK > 0.25, `looks ahead ${OBSTACLE_LOOK} s`);
+  const nav = createNav(), o = c([1, 0]);
+  const bike = { pos: { x: o.x, y: o.y, z: o.z }, radius: 0.3, obstacle: true, ahead: [{ x: o.x + 0.5, z: o.z }, { x: o.x + 1, z: o.z }] };   // 往 +x 開
+  const stander = { pos: { x: o.x + 0.6, y: o.y, z: o.z + 0.05 }, walking: false, radius: 0.125 };   // 擋在車道前方、偏 +z 一點
+  const walker = { pos: { x: o.x - 0.2, y: o.y, z: o.z - 0.3 }, walking: true, radius: 0.13 };       // 貼著車身後側
+  const pinned = { pos: { x: o.x + 0.9, y: o.y, z: o.z - 0.02 }, walking: false, radius: 0.125 };
+  nav.separate([walker], 1 / 30, [bike, stander, pinned], () => false, undefined, { pinned: m => m === pinned });
+  assert.deepEqual(bike.pos, { x: o.x, y: o.y, z: o.z }, 'the obstacle stays put');
+  assert.deepEqual(pinned.pos, { x: o.x + 0.9, y: o.y, z: o.z - 0.02 }, 'the pinned one stays put');
+  assert.ok(Math.abs(stander.pos.x - (o.x + 0.6)) < 1e-9, 'the stander steps sideways, not forward along the lane');
+  assert.ok(stander.pos.z - o.z >= 0.3 + 0.125 - 1e-6, `the stander is off the lane on his side (${(stander.pos.z - o.z).toFixed(3)})`);
+  assert.ok(Math.hypot(walker.pos.x - o.x, walker.pos.z - o.z) >= 0.3 + 0.13 - 1e-6, 'the walker is clear of the body');
+  // 沒有 ahead（不動的障礙）：照半徑推開；牆：推過去會進外擴 footprint 就不推
+  nav.setFootprints([{ x: o.x, z: o.z + 0.55, w: 2, d: 0.3 }]);
+  const still = { pos: { x: o.x, y: o.y, z: o.z }, radius: 0.3, obstacle: true };
+  const wall = { pos: { x: o.x, y: o.y, z: o.z + 0.2 }, walking: false, radius: 0.125 };
+  nav.separate([], 1 / 30, [still, wall]);
+  assert.ok(!nav.inFootprint(wall.pos.x, wall.pos.z), 'not pushed into the padded wall');
+});

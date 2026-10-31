@@ -1,0 +1,48 @@
+# 部署到 GitHub Pages（計畫 12）：push 到 main 就把遊戲需要的檔（index.html、src、vendor、assets）複製到 dist/ 發布。
+# GitHub Pages 沒有 ignore 檔，所以先用 npm run dist（rsync，本機跑的同一條指令）挑出要發布的檔，再上傳 dist/。
+# 第一次用：repo 的 Settings → Pages → Build and deployment → Source 選「GitHub Actions」。
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Pages 沒開時講清楚
+        if: failure() && steps.pages.outcome == 'failure'
+        run: |
+          echo "::error::這個 repo 還沒開 GitHub Pages（fork 預設也沒開）。到 Settings → Pages → Build and deployment → Source 選「GitHub Actions」，再重跑這個 workflow。"
+          exit 1
+      - name: 挑出要發布的檔（dist/）
+        run: npm run dist
+      - name: OG 圖改成完整網址（分享預覽抓不到相對路徑）
+        run: sed -i "s#content=\"./assets/og.png\"#content=\"${{ steps.pages.outputs.base_url }}/assets/og.png\"#" dist/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

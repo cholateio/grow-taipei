@@ -7,10 +7,11 @@
 //   計畫 6 任務 6 重校（2026-10-29，warp=0／5 的颱風局）：現在 20 s 預算的 live 截圖（live-rat、live-storm、bridge-live）也拍到 warp 後不到 1 秒——
 //   上面「warp＋十幾秒」是舊的量測；warp 一律照無頭演出量到的事件秒數找。
 // node tools/shot.mjs --dom <query>  → 印出頁面 DOM（驗證錯誤畫面文字用）
+// --root dist：從部署用的 dist/ 開頁面（計畫 12：npm run dist 之後 node tools/shot.mjs --root dist open=）
 import { execFile } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { serve } from './serve.mjs';
+import { serve, takeRoot } from './serve.mjs';
 
 const CHROME = process.env.CHROME || `${homedir()}/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`;
 let PORT = 0;
@@ -27,8 +28,8 @@ const budgetOf = (name, query) => ((name.includes('wide') || ITEM_SHOT.test(name
 const run = argv => new Promise(ok => execFile(CHROME, argv, { encoding: 'utf8', timeout: 180000, maxBuffer: 64 << 20 },
   (err, stdout, stderr) => ok({ status: err ? (err.code ?? 1) : 0, stdout, stderr })));
 
-const args = process.argv.slice(2);
-const server = await serve(0);   // 0 = 系統挑空的埠，不和開著的開發伺服器撞
+const args = process.argv.slice(2), root = takeRoot(args);
+const server = await serve(0, { root });   // 0 = 系統挑空的埠，不和開著的開發伺服器撞
 PORT = server.address().port;
 let failed = false;
 const worst = { calls: 0, name: '' }, over = [];   // 這一趟 draw call 最多的截圖、超過預算的截圖

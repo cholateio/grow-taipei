@@ -486,6 +486,9 @@ test('fix3 A: the yard sign blocks walkers (footprint over the board only); ever
     assert.ok(Math.abs(b.body.x - px) < 1e-9 && Math.abs(b.body.z - pz) < 1e-9, `lv${n} footprint centred on the board`);
     assert.ok(b.body.w >= board.scale[0] - 1e-9 && b.body.d >= board.scale[2] * 2 - 1e-9, `lv${n} footprint covers the board (${b.body.w} × ${b.body.d})`);
     assert.equal(growsOn(b.yard), false, `lv${n} the yard still just appears (no grow)`);
+    // 修正輪 1：板子不插進店的東牆（Lv3 起店身 SHOP_W 見方）
+    if (n >= 3) { const shop = boba.view(lv({ boba: n }), {})['boba.main'], wall = shop.at.x + shop.footprint.w / 2, west = b.yard.at.x + px - board.scale[0] / 2;
+      assert.ok(west >= wall + 0.005, `lv${n} board west end ${(west - wall).toFixed(3)} outside the shop wall`); }
     const v = boba.view(lv({ boba: n }), {});
     for (const q of [...v['boba.queue'].home.spots, boba.ownerSpot(n), boba.blownSpot(), ...boba.PIER]) assert.ok(!inBox(b, q), `lv${n} spot (${q.x.toFixed(2)}, ${q.z.toFixed(2)}) clear of the padded sign`);
     if (n >= 4) {
@@ -498,9 +501,9 @@ test('fix3 A: the yard sign blocks walkers (footprint over the board only); ever
 // 每一幀人龍、老闆都不在外擴後的立牌裡（唯一正解，和一條珍奶早放的順序：第 4 回合 1 → 2、第 6 回合 2 → 3——
 // 修好之前這條順序的 1 → 2 有兩個觀光客從碼頭走來時直直穿過立牌）
 test('fix3 A live: in the boba 1 → 2 and 2 → 3 turns (and 10 s after each) no queue member ever stands inside the padded sign (solution + boba-early order)', async () => {
-  // 立牌的板子（view 的零件，不看 footprint：修好之前也量得到）外擴成 0.2 × 0.08 + PAD 的框
-  const { PAD } = await import('../src/show/nav.js'), y = boba.view(lv({ boba: 3 }), {})['boba.yard'], [px, , pz] = y.parts.find(p => p.sign).pos;
-  const b = { x: y.at.x + px, z: y.at.z + pz, hx: 0.1 + PAD, hz: 0.04 + PAD };
+  // 立牌的板子（view 的零件，不看 footprint：修好之前也量得到）外擴成板寬 × 0.08 + PAD 的框
+  const { PAD } = await import('../src/show/nav.js'), y = boba.view(lv({ boba: 3 }), {})['boba.yard'], sign = y.parts.find(p => p.sign), [px, , pz] = sign.pos;
+  const b = { x: y.at.x + px, z: y.at.z + pz, hx: sign.scale[0] / 2 + PAD, hz: 0.04 + PAD };
   const { turnSteps } = await import('./helpers/show.js');
   for (const order of [...SOLUTIONS, ['milk', 'baseball', 'token', 'boba', 'bulb', 'chip', 'typhoon', 'rat']]) {
     const h = await headlessShow(), { show, run } = h, update = show.update, hits = [];

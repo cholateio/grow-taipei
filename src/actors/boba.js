@@ -160,27 +160,27 @@ const tipped = parts => parts.map(p => {
   return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: [0, 0, TIP] };
 });
 const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
-// 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.62）疊在一起
+// 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.50）疊在一起
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
 
 // 立牌的板子（相對 AT）：靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）。
 // 立牌擋人（修正批次 fix3 §A，使用者 2026-11-01「珍奶店升級時顧客會穿越招牌」：院子以前 footprint false，人龍從碼頭走來時直直穿過立牌）：
-// footprint 只有立牌（0.2 × 0.08，蓋住 0.2 × 0.04 的板子和往後仰的那一截），磚地與遮雨棚照舊走得過去；外擴 PAD 後是 0.44 × 0.32 的框。
-// 板子往西挪 0.15（SHOP 東邊 0.62 → 0.47，貼著店的東牆；Lv3 起板子西端 0.04 靠進牆裡）：店東牆和格邊之間只有一排走路格點（SHOP 東邊 0.71），
-//   板子留在 0.62 的話外擴後的框蓋住那一排，Lv3（店、還沒有噴泉）夜市第二攤（燈泡 ≥4）在北邊時，店東側北半截那兩個格點整個被關起來
-//   （老鼠在燈泡門口晃的家就落在那裡、進場點離家 0.4）。0.47：框的東緣離那排格點 0.02，外擴後不關住任何格點。
-// 人龍站位（攤車前離框 0.29、店門口 0.39）、老闆站位（0.25）、被吹走時岸邊的站位（0.075）、碼頭（≥ 1.6）、電工主路都在框外，站位不用搬；
-// 噴泉（Lv4，SHOP + (0.675, −0.3)、r 0.25）本身離外擴後的框 0.04
-const BOARD = [SHOP.x - AT.x + 0.47, SHOP.z - AT.z + 0.15];
-const SIGN_FOOTPRINT = [{ x: BOARD[0], z: BOARD[1], w: 0.2, d: 0.08 }];
+// footprint 只有立牌（0.16 × 0.08，蓋住 0.16 × 0.04 的板子和往後仰的那一截），磚地與遮雨棚照舊走得過去；外擴 PAD 後是 0.40 × 0.32 的框。
+// 板子往西挪、改窄（SHOP 東邊 0.62、寬 0.2 → 0.50、寬 0.16；修正輪 1：0.47、寬 0.2 時 Lv3 起板子西端插進店牆 0.037）：
+//   店東牆（SHOP 東邊 0.41）和格邊之間只有一排走路格點（SHOP 東邊 0.71），板子留在 0.62 的話外擴後的框蓋住那一排，
+//   Lv3（店、還沒有噴泉）夜市第二攤（燈泡 ≥4）在北邊時，店東側北半截那兩個格點整個被關起來（老鼠在燈泡門口晃的家就落在那裡、進場點離家 0.4）。
+//   0.50：板子西端 0.42 在牆外 0.01、框的東緣 0.70 在那排格點西邊 0.01，外擴後不關住任何格點。
+// 人龍站位、老闆站位、被吹走時岸邊的站位、碼頭（≥ 1.6）、電工主路都在框外，站位不用搬；噴泉（Lv4，SHOP + (0.675, −0.3)、r 0.25）本身不碰外擴後的框
+const BOARD = [SHOP.x - AT.x + 0.50, SHOP.z - AT.z + 0.15], BOARD_W = 0.16;
+const SIGN_FOOTPRINT = [{ x: BOARD[0], z: BOARD[1], w: BOARD_W, d: 0.08 }];
 
 // 遮雨棚、店前的磚地、立牌（Lv2 只有立牌：人龍排頭旁）。fresh（鮮奶 ≥4，跳級條件「鮮奶珍奶」）：立牌白底藍字，否則珊瑚底奶油字
 function yardParts(n, fresh) {
   const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, board = BOARD;
   const sign = [
-    { kind: 'box', pos: [board[0], 0.22, board[1]], scale: [0.2, 0.28, 0.04], rot: [-0.2, 0, 0], color: fresh ? C.white : C.coral, sign: true },
-    { kind: 'box', pos: [board[0], 0.24, board[1] + 0.03], scale: [0.14, 0.05, 0.01], rot: [-0.2, 0, 0], color: fresh ? C.blue : C.cream },
+    { kind: 'box', pos: [board[0], 0.22, board[1]], scale: [BOARD_W, 0.28, 0.04], rot: [-0.2, 0, 0], color: fresh ? C.white : C.coral, sign: true },
+    { kind: 'box', pos: [board[0], 0.24, board[1] + 0.03], scale: [0.11, 0.05, 0.01], rot: [-0.2, 0, 0], color: fresh ? C.blue : C.cream },
   ];
   if (n < 3) return sign;
   const front = sz + SHOP_W / 2;

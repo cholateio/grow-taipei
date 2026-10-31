@@ -1,11 +1,12 @@
 /* 介面：政策島的奶油卡片 + GROW 的下方物品列 */
-:root { --ink: #211d1d; --cream: #fff8f4; --coral: #db6a41; --yellow: #fcea8b; --line: #e9ded2; --shadow: 0 2px 8px #4a2a1414, 0 8px 24px #4a2a1410; }
+:root { --ink: #211d1d; --cream: #fff8f4; --coral: #db6a41; --yellow: #fcea8b; --line: #e9ded2; --shadow: 0 2px 8px #4a2a1414, 0 8px 24px #4a2a1410;
+  /* 物品列的高度（跳過鍵貼在它上方）：一排 = 上 10 + 格 72 + 下 16；手機兩排見下面 ≤ 640 */
+  --slots-h: 98px; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
 button { font: inherit; color: var(--ink); min-height: 44px; border-radius: 9px; border: 0; cursor: pointer; }
 button:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
 button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weight: 700; }
-button.primary:hover { background: #3a3333; }
 
 .topbar { position: fixed; top: 14px; left: 16px; right: 16px; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 .topbar > * { pointer-events: auto; }
@@ -14,13 +15,15 @@ button.primary:hover { background: #3a3333; }
 .brand span { font-weight: 700; font-size: 14px; }
 .tools { display: flex; gap: 8px; }
 .tools button { background: var(--cream); box-shadow: var(--shadow); padding: 0 14px; font-weight: 700; min-width: 44px; }
-.tools button:hover { background: var(--yellow); }
-.tools button[hidden] { display: none; }
 /* 重玩迴圈（計畫 12）：遊戲結束後 RESET 珊瑚底白字、每 1.6 s 輕輕放大一次；reduced-motion 不動 */
 .tools button.glow { background: var(--coral); color: #fff; animation: reset-glow 1.6s ease-in-out infinite; }
-.tools button.glow:hover { background: #c45a34; }
 @keyframes reset-glow { 0%, 70%, 100% { transform: scale(1); } 35% { transform: scale(1.06); } }
 @media (prefers-reduced-motion: reduce) { .tools button.glow { animation: none; } }
+
+/* 跳過鍵（修正輪 1）：物品列正上方置中的浮動膠囊，所有寬度一樣；奶油底深字（跟結束後珊瑚色的 RESET 區分）。只在演出能跳過時出現 */
+.skip { position: fixed; left: 50%; bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--slots-h) + 8px); transform: translateX(-50%);
+  min-height: 44px; padding: 0 22px; border-radius: 22px; background: var(--cream); color: var(--ink); font-weight: 700; box-shadow: var(--shadow); }
+.skip[hidden] { display: none; }
 
 .slots { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; grid-template-columns: repeat(8, 64px); gap: 8px;
   background: #fff8f4e0; backdrop-filter: blur(10px); padding: 10px 12px 16px; border-radius: 18px; box-shadow: var(--shadow); }
@@ -31,16 +34,17 @@ button.primary:hover { background: #3a3333; }
 .slot .lv { position: absolute; bottom: -9px; font-style: normal; font-size: 10px; font-weight: 900; color: #fff; background: var(--coral); border-radius: 6px; padding: 1px 6px; }
 .slot .lv:empty { display: none; }
 .slot.max .lv { background: var(--yellow); color: var(--ink); }
-.slot:hover:not(:disabled) { background: var(--yellow); }
 .slot:disabled { cursor: default; }
 .slot.placed { opacity: .55; }
 .slot.placed .lv { opacity: 1; }
 .slots.busy .slot:not(.placed) { opacity: .8; }
 @media (max-width: 640px) {
+  :root { --slots-h: 178px; }   /* 兩排：10 + 72 + 8 + 72 + 16 */
   .slots { grid-template-columns: repeat(4, 64px); }
   .brand b { font-size: 20px; }
 }
-/* 窄手機（360 寬）：跳過鍵出現時頂欄也排得下——工具鍵縮左右邊距，高度照舊 44 */
+/* 窄手機：頂欄（品牌卡＋?＋RESET）工具鍵縮左右邊距，高度照舊 44。headless Chrome 實測品牌卡與工具之間：360 寬 32 px、375 寬 47 px；
+   320 寬仍會把品牌卡擠窄（修正輪 1 前跳過鍵也在頂欄時，審稿量到 390 寬 24.7 px、375 寬 9.7、360 寬 0 並折行、320 寬品牌卡直排——所以跳過鍵移出頂欄） */
 @media (max-width: 420px) {
   .tools { gap: 6px; }
   .tools button { padding: 0 10px; }
@@ -52,6 +56,14 @@ button.primary:hover { background: #3a3333; }
 .card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }
 .card .line { margin: 0 0 14px; }
 /* 結局橫幅：貼在物品列上方，島還看得到 */
+
+/* hover 只給滑鼠（觸控點過會黏住黃底） */
+@media (hover: hover) {
+  button.primary:hover { background: #3a3333; }
+  .tools button:hover, .skip:hover { background: var(--yellow); }
+  .tools button.glow:hover { background: #c45a34; }
+  .slot:hover:not(:disabled) { background: var(--yellow); }
+}
 
 /* 表演層（CSS2D 標籤）：外層只負責被 CSS2DRenderer 用 inline transform 定位，不能有 transform 動畫；動畫一律放內層 span */
 /* GROW 風格的頭頂泡泡：符號或圖框；字級跟視窗高度走（§13.5：字 2vh、圖框 3vh，各有上下限） */

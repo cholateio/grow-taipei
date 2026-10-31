@@ -11,6 +11,7 @@ test('index.html has a description and og:title / og:description / og:image; the
   assert.ok(meta(html, 'name', 'description'), 'meta description');
   assert.ok(meta(html, 'property', 'og:title'), 'og:title'); assert.ok(meta(html, 'property', 'og:description'), 'og:description');
   assert.equal(meta(html, 'property', 'og:image'), './assets/og.png');
+  assert.equal(meta(html, 'property', 'og:url'), './', 'the workflow fills in the full URL');
   assert.ok(existsSync('assets/og.png'), 'assets/og.png');
   const png = readFileSync('assets/og.png');
   assert.equal(png.readUInt32BE(16), 1280, 'og.png is 1280 wide');
@@ -20,12 +21,18 @@ test('the Pages workflow builds dist/ with only index.html, src, vendor, assets 
   const yml = readFileSync('.github/workflows/pages.yml', 'utf8');
   assert.match(yml, /branches:\s*\[\s*main\s*\]/);
   assert.match(yml, /npm run dist/, 'builds with the same command as local');
-  assert.match(yml, /actions\/configure-pages@v5/); assert.match(yml, /actions\/upload-pages-artifact@v3[\s\S]*?path:\s*dist/); assert.match(yml, /actions\/deploy-pages@v4/);
+  assert.match(yml, /actions\/configure-pages@v6/); assert.match(yml, /actions\/upload-pages-artifact@v5[\s\S]*?path:\s*dist/); assert.match(yml, /actions\/deploy-pages@v5/);
+  assert.match(yml, /actions\/checkout@v7/);
+  assert.match(yml, /cancel-in-progress:\s*false/, 'a running deploy is never cancelled half way');
+  // og:image／og:url 換成完整網址；換失敗就紅
+  assert.match(yml, /grep -q 'og:image" content="https' dist\/index\.html/); assert.match(yml, /grep -q 'og:url" content="https' dist\/index\.html/);
   assert.match(yml, /pages:\s*write/); assert.match(yml, /id-token:\s*write/);
   // 沒開 Pages（或 fork）時，失敗訊息要講清楚去哪裡開
   assert.match(yml, /if:\s*failure\(\)[\s\S]*Settings → Pages/);
   const dist = JSON.parse(readFileSync('package.json', 'utf8')).scripts.dist;
   assert.ok(dist, 'npm run dist');
+  assert.match(dist, /^rm -rf dist && rsync /, 'starts from an empty dist/');
+  assert.match(dist, /--exclude=\/src\/solver/, 'the solver only runs in Node');
   const copied = dist.match(/rsync[^&]*/)[0];
   for (const p of ['index.html', 'src', 'vendor', 'assets']) assert.match(copied, new RegExp(`(^|\\s)${p}(\\s|$)`), p);
   for (const p of ['shots', 'grow_prototype', 'docs', 'test', 'tools', '.superpowers', 'node_modules']) assert.doesNotMatch(copied, new RegExp(`(^|\\s)${p}(/|\\s|$)`), p);

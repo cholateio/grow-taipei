@@ -1,5 +1,5 @@
 // headless Chromium 截圖。node tools/shot.mjs <name>=<query> ...  → shots/<name>.png
-//   名稱含 phone 用 390×844、含 wide 用 2560×1080，否則 1280×800；console 有 Uncaught/Error/Failed 就 exit 1。
+//   名稱含 phone360 用 360×780（窄手機）、其他含 phone 用 390×844、含 wide 用 2560×1080，否則 1280×800；console 有 Uncaught/Error/Failed 就 exit 1。
 //   虛擬時間預設 20 s（夠載入＋?auto 瞬間放完）。但 ?live 在 warp 同步快轉之後動畫迴圈還會繼續演，20 s 拍到的是
 //   warp＋十幾秒那一刻，回合可能已經演完、鏡頭回全景。wide 的 live 截圖要拍「拉近到主角格」的那一刻，
 //   所以名稱含 wide（或物品 id- 開頭的特寫：milk-、token-…）又有 live=1 時預算縮成 1.5 s（實測拍到 warp 後不到 1 秒的畫面，每次同一刻）；其他截圖照舊 20 s。
@@ -18,7 +18,7 @@ let PORT = 0;
 const base = q => `http://127.0.0.1:${PORT}/index.html${q ? '?' + q : ''}`;
 const flags = (size, budget = 20000) => ['--headless=new', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars',
   `--window-size=${size}`, `--virtual-time-budget=${budget}`, '--enable-logging=stderr', '--v=0'];
-const sizeOf = name => (name.includes('phone') ? '390,844' : name.includes('wide') ? '2560,1080' : '1280,800');
+const sizeOf = name => (name.includes('phone360') ? '360,780' : name.includes('phone') ? '390,844' : name.includes('wide') ? '2560,1080' : '1280,800');
 const ITEM_SHOT = /^(milk|chip|bulb|token|typhoon|rat|boba|baseball)-/;   // 物品特寫（milk-3、token-6…）
 // draw call 預算（裁決 R18，物品 v2 的 61 級島）：手機（名稱含 phone，或 ?quality=low）≤ 150，其他 ≤ 250（原本全部 150，41 級時訂的）
 const budgetCalls = (name, query) => (name.includes('phone') || /(^|&)quality=low(&|$)/.test(query) ? 150 : 250);

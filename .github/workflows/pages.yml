@@ -15,15 +15,15 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # 部署到一半不中斷，下一次排隊
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Pages 沒開時講清楚
         if: failure() && steps.pages.outcome == 'failure'
         run: |
@@ -31,9 +31,15 @@ jobs:
           exit 1
       - name: 挑出要發布的檔（dist/）
         run: npm run dist
-      - name: OG 圖改成完整網址（分享預覽抓不到相對路徑）
-        run: sed -i "s#content=\"./assets/og.png\"#content=\"${{ steps.pages.outputs.base_url }}/assets/og.png\"#" dist/index.html
-      - uses: actions/upload-pages-artifact@v3
+      - name: og:image／og:url 改成完整網址（分享預覽抓不到相對路徑；換失敗就紅）
+        env:
+          BASE: ${{ steps.pages.outputs.base_url }}
+        run: |
+          sed -i -e "s#property=\"og:image\" content=\"./assets/og.png\"#property=\"og:image\" content=\"$BASE/assets/og.png\"#" \
+                 -e "s#property=\"og:url\" content=\"./\"#property=\"og:url\" content=\"$BASE/\"#" dist/index.html
+          grep -q 'og:image" content="https' dist/index.html
+          grep -q 'og:url" content="https' dist/index.html
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -45,4 +51,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

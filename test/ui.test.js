@@ -15,9 +15,9 @@ test('storage helpers never throw', () => {
 });
 import { installFakeDom } from './helpers/fakedom.js';
 // 結局卡 2026-11-01 拿掉了（使用者：直接用畫面呈現就好，不用文字描述）：cards.js 只剩怎麼玩與頂欄；重玩按頂欄 RESET
-test('there is no end card any more: cards.js exports only the how-to card and the top bar', async () => {
+test('there is no end card any more: cards.js exports only the how-to card, the top bar and the skip button', async () => {
   installFakeDom(); const cards = await import('../src/ui/cards.js');
-  assert.deepEqual(Object.keys(cards).sort(), ['createTopBar', 'showHowTo']);
+  assert.deepEqual(Object.keys(cards).sort(), ['createSkipButton', 'createTopBar', 'showHowTo']);
 });
 
 // 物品列只在回合結束靜靜寫 Lv.n（§9）：沒有飛入、跳動
@@ -40,23 +40,67 @@ test('six bubble icons in the same SVG style', () => {
   for (const s of Object.values(BUBBLE_ICONS)) { assert.match(s, /^<svg/); assert.match(s, /viewBox="0 0 64 64"/); }
 });
 
-// 頂欄的跳過鍵（計畫 12 Task 1）：.tools 最左一顆 data-act=skip，預設藏著；setSkippable 顯示／隱藏，按下呼叫 onSkip
+// 頂欄（計畫 12）：怎麼玩、RESET；跳過鍵修正輪 1 移出頂欄（360 寬手機一出現就擠破、每回合抖一下）
 const topBar = async (opts = {}) => {
   installFakeDom(); const { createTopBar } = await import('../src/ui/cards.js');
   const root = document.createElement('div'), calls = [];
-  const bar = createTopBar(root, { onReset: () => calls.push('reset'), onHowTo: () => calls.push('howto'), onSkip: () => calls.push('skip'), ...opts });
+  const bar = createTopBar(root, { onReset: () => calls.push('reset'), onHowTo: () => calls.push('howto'), ...opts });
   return { root, bar, calls, btn: act => root.querySelector(`[data-act=${act}]`) };
 };
-test('the top bar has a hidden skip button first in the tools; setSkippable shows it and a press calls onSkip', async () => {
+test('the top bar holds only the how-to and RESET buttons (no skip button in it)', async () => {
   const { bar, calls, btn } = await topBar();
-  const skip = btn('skip');
-  assert.ok(skip, 'skip button'); assert.equal(skip.tagName, 'button'); assert.equal(skip.textContent, '跳過');
-  assert.deepEqual(skip.parent.children.map(b => b.dataset.act), ['skip', 'howto', 'reset'], 'skip is the leftmost tool');
-  assert.equal(skip.hidden, true, 'hidden by default');
-  bar.setSkippable(true); assert.equal(skip.hidden, false);
-  skip.listeners.click(); assert.deepEqual(calls, ['skip']);
-  bar.setSkippable(false); assert.equal(skip.hidden, true);
-  btn('reset').listeners.click(); btn('howto').listeners.click(); assert.deepEqual(calls, ['skip', 'reset', 'howto']);
+  assert.equal(btn('skip'), null);
+  assert.deepEqual(btn('reset').parent.children.map(b => b.dataset.act), ['howto', 'reset']);
+  assert.equal(bar.setSkippable, undefined);
+  btn('reset').listeners.click(); btn('howto').listeners.click(); assert.deepEqual(calls, ['reset', 'howto']);
+});
+// 跳過鍵（修正輪 1）：物品列正上方置中的浮動膠囊，所有寬度一樣；預設藏著，setSkippable 顯示／隱藏、連續同值不寫 DOM，按下呼叫 onSkip
+test('the skip button is its own floating pill: hidden by default, setSkippable toggles it without rewriting the same value, a press calls onSkip', async () => {
+  installFakeDom(); const { createSkipButton, createTopBar } = await import('../src/ui/cards.js');
+  const root = document.createElement('div'), calls = [];
+  createTopBar(root, {});
+  const skip = createSkipButton(root, { onSkip: () => calls.push('skip') }), el = skip.el;
+  assert.equal(el.tagName, 'button'); assert.equal(el.className, 'skip'); assert.equal(el.textContent, '跳過');
+  assert.equal(el.parent, root, 'directly under the UI root, not inside the top bar');
+  assert.equal(el.hidden, true, 'hidden by default');
+  const writes = () => el.hiddenWrites ?? 0, w0 = writes();
+  skip.setSkippable(false); skip.setSkippable(false); assert.equal(writes(), w0, 'same value: no DOM write');
+  skip.setSkippable(true); skip.setSkippable(true); skip.setSkippable(true);
+  assert.equal(el.hidden, false); assert.equal(writes(), w0 + 1, 'shown once');
+  el.listeners.click(); assert.deepEqual(calls, ['skip']);
+  skip.setSkippable(false); assert.equal(el.hidden, true); assert.equal(writes(), w0 + 2);
+});
+// 樣式：fixed、置中、底邊在物品列上方 8 px（--slots-h：桌機一排、手機兩排），高 44；hover 樣式只給滑鼠（觸控點過不黏黃底）
+const cssText = async () => (await import('node:fs')).readFileSync('src/ui/ui.css', 'utf8');
+const ruleOf = (css, sel) => new RegExp(`(^|\\n)${sel.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[2] ?? '';
+test('ui.css: the skip pill floats centred 8 px above the item bar on every width', async () => {
+  const css = await cssText(), rule = ruleOf(css, '.skip');
+  assert.match(rule, /position:\s*fixed/); assert.match(rule, /left:\s*50%/); assert.match(rule, /transform:\s*translateX\(-50%\)/);
+  assert.match(rule, /bottom:\s*calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ var\(--slots-h\) \+ 8px\)/);
+  assert.match(rule, /min-height:\s*44px/);
+  assert.match(ruleOf(css, '.skip[hidden]'), /display:\s*none/);
+  // 物品列高度：一排 10 + 72 + 16 = 98；兩排（≤ 640）10 + 72 + 8 + 72 + 16 = 178
+  assert.match(/:root\s*\{([^}]*)\}/.exec(css)[1], /--slots-h:\s*98px/);
+  assert.match(/@media \(max-width: 640px\)\s*\{([\s\S]*?)\n\}/.exec(css)[1], /--slots-h:\s*178px/);
+  assert.doesNotMatch(css, /\.tools button\[data-act=skip\]|\.tools button\[hidden\]/);
+});
+test('ui.css: every :hover rule sits inside @media (hover: hover)', async () => {
+  let css = await cssText();
+  // 拿掉 @media (hover: hover) { … }（數括號）
+  for (let i; (i = css.indexOf('@media (hover: hover)')) >= 0;) {
+    let j = css.indexOf('{', i) + 1, depth = 1;
+    while (depth) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+    css = css.slice(0, i) + css.slice(j);
+  }
+  assert.doesNotMatch(css, /:hover/);
+});
+// npm run shot：360 寬的手機也拍（phone360 → 360×780，走手機預算）
+test('npm run shot includes phone360-live and phone360-end at 360×780', async () => {
+  const { readFileSync } = await import('node:fs');
+  const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
+  assert.match(shot, /'phone360-live=auto=milk,baseball,token,bulb,chip,typhoon,boba,rat&live=1&warp=3&quality=low'/);
+  assert.match(shot, /phone360-end=auto=milk,baseball,token,bulb,chip,typhoon,boba,rat&quality=low/);
+  assert.match(readFileSync('tools/shot.mjs', 'utf8'), /phone360'\) \? '360,780'/);
 });
 
 // 重玩迴圈（計畫 12 Task 2）：遊戲結束後 RESET 加 glow（珊瑚底白字、輕輕放大），RESET 之後拿掉；沒有任何新文字
@@ -65,7 +109,7 @@ test('setFinished toggles the glow class on RESET only, without adding text', as
   const reset = btn('reset'), text = root.textContent;
   assert.equal(reset.classList.contains('glow'), false);
   bar.setFinished(true); assert.equal(reset.classList.contains('glow'), true);
-  assert.equal(btn('howto').classList.contains('glow'), false); assert.equal(btn('skip').classList.contains('glow'), false);
+  assert.equal(btn('howto').classList.contains('glow'), false);
   assert.equal(root.textContent, text, 'no new text');
   bar.setFinished(false); assert.equal(reset.classList.contains('glow'), false);
 });

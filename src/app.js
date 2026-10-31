@@ -19,7 +19,7 @@ import * as engine from './rules/engine.js';
 import * as endings from './rules/endings.js';
 import { ICONS } from './ui/icons.js';
 import { createSlots } from './ui/slots.js';
-import { showHowTo, createTopBar } from './ui/cards.js';
+import { showHowTo, createTopBar, createSkipButton } from './ui/cards.js';
 import { storageGet, storageSet } from './ui/format.js';
 import { createShow } from './show/index.js';
 import * as landmarks from './actors/landmarks.js';
@@ -143,8 +143,9 @@ export async function start({ params, loading }) {
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
-  // 跳過鍵（計畫 12）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；終局前的 hold 不顯示（show.skippable）
-  const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo, onSkip: () => show.skip() });
+  const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
+  // 跳過鍵（計畫 12）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；物品列正上方，終局前的 hold 不顯示（show.skippable）
+  const skipBtn = createSkipButton(uiRoot, { onSkip: () => show.skip() });
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
@@ -158,7 +159,7 @@ export async function start({ params, loading }) {
   };
   view.renderer.setAnimationLoop(() => {
     frame(Math.min(clock.getDelta(), 0.08));
-    topBar.setSkippable(show.skippable);
+    skipBtn.setSkippable(show.skippable);
     view.render();
     later.drawn();   // 第一幀畫出來了：延後的點綴（柴犬）開始載
     // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最多，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）

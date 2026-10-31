@@ -3,6 +3,8 @@ export class El {
   constructor(tag) { this.tagName = tag; this.children = []; this.style = {}; this.dataset = {}; this.className = ''; this._text = ''; this.parent = null; }
   // CSS2DObject 被移除時會查 element.ownerDocument.defaultView.Element
   get ownerDocument() { return { defaultView: { Element: El } }; }
+  // hidden：記下寫了幾次（setSkippable 連續同值不該碰 DOM）
+  get hidden() { return this._hidden ?? false; } set hidden(v) { this._hidden = v; this.hiddenWrites = (this.hiddenWrites ?? 0) + 1; }
   setAttribute() {} addEventListener(type, fn) { (this.listeners ??= {})[type] = fn; }
   append(...cs) { for (const c of cs) { c.parent = this; this.children.push(c); } }
   remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; }

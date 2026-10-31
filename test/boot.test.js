@@ -10,12 +10,12 @@ test('main.js is a bootstrap with no static imports and loads the app dynamicall
   assert.ok(tryAt >= 0 && dyn > tryAt, 'dynamic import of ./app.js inside try');
 });
 
-// 計畫 12 Task 1：跳過改成頂欄的跳過鍵——畫布不再聽 click（拖鏡頭的 pointerdown 照舊），每幀照 show.skippable 顯示／隱藏
-test('app.js skips through the top-bar button only: no canvas click listener, setSkippable(show.skippable) every frame', () => {
+// 計畫 12 Task 1（修正輪 1 移到物品列上方）：跳過改成跳過鍵——畫布不再聽 click（拖鏡頭的 pointerdown 照舊），每幀照 show.skippable 顯示／隱藏
+test('app.js skips through the skip button only: no canvas click listener, setSkippable(show.skippable) every frame', () => {
   const src = readFileSync('src/app.js', 'utf8');
   assert.doesNotMatch(src, /domElement\.addEventListener\(\s*'click'/, 'no canvas click → skip');
   assert.match(src, /domElement\.addEventListener\(\s*'pointerdown'/, 'drag still cancels the camera flight');
-  assert.match(src, /onSkip:\s*\(\)\s*=>\s*show\.skip\(\)/);
+  assert.match(src, /createSkipButton\(uiRoot, \{ onSkip:\s*\(\)\s*=>\s*show\.skip\(\)/);
   const loop = src.slice(src.indexOf('setAnimationLoop('));
   assert.match(loop, /setSkippable\(show\.skippable\)/, 'the frame loop updates the skip button');
 });
@@ -24,5 +24,8 @@ test('app.js skips through the top-bar button only: no canvas click listener, se
 test('app.js lights RESET on finish and turns it off on restart', () => {
   const src = readFileSync('src/app.js', 'utf8');
   assert.match(src, /onFinished:\s*\(\)\s*=>\s*topBar\.setFinished\(true\)/);
-  assert.match(/function restart\(\)\s*\{[^}]*\}/.exec(src)?.[0] ?? '', /topBar\.setFinished\(false\)/);
+  // restart 的本文（到下一個頂層宣告前）：先拿掉 glow，再 game.reset()
+  const body = src.slice(src.indexOf('function restart()'), src.indexOf('\n  const pick'));
+  const off = body.indexOf('topBar.setFinished(false)'), reset = body.indexOf('game.reset()');
+  assert.ok(off >= 0, 'restart turns the glow off'); assert.ok(reset > off, 'before game.reset()');
 });

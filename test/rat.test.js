@@ -660,9 +660,9 @@ test('alien bad ending: the merged rat 2 → 4 in the last round still plays the
   assert.ok(high > 2, `the UFO came down from the sky (max dy ${high.toFixed(2)})`);
   assert.ok(show.roster.members('rat.pack')[0].dress.crown, 'crowned'); assert.ok(show.stage.partObject('sat.rocksRing'), 'ring on the rocks');
 });
-// 2026-10-31（唯一正解收尾，roster.test 變異鼠擦身）：泡湯客的家搬到池子北側要從變異鼠站的溫泉邊繞過去——老鼠一出發就先讓位，
-// 變異鼠站好之後沒有泡湯客從牠身上走過（以前最後才套，泡湯客直直穿過牠 0.10 m）：整段劇本＋之後 5 秒，兩邊身體不相碰（≥ 半徑和 × 0.64）
-test('alien bad ending: the bathers make room before the mutant arrives — no bather ever walks through the mutant at the spring', async () => {
+// 計畫 13 §設計 3：溫泉客泡在池裡（池心半徑 0.3），變異鼠來了也不換位置——整段劇本＋之後 5 秒溫泉客都在自己的站位上（池裡、y 壓低）不動，
+// 兩邊身體不相碰（≥ 半徑和 × 0.64；以前泡湯客站池邊、要搬到北側讓位，2026-10-31 直直穿過牠 0.10 m）
+test('alien bad ending: the bathers stay still in the pool while the mutant arrives — never closer than 0.64 × (ra + rb)', async () => {
   const h = await headlessShow(), { show, run } = h;
   let s = engine.createState(spec), evs = null;
   const steps = [...ALIEN.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
@@ -671,15 +671,19 @@ test('alien bad ending: the bathers make room before the mutant arrives — no b
     if (r.events.some(isRat(4))) { evs = [...r.events, { kind: 'settle' }]; break; }
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
-  const update = show.update; let near = Infinity, frames = 0;
+  const update = show.update, spots = () => landmarks.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots;
+  let near = Infinity, frames = 0, drift = 0, on = false;   // on：老鼠 4 開演之後（同一回合先放下的颱風，溫泉客照常跑去小澡堂躲雨、回來再走進池裡）
   show.update = (dt, t) => {
     update(dt, t);
+    if (on) show.roster.members('landmarks.bathers').forEach((o, i) => { const s = spots()[i]; if (!o.hidden) drift = Math.max(drift, Math.hypot(o.pos.x - s.x, o.pos.z - s.z), Math.abs(o.pos.y - s.y)); });
     const [m] = show.roster.members('rat.pack'); if (!m || m.radius < 0.3 || m.hidden) return;
     for (const o of show.roster.members('landmarks.bathers')) { if (o.hidden) continue; frames++; near = Math.min(near, Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z) / (m.radius + o.radius)); }
   };
-  try { await run(evs); for (let f = 0; f < 150; f++) show.update(1 / 30, 2000 + f / 30); } finally { show.update = update; }
+  try { await run(evs, { onMark: e => { on ||= isRat(4)(e); } }); for (let f = 0; f < 150; f++) show.update(1 / 30, 2000 + f / 30); } finally { show.update = update; }
+  assert.ok(on, 'rat 4 played');
   assert.ok(frames > 100, `${frames} mutant–bather frames`);
   assert.ok(near >= 0.64, `closest bather at ${near.toFixed(2)} × (ra + rb)`);
+  assert.ok(drift < 0.05, `the bathers stay on their spots in the pool (drift ${drift.toFixed(3)})`);
 });
 // 審稿（裁決 R15）：Lv3 在整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——唯一正解與外星壞局都是第 9 回合 2 → 4 合併跳級的第一級（只有 mark）
 test('live play, the solution and the alien order: rat Lv3 script ≤ 4.5 s in the real turn', async () => {

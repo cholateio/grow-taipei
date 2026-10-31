@@ -28,7 +28,7 @@ const RAT = 'quat/enemies/Rat.glb', GREY = { Grey: 0xc0c8d0 };
 const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring'), DOME = anchorWorld('baseball');
 const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時老鼠在這裡晃）
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
-// 牠在這裡時兩位溫泉客改站池子北側、離牠 ≥ 1.9（landmarks.js BATHERS_NORTH，2026-10-28）
+// 牠在這裡時兩位溫泉客泡在池裡（池心半徑 0.3，計畫 13），離牠 0.73，不換位置
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的五隻機器鼠從這裡走出來）
 // 補進來的五隻各自的入口（計畫 11 最終修正 #4：以前五隻同一幀從同一點冒出來、一起走，之後彼此疊著 5–20 幀）：園區門口沿 x 排一列、
 // 間距 PARK_STEP（≥ 兩隻的半徑相加 0.26），名冊依序輪流（rat#5 在最西邊、最靠 101，先走在前面）
@@ -318,15 +318,12 @@ export const script = {
       //   這一段只 hold 老鼠的名冊、套 UFO（不閃）：其餘零件（窩收掉、石堆島的老鼠）留給後面的 apply 閃
       const hold = B.apply(e, { only: [KEY], hold: [KEY] }), ufo = B.apply(flag, { only: ['rat.ufo'], blink: false }), down = B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 });
       const mutate = B.apply(flag, { only: [KEY] });
-      // 泡湯客先讓位（2026-10-31 唯一正解收尾，roster.test 變異鼠擦身）：變異鼠站的溫泉邊在池子正前方，泡湯客的家搬到池子北側
-      //   要從這裡繞過去——以前跟「剩下的零件」最後才套，變異鼠已經站好，繞池子的那條窄路被牠堵住，泡湯客直直走過牠身上（0.10 m）。
-      //   改成老鼠一出發就套（不閃），泡湯客趁老鼠還在路上先走到北側
-      const room = B.apply(flag, { only: ['landmarks.bathers'], blink: false });
+      // 泡湯客泡在池裡（計畫 13），變異鼠來了也不用讓位（以前站池邊、要先搬到池子北側）。
       // 搭車來的：其餘的老鼠還坐在車頂上跟車走（日常是搭車），分岔旗標一套就不再是搭車的家——跳下車就閃白變身（車頂上的閃白拿掉），
       //   變異鼠再走到溫泉邊、UFO 同時降下
       const open = riding(s)
-        ? [B.together([room, B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT), down])]
-        : [B.together([claim(RATS), hold, ufo, room, B.focus(SPRING), B.walk(r0, MUTANT), down]), mutate];
+        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT), down])]
+        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT), down]), mutate];
       return [
         ...open, B.home(r0),
         // 綠光圈先閃、剩下的零件（窩收掉、石堆島的老鼠）接著閃完，LEVEL UP 之後不再閃

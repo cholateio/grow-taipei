@@ -11,13 +11,13 @@ test('volcano and hot spring are on the plateau from the start, both steaming', 
   assert.ok(v['landmarks.volcano'].parts.some(p => p.glow), 'crater glows');
 });
 // §14.3 人分散：島民 5 人一個名冊，散步的家是溫泉格以外的六格（第 i 人用 home.at[i % 6]）；
-// 另外兩位溫泉客（landmarks.bathers）站在池邊（池子 footprint 外擴 PAD 之外、rescue），偶爾看一下池子
+// 另外兩位溫泉客（landmarks.bathers）泡在池子裡（計畫 13 §設計 3：池心半徑 0.3、水淹到胸口、不帶 rescue），偶爾看一下池子
 import { MAIN_CELLS, cellAt } from '../src/scene/hex.js';
 import { landmarkWorld } from '../src/actors/anchors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 const SPRING = landmarkWorld('spring');
 // 人數預算（裁決 R16）：島民 4 人、一人一格；最擠的球場格（-1,1）與珍奶格（0,1）不住島民，溫泉格（1,-1）是溫泉客的
-test('islanders: n 4, one wander home per cell on the four main cells that are not baseball/boba/spring; two bathers stand at the spring pool edge with fidget look and never inside the pool footprint', () => {
+test('islanders: n 4, one wander home per cell on the four main cells that are not baseball/boba/spring; two bathers soak in the pool (radius 0.3, chest-deep, facing the centre, no rescue) with fidget look', () => {
   const v = landmarks.view(zero, {}), r = v['landmarks.islanders'];
   assert.equal(r.kind, 'roster'); assert.equal(r.n, 4); assert.deepEqual(r.accessory, ['none', 'cap']);
   assert.equal(r.home.kind, 'wander'); assert.equal(r.home.r, 1.8); assert.equal(r.home.at.length, r.n);
@@ -25,14 +25,16 @@ test('islanders: n 4, one wander home per cell on the four main cells that are n
   assert.deepEqual([...cells].sort(), MAIN_CELLS.filter(c => !['1,-1', '-1,1', '0,1'].includes(String(c))).map(String).sort(), 'not the spring, baseball or boba cell');
   r.home.at.forEach((p, i) => { const c = axialToWorld(...cellAt(p.x, p.z)); assert.deepEqual(p, { x: c.x, y: cellTop(cellAt(p.x, p.z)), z: c.z }, `home ${i} is the cell centre`); });
   const b = v['landmarks.bathers'];
-  assert.deepEqual([b.kind, b.n, b.home.kind, b.home.fidget, b.home.rescue, b.home.spots.length], ['roster', 2, 'stand', 'look', true, 2]);
+  assert.deepEqual([b.kind, b.n, b.home.kind, b.home.fidget, !!b.home.rescue, b.home.spots.length], ['roster', 2, 'stand', 'look', false, 2]);
   const fp = [].concat(v['landmarks.spring'].footprint), nav = createNav();
   nav.setFootprints(fp.map(f => ({ ...f, x: SPRING.x + (f.x ?? 0), z: SPRING.z + (f.z ?? 0) })));
   for (const [i, p] of b.home.spots.entries()) {
     assert.deepEqual(cellAt(p.x, p.z), [1, -1], `bather ${i} in the spring cell`);
     const d = Math.hypot(p.x - SPRING.x, p.z - SPRING.z);
-    assert.ok(d > fp[0].r + PAD && d < fp[0].r + PAD + 0.3, `bather ${i} on the pool edge (${d.toFixed(2)})`);
-    assert.ok(nav.walkable(p.x, p.z), `bather ${i} walkable`);
+    assert.ok(Math.abs(d - 0.3) < 1e-9, `bather ${i} in the pool, 0.3 from the centre (${d.toFixed(2)})`);
+    // 計畫寫 − 0.22；截圖量到只露出頭（肩膀、手臂都在水下），改 − 0.15：頭、肩、手臂露出水面
+    assert.ok(Math.abs(p.y - (SPRING.y + 0.13 - 0.15)) < 1e-9, `bather ${i} chest-deep: y = water surface − 0.15`);
+    assert.ok(nav.inFootprint(p.x, p.z), `bather ${i} inside the pool footprint (an authored spot: roster / invariants let it be)`);
     assert.ok(Math.abs(Math.atan2(Math.sin(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)), Math.cos(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)))) < 1e-9, `bather ${i} faces the pool`);
     assert.ok(p.z > SPRING.z, `bather ${i} on the camera side`);
   }
@@ -52,32 +54,32 @@ test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays �
     for (const b of bathers()) for (const r of rats()) min = Math.min(min, Math.hypot(b.pos.x - r.pos.x, b.pos.z - r.pos.z));
   }
   assert.ok(min >= 0.25, `closest bather–rat ${min.toFixed(2)}`);
-  bathers().forEach((b, i) => { const s = landmarks.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots[i]; assert.ok(Math.hypot(b.pos.x - s.x, b.pos.z - s.z) < 0.1, `bather ${i} on the pool edge`); });
+  bathers().forEach((b, i) => { const s = landmarks.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots[i]; assert.ok(Math.hypot(b.pos.x - s.x, b.pos.z - s.z) < 0.1 && Math.abs(b.pos.y - s.y) < 1e-6, `bather ${i} soaking in the pool`); });
+});
+// 計畫 13 §設計 3：溫泉客（池心半徑 0.3）離泡湯老鼠（rat.js SPRING_SPOTS：池心半徑 0.62、5 隻）的站位每一對都 ≥ 0.25（實測最近 0.37）
+test('the soaking bathers\' spots keep ≥ 0.25 from every soaking rat spot', async () => {
+  const rat = await import('../src/actors/rat.js');
+  const rats = rat.view({ ...zero, rat: 3 }, {}, {})['rat.pack'].home.spots, bathers = landmarks.view({ ...zero, rat: 3 }, {})['landmarks.bathers'].home.spots;
+  assert.equal(rats.length, 5);
+  const min = Math.min(...bathers.flatMap(b => rats.map(r => Math.hypot(b.x - r.x, b.z - r.z))));
+  assert.ok(min >= 0.25, `closest ${min.toFixed(3)}`);
 });
 // 島民、溫泉客的入口（預設：家那格邊上離家最遠的可走點）唯一正解每一刻都走得到、離站位 ≥ 1.5
 test('islander and bather entries are walkable and ≥ 1.5 from their homes through the solution', async () => {
   const spec = await import('../src/rules/spec.js'), { enumerate, stats } = await import('../src/solver/run.js'), { entriesThroughSolutions } = await import('./helpers/show.js');
   assert.deepEqual(await entriesThroughSolutions(landmarks, stats(enumerate(spec), spec).full.map(r => r.order)), []);
 });
-// 2026-10-28 錄影修正：變異鼠（外星 Lv4 起）站在池子正前方，兩位溫泉客太近——那時溫泉客改站池子北側（離變異鼠中心 ≥ 0.9、
-// 離木牌與小澡堂 ≥ 0.3、還在池邊、走得到、面向池心）；其他時候照舊站鏡頭那側
-test('with the mutant rat at the spring (rat ≥ 4, alien) the bathers move to the north side of the pool, clear of the mutant, the sign and the bathhouse', async () => {
+// 變異鼠（外星 Lv4 起）站在池子正前方（rat.js MUTANT）：計畫 13 起溫泉客泡在池裡（池心半徑 0.3），離牠 ≥ 0.6，不用換位置——
+// 計畫寫的「改用 BATHERS_NORTH 的角度」要從池裡走出來繞一圈（nav 從 footprint 裡先逃到最近的可走點，就在池子前緣、變異鼠旁邊），
+// 所以溫泉客在池裡不動：每一級、每個分岔的站位都一樣
+test('with the mutant rat at the spring (rat ≥ 4, alien) the bathers stay put in the pool, ≥ 0.6 from the mutant', async () => {
   const { MUTANT } = await import('../src/actors/rat.js');
-  const fp = [].concat(landmarks.view(zero, {})['landmarks.spring'].footprint), nav = createNav();
-  nav.setFootprints(fp.map(f => ({ ...f, x: SPRING.x + (f.x ?? 0), z: SPRING.z + (f.z ?? 0) })));
-  const boxGap = (p, f) => Math.hypot(Math.max(0, Math.abs(p.x - SPRING.x - f.x) - f.w / 2), Math.max(0, Math.abs(p.z - SPRING.z - f.z) - f.d / 2));
   const spots = (lv, flags) => landmarks.view({ ...zero, ...lv }, flags)['landmarks.bathers'].home.spots;
   for (const rat of [4, 5]) for (const p of spots({ rat }, { ratBranch: 'alien' })) {
-    const d = Math.hypot(p.x - SPRING.x, p.z - SPRING.z);
-    assert.ok(p.z < SPRING.z, `rat ${rat}: north of the pool`);
-    assert.ok(Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z) >= 0.9, `rat ${rat}: ${Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z).toFixed(2)} from the mutant`);
-    for (const f of fp.slice(1)) assert.ok(boxGap(p, f) >= 0.3, `rat ${rat}: ${boxGap(p, f).toFixed(2)} from ${JSON.stringify(f)}`);
-    assert.ok(d > fp[0].r + PAD && d < fp[0].r + PAD + 0.3, `on the pool edge (${d.toFixed(2)})`);
-    assert.ok(nav.walkable(p.x, p.z), 'walkable');
-    assert.ok(Math.abs(Math.atan2(Math.sin(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)), Math.cos(p.yaw - Math.atan2(SPRING.x - p.x, SPRING.z - p.z)))) < 1e-9, 'faces the pool');
+    assert.ok(Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z) >= 0.6, `rat ${rat}: ${Math.hypot(p.x - MUTANT.x, p.z - MUTANT.z).toFixed(2)} from the mutant`);
   }
-  const [a, b] = spots({ rat: 4 }, { ratBranch: 'alien' }); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.25, 'the two bathers apart');
-  for (const [lv, flags] of [[{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 3 }, {}], [{ rat: 3 }, { ratBranch: 'alien' }]]) assert.deepEqual(spots(lv, flags), spots({}, {}), `${JSON.stringify(lv)} ${JSON.stringify(flags)}: unchanged`);
+  for (const [lv, flags] of [[{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 3 }, {}]]) assert.deepEqual(spots(lv, flags), spots({}, {}), `${JSON.stringify(lv)} ${JSON.stringify(flags)}: unchanged`);
+  const [a, b] = spots({}, {}); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.25, 'the two bathers apart');
 });
 // 計畫 13 §設計 1：島民只被站長轉走一個（代幣 ≥2）；鮮奶不再借島民
 test('islanderCount: HOMES.length minus one for the station master only (milk never takes an islander, plan 13)', () => {

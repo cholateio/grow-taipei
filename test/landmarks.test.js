@@ -111,7 +111,7 @@ test('volcano builder: one faceted clay mesh with three vertex-colour bands and 
   const g = clay.geometry, pos = g.attributes.position, col = g.attributes.color, nor = g.attributes.normal;
   assert.equal(g.index, null, 'non-indexed');
   const hex = i => new THREE.Color(col.getX(i), col.getY(i), col.getZ(i)).getHex(), tol = (a, b) => Math.abs(((a >> 16) & 255) - ((b >> 16) & 255)) + Math.abs(((a >> 8) & 255) - ((b >> 8) & 255)) + Math.abs((a & 255) - (b & 255)) <= 6;
-  const bands = [0xd2b48c, 0x8a7563, 0x4a3f38], seen = new Set(), STREAK = 0xe8794f;
+  const bands = [0xd2b48c, 0x8a7563, 0x4a3f38], seen = new Set(), STREAK = 0xc85a33;
   let low = 0, lowSand = 0, top = 0, topDark = 0, streak = 0, streakLow = Infinity;
   for (let i = 0; i < pos.count; i += 3) {
     const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, r = Math.hypot(pos.getX(i), pos.getZ(i)), c = hex(i);
@@ -124,7 +124,9 @@ test('volcano builder: one faceted clay mesh with three vertex-colour bands and 
     if (bands.some(b => tol(c, b))) for (const j of [1, 2]) assert.ok(Math.abs(nor.getX(i + j) - n0[0]) + Math.abs(nor.getY(i + j) - n0[1]) + Math.abs(nor.getZ(i + j) - n0[2]) < 1e-5, 'flat-shaded face');
   }
   assert.equal(seen.size, 3, 'three colour bands');
-  assert.ok(streak >= 12 && streakLow >= 0.6, `lava streaks painted on the cone: ${streak} vertices, lowest ${streakLow.toFixed(2)}`);
+  // 修正輪 0b：三道細熔岩剛從口緣溢出來（各一面寬、兩段、暗一階的橘），不流到山腰
+  assert.ok(streak >= 6 && streakLow >= 0.75, `lava streaks painted on the cone: ${streak} vertices, lowest ${streakLow.toFixed(2)}`);
+  assert.ok(streak <= 3 * 2 * 3, `thin streaks: one face per segment (${streak} vertices)`);
   assert.ok(low > 20 && lowSand / low > 0.95, `lower slope sand (${lowSand}/${low})`);
   assert.ok(top > 10 && topDark / top > 0.9, `crater rim darkest (${topDark}/${top})`);
   // 抖動過：錐腳那一圈頂點離中心不一樣遠（不是正 12 邊形），每次建出來一模一樣

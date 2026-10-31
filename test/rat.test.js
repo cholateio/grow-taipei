@@ -528,14 +528,14 @@ test('a bite that costs milk a level: crate tips, kids ！ run to the school gat
   let st = engine.createState(spec);
   // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 3 再咬掉一級（選擇帶動升級：鮮奶 up[3] 要有棒球）
   for (const id of ['rat', 'milk', 'baseball']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.equal(show.stage.lv.milk, 3); assert.equal(show.roster.members('milk.kids').length, 3);
+  assert.equal(show.stage.lv.milk, 3); assert.equal(show.roster.members('milk.kids').length, 2);   // 裁決 R23：兩個小學生
   const hidden = [], hide = show.roster.hide; show.roster.hide = m => { hidden.push(m.key); return hide(m); };
   const n = bubblesLog.length, crate = show.stage.partObject('milk.crate');
   const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 3, to: 2 }, story: '老鼠咬破鮮奶箱' }]);
   assert.ok(secs >= 4 && secs <= 14, `${secs.toFixed(1)} s`);
   assert.notEqual(show.stage.partObject('milk.crate'), crate, 'crate rebuilt tipped');
-  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 4, 'rat ！ and three kids ！');
-  assert.deepEqual(hidden, ['milk.kids', 'milk.kids', 'milk.kids'], 'kids hide at the gate');
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 3, 'rat ！ and both kids ！');
+  assert.deepEqual(hidden, ['milk.kids', 'milk.kids'], 'kids hide at the gate');
   assert.equal(show.roster.members('milk.kids').length, 0);
   const last = bubblesLog.at(-1), m = show.stage.headOf('milk');
   assert.equal(last.text, 'LEVEL DOWN'); assert.ok(Math.hypot(last.at.x - m.x, last.at.z - m.z) < 0.3);

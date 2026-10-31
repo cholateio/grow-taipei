@@ -85,9 +85,9 @@ test('milk Lv3/7/8 use the school / university / research glb models with the pa
   assert.ok(width(7) >= 1.8 * width(3), `university ${width(7).toFixed(2)} vs school ${width(3).toFixed(2)}`);
   assert.ok(tallest(8) >= 1.8 * tallest(7) && tallest(7) <= 1.1 * tallest(3), 'the research building towers over the low wings');
 });
-test('milk kids count: 3 from Lv3; Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', async () => {
+test('milk kids count: 2 from Lv3 (one is the islander who brought the milk, R23); Lv10 adds three festival kids on the milk, chip and spring cells (milk.extraKids, R16)', async () => {
   assert.equal(views[2]['milk.kids'], undefined, 'Lv2 breakfast shop: no kids yet');
-  for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 3, `lv${n}`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
+  for (let n = 3; n <= 10; n++) { assert.equal(views[n]['milk.kids'].n, 2, `lv${n}`); assert.equal(views[n]['milk.kids'].from, 'landmarks.islanders', `lv${n} from`); assert.equal(views[n]['milk.kids'].pick, 'nearest', `lv${n} pick`); assert.equal(views[n]['milk.kids'].scale, undefined, `lv${n} kids are person-sized`); }
     assert.deepEqual([3, 4, 5, 6, 7, 8, 9, 10].map(n => views[n]['milk.kids'].accessory), ['none', 'none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
   for (let n = 3; n <= 9; n++) assert.equal(views[n]['milk.extraKids'], undefined);
   const x = views[10]['milk.extraKids'], cells = x.home.at.map(p => cellAt(p.x, p.z).join(','));
@@ -134,20 +134,45 @@ test('typhoon Lv3 (clear sky, 修正批次 2 三級) swaps the school trim (roof
   assert.equal(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 2 }), {})));
   assert.notEqual(trim(views[3]), trim(milk.view(lv({ milk: 3, typhoon: 3 }), {})));
 });
+// 修正批次 roles（裁決 R23，使用者「初始的牛奶工人直接變成學生」）：島民的人數跟著被轉走的人減（鮮奶 ≥3、代幣 ≥2 各少一個），不補
+test('islanders: one fewer from milk 3 and one fewer from token 2 (the islanders who became the pupil and the station master)', () => {
+  const n = l => landmarks.view(lv(l), {})['landmarks.islanders'].n, all = landmarks.HOMES.length;
+  assert.equal(n({}), all); assert.equal(n({ milk: 2, token: 1 }), all);
+  assert.equal(n({ milk: 3 }), all - 1); assert.equal(n({ token: 2 }), all - 1); assert.equal(n({ milk: 10, token: 10 }), all - 2);
+});
+// 唯一正解整局 live：鮮奶 3 那一回合，送牛奶的島民原地變成小學生（同一個小人、黃衣、閃一下），另一個小學生從校門外走進來；島民少一個
+test('live, the solution: at milk 3 the islander who brought the milk becomes one of the two pupils; the islanders are one fewer', async () => {
+  const h = await headlessShow(), { show } = h;
+  let s = engine.createState(spec), checked = false;
+  for (const step of turnSteps(SOLUTIONS[0])) {
+    const r = step(s); s = r.state;
+    const before = new Set(show.roster.members('landmarks.islanders')), was = { ...show.stage.lv };
+    await h.run([...r.events, { kind: 'settle' }]);
+    if (!(show.stage.lv.milk >= 3 && !(was.milk >= 3))) continue;
+    const kids = show.roster.members('milk.kids'), isl = show.roster.members('landmarks.islanders');
+    assert.equal(kids.length, 2);
+    assert.equal(kids.filter(m => before.has(m)).length, 1, 'one pupil is a former islander (same member)');
+    assert.ok(kids.every(m => m.walker.shirt === C.yellow), 'both in yellow');
+    assert.equal(isl.length, landmarks.HOMES.length - 1 - (show.stage.lv.token >= 2 ? 1 : 0));
+    assert.ok(isl.every(m => before.has(m)), 'no islander walked in to replace him');
+    checked = true; break;
+  }
+  assert.ok(checked, 'milk 3 reached');
+});
 test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
   const { people, run } = await headlessShow({ modules: [milk] });
   await run([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'milk', from: 2, to: 3 }], { instant: true });
-  assert.equal(people.walkers.length, 3);
+  assert.equal(people.walkers.length, 2);
   await run([{ kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 2 } }], { instant: true });
   assert.equal(people.walkers.length, 0);
 });
 test('knocking milk back from 7 removes the arch gate; the graduates go back to caps', async () => {
   const { show, people, run } = await headlessShow({ modules: [milk] });
   await run([{ kind: 'placed', item: 'milk', to: 1 }, ...[2, 3, 4, 5, 6, 7].map(n => ({ kind: 'grow', item: 'milk', from: n - 1, to: n, via: [] }))], { instant: true });
-  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'mortar'));
+  assert.ok(people.walkers.length === 2 && people.walkers.every(w => w.accessory === 'mortar'));
   await run([{ kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 7, to: 6 } }, { kind: 'settle' }], { instant: true });
   assert.ok(!show.stage.partKeys().includes('milk.gate'));
-  assert.ok(people.walkers.length === 3 && people.walkers.every(w => w.accessory === 'cap'));
+  assert.ok(people.walkers.length === 2 && people.walkers.every(w => w.accessory === 'cap'));
 });
 test('every milk part and footprint corner stays inside the milk cell (the festival boat is moored on the water just west of it)', () => {
   const c = axialToWorld(-1, 0);
@@ -169,7 +194,7 @@ test('every milk part and footprint corner stays inside the milk cell (the festi
 
 test('view: kids are a roster declaration; crate and yard are separate parts; school footprints declared, playground walkable', () => {
   const v = views[5];
-  assert.equal(v['milk.kids'].kind, 'roster'); assert.equal(v['milk.kids'].n, 3); assert.equal(v['milk.kids'].home.kind, 'wander');
+  assert.equal(v['milk.kids'].kind, 'roster'); assert.equal(v['milk.kids'].n, 2); assert.equal(v['milk.kids'].home.kind, 'wander');
   assert.ok(v['milk.crate'] && v['milk.yard']); assert.deepEqual(v['milk.crate'].footprint, { r: 0.3 }); assert.equal(v['milk.yard'].footprint, false, 'the hoop does not block the way to the bridge');
   assert.deepEqual(milk.CRATE, v['milk.crate'].at);
   for (let n = 2; n <= 10; n++) {
@@ -199,14 +224,14 @@ test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 �
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `milk events seen: ${seen}`);
   }
 });
-// 計畫 11 最終修正 #3（全分支審稿）：◆ Lv7 三個小孩從操場一起走到拱門前——以前同時出發、走同一條路，兩個疊在一起走了 38 幀（0.000 m）。
+// 計畫 11 最終修正 #3（全分支審稿）：◆ Lv7 小孩從操場一起走到拱門前（R23 起兩個）——以前同時出發、走同一條路，兩個疊在一起走了 38 幀（0.000 m）。
 // 唯一正解整局 live 演到鮮奶 7：劇本裡任兩個小孩身體不相碰（≥ 0.64 × 兩人半徑相加）；站位彼此 ≥ 兩人半徑相加
-test('◆ Lv7 live: the three kids walk to the gate without body contact, and their gather spots are ≥ ra + rb apart', async () => {
+test('◆ Lv7 live: the kids walk to the gate without body contact, and their gather spots are ≥ ra + rb apart', async () => {
   const h = await headlessShow(), { show } = h, update = show.update;
   let s = engine.createState(spec), on = false, close = Infinity, who = '', seen = false, spot = Infinity;
   show.update = (dt, t) => {
     update(dt, t); if (!on) return;
-    const k = show.roster.members('milk.kids').filter(m => !m.hidden && !m.gone && m.mode === 'script'), gathered = k.length === 3 && k.every(m => !m.walking);   // 只量劇本手上的（拍開始前的日常不算）
+    const k = show.roster.members('milk.kids').filter(m => !m.hidden && !m.gone && m.mode === 'script'), gathered = k.length === 2 && k.every(m => !m.walking);   // 只量劇本手上的（拍開始前的日常不算）
     for (let a = 0; a < k.length; a++) for (let b = a + 1; b < k.length; b++) {
       const d = Math.hypot(k[a].pos.x - k[b].pos.x, k[a].pos.z - k[b].pos.z), need = radiusOf(k[a]) + radiusOf(k[b]);
       if (d / need < close) { close = d / need; who = `#${a}|#${b} at (${k[a].pos.x.toFixed(2)}, ${k[a].pos.z.toFixed(2)})`; }

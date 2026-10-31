@@ -5,7 +5,7 @@ import { trainCars } from './token.js';
 
 export const id = 'landmarks';
 
-// 島民（§14.3 人分散）：四個人一個名冊，一人住一格散步（第 i 人用 home.at[i]）——人數預算（裁決 R16）：
+// 島民（§14.3 人分散）：最多四個人一個名冊，一人住一格散步（第 i 人用 home.at[i]）——人數預算（裁決 R16）：
 // 最擠的球場格（球員、觀眾、草皮、搭車來的球迷）與珍奶格（人龍、站務員）不住島民；溫泉格住的是下面兩位溫泉客
 export const HOME_R = 1.8;   // 散步半徑：格子中心常被建築蓋住，要夠大才挑得到走得到的點（鮮奶節的小孩同一個半徑，milk.js）
 export const HOMES = [[0, 0], [1, 0], [-1, 0], [0, -1]].map(cellCentre);
@@ -21,6 +21,9 @@ const BATHERS = bathersAt([0.93, 2.0]);
 // 牠半徑 0.325、人 0.125）：西北兩點，離變異鼠中心 ≥ 1.9、離木牌 ≥ 1.3、離小澡堂 ≥ 0.9，兩人相距 0.66
 const BATHERS_NORTH = bathersAt([3.75, 4.45]);
 const mutantAtSpring = (lv, flags) => lv.rat >= 4 && flags.ratBranch === 'alien';
+
+// 島民人數：四個人減掉轉成角色的（鮮奶 ≥3 的小學生、代幣 ≥2 的站長）。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減
+export const islanderCount = (lv = {}) => HOMES.length - (lv.milk >= 3 ? 1 : 0) - (lv.token >= 2 ? 1 : 0);
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
 
@@ -50,7 +53,8 @@ export function view(lv = {}, flags = {}) {
       footprint: SPRING_FP,
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
-    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: HOMES.length, accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
+    // 被轉走的島民不補（裁決 R23）：鮮奶 ≥3 一個變小學生（milk.kids）、代幣 ≥2 一個變站長（token.staff），兩個名冊都 from 這裡 pick 'nearest'
+    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: islanderCount(lv), accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
     // 溫泉客：站在池邊偶爾看一下池子；rescue：萬一池邊被擋住就站到最近的可走點（不站進池子裡）；變異鼠在池前時站北側
     'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: (mutantAtSpring(lv, flags) ? BATHERS_NORTH : BATHERS).map(({ p, yaw }) => ({ ...offset(s, p.x, p.z), yaw })), fidget: 'look', rescue: true } },
   };

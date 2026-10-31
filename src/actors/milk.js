@@ -1,4 +1,4 @@
-// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 3 個小孩 → 兩層、小孩長高 → 三層、操場多了籃球架 → 鐘塔、棒球帽（有球場就組少棒隊）
+// 鮮奶（物品 v2 §4.2，max 10）：牛奶箱 → 早餐店 → 小學（一層）＋ 2 個小孩（送牛奶的島民原地變成小學生、另一個從校門外走進來，裁決 R23）→ 兩層、小孩長高 → 三層、操場多了籃球架 → 鐘塔、棒球帽（有球場就組少棒隊）
 //   → ◆ 大學（校舍拉長、拱門校門、學士帽）→ 研究大樓（玻璃盒）、白袍、校門 YouBike → 畢業典禮（拋學士帽、101 打字）
 //   → ◆ 鮮奶節（全島每格多一個小孩、牛奶箱旁停牛奶車、岸邊觀光船載牛奶箱）。
 // 校舍是視覺標準件（§7.1）：小學／大學／研究大樓用 Kenney City Kit Commercial 的 glb，經載入器重上色票（牆奶油、飾邊珊瑚、玻璃藍）。
@@ -29,8 +29,12 @@ const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（�
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
 const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
 // 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡
+// 送牛奶的島民變小學生的地方（裁決 R23）：操場鏡頭側的兩點（西半邊、東半邊），演到那拍挑他走過去路比較短的那點（一級 ≤ 4.5 s：
+// 他可能在牛奶箱那側〔西〕、也可能從中心格那座橋過來〔東〕）；早餐店的桌子外擴之後也站得到；離鮮奶錨點 1.06／1.14，
+// 比別格的島民都近（名冊 pick 'nearest' 搬的就是他）
+const PUPIL = [offset(AT, -0.35, 1.0), offset(AT, 0.7, 0.9)];
 export const KID_ENTRY = offset(AT, 1.65, 0.1);
-// 名冊一次補三個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——
+// 名冊一次補好幾個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——
 // 三個人疊在同一點生出來會被互推推進右柱的外擴角落，從那裡找路會繞到島北（Task 6a：鮮奶節小孩跑去牛奶車量到 7.1 s）。
 // 不往東排：校舍北邊那條東西向的走道太窄，格點連不起來，從橋頭那段出發也會繞到島北
 export const KID_ENTRIES = [KID_ENTRY, offset(AT, 1.65, 0.4), offset(AT, 1.65, 0.7)];
@@ -173,8 +177,10 @@ export function view(lv, flags, meta = {}) {
     v['milk.boat'] = { kind: 'glb', at: BOAT, path: MODELS.boat.path, h: 0.35, tint: BOAT_TINT, footprint: false };
   }
   if (n >= 3 && !home) {
+    // 兩個小學生（使用者 2026-10-31「人數還是太多了……初始的牛奶工人直接變成學生」，裁決 R23）：一個是送牛奶的島民（from + pick 'nearest'：
+    //   島民名冊同時少一個，名冊搬離 at 最近的那位、原地換黃衣閃一下），另一個從校門外走進來；之後回家再出來（被老鼠咬的回合）就兩個都從校門外走進來
     v['milk.kids'] = {
-      kind: 'roster', at, n: 3, shirt: C.yellow, accessory: kidAccessory(n),
+      kind: 'roster', at, n: 2, shirt: C.yellow, accessory: kidAccessory(n), from: 'landmarks.islanders', pick: 'nearest',
       home: { kind: 'wander', at: kidsCenter(lv), r: league(lv) ? 0.4 : 0.5, entry: KID_ENTRIES },
     };
     // 鮮奶節：多三個小孩，鮮奶格、晶片格、溫泉格各一個（人數預算，裁決 R16；同島民的散步半徑，各自從自己那格的邊上走進來）
@@ -199,15 +205,9 @@ export const builders = {
 // 角色都是演到那一拍才找（小孩可能還沒出來、或躲在校舍裡 → 回空值，那拍跳過）；找到第一次就記住，整段劇本同一個人。
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const kid = (ctx, i) => () => ctx.roster.members('milk.kids')[i] ?? null;
-const KIDS = [0, 1, 2];
+export const KIDS = [0, 1];   // 兩個小學生（裁決 R23）
 const allKids = c => c.roster.members('milk.kids');
-// 從入口（校門外靠中心格那側）放一個小學生出來；小孩這時躲在校舍裡（被老鼠咬的回合）就沒有名冊可放，這拍跳過
-function spawnKid(ctx) {
-  const beat = ctx.B.spawn('milk.kids', KID_ENTRY), start = beat.start;
-  beat.start = c => (view(c.stage.lv, c.stage.flags, c.stage.meta)['milk.kids'] ? start(c) : false);
-  return beat;
-}
-// 三個小孩走到 centre 附近各自的位置（slots 半徑 r），錯開出發（計畫 11 最終修正 #3：◆ Lv7 從操場走到拱門 3 公尺多，三人同時出發、
+// 小孩走到 centre 附近各自的位置（slots 半徑 r），錯開出發（計畫 11 最終修正 #3：◆ Lv7 從操場走到拱門 3 公尺多，三人同時出發、
 //   同速走同一條路，兩個疊在一起走了 38 幀 0.000 m；Lv3 三人從校門外同一點出發、間隔固定 0.3 s，路線交叉時照樣疊著）。
 //   演到這拍才排：離 centre 路最短的先走、拿離大家最遠的站位（後面的人不從站好的人身邊擠過去）；後面的人照順序挑 delay
 //   （每 FILE_STEP 秒試一次，最多 FILE_MAX）——照各自的路線與走路速度推算整段，跟已經排好的人（還在原地等的、走在路上的、
@@ -221,7 +221,7 @@ const gather = (ctx, centre, r) => {
     const toCentre = new Map(live.map(i => [i, c.nav.routeLength(c.nav.route(ks[i].pos, centre))]));
     live.sort((a, b) => toCentre.get(a) - toCentre.get(b));
     const from = live.reduce((p, i) => ({ x: p.x + ks[i].pos.x / live.length, z: p.z + ks[i].pos.z / live.length }), { x: 0, z: 0 });
-    const spots = c.nav.slots(centre, 3, r).sort((p, q) => Math.hypot(q.x - from.x, q.z - from.z) - Math.hypot(p.x - from.x, p.z - from.z));
+    const spots = c.nav.slots(centre, KIDS.length, r).sort((p, q) => Math.hypot(q.x - from.x, q.z - from.z) - Math.hypot(p.x - from.x, p.z - from.z));
     const spot = new Map(live.map((i, k) => [i, spots[k]])), delay = new Map(), done = [];
     for (const i of live) {
       const path = c.nav.route(ks[i].pos, spot.get(i)), lens = measurePath(path, false), v = ks[i].speed;
@@ -263,14 +263,16 @@ export const script = {
         B.together([B.apply(e), B.bubble(islander, '♥', 0.8)]), B.levelUp('milk'), B.home(islander),
       ];
     },
-    // 小學：校舍閃白，3 個小學生從校門外一起跑進操場（一個接一個出發）→ ♪ → 跳一下、LEVEL UP
+    // 小學（裁決 R23）：送牛奶的島民走到操場鏡頭側 → 校舍長出來、名冊把他原地換成小學生（黃衣、閃一下）、♪，另一個小學生從校門外走進來
+    //   （名冊自己補、背景走進來）→ 兩人走到操場集合 → 跳一下、LEVEL UP
     3(e, s, ctx) {
-      const { B } = ctx;
+      const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', CRATE));
       return [
-        B.apply(e, { hold: ['milk.kids'] }),
-        spawnKid(ctx), spawnKid(ctx), spawnKid(ctx),
+        // 人就在旁邊時走路那段也至少 1 秒（一級 ≥ 3 s，同 Lv2）
+        B.together([B.walk(islander, c => { const m = islander(c); return m && PUPIL.map(p => [p, c.nav.routeLength(c.nav.route(m.pos, p))]).sort((a, b) => a[1] - b[1])[0][0]; }), B.wait(1.0)]),
+        // ♪ 跟換裝的閃白一起冒在他頭上（同牛奶箱放下時的 ♥）：他的路有時要 1.6 s，♪ 另佔一拍的話整級 4.9 s（> 4.5）
+        B.together([B.apply(e), B.bubble(c => islander(c) ?? kid(ctx, 0)(c), '♪', 0.6)]),
         gather(ctx, PLAY, 0.45),   // 一個接一個出發（gather 照路線排 delay）
-        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♪', 0.6))),
         B.together([B.gesture(kid(ctx, 0), 'jump'), B.levelUp('milk')]), B.home(allKids),
       ];
     },
@@ -349,7 +351,8 @@ export const script = {
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),   // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.1–8.3 s → 7.0–7.4 s，◆ ≤ 8 s）
+        // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.1–8.3 s → 7.0–7.4 s，◆ ≤ 8 s）→ 1.8（裁決 R23 小孩剩兩個，跑去、♥ 變快，整段掉到 6.0 s，◆ 軟下限 6 s）
+        B.focus('home', { hold: 1.8 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
   },

@@ -217,7 +217,7 @@ function hopOff(B, s, ids, at, centre, r) {
 // 咬鮮奶（放置反應，鮮奶 ≤2：牛奶箱／早餐店）：一隻走到牛奶箱 → 聞一聞 → ！ → 箱子翻倒（真的掉級才閃白換成側躺；
 //   鮮奶 Lv1 掉不下去，只撞歪）→ 有小學生的話 ！ 跑回校門口躲進去 → LEVEL DOWN
 function bite(e, ctx) {
-  const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), KIDS = [0, 1, 2], down = e.delta.to < e.delta.from;
+  const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), KIDS = [0, 1], down = e.delta.to < e.delta.from;
   return [
     B.walk(r, BITE_AT, { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
     // 沒掉級：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：閃白換成翻倒的箱子

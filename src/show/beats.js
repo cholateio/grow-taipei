@@ -126,7 +126,7 @@ export function bubble(who, kind, dur = 1.2) {
   };
 }
 
-// 小動作。people：交給小人的 gesture（look、build 另外帶 { at } 決定轉向，演完就一直朝那邊；build 揮鋤頭的節奏要秒數，dur 一起帶）；
+// 小動作。people：交給小人的 gesture（look、build 另外帶 { at } 決定轉向，演完就一直朝那邊；build 敲鐵鎚的兩段（舉起 45 %、落下 15 %、停住 40 %，people.js hammerPose）照 k 算，轉向 0.2 s 要秒數，dur 一起帶）；
 // 模型：sniff 左右轉頭、jump 原地拋物線、wave 在 m.waving 的期間名冊把揮手的搖擺加大加快（roster.js；model wave 的模型才搖）；
 // 零件鍵 + puff：零件鼓起來再縮回去
 export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {

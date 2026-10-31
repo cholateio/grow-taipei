@@ -5,9 +5,10 @@
 // （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
 // 變異鼠王坐碟頂中心（shipTop），天線退到碟緣後側；燈光秀跟著抬高、矽盾照樣全亮。
-// 劇本（§8.9、§14.4）：回合最後的 settle 跨門檻時，鏡頭對著 101，工人（沒有就島民）走到 101 的鏡頭側揮鋤頭 → 回全景 → 閃白跳階 → 頭上寫階段名。
-import { anchorWorld, frontOf } from './anchors.js';
-import { offset, C } from './palette.js';
+// 劇本（§8.9、§14.4；計畫 11 §設計 4）：回合最後的 settle 跨門檻時，回全景 → 換零件（塔身長出來）→ 頭上寫階段名。
+// 以前先飛去 101 那一格、工人走過去揮鋤頭，使用者 2026-10-31 不要了。
+import { anchorWorld } from './anchors.js';
+import { C } from './palette.js';
 
 export const id = 'tower';
 
@@ -15,9 +16,7 @@ const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YEL
 // 黑塔（賽博尾聲）：墨黑偏紫一點（純 C.ink 在夜裡跟背景糊在一起），白邊與屋頂邊條發霓虹藍
 export const DARK = 0x2a2630, NEON_BLUE = 0x3fe0ff;
 const TIER_H = 0.45, LABEL_UP = 0.6;   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
-const AT = anchorWorld('tower'), FOOT = offset(AT, 0.95, 0.25);   // 101 腳下（跟晶片工程師通勤的終點同一點）
-// 蓋東西站的鏡頭側距離（§14）：底座 1.6 見方外擴 PAD 後半寬 0.92，鏡頭方向（z 分量 0.96）1.1 才站得到底座外
-export const FRONT_R = 1.1;
+const AT = anchorWorld('tower');
 
 // 矽盾罩：半球立在 101 底座，半徑蓋過主島七格的每個角（最遠的西南角離 101 約 7.6）
 export const SHIELD_R = 7.8;
@@ -210,25 +209,15 @@ export const builders = {
 };
 
 // ── 劇本（§8.9）──
-// 角色演到那一拍才找（劇本在回合開始就整串建好，那時誰在哪還不準）；once 找到第一次就記住，整段同一個人。
-// 颱風放下時躲進門裡（hidden）的人不算。
-const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-const visible = (ctx, key) => (ctx.roster.members(key) ?? []).filter(m => !m.hidden);
-const heroAt = (ctx, p) => visible(ctx, 'chip.worker')[0] ?? visible(ctx, 'landmarks.islanders').sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0];
-
 export const script = {
   // 沒跨門檻：0 拍、不佔時間（turn.js 之後補的 apply 照樣套用 settle 的其他變化）
   settle(e, s, ctx) {
     const stage = stageOf(s.total);
     if (stage === stageOf(s.prevTotal)) return [];
-    const { B } = ctx, hero = once(c => heroAt(c, FOOT)), front = c => frontOf(AT, FRONT_R, c.nav);
-    // 換零件前回全景（§14.4）：停 0.8 s 等鏡頭飛到；天際線先用新階段的頭頂，換上去的塔頂與 LEVEL UP 才不出框
+    const { B } = ctx;
+    // 換零件前回全景（§14.4）：停 0.8 s 等鏡頭飛到；天際線先用新階段的頭頂，換上去的塔頂與 LEVEL UP 才不出框。
+    // 開場就是 focus：turn.js 不再先平移到 101 那一格（opensOnFocus）；沒有人被叫來，也就不用叫誰回家
     const skyline = AT.y + body(stage).top + LABEL_UP;
-    // 鏡頭飛去 101 的同時他就出發（計畫 5b 任務 4：外星第 6 回合 ≤ 50 s——跨門檻那回合他常要走 2–3 秒，以前等鏡頭到了才走）
-    return [
-      B.together([B.focus('tower'), B.walk(hero, front)]), B.gesture(hero, 'build', { at: AT }),
-      B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', STAGE_NAMES[stage] ? { text: STAGE_NAMES[stage] } : {}), B.home(hero),
-    ];
+    return [B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', STAGE_NAMES[stage] ? { text: STAGE_NAMES[stage] } : {})];
   },
 };

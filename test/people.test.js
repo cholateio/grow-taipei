@@ -101,37 +101,52 @@ test('look without a yaw keeps the walker facing and the body matrix finite', ()
   const m = new THREE.Matrix4(); people.group.getObjectByName('people:body').getMatrixAt(0, m);
   assert.ok(m.elements.every(Number.isFinite), 'body matrix is finite');
 });
-// 蓋東西（§14.2）：右手舉高往下揮，1.6 秒剛好兩下（1.25 Hz，從低點開始、在低點結束）；鋤頭借 handle（柄）和 case（刃）兩個零件，
-// 只在動作中換上鋤頭的大小與顏色；轉向建築用 0.2 秒轉過去，不在一幀內翻面
-test("gesture 'build' swings the right arm (armR rx spans ≥ 1.2 rad over one cycle) and shows the tool part only while the gesture runs", () => {
+// 蓋東西（§14.2；計畫 11 §設計 4）：右手拿鐵鎚敲一下——前 45 % 舉起（手從垂著舉過頭、身體後仰 0.05 rad）、
+// 接著 15 % 落下（手揮到身前、身體前傾 0.15 rad）、最後 40 % 停住。鐵鎚借 handle（握柄 0.14、木頭）和 case（鎚頭 0.05 × 0.05 × 0.08、鐵灰）
+// 兩個零件，只在動作中換上鐵鎚的大小與顏色；轉向建築用 0.2 秒轉過去，不在一幀內翻面
+test("gesture 'build' is one hammer blow: raise 45 %, strike 15 %, hold 40 %, with a visible wood-and-steel hammer only while the gesture runs", () => {
   const people = createPeople(THREE, { max: 2 }); const w = people.spawn({ controlled: true }); w.setPose({ x: 0, y: 0, z: 0, yaw: 0, walking: false });
-  const m = new THREE.Matrix4(), p = new THREE.Vector3(), s = new THREE.Vector3(), c = new THREE.Color();
-  // 手臂中心相對肩膀（0.065, 0.2）的方向 → 繞 x 的角度（rx 會超過 ±π/2，不用 Euler 拆）
-  const armRx = () => { people.group.getObjectByName('people:armR').getMatrixAt(0, m); p.setFromMatrixPosition(m); return Math.atan2(-p.z, -(p.y - 0.2)); };
+  const m = new THREE.Matrix4(), s = new THREE.Vector3(), c = new THREE.Color();
+  // 繞 x 的總角度（rx 會超過 ±π/2，不用 Euler 拆）：rx(a) 的矩陣 e[5] = cos a、e[6] = sin a（朝向 yaw 0）
+  const rxOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); return Math.atan2(m.elements[6], m.elements[5]); };
+  const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+  const leanOf = () => rxOf('people:body');                     // 身體前傾（正）／後仰（負）
+  const armOf = () => wrap(rxOf('people:armR') - leanOf());     // 手臂相對身體：0 垂著、−π 舉直
   const scaleOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); m.decompose(new THREE.Vector3(), new THREE.Quaternion(), s); return s.clone(); };
   const posOf = name => { people.group.getObjectByName(name).getMatrixAt(0, m); return new THREE.Vector3().setFromMatrixPosition(m); };
   const colorOf = name => { people.group.getObjectByName(name).getColorAt(0, c); return c.getHex(); };
   const yawOf = () => { people.group.getObjectByName('people:body').getMatrixAt(0, m); return Math.atan2(m.elements[8], m.elements[10]); };
-  const build = (k, yaw) => { w.gesture = { kind: 'build', k, dur: 1.6, ...(yaw === undefined ? {} : { yaw }) }; people.update(0.016, 0); };
+  const build = (k, yaw, dur = 1.6) => { w.gesture = { kind: 'build', k, dur, ...(yaw === undefined ? {} : { yaw }) }; people.update(0.016, 0); };
   people.update(0.016, 0);
   assert.equal(scaleOf('people:handle').x, 0); assert.equal(scaleOf('people:case').x, 0);
   const handleInk = colorOf('people:handle');
-  const angles = [];
-  for (let i = 0; i <= 20; i++) {   // 一下 0.8 s = k 0 → 0.5
-    build(i / 40); angles.push(armRx());
-    assert.ok(scaleOf('people:handle').x > 0 && scaleOf('people:case').x > 0, `tool shown at ${i}`);
+  // 舉起：k 0 → 0.45 手一路往上（角度一路變小），身體慢慢後仰到 0.05
+  build(0); assert.ok(Math.abs(armOf()) < 0.05, `starts from rest (${armOf().toFixed(2)})`); assert.ok(Math.abs(leanOf()) < 1e-6);
+  let prev = armOf();
+  for (let i = 1; i <= 9; i++) {
+    build(i * 0.05); const a = armOf(); assert.ok(a < prev + 1e-9, `raising at k ${(i * 0.05).toFixed(2)}`); prev = a;
+    assert.ok(scaleOf('people:handle').x > 0 && scaleOf('people:case').x > 0, `hammer shown at k ${(i * 0.05).toFixed(2)}`);
   }
-  assert.ok(Math.max(...angles) - Math.min(...angles) >= 1.2, `armR span ${(Math.max(...angles) - Math.min(...angles)).toFixed(2)}`);
-  assert.ok(angles[0] > -1.0 && angles[20] > -1.0, 'a stroke starts and ends at the bottom');
-  assert.ok(angles[10] < -2.6, 'raised overhead mid-stroke');
-  build(1); assert.ok(armRx() > -1.0, 'the gesture ends at the bottom (two whole strokes), no pop back');
-  build(0.75); assert.ok(armRx() < -2.6, 'second stroke tops out at k 0.75');
-  // 鋤頭夠大：柄約 0.16、刃約 0.07 × 0.03 × 0.02；舉到最高時刃在頭旁邊、比頭高
-  build(0.25);
-  assert.ok(Math.abs(scaleOf('people:handle').y * 0.05 - 0.16) < 0.01, 'handle ≈ 0.16 long');
-  const blade = scaleOf('people:case'); assert.ok(Math.abs(blade.x * 0.07 - 0.07) < 0.005 && Math.abs(blade.y * 0.09 - 0.03) < 0.005 && Math.abs(blade.z * 0.04 - 0.02) < 0.005, 'blade ≈ 0.07 × 0.03 × 0.02');
-  assert.ok(posOf('people:case').y > 0.3, `blade beside the head at the top (${posOf('people:case').y.toFixed(2)})`);
-  assert.equal(colorOf('people:handle'), 0x9b6b43, 'wooden handle while building'); assert.equal(colorOf('people:case'), 0x8a8f96, 'grey blade');
+  build(0.45); assert.ok(armOf() < -2.6, `overhead at k 0.45 (${armOf().toFixed(2)})`); assert.ok(Math.abs(leanOf() + 0.05) < 1e-6, `leans back 0.05 (${leanOf().toFixed(3)})`);
+  assert.ok(posOf('people:case').y > 0.4, `hammer head above the head (${posOf('people:case').y.toFixed(2)})`);
+  const up = armOf();
+  // 落下：k 0.45 → 0.6 揮到身前（比舉起快得多），身體前傾 0.15；鎚頭在身前、低處
+  build(0.525); assert.ok(armOf() > up && armOf() < -1.0, `mid-strike (${armOf().toFixed(2)})`);
+  build(0.6); const down = armOf();
+  assert.ok(down > -1.1 && down < -0.4, `down in front at k 0.6 (${down.toFixed(2)})`); assert.ok(Math.abs(leanOf() - 0.15) < 1e-6, `leans forward 0.15 (${leanOf().toFixed(3)})`);
+  assert.ok((down - up) / 0.15 > 2 * (0 - up) / 0.45, 'the strike is at least twice as fast as the raise');
+  const head = posOf('people:case'); assert.ok(head.z > 0.12 && head.y < 0.15, `hammer head low in front (${head.y.toFixed(2)}, ${head.z.toFixed(2)})`);
+  // 停住：0.6 → 1 一動不動
+  for (const k of [0.7, 0.85, 1]) { build(k); assert.ok(Math.abs(armOf() - down) < 1e-6 && Math.abs(leanOf() - 0.15) < 1e-6, `holds at k ${k}`); }   // 實例矩陣是 float32
+  // 鐵鎚：握柄 0.14、鎚頭 0.05 × 0.05 × 0.08，鎚頭在握柄末端（兩個中心相距半根握柄）
+  build(0.3);
+  assert.ok(Math.abs(scaleOf('people:handle').y * 0.05 - 0.14) < 1e-6, `handle 0.14 long (${(scaleOf('people:handle').y * 0.05).toFixed(3)})`);
+  const hd = scaleOf('people:case'); assert.ok(Math.abs(hd.x * 0.07 - 0.05) < 1e-6 && Math.abs(hd.y * 0.09 - 0.05) < 1e-6 && Math.abs(hd.z * 0.04 - 0.08) < 1e-6, 'head 0.05 × 0.05 × 0.08');
+  assert.ok(Math.abs(posOf('people:case').distanceTo(posOf('people:handle')) - 0.07) < 1e-6, 'head at the end of the handle');
+  assert.equal(colorOf('people:handle'), 0x9b6b43, 'wooden handle while building'); assert.equal(colorOf('people:case'), 0x8a8f96, 'steel head');
+  // 短的按一下（燈泡開關 0.25 s）：同一套兩段，只是壓縮
+  build(0.45, undefined, 0.25); assert.ok(armOf() < -2.6, 'a short press still raises to overhead at k 0.45');
+  build(0.6, undefined, 0.25); assert.ok(Math.abs(armOf() - down) < 1e-6, 'and strikes down by k 0.6');
   // 轉向：0 → 接近 180° 用 0.2 秒（k × dur）轉過去
   build(0, 3.0); assert.ok(Math.abs(yawOf()) < 1e-6, 'no snap at the first frame');
   build(0.05 / 1.6, 3.0); const mid = yawOf(); assert.ok(mid > 0.3 && mid < 2.7, `easing (${mid.toFixed(2)})`);
@@ -139,6 +154,7 @@ test("gesture 'build' swings the right arm (armR rx spans ≥ 1.2 rad over one c
   w.gesture = { kind: 'wave', k: 0.3 }; people.update(0.016, 0); assert.equal(scaleOf('people:handle').x, 0, 'not on other gestures');
   assert.equal(colorOf('people:handle'), handleInk, 'handle colour restored');
   w.gesture = null; people.update(0.016, 0); assert.equal(scaleOf('people:handle').x, 0); assert.equal(scaleOf('people:case').x, 0);
+  assert.ok(Math.abs(leanOf()) < 1e-6, 'upright again');
   assert.equal(people.group.getObjectByName('people:toolHandle'), undefined, 'no extra meshes (draw calls)');
 });
 test('look on a walker eases the turn over 0.2 s instead of snapping', () => {

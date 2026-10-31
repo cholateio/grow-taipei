@@ -10,6 +10,17 @@ const SKIN = 0xf3c9a5, HAIR = 0x3a2a22, INK = 0x211d1d, WOOD = 0x9b6b43, STEEL =
 
 export function walkPose(ph) { const s = Math.sin(ph); return { leg: 0.55 * s, arm: -0.45 * s, bob: Math.abs(s) * 0.012 }; }
 
+// 蓋東西（build，計畫 11 §設計 4）：右手拿鐵鎚敲一下，兩段——前 BUILD_RAISE（45 %）舉起：手從垂著（0）舉過頭（ARM_UP）、
+// 身體後仰 LEAN_BACK；接著 BUILD_STRIKE（15 %）落下：手揮到身前（ARM_HIT）、身體前傾 LEAN_HIT；剩下 40 % 停住。
+// 舉起 smoothstep（慢起慢停），落下 ease-in（越落越快，像真的敲下去）。只看 k：燈泡開關那種 0.25 s 的按一下只是整段壓縮
+export const BUILD_RAISE = 0.45, BUILD_STRIKE = 0.15;
+const ARM_UP = -2.8, ARM_HIT = -0.8, LEAN_BACK = 0.05, LEAN_HIT = 0.15;
+export function hammerPose(k) {
+  if (k <= BUILD_RAISE) { const u = Math.max(0, k) / BUILD_RAISE, e = u * u * (3 - 2 * u); return { arm: ARM_UP * e, lean: -LEAN_BACK * e }; }
+  const u = Math.min(1, (k - BUILD_RAISE) / BUILD_STRIKE), e = u * u;
+  return { arm: ARM_UP + (ARM_HIT - ARM_UP) * e, lean: -LEAN_BACK + (LEAN_HIT + LEAN_BACK) * e };
+}
+
 export function ringPath(center, radius, y, n = 24) {
   return Array.from({ length: n }, (_, i) => { const a = i / n * Math.PI * 2; return { x: center.x + Math.cos(a) * radius, y, z: center.z + Math.sin(a) * radius }; });
 }
@@ -68,7 +79,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     set('head', SKIN); set('hair', HAIR); set('eyeL', INK); set('eyeR', INK); set('eye3', INK); set('cap', w.accessory === 'uniform' ? 0x3f5a8a : 0xfcea8b); set('shadow', 0);
     set('badge', 0x5a88b2); set('case', w.pants); set('lens', INK); set('handle', INK); set('helmet', 0xfcea8b); set('wheelF', INK); set('wheelB', INK); set('mortar', INK); set('tassel', 0xfcea8b);
     set('vest', 0xfcea8b); set('apron', 0xdb6a41);
-    // 蓋東西（build）時 handle、case 借來當鋤頭的柄和刃（不多開 InstancedMesh，省 draw call）：換成木頭與鐵灰
+    // 蓋東西（build）時 handle、case 借來當鐵鎚的握柄和鎚頭（不多開 InstancedMesh，省 draw call）：換成木頭與鐵灰
     if (w.gesture?.kind === 'build') { set('handle', WOOD); set('case', STEEL); }
     for (const m of Object.values(meshes)) m.instanceColor.needsUpdate = true;
   }
@@ -110,8 +121,12 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   const rx = a => new THREE.Matrix4().makeRotationX(a);
   const rz = a => new THREE.Matrix4().makeRotationZ(a);
   const sc = (x, y, z) => new THREE.Matrix4().makeScale(x, y, z);
-  // 鋤頭：handle（0.05 長）拉成 0.16 的柄、case（0.07 × 0.09 × 0.04）壓成 0.07 × 0.03 × 0.02 的刃（柄尾往身後折，揮下去時朝地）
-  const HOE_HANDLE = [tr(0, -0.15, 0), sc(1.4, 3.2, 1.4)], HOE_BLADE = [tr(0, -0.23, -0.02), sc(1, 1 / 3, 0.5)];
+  // 鐵鎚（計畫 11 §設計 4）：手（肩下 0.08）握住握柄一端，手腕往前折 WRIST（舉過頭時鎚頭在腦後、落下時握柄接近水平、鎚面朝下）；
+  // handle（0.05 長、半徑 0.005）拉成 0.14 長的握柄，case（0.07 × 0.09 × 0.04）變成 0.05 × 0.05 × 0.08 的鎚頭，
+  // 長邊在揮動的平面上、正中心套在握柄末端
+  const GRIP = 0.08, WRIST = -0.5, HANDLE_L = 0.14;
+  const HAMMER_HANDLE = [tr(0, -GRIP, 0), rx(WRIST), tr(0, -HANDLE_L / 2, 0), sc(1.6, HANDLE_L / 0.05, 1.6)];
+  const HAMMER_HEAD = [tr(0, -GRIP, 0), rx(WRIST), tr(0, -HANDLE_L, 0), sc(0.05 / 0.07, 0.05 / 0.09, 0.08 / 0.04)];
   const turnBy = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
   const TURN = 0.2;   // look、build 轉向用 0.2 秒轉過去（k × dur；沒帶 dur 就直接轉好）
 
@@ -121,16 +136,17 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
 
   function place(w, t, k = 1) {
     const lie = mood === 'lie';
-    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、揮鋤頭（look、build 帶 yaw 就在 0.2 秒內轉過去）；躺平時一律不做
+    // 小動作：敲門前傾兩下、揮手、原地跳、轉頭看、敲鐵鎚（look、build 帶 yaw 就在 0.2 秒內轉過去）；躺平時一律不做
     const g = lie ? null : w.gesture, gk = g?.k ?? 0, two = Math.PI * 2, build = g?.kind === 'build';
     const i = walkers.indexOf(w), p = locate(w), still = lie || (w.controlled ? !w.pose.walking : w.speed === 0), pose = still ? walkPose(0) : walkPose(t * 9 + w.phase * 20);
     const acc = w.accessory, bike = acc === 'bike', lift = bike ? -0.03 : 0, ks = k * w.scale;
-    if (build !== !!w.hoe) { w.hoe = build; paint(i, w); }   // 拿起、放下鋤頭時重塗 handle、case 的顏色
-    const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : 0;
+    if (build !== !!w.hammer) { w.hammer = build; paint(i, w); }   // 拿起、放下鐵鎚時重塗 handle、case 的顏色
+    const hp = build ? hammerPose(gk) : null;
+    const lean = g?.kind === 'knock' ? 0.35 * Math.max(0, Math.sin(gk * 2 * two)) : hp ? hp.lean : 0;
     const jump = g?.kind === 'jump' ? 0.1 * Math.abs(Math.sin(gk * two)) : 0;
     const turn = (g?.kind === 'look' || build) && g.yaw !== undefined ? Math.min(1, g.dur ? gk * g.dur / TURN : 1) : 0;
     const yaw = turn ? p.yaw + turnBy(p.yaw, g.yaw) * turn : p.yaw, wave = g?.kind === 'wave';
-    const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾
+    const L = tr(0, 0.09, 0).multiply(rx(lean)).multiply(tr(0, -0.09, 0));   // 以髖部為軸前傾（負的是後仰）
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump, p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
     if (lie) W.multiply(LIE);
@@ -141,10 +157,10 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     if (lie) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-2.6), tr(0, -0.04, 0));
     else if (wave) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rz(Math.sin(gk * 3 * two) * 0.5), rx(-2.6), tr(0, -0.04, 0));
     else if (build) {
-      // 鋤頭整個動作剛好兩下：rx −0.9（身前地上）→ −2.7（舉過頭）→ −0.9，從低點開始、在低點結束，手臂不會在最後一幀彈回去
-      const sw = rx(-1.8 + 0.9 * Math.cos(gk * 2 * two)), sh = tr(0.065, 0.2 + lift, 0);
+      // 敲一下：從垂著舉過頭、落到身前停住（hammerPose）；演完回到垂著（gesture 清掉）
+      const sw = rx(hp.arm), sh = tr(0.065, 0.2 + lift, 0);
       at('armR', i, L, sh, sw, tr(0, -0.04, 0));
-      at('handle', i, L, sh, sw, ...HOE_HANDLE); at('case', i, L, sh, sw, ...HOE_BLADE);
+      at('handle', i, L, sh, sw, ...HAMMER_HANDLE); at('case', i, L, sh, sw, ...HAMMER_HEAD);
     } else at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(bike ? -0.9 : -pose.arm), tr(0, -0.04, 0));
     at('body', i, L, tr(0, 0.15 + lift, 0));
     at('head', i, L, tr(0, 0.28 + lift, 0));

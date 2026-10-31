@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import * as tower from '../src/actors/tower.js';
-import { anchorWorld, frontOf, cellCentre } from '../src/actors/anchors.js';
+import { anchorWorld } from '../src/actors/anchors.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
 import { B } from '../src/show/beats.js';
@@ -263,37 +263,24 @@ test('view uses meta.total when given; stage names for the float', () => {
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
 
-// ── settle 劇本（§8.9）：跨門檻才演——工人（沒有就島民）走到 101 腳下敲門、閃白跳階、頭上寫階段名 ──
+// ── settle 劇本（§8.9；計畫 11 §設計 4）：跨門檻才演——回全景、換零件（長出來）、頭上寫階段名；沒有人走過去揮鋤頭 ──
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
-// 假名冊：members 照 key 給；home 記下被叫回家的人
-const fakeRoster = groups => { const homed = []; return { homed, members: k => groups[k] ?? [], claim() {}, home: m => homed.push(m) }; };
-const person = (name, x, z, hidden = false) => ({ name, pos: { x, y: 0, z }, hidden, head: () => ({ x, y: 1, z }) });
 const labelOf = beats => {
   let text = null; const ctx = { stage: { headOf: () => ({ x: 0, y: 0, z: 0 }) }, bubbles: { levelUp: (h, o) => { text = o.text; return { cancel() {} }; } } };
   beats.find(b => b.kind === 'levelUp').start(ctx); return text;
 };
 
-test('settle crossing 6→7 yields [focus(tower) ‖ walk] + build + focus(home) + apply + levelUp (bare LEVEL UP) + home; 6→6 and 7→28 yield nothing', () => {
-  const ctx = { B, roster: fakeRoster({}) }, e = { kind: 'settle' };
+test('settle crossing 6→7 yields focus(home) + apply + levelUp (bare LEVEL UP) — no walk, no build gesture, no home; 6→6 and 7→28 yield nothing', () => {
+  const ctx = { B, roster: { members: () => { throw new Error('settle does not look anyone up'); } } }, e = { kind: 'settle' };
   const beats = tower.script.settle(e, { total: 7, prevTotal: 6 }, ctx);
-  assert.deepEqual(beats.map(b => b.kind), ['together', 'gesture', 'focus', 'apply', 'levelUp', 'home']);
-  // 先對著 101 那一格（鏡頭飛的同時他就走，計畫 5b 任務 4）；換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
-  assert.deepEqual(beats[0].beats.map(b => b.kind), ['focus', 'walk']);
-  assert.equal(beats[0].beats[0].target, 'tower'); assert.equal(beats[2].target, 'home'); assert.equal(beats[2].final, false); assert.equal(beats[2].dur, 0.8);
+  assert.deepEqual(beats.map(b => b.kind), ['focus', 'apply', 'levelUp']);
+  // 換零件前回全景（不是回合最後那拍：照樣尊重拖過），停 0.8 s 讓鏡頭飛到
+  assert.equal(beats[0].target, 'home'); assert.equal(beats[0].final, false); assert.equal(beats[0].dur, 0.8);
   assert.equal(labelOf(beats), 'LEVEL UP');
   assert.deepEqual(tower.script.settle(e, { total: 6, prevTotal: 6 }, ctx), []);
   assert.deepEqual(tower.script.settle(e, { total: 28, prevTotal: 7 }, ctx), []);
   assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), '101 完工');
   assert.equal(labelOf(tower.script.settle(e, { total: 57, prevTotal: 50 }, ctx)), '101 點燈');
-});
-
-test('settle hero: the worker if visible, else the nearest visible islander to the tower foot (looked up when the beat plays)', () => {
-  const foot = anchorWorld('tower'), e = { kind: 'settle' }, s = { total: 7, prevTotal: 6 };
-  const hero = groups => { const roster = fakeRoster({}), ctx = { B, roster }; const beats = tower.script.settle(e, s, ctx); roster.members = k => groups[k] ?? []; beats.at(-1).start(ctx); return roster.homed[0]?.name; };
-  const near = person('near', foot.x + 1, foot.z), far = person('far', foot.x + 6, foot.z), hid = person('hid', foot.x + 0.9, foot.z + 0.3, true);
-  assert.equal(hero({ 'chip.worker': [person('worker', 0, 0)], 'landmarks.islanders': [near] }), 'worker');
-  assert.equal(hero({ 'chip.worker': [person('worker', 0, 0, true)], 'landmarks.islanders': [far, hid, near] }), 'near');
-  assert.equal(hero({}), undefined, 'nobody around → the beats skip');
 });
 
 // 照正解演到第 n 回合（放置回合之後接最後一輪）：只有第 n 回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
@@ -313,14 +300,14 @@ const allHome = show => { for (const k of show.roster.keys()) for (const m of sh
 const nearHead = (show, at) => { const h = show.stage.headOf('tower'); assert.ok(Math.hypot(at.x - h.x, at.z - h.z) < 0.5, 'label over the tower'); };
 
 // 跨進「蓋一半」的那一回合（從總等級曲線找，不寫死回合數）；前一回合不跨
-test('headless: the turn crossing into 蓋一半 ends with the bare LEVEL UP label over the tower, everyone home, settle 4–8 s; a non-crossing settle takes 0 s', async () => {
+test('headless: the turn crossing into 蓋一半 ends with the bare LEVEL UP label over the tower, everyone home, settle 1.5–3.5 s; a non-crossing settle takes 0 s', async () => {
   const h = await headlessShow(), order = SOLUTIONS[0], { totals, at } = towerCrossings(order);
   const before = await liveTurn(h, order, at.half - 1);
   assert.ok(before.settleSecs < 0.05, `no crossing → no time (${before.settleSecs})`);
   h.show.reset();
   const t = await liveTurn(h, order, at.half);
   assert.equal(t.bubbles.at(-1).text, 'LEVEL UP'); nearHead(h.show, t.bubbles.at(-1).at);
-  assert.ok(t.settleSecs >= 4 && t.settleSecs <= 8, `settle ${t.settleSecs.toFixed(2)} s`);
+  assert.ok(t.settleSecs >= 1.5 && t.settleSecs <= 3.5, `settle ${t.settleSecs.toFixed(2)} s`);   // 回全景 0.8 + 長出來 + LEVEL UP 1.0
   allHome(h.show); assert.equal(h.show.stage.meta.total, totals[at.half - 1]);
 });
 
@@ -332,31 +319,29 @@ test('headless: the turn crossing into 點燈 shows the label', async () => {
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });
 
-// 蓋東西站鏡頭側（§14）：跨門檻的那個人走到 frontOf(101)，揮鋤頭 1.6 s（臉朝 101），揮完才閃白跳階
-test('the 101 stage upgrade hero stands at frontOf(tower) and plays build (1.6 s) before the parts change', async () => {
-  const h = await headlessShow(), { show } = h, update = show.update, at = anchorWorld('tower'), frames = [];
+// 計畫 11 §設計 4：101 跨階沒有人揮鋤頭——跨進「蓋一半」那一段 settle 裡沒有人在演 build、也沒有人被叫去走路
+test('the 101 stage upgrade: nobody walks over or plays build during the crossing settle', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update, builds = [];
+  let settling = false;
   show.update = (dt, t) => {
     update(dt, t);
-    const front = frontOf(at, tower.FRONT_R, show.nav);
-    for (const k of ['chip.worker', 'landmarks.islanders']) for (const m of show.roster.members(k)) {
-      const g = m.walker?.gesture; if (g?.kind === 'build' && Math.hypot(m.pos.x - front.x, m.pos.z - front.z) < 0.6) frames.push({ t, g, pos: { ...m.pos }, front, total: show.stage.meta.total });
-    }
+    if (!settling) return;
+    for (const k of show.roster.keys()) for (const m of show.roster.members(k)) if (m.walker?.gesture?.kind === 'build') builds.push(`${k} ${t.toFixed(2)}`);
   };
   const { totals, at: into } = towerCrossings(SOLUTIONS[0]), crossed = totals[into.half - 1];
-  await liveTurn(h, SOLUTIONS[0], into.half);   // 跨進「蓋一半」的那一回合
-  assert.ok(frames.length > 10, `build frames ${frames.length}`);
-  assert.ok(frames.at(-1).t - frames[0].t >= 1.4, `build lasted ${(frames.at(-1).t - frames[0].t).toFixed(2)} s`);
-  assert.equal(frames[0].g.dur, 1.6);
-  for (const f of frames) {
-    assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, `stands at the front ${f.pos.x.toFixed(2)},${f.pos.z.toFixed(2)}`);
-    const d = f.g.yaw - Math.atan2(at.x - f.pos.x, at.z - f.pos.z); assert.ok(Math.abs(Math.atan2(Math.sin(d), Math.cos(d))) < 1e-6, 'faces the tower');
-    assert.notEqual(f.total, crossed, 'builds before the tower changes');
+  let s = engine.createState(spec);
+  const turns = turnSteps(SOLUTIONS[0]).slice(0, into.half);
+  for (let i = 0; i < turns.length; i++) {
+    const r = turns[i](s); s = r.state;
+    await h.run([...r.events, { kind: 'settle' }], i + 1 < turns.length ? { instant: true } : { onMark: e => { if (e.kind === 'settle') settling = true; } });
   }
+  assert.ok(settling, 'the settle played');
+  assert.deepEqual(builds.slice(0, 5), [], `${builds.length} build frames during the settle`);
   assert.equal(show.stage.meta.total, crossed);
 });
 
-// §14.4 大升級回全景：101 那一格 → 鏡頭側揮鋤頭 → 回全景（換零件之前）→ 閃白跳階、LEVEL UP 在全景裡演，頭頂不出框
-test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) runs before apply and LEVEL UP; the rig is at the overview when the LEVEL UP appears', async () => {
+// §14.4 大升級回全景：回全景（換零件之前）→ 長出來、LEVEL UP 在全景裡演，頭頂不出框（計畫 11 §設計 4：不再先飛去 101 那一格看人揮鋤頭）
+test('a stage crossing: focus(home) runs before apply and LEVEL UP, nobody builds; the rig is at the overview when the LEVEL UP appears', async () => {
   // 真的 rig；controls.update 像 OrbitControls 一樣讓鏡頭看著注視點（飛行中也是）
   const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
   const rig = createCameraRig({ THREE, camera, controls }); rig.fit(16 / 9);
@@ -389,10 +374,11 @@ test('a stage crossing: hero walks to frontOf(tower), builds, then focus(home) r
   const before = show.stage.meta.total;
   await h.run(events, { onMark: e => { if (e.kind === 'settle') settling = true; } });
   assert.equal(tower.stageOf(show.stage.meta.total), 'full'); assert.notEqual(tower.stageOf(before), 'full');
-  const at = kind => log.findIndex(l => l[0] === kind), last = kind => log.findLastIndex(l => l[0] === kind);
-  const f = log[at('focus')], hm = log[at('home')], lu = log[at('levelUp')];
-  assert.ok(f && Math.hypot(f[2].x - cellCentre([0, 0]).x, f[2].z - cellCentre([0, 0]).z) < 1e-6, 'settle first focuses the tower cell');
-  assert.ok(at('focus') < at('build') && last('build') < at('home') && at('home') < at('levelUp'), log.map(l => l[0]).join(' '));
+  const at = kind => log.findIndex(l => l[0] === kind);
+  const hm = log[at('home')], lu = log[at('levelUp')];
+  assert.equal(at('build'), -1, 'nobody builds');
+  assert.equal(at('focus'), -1, 'no pan to the tower cell first');
+  assert.ok(at('home') >= 0 && at('home') < at('levelUp'), log.map(l => l[0]).join(' '));
   assert.equal(hm[2], before, 'back to the overview before the parts change');
   // LEVEL UP 出現時鏡頭已經停在（抬高的）全景，頭頂在畫面上緣 10% 以內
   const probe = { target: new THREE.Vector3(), update() {} }, pc = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320);

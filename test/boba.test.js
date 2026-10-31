@@ -447,6 +447,51 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(seen, [1, 2, 3, 4, 6]);   // Lv5 在離島（null）；修正批次 2：Lv2 是 grow（颱風外送只給 ≥4）
 });
 
+// 3×3 轉動矩陣（列優先 9 個數）：three.js Euler 'XYZ'（向量先轉 z、再 y、再 x）
+const rotXYZ = ([x, y, z]) => {
+  const a = Math.cos(x), b = Math.sin(x), c = Math.cos(y), d = Math.sin(y), e = Math.cos(z), f = Math.sin(z);
+  return [c * e, -c * f, d, a * f + b * e * d, a * e - b * f * d, -b * c, b * f - a * e * d, b * e + a * f * d, a * c];
+};
+const rotZ = t => rotXYZ([0, 0, t]);
+const mul = (A, B) => [0, 1, 2].flatMap(r => [0, 1, 2].map(c => A[r * 3] * B[c] + A[r * 3 + 1] * B[3 + c] + A[r * 3 + 2] * B[6 + c]));
+// 計畫 13 任務 2（使用者 2026-11-01「第一階段的珍奶店太醜請重新設計」）：夜市的珍奶攤車——奶油色車身＋珊瑚裙板＋木色檯面、
+// 紅白直條遮雨棚（前緣一排小波浪）、棚上一支細桿頂著珍奶杯（杯蓋、吸管、三顆珍珠）、兩個小輪子、木色推桿（老闆那側）、檯面上兩杯小珍奶。
+// 車身尺寸、footprint 不變（0.6 × 0.5，推車、老闆站位、立牌都不搬）；不發光（一個 mesh）
+test('the Lv1–2 cart: a night-market boba stall — body, skirt, counter, striped canopy with scallops, sign cup on a pole, two small wheels, push bar, two cups; footprint unchanged, no glow, one mesh', async () => {
+  for (const n of [1, 2]) {
+    const cart = views[n]['boba.main'], P = cart.parts;
+    assert.equal(cart.kind, 'compound'); assert.deepEqual(cart.footprint, { w: 0.6, d: 0.5 }, `lv${n} footprint unchanged`);
+    assert.ok(P.length <= 26, `lv${n}: ${P.length} parts`);
+    assert.ok(P.every(p => !p.glow), 'nothing glows');
+    for (const p of P) assert.ok(PALETTE.has(p.color) || p.color === boba.TEA, `colour ${p.color.toString(16)}`);
+    const body = P.find(p => p.kind === 'box' && p.color === C.wall);
+    assert.deepEqual(body.scale, [0.6, 0.5, 0.42], 'the body keeps the cart size');
+    const skirt = P.find(p => p.kind === 'box' && p.color === C.coral && Math.abs(p.scale[1] - 0.18) < 1e-9);
+    assert.ok(skirt && skirt.pos[1] < body.pos[1], 'coral skirt on the lower half');
+    const counter = P.find(p => p.kind === 'box' && p.color === C.wood && Math.abs(p.scale[1] - 0.04) < 1e-9);
+    assert.ok(counter && Math.abs(counter.pos[1] - (body.pos[1] + 0.25 + 0.02)) < 1e-9 && counter.scale[0] > body.scale[0] && counter.scale[2] > body.scale[2], 'wood counter on top, sticking out a little');
+    const stripes = P.filter(p => p.kind === 'box' && Math.abs(p.scale[0] - 0.16) < 1e-9 && p.pos[1] > counter.pos[1] + 0.2);
+    assert.equal(stripes.length, 5, 'five canopy stripes');
+    stripes.sort((a, b) => a.pos[0] - b.pos[0]).forEach((s, i) => assert.equal(s.color, i % 2 ? C.white : C.coral, `stripe ${i} alternates coral / white`));
+    const canopyY = stripes[2].pos[1];
+    assert.ok(Math.abs(canopyY - counter.pos[1] - 0.3) < 0.05, `canopy 0.3 over the counter (${(canopyY - counter.pos[1]).toFixed(2)})`);
+    assert.equal(P.filter(p => p.kind === 'dome' && p.pos[1] < canopyY && p.pos[2] > 0.2).length, 3, 'three scallops on the front edge');
+    const cup = P.find(p => p.kind === 'cylinder' && p.color === boba.TEA && Math.abs(p.scale[0] - 0.14) < 1e-9);
+    assert.ok(cup && cup.pos[1] > canopyY + 0.2 && cup.pos[0] < 0, 'sign cup above the canopy, on the left');
+    assert.ok(P.some(p => p.kind === 'box' && Math.abs(p.scale[0] - 0.03) < 1e-9 && p.pos[1] > canopyY && p.pos[1] < cup.pos[1]), 'the pole under the cup');
+    assert.ok(P.some(p => p.kind === 'dome' && p.color === C.white && p.pos[1] > cup.pos[1]), 'cup lid');
+    assert.ok(P.some(p => p.kind === 'box' && p.color === C.coral && p.pos[1] > cup.pos[1] + 0.1), 'straw');
+    assert.equal(P.filter(p => p.kind === 'sphere' && p.color === C.ink && Math.abs(p.pos[1] - cup.pos[1]) < 0.1).length, 3, 'three pearls in the cup');
+    const wheels = P.filter(p => p.kind === 'torus');
+    assert.equal(wheels.length, 2); assert.ok(wheels.every(w => w.scale === 0.18 && Math.abs(w.pos[1] - 0.09) < 1e-9 && w.pos[0] < 0), 'two small wheels (r 0.09) toward the back');
+    assert.ok(P.some(p => p.kind === 'box' && p.color === C.wood && p.pos[0] < -body.scale[0] / 2 && p.rot), 'push bar slanting out of the back (the owner side)');
+    assert.equal(P.filter(p => p.kind === 'cylinder' && p.color === boba.TEA && Math.abs(p.scale[1] - 0.08) < 1e-9 && p.pos[1] > counter.pos[1]).length, 2, 'two little cups on the counter');
+  }
+  // 合併成一個黏土 mesh（同現在：沒有發光）
+  const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
+  for (const v of [views[1]['boba.main'], boba.view(lv({ boba: 1 }), { cartBlown: true })['boba.main']]) assert.equal(f.build(v).object.children.length, 1, 'one mesh');
+});
 // 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3，flags.cartBlown）：攤車翻倒在珍奶格東岸外的淺水裡（不在島上、沒有 footprint、放晴的堤防碰不到），
 // 老闆站到岸邊走得到的地方、面向海（fidget look）；Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
 test('view: a blown cart lies tipped in the sea off the boba cell, the owner stands on the shore looking at it; at Lv3 the shop stays and the cart is boba.blown', async () => {
@@ -457,7 +502,15 @@ test('view: a blown cart lies tipped in the sea off the boba cell, the owner sta
     assert.equal(cart.kind, 'compound'); assert.equal(cart.footprint, false, `Lv${n} no footprint`);
     assert.ok(near(cart.at, boba.BLOWN, 1e-9), `Lv${n} at BLOWN`); assert.equal(cellAt(cart.at.x, cart.at.z), null, 'in the sea, off the island');
     assert.ok(Math.hypot(cart.at.x - c.x, cart.at.z - c.z) > LEVEE_R + 0.1, 'outside the Lv3 levee');
-    assert.ok(cart.parts.every(p => p.rot?.[2] < -1), 'tipped over toward the sea');
+    // 計畫 13 任務 2：新攤車的零件自己帶轉角（遮雨棚斜面、波浪倒掛、推桿），翻倒＝每個零件的轉角與位置都是「直立攤車整台繞 z 轉 TIP（< −1，頂朝外海）」
+    const upright = views[1]['boba.main'].parts, T = boba.CART_TIP;
+    assert.ok(T < -1, 'tipped toward the sea');
+    assert.equal(cart.parts.length, upright.length);
+    cart.parts.forEach((p, i) => {
+      const u = upright[i], want = mul(rotZ(T), rotXYZ(u.rot ?? [0, 0, 0])), got = rotXYZ(p.rot ?? [0, 0, 0]);
+      assert.ok(want.every((x, k) => Math.abs(x - got[k]) < 1e-9), `part ${i} (${u.kind}) rotated by TIP`);
+      const [x, y] = u.pos; assert.ok(Math.abs(p.pos[0] - (x * Math.cos(T) - y * Math.sin(T))) < 1e-9 && Math.abs(p.pos[1] - (x * Math.sin(T) + y * Math.cos(T))) < 1e-9 && p.pos[2] === u.pos[2], `part ${i} position`);
+    });
     assert.ok(cart.parts.some(p => p.pos[1] > 0.2), 'part of it still above the water');
     const o = v['boba.owner'].home;
     assert.equal(o.fidget, 'look'); assert.deepEqual(o.spots, [boba.blownSpot()]);

@@ -16,7 +16,8 @@ import { measurePath, locateOnPath } from '../scene/path.js';
 
 export const id = 'boba';
 export const labelY = 1.0;
-const TEA = 0xc9a27c, SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
+export const TEA = 0xc9a27c;
+const SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 0xe8b04a];
 
 // ── 版面（捷運格東半邊）：北邊是燈泡的夜市（兩攤，南緣在錨點北邊 1.1）、西邊是捷運站與站前廣場、東邊是電工主路。
 // 攤車／店在錨點北邊 0.05（SHOP）：2026-10-28 錄影修正——原本在錨點南邊 0.4，店和人龍貼著格子前緣、珍奶格看起來很擠；
@@ -147,17 +148,46 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
 // Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
 const CELL = axialToWorld(0, 1), APOTHEM = R * Math.sqrt(3) / 2;
 export const BLOWN = { x: CELL.x + APOTHEM + 0.1, y: WATER_Y - 0.02, z: AT.z + 0.2 };   // 格邊外 0.1 的水面
-const TIP = -1.2;   // 往海那邊倒（頂朝 +x）
+export const CART_TIP = -1.2;   // 往海那邊倒（頂朝 +x）
+const TIP = CART_TIP;
+// 攤車（計畫 13 任務 2，使用者 2026-11-01「第一階段的珍奶店太醜請重新設計」）：夜市的珍奶攤車。相對 SHOP、原點在地面；
+// 老闆在西邊（−x）推，鏡頭在南邊（+z）。車身尺寸不變（CART.w × 0.5 × 0.42：footprint、推車距離 HANDLE、老闆站位、立牌都不搬）——
+// 計畫寫的 0.7 寬會讓車身西緣伸進推車老闆的身體，跟「車身尺寸不變」衝突，照 CART.w。
+//   車身：奶油色箱體（離地 0.06）、下半一圈珊瑚裙板（高 0.18）、頂上一片木色檯面（四周凸出 0.03）；
+//   遮雨棚：檯面上 0.3、往鏡頭那側斜的五條紅白直條（各 0.16 寬，合起來 0.8 × 0.5），後緣兩根木柱撐著，前緣垂三個小波浪（倒扣的半球）；
+//   招牌：棚左上一支細桿頂著珍奶杯（杯蓋、斜插的吸管、杯身正面三顆珍珠）；輪子：後半（老闆那側）前後兩面各一個小輪（半徑 0.09）；
+//   推桿：後面斜出 0.35（老闆的手搭在上面）；檯面上兩杯小珍奶。全部不發光，合併成一個黏土 mesh
+const CART_BODY = { h: 0.5, d: 0.42, y0: 0.06 }, COUNTER_Y = CART_BODY.y0 + CART_BODY.h + 0.02, CANOPY_Y = COUNTER_Y + 0.32, CANOPY_TILT = 0.22;
+const CUP_Y = CANOPY_Y + 0.42, BAR_TILT = 0.35, BAR_L = 0.35;
 const cartParts = () => [
-  { kind: 'box', pos: [0, 0.35, 0], scale: [CART.w, 0.5, 0.4], color: C.wall },
-  { kind: 'hip', pos: [0, 0.75, 0], scale: [0.75, 0.25, 0.55], color: C.coral },
-  { kind: 'torus', pos: [-0.2, 0.1, 0.21], scale: 0.2, color: C.ink }, { kind: 'torus', pos: [0.2, 0.1, 0.21], scale: 0.2, color: C.ink },
-  { kind: 'cylinder', pos: [0, 1.0, 0], scale: [0.2, 0.25, 0.2], color: TEA },
-  { kind: 'sphere', pos: [0, 0.92, 0.1], scale: 0.05, color: C.ink },
+  { kind: 'box', pos: [0, CART_BODY.y0 + CART_BODY.h / 2, 0], scale: [CART.w, CART_BODY.h, CART_BODY.d], color: C.wall },
+  { kind: 'box', pos: [0, CART_BODY.y0 + 0.09, 0], scale: [CART.w + 0.01, 0.18, CART_BODY.d + 0.01], color: C.coral },
+  { kind: 'box', pos: [0, COUNTER_Y, 0], scale: [CART.w + 0.06, 0.04, CART_BODY.d + 0.04], color: C.wood },
+  ...[-0.28, 0.28].map(x => ({ kind: 'box', pos: [x, COUNTER_Y + 0.185, -0.19], scale: [0.03, 0.33, 0.03], color: C.wood })),
+  ...[-2, -1, 0, 1, 2].map(i => ({ kind: 'box', pos: [i * 0.16, CANOPY_Y, 0], scale: [0.16, 0.03, 0.5], rot: [CANOPY_TILT, 0, 0], color: i % 2 ? C.white : C.coral })),
+  ...[-1, 0, 1].map(i => ({ kind: 'dome', pos: [i * 0.25, CANOPY_Y - 0.25 * Math.sin(CANOPY_TILT) - 0.01, 0.25 * Math.cos(CANOPY_TILT)], scale: [0.22, 0.07, 0.04], rot: [Math.PI, 0, 0], color: i ? C.coral : C.white })),
+  { kind: 'box', pos: [-0.24, CANOPY_Y + 0.17, -0.05], scale: [0.03, 0.3, 0.03], color: C.wood },
+  { kind: 'cylinder', pos: [-0.24, CUP_Y, -0.05], scale: [0.14, 0.2, 0.14], color: TEA },
+  { kind: 'dome', pos: [-0.24, CUP_Y + 0.1, -0.05], scale: [0.15, 0.08, 0.15], color: C.white },
+  { kind: 'box', pos: [-0.22, CUP_Y + 0.18, -0.05], scale: [0.02, 0.14, 0.02], rot: [0, 0, -0.25], color: C.coral },
+  ...[[-0.03, -0.07], [0.03, -0.07], [0, -0.03]].map(([x, y]) => ({ kind: 'sphere', pos: [-0.24 + x, CUP_Y + y, -0.05 + 0.065], scale: 0.04, color: C.ink })),
+  ...[1, -1].map(s => ({ kind: 'torus', pos: [-0.14, 0.09, s * (CART_BODY.d / 2 + 0.015)], scale: 0.18, color: C.ink })),
+  { kind: 'box', pos: [-CART.w / 2 - (BAR_L / 2) * Math.sin(BAR_TILT), 0.3 + (BAR_L / 2) * Math.cos(BAR_TILT), 0], scale: [0.03, BAR_L, 0.03], rot: [0, 0, BAR_TILT], color: C.wood },
+  ...[0.1, 0.2].map(x => ({ kind: 'cylinder', pos: [x, COUNTER_Y + 0.06, 0.12], scale: [0.05, 0.08, 0.05], color: TEA })),
 ];
+// 轉動（three.js Euler 'XYZ'：向量先轉 z、再 y、再 x）↔ 3×3 矩陣（列優先）；翻倒＝整台繞 z 轉 TIP：每個零件的矩陣左乘 Rz(TIP) 再拆回 Euler
+const rotXYZ = ([x, y, z]) => {
+  const a = Math.cos(x), b = Math.sin(x), c = Math.cos(y), d = Math.sin(y), e = Math.cos(z), f = Math.sin(z);
+  return [c * e, -c * f, d, a * f + b * e * d, a * e - b * f * d, -b * c, b * f - a * e * d, b * e + a * f * d, a * c];
+};
+const eulerXYZ = m => {
+  const y = Math.asin(Math.max(-1, Math.min(1, m[2])));
+  return Math.abs(m[2]) < 0.9999999 ? [Math.atan2(-m[5], m[8]), y, Math.atan2(-m[1], m[0])] : [Math.atan2(m[7], m[4]), y, 0];
+};
+const mul3 = (A, B) => [0, 1, 2].flatMap(r => [0, 1, 2].map(c => A[r * 3] * B[c] + A[r * 3 + 1] * B[3 + c] + A[r * 3 + 2] * B[6 + c]));
 const tipped = parts => parts.map(p => {
   const [x, y, z] = p.pos, c = Math.cos(TIP), sn = Math.sin(TIP);
-  return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: [0, 0, TIP] };
+  return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: eulerXYZ(mul3(rotXYZ([0, 0, TIP]), rotXYZ(p.rot ?? [0, 0, 0]))) };
 });
 const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
 // 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.50）疊在一起

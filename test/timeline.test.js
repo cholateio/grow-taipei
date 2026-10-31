@@ -74,3 +74,15 @@ test('ctx.speed runs every beat faster: k and step dt scale, elapsed and current
   tl.update(0.25); tl.update(0.2); await p;
   assert.ok(log.includes('b:end')); assert.ok(Math.abs(tl.elapsed - 0.7) < 1e-9, 'elapsed is real time');
 });
+// 鎖住的反應要等名冊走到新站位（turn.js 的 lockBeats）：拍可以帶 done(ctx)——每幀 step 之後問一次，真就提早結束（dur 是上限）
+test('a beat with done(ctx) ends early once done turns true (dur is the cap); without done it runs its full dur', () => {
+  log.length = 0; const tl = createTimeline(), ctx = { ready: false };
+  tl.play([beat('h', 2, { done: c => c.ready }), beat('n', 0.1)], ctx);
+  tl.update(0.1); tl.update(0.1); assert.deepEqual(log, ['h:start', 'h:0.05', 'h:0.10']);
+  ctx.ready = true; tl.update(0.1);
+  assert.deepEqual(log.slice(3), ['h:0.15', 'h:end', 'n:start', 'n:0.00']);
+  assert.ok(Math.abs(tl.elapsed - 0.3) < 1e-9, `elapsed ${tl.elapsed}`);
+  log.length = 0; const capped = createTimeline();
+  capped.play([beat('h', 0.2, { done: () => false })], {});
+  capped.update(0.1); capped.update(0.1); assert.deepEqual(log, ['h:start', 'h:0.50', 'h:1.00', 'h:end']);
+});

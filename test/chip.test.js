@@ -186,11 +186,15 @@ test('every chip part and footprint corner stays inside the chip cell (the cable
     for (const p of pts) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   }
 });
-test('chip buildings declare footprints (factory, glass boxes and dome, substation; the poles stand inside the back box\'s padded outline); the factory door path stays walkable', () => {
+// Lv1 工地（2026-10-31 錄影：有人從圍籬中間穿出來）：黃色圍籬 ±0.8、牆厚 0.03 → 一個 1.66 見方的框，圍籬裡不能走
+test('chip buildings declare footprints (the Lv1 fenced site, factory, glass boxes and dome, substation; the poles stand inside the back box\'s padded outline); the factory door path stays walkable', () => {
   const nav = createNav();
-  for (let n = 2; n <= 9; n++) {
+  const site = [].concat(chip.view(at(1), {})['chip.main'].footprint ?? []);
+  assert.equal(site.length, 1, 'lv1 one box for the fenced site');
+  assert.deepEqual(site[0], { w: 1.66, d: 1.66 }, 'lv1 the fence (±0.8 plus the 0.03 wall)');
+  for (let n = 1; n <= 9; n++) {
     const v = chip.view(at(n), {});
-    assert.deepEqual(v['chip.main'].footprint.length, 1, `lv${n} the factory (the chimney stands on its roof)`);
+    assert.deepEqual([].concat(v['chip.main'].footprint).length, 1, n === 1 ? 'lv1 the fenced site' : `lv${n} the factory (the chimney stands on its roof)`);
     if (n >= 3) assert.ok(v['chip.campus'].footprint.length >= 3, `lv${n} campus`);
     if (n >= 5) {
       assert.equal(v['chip.substation'].footprint.length, 1, 'the house; the poles stand inside the back glass box\'s padded outline'); assert.equal(v['chip.solar'].footprint, false, 'panels are on the roof');

@@ -162,7 +162,9 @@ export function overviewRig() {
 // gameInvariants(show, { cam })：掛在 show.update 上每幀查（同 roster.test 的 live 探針，取三條最基本的）
 //   walls：主島走路格上露出來的名冊成員在建築本身（stage.footprints()，不含 PAD）裡超過 CAUGHT_MAX 秒（坐車頂的 ride、
 //          站位本來就畫在外擴 footprint 裡的 stand——泡溫泉的老鼠、攤車後的老闆——例外）
-//   jumps：日常的人（前後兩幀都是 home、都露出來、不坐車頂）一幀走超過 max(自己的走路速度, 家的速度) × dt（瞬移）
+//   jumps：日常的人（前後兩幀都是 home、都露出來、不坐車頂）一幀走超過 max(自己的走路速度, 家的速度) × dt（瞬移）；
+//          例外只有一種：被新建築蓋到、當幀閃白換到外面（名冊的 cover，2026-10-31 錄影修正，裁決 R3 的閃白換位）——
+//          上一幀的位置在外擴 footprint 裡、這一幀他正在閃白
 //   camera：turnEnd(label) 在每回合演完後把鏡頭飛完（照樣推演出層），查在全景（注視點在島心正上方、沿 OVERVIEW_DIR 看）、101 頭頂在畫面裡（|x| ≤ 1、y ≤ 0.8）；
 //          每幀也查鏡頭沒有在飛行之外瞬間跳開：演出層這一幀（show.update，拍的 start／end）讓鏡頭位置一次移動超過 CAM_JUMP 公尺就記一筆
 //          ——飛行的內插在 rig.update 裡（正常最大一幀約 2.8，那是飛，不算）；最終審稿 2：天際線在全景裡重算原本一幀跳 5.66
@@ -206,7 +208,8 @@ export function gameInvariants(show, { cam = null } = {}) {
       const daily = !m.hidden && !m.gone && m.mode === 'home' && h?.kind !== 'ride', prev = last.get(m);
       if (daily && prev) {
         const d = Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z), max = Math.max(m.speed, h?.speed ?? 0) * dt;
-        if (d > max + 1e-6) jumps.add(`${what} moved ${d.toFixed(3)} > ${max.toFixed(3)}`);
+        const covered = show.nav.inFootprint(prev.x, prev.z) && show.blink.has(m.walker ?? m.holder);
+        if (d > max + 1e-6 && !covered) jumps.add(`${what} moved ${d.toFixed(3)} > ${max.toFixed(3)}`);
       }
       if (daily) last.set(m, { ...m.pos }); else last.delete(m);
       const was = seen.get(m), step = was ? { x: m.pos.x - was.p.x, z: m.pos.z - was.p.z } : { x: 0, z: 0 };

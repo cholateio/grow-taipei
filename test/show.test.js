@@ -198,6 +198,44 @@ test('on the opening screen no islander stands inside a building and no blink is
   }
 });
 
+// 2026-10-31 錄影（蓋晶片廠時有人從圍籬中間穿出來）：Lv1 工地（chip.main 黃色圍籬 ±0.8）有 footprint，
+// 放下那一刻站在工地裡的人當幀閃白換到外面（roster：footprint 變了、日常的人被新建築蓋到 → relocate）——
+// milk、baseball 瞬間演完，第 3 回合放晶片 live（種子 1–20）：工地還是 Lv1 的時候外擴 footprint 裡沒有人超過 1 幀、不變式 walls 空
+test('placing the chip site live (milk, baseball, chip; seeds 1–20): nobody stays inside the padded fence for more than a frame, no wall problems', async () => {
+  const { PAD } = await import('../src/show/nav.js'), AT = anchorWorld('chip'), H = 1.66 / 2 + PAD;
+  const inSite = m => !m.hidden && !m.gone && Math.abs(m.pos.x - AT.x) <= H && Math.abs(m.pos.z - AT.z) <= H;
+  let covered = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    const { show, run } = await headlessShow({ seed });
+    let s = engine.createState(spec);
+    for (const id of ['milk', 'baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+    // 放之前散步幾秒（種子不同，島民走到的地方不同）
+    for (let i = 0; i < 30 * (seed % 5); i++) show.update(1 / 30, i / 30);
+    const inv = gameInvariants(show), update = show.update, streak = new Map(), long = [];
+    let fenced = false;
+    show.update = (dt, t) => {
+      const before = !fenced && show.roster.keys().some(k => show.roster.members(k).some(inSite));   // 圍籬立起來那一幀之前就站在工地裡
+      update(dt, t);
+      if (!fenced && show.stage.partObject('chip.main')) { fenced = true; if (before) covered++; }
+      if (!fenced || show.stage.lv.chip !== 1) return;   // Lv2 起是廠房（另一個 footprint）
+      for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
+        const n = inSite(m) ? (streak.get(m) ?? 0) + 1 : 0; streak.set(m, n);
+        if (n > 1) long.push(`seed ${seed} ${k}#${m.i} ${m.mode} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}) ${n} frames`);
+      }
+    };
+    inv.label(`seed ${seed} chip`);
+    const r = place(s, 'chip');
+    await run([...r.events, { kind: 'settle' }]);
+    for (let i = 0; i < 90; i++) show.update(1 / 30, 100 + i / 30);
+    show.update = update;
+    assert.ok(fenced, `seed ${seed}: the fence went up`);
+    assert.deepEqual(long.slice(0, 10), [], `seed ${seed}: ${long.length} frames inside the fence`);
+    assert.deepEqual([...inv.walls].slice(0, 10), [], `seed ${seed}: ${inv.walls.size} inside a building`);
+  }
+  console.log(`# chip site: ${covered} of 20 seeds had someone inside when the fence went up`);
+  assert.ok(covered >= 3, `the seeds do cover someone standing in the site (${covered})`);
+});
+
 // 唯一正解修正輪 1：颱風放下那回合不再整回合躲著——躲一下又出來，wait 事件演到時球員已經回到外面；
 // 撲空拿掉了（R10）：wait 不演任何一段；沒有任何圖框泡泡
 test('the typhoon placement turn: the players are back out by the wait, no miss plays, no icon bubble', async () => {

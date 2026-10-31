@@ -891,18 +891,40 @@ test('a walker whose route is cut by a new footprint replans around it and still
   for (let i = 0; i < 150; i++) { roster.update(1 / 30, 1 + i / 30); assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} inside at ${m.pos.x.toFixed(2)},${m.pos.z.toFixed(2)}`); }
   assert.ok(gap(m.pos, B) < 0.05, `arrived (${gap(m.pos, B).toFixed(2)})`);
 });
-// §14.1：建築長在身上（footprint 換了的那一幀人就在裡面）——用走路速度（不是閒晃的 0.5）走出來，走路中、休息中都一樣；出來就恢復閒晃速度
-test('a wanderer caught inside a new footprint walks out at walking speed, not the wander dawdle', () => {
+// §14.1：建築長在身上（footprint 換了的那一幀人就在裡面）——2026-10-31 錄影（蓋晶片廠時有人從圍籬中間穿出來）之後不再用走的走出牆：
+// 日常、露出來的人被新的外擴 footprint 蓋到，當幀閃白換到最近的可走點（R3 允許的閃白換位）；走路中、休息中都一樣，走到一半的那一趟從新位置照舊走
+test('a daily member standing where a new footprint appears is relocated outside with a blink the same frame', () => {
   for (const moving of [true, false]) {
-    const { roster, nav } = setup(); roster.declare('k', kids(1)); roster.snap(); const [m] = roster.members('k');
+    const { roster, nav, blink } = setup(); roster.declare('k', kids(1)); roster.snap(); const [m] = roster.members('k');
     let t = 0; for (let i = 0; i < 600 && m.walking !== moving; i++) { roster.update(1 / 30, t); t += 1 / 30; }
     assert.equal(m.walking, moving);
-    nav.setFootprints([{ x: m.pos.x, z: m.pos.z, r: 0.6 }]);   // 外擴 PAD 後 0.72：閒晃速度要 1.44 s，走路速度 0.45 s
-    let out = null; for (let i = 0; i < 60 && out === null; i++) { roster.update(1 / 30, t); t += 1 / 30; if (!nav.inFootprint(m.pos.x, m.pos.z)) out = i / 30; }
-    assert.ok(out !== null && out < 0.7, `${moving ? 'walking' : 'resting'}: out after ${out} s`);
-    roster.update(1 / 30, t);   // 走出來之後這一趟回到閒晃速度
-    assert.ok(m.trip, 'still on the trip'); assert.equal(m.trip.speed, WANDER_SPEED, 'boost ends once outside the footprint');
+    const at = { ...m.pos };
+    nav.setFootprints([{ x: at.x, z: at.z, r: 0.6 }]);   // 外擴 PAD 後 0.72
+    blink.log.length = 0;
+    roster.update(1 / 30, t); t += 1 / 30;
+    assert.ok(!nav.inFootprint(m.pos.x, m.pos.z) && nav.walkable(m.pos.x, m.pos.z), `${moving ? 'walking' : 'resting'}: outside the same frame (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+    assert.ok(Math.hypot(m.pos.x - at.x, m.pos.z - at.z) < 0.72 + 0.2, 'to the nearest walkable point, not across the island');
+    assert.deepEqual(blink.log.filter(([kind, o]) => kind === 'walker' && o === m.walker).length, 1, 'with one blink');
+    for (let i = 0; i < 60; i++) { roster.update(1 / 30, t); t += 1 / 30; assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} back inside`); }
   }
+});
+// 被新建築蓋到才換位：本來就站在 footprint 裡的人（泳客站在泳池裡、球員在屋頂上：站位寫在 footprint 裡、不帶 rescue）、
+// 藏著的人、劇本手上的人，footprint 再變一次也不被換走
+test('only members newly covered by a footprint are relocated: authored spots inside a footprint, hidden and scripted members stay put', () => {
+  const { roster, nav, blink } = setup(), P = { x: Q.x - 0.6, y: Q.y, z: Q.z, yaw: 0 };
+  nav.setFootprints([{ x: P.x, z: P.z, r: 0.3 }]);
+  roster.declare('pool', { kind: 'roster', at: P, n: 1, home: { kind: 'stand', spots: [P] } });
+  roster.declare('k', kids(2)); roster.snap();
+  const [swimmer] = roster.members('pool'), [hid, busy] = roster.members('k');
+  run(roster, 3);
+  assert.ok(nav.inFootprint(swimmer.pos.x, swimmer.pos.z), 'precondition: the swimmer stands in the pool');
+  roster.hide(hid); roster.claim(busy);
+  const keep = [swimmer, hid, busy].map(m => ({ m, at: { ...m.pos } }));
+  blink.log.length = 0;
+  nav.setFootprints([{ x: P.x, z: P.z, r: 0.3 }, ...[hid, busy].map(m => ({ x: m.pos.x, z: m.pos.z, r: 0.4 }))]);
+  roster.update(1 / 30, 1);
+  for (const { m, at } of keep) assert.ok(Math.hypot(m.pos.x - at.x, m.pos.z - at.z) < 1e-9, `${m.key}#${m.i} stays put`);
+  assert.deepEqual(blink.log, [], 'no blink');
 });
 // 任務 7 審稿第 1 輪（賽博第 11 回合，機器鼠被拖過廠房）：沿折線過日常的人卡在走不出去的死角（從他到折線上最近一點找不到路）時，
 // 不能接上遠處的游標、每幀被限速拉著直線穿過建築——拉過去的那一段照樣不進 footprint（擋住就停在牆外）

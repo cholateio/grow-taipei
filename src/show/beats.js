@@ -289,6 +289,8 @@ export function worldNow() {
 }
 
 export function wait(s) { return { kind: 'wait', dur: s }; }
+// 等到 done(ctx) 成立（每幀問一次，時間軸的 done），最多 cap 秒
+export function until(done, cap) { return { kind: 'hold', dur: cap, done }; }
 
 // who：一個或一串目標；也可以是 ctx => 目標（或一串），演到這拍才算（turn.js 收尾：所有 script 成員）
 export function home(who) {
@@ -479,6 +481,6 @@ export function jump(who, target, dur = 0.5) {
 }
 
 export const B = {
-  spawn, walk, bubble, gesture, apply, levelUp, focus, world, worldNow, wait, home, together, move, scaleIn, replay,
+  spawn, walk, bubble, gesture, apply, levelUp, focus, world, worldNow, wait, until, home, together, move, scaleIn, replay,
   hideParts, showParts, flash, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
 };

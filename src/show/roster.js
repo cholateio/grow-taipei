@@ -417,6 +417,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed, offgrid: !nav.walkable(last.x, last.z) } : null;
     hurry(m, speed);
   }
+  // 被新建築蓋到（2026-10-31 錄影：蓋晶片廠時島民站在工地正中間，從圍籬中間走出來）：footprint 變了的那一幀，日常裡、露出來的人
+  // 上一版 footprint 下不在外擴 footprint 裡、這一版在 → 當幀閃白換到最近的可走點（裁決 R3 允許的閃白換位），不用走的走出牆。
+  // 不算：坐車頂的（ride）、沿手畫折線走的（游標上，折線本來就可能貼著建築）、這一趟要走到走路格外的（offgrid：屋頂、footprint 裡的站位）、
+  // 站位本來就寫在 footprint 裡又不帶 rescue 的（泳客站在泳池裡、球員在屋頂上——剛生出來那一幀 inside 還沒記，也不能被請出去）。
+  // 本來就在裡面的（inside）照舊由 caught 用走路速度走出來
+  const authored = (m, spec) => spec?.home?.kind === 'stand' && !spec.home.rescue && (() => { const sp = spotOf(spec, m.i); return nav.inFootprint(sp.x, sp.z); })();
+  const covered = (m, spec) => m.mode === 'home' && !m.hidden && !m.gone && !m.inside && !m.cursor && !m.trip?.offgrid
+    && spec?.home?.kind !== 'ride' && nav.inFootprint(m.pos.x, m.pos.z) && !authored(m, spec);
+  function cover(m) { const p = nav.nearestWalkable(m.pos); relocate(m, { ...p, yaw: m.yaw }); m.inside = false; }
   // footprint 變了（建築長出來、拿掉）：走到一半的人從現在的位置重新找路到同一個終點，不照舊路穿過新建築
   function replan(m) {
     const { last, speed, calm, offgrid, goal, spot } = m.trip, path = nav.route(m.pos, last), end = path.at(-1);
@@ -622,7 +631,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     now = t;
     if (nav.version !== planned) {
       planned = nav.version;
-      for (const g of groups.values()) for (const m of g.members) if (m.trip && m.mode === 'home') replan(m);
+      for (const g of groups.values()) {
+        const spec = current(g);
+        for (const m of g.members) { if (covered(m, spec)) cover(m); if (m.trip && m.mode === 'home') replan(m); }
+      }
       for (const m of exits) if (m.trip) replan(m);
     }
     // 躺平（最終章 §6：飛彈命中全島躺平比讚，「姿勢持續到標題卡」；最終審稿）：people.mood 是 'lie' 時日常走動的 people 小人
@@ -692,6 +704,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       if (m.offPath && m.cursor) { const c = m.cursor.locate(); if (Math.hypot(c.x - m.pos.x, c.z - m.pos.z) <= 2 * ARRIVE) m.offPath = false; }
       place(m);
     }
+    // 這一版 footprint 下誰站在外擴 footprint 裡（下一次 footprint 變的時候分得出誰是「被新建築蓋到」，見 covered）
+    for (const g of groups.values()) for (const m of g.members) m.inside = nav.inFootprint(m.pos.x, m.pos.z);
   }
 
   function reset() {

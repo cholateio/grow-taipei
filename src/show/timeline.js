@@ -1,6 +1,7 @@
 // 時間軸：把一串拍（beat）照順序演，由繪製迴圈每幀呼叫 update(dt) 推進（取代舊導演的 Promise 等待）。
 // 不靠計時器，所以 Node 可以無頭模擬整局（pace 工具就是這樣量回合長度）。
-// 拍 = { kind, dur, start?(ctx), step?(k, dt, ctx), end?(ctx), estimate? }；dur 是數字或 ctx => 數字，start 之後才算。
+// 拍 = { kind, dur, start?(ctx), step?(k, dt, ctx), end?(ctx), estimate?, done?(ctx) }；dur 是數字或 ctx => 數字，start 之後才算。
+// done（可省）：每幀 step 之後問一次，真就提早結束（dur 當上限；turn.js 鎖住的反應等名冊走到新站位）。
 // start 回 false 或 dur ≤ 0 → 這拍沒東西演，直接 end、不佔時間，同一幀接著處理下一拍。
 // 跳過：正在演的拍 end，剩下的每拍 start → end（不 step）；reduced-motion 時 play 整串都這樣同步跑完。
 // 演出速度（裁決 R15）：ctx.speed（turn.js 設；選擇帶動升級拿掉蒙太奇之後恆為 1）——時間軸用「演出時間」推進拍：每幀 dt × speed 給拍的 t 與 step，
@@ -58,7 +59,7 @@ export function createTimeline({ reducedMotion = false } = {}) {
     c.t += dt;
     const k = Math.min(1, c.t / c.dur);
     c.beat.step?.(k, dt, ctx);
-    if (current !== c || k < 1) return;
+    if (current !== c || (k < 1 && !c.beat.done?.(ctx))) return;
     // 先清掉 current 再 end：end 或下一拍的 start 丟錯時，不會再演一次已經結束的拍
     current = null;
     c.beat.end?.(ctx);

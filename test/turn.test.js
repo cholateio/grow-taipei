@@ -420,3 +420,30 @@ test('a wait event plays only its mark and an apply without a blink: no pan, no 
   assert.ok(marksOf(raw).every(m => !m.info.miss));
   assert.equal(anyBubble(raw), false, 'no bubble beat for a wait');
 });
+// 鎖住的反應（引擎 fx 事件帶 lock：大停電鎖燈泡、捷運站淹水鎖代幣、大巨蛋淹水鎖棒球）要讓玩家看到（協調者裁決 2026-10-31）：
+// 平移到被鎖的那一格 → 閃白套用 → 等那個物品的名冊走到新站位（arriving 都清掉，上限 LOCK_HOLD 秒）；不冒字（鎖不是升降級，標題卡會講災難）。
+// 帶 delta 的（大停電：鮮奶 −1）照舊在鮮奶格演 LEVEL DOWN（鮮奶真的降級），等待插在字之前。其他只有旗標的 fx 照舊 0 秒
+test('a lock fx pans to the locked item, applies with a blink and holds until its roster has arrived (≤ LOCK_HOLD), with no label; other flag fx stay instant', () => {
+  const { LOCK_HOLD } = turnModule;
+  assert.equal(LOCK_HOLD, 2.0);
+  const flood = { kind: 'fx', item: 'typhoon', cause: 'typhoon', lock: 'baseball', flag: { name: 'domeFlood', value: true } };
+  const raw = buildTurn([flood], base([tower]), fakeCtx()), seg = between(raw, 0);
+  assert.deepEqual(seg.map(b => b.kind), ['focus', 'apply', 'hold', 'apply']);
+  assert.deepEqual(seg[0].target, cellOf('baseball'), 'pans to the locked item');
+  assert.notEqual(seg[1].blink, false, 'the swap blinks');
+  assert.equal(seg[2].dur, LOCK_HOLD);
+  const players = [{ key: 'baseball.players', mode: 'home', arriving: true }, { key: 'baseball.players', mode: 'home', arriving: false }];
+  const other = [{ key: 'milk.kids', mode: 'home', arriving: true }];
+  const c = fakeCtx({ roster: { keys: () => ['baseball.players', 'milk.kids'], members: k => (k === 'milk.kids' ? other : players) } });
+  assert.equal(seg[2].done(c), false, 'a player still climbing');
+  players[0].arriving = false; assert.equal(seg[2].done(c), true, 'everyone of the locked item arrived (other rosters do not count)');
+  assert.ok(!raw.some(b => b.kind === 'levelUp'), 'no label');
+  // 大停電（lock + delta）：鮮奶格 LEVEL DOWN 照舊，等待在字之前
+  const blackout = { kind: 'fx', item: 'milk', cause: 'typhoon', lock: 'bulb', flag: { name: 'blackout', value: true }, delta: { target: 'milk', from: 3, to: 2 } };
+  const b2 = between(buildTurn([blackout], base([tower]), fakeCtx()), 0);
+  assert.deepEqual(b2.map(b => b.kind), ['focus', 'apply', 'hold', 'levelUp', 'apply']);
+  assert.deepEqual(b2[0].target, cellOf('milk')); assert.equal(b2[3].down, true);
+  // 不帶 lock 的旗標 fx（鼠災）：0 秒、不平移
+  const rats = { kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'domeRats', value: true } };
+  assert.deepEqual(between(buildTurn([rats], base([tower]), fakeCtx()), 0).map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]]);
+});

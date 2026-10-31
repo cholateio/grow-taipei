@@ -279,7 +279,17 @@ for (const [name, order, n, need] of [
     const prev = anchorWorld(n === 2 ? 'typhoon' : 'token'), stop = anchorWorld(n === 2 ? 'token' : 'baseball'), trail = [], marks = [], w0 = worldLog.length;
     const update = show.update;
     show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('typhoon.main'); if (o && show.stage.lv.typhoon === n) trail.push({ x: o.position.x, z: o.position.z }); };
-    try { await run(evs, { onMark: e => marks.push([e, show.elapsed]) }); } finally { show.update = update; }
+    // 鎖住的反應（大巨蛋淹水鎖棒球，turn.js 的 lockBeats）演完那一刻（下一個 mark）記下球員的位置
+    let lockEnd = null, inLock = false;
+    const snapPlayers = () => show.roster.members('baseball.players').map(m => ({ ...m.pos }));
+    try {
+      await run(evs, { onMark: e => {
+        if (inLock && !lockEnd) lockEnd = snapPlayers();
+        inLock = e.kind === 'fx' && e.lock === 'baseball';
+        marks.push([e, show.elapsed]);
+      } });
+    } finally { show.update = update; }
+    if (inLock && !lockEnd) lockEnd = snapPlayers();
     const k = marks.findIndex(([e]) => isGrow(n)(e)), secs = (marks[k + 1]?.[1] ?? show.elapsed) - marks[k][1];
     assert.ok(secs <= SCRIPT_MAX + 0.8 + 0.4, `Lv${n} live ${secs.toFixed(1)} s (script ≤ 4.5 plus its pan / gap)`);
     assert.ok(trail.length && Math.hypot(trail[0].x - prev.x, trail[0].z - prev.z) < 0.3, 'the cloud starts at the previous stop');
@@ -291,11 +301,12 @@ for (const [name, order, n, need] of [
     if (reacts.includes('boba')) assert.ok(show.stage.partObject('typhoon.scooter')?.visible, 'delivery scooter out in the rain');
     if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
     if (reacts.includes('domeFlood')) {
-      // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳
+      // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳。
+      // 撲空拿掉之後（R10）回合在淹水之後就結束了：量的是鎖住的反應那一拍（turn.js lockBeats：平移、閃白、等名冊走到新站位）演完那一刻
       assert.ok(show.stage.partObject('baseball.field'), 'the field is a pool');
-      const roof = show.roster.members('baseball.players'), dome = anchorWorld('baseball'), top = dome.y + baseball.DOME_H.a;
+      const roof = lockEnd ?? [], dome = anchorWorld('baseball'), top = dome.y + baseball.DOME_H.a;
       assert.equal(roof.length, 2);
-      assert.ok(roof.every(m => m.pos.y >= top - 0.05 && Math.hypot(m.pos.x - dome.x, m.pos.z - dome.z) < 0.4), `players up on the roof by the end of the turn (${roof.map(m => `${m.pos.x.toFixed(2)},${m.pos.y.toFixed(2)},${m.pos.z.toFixed(2)}`)})`);
+      assert.ok(roof.every(p => p.y >= top - 0.05 && Math.hypot(p.x - dome.x, p.z - dome.z) < 0.4), `players up on the roof by the end of the lock beat (${roof.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`)})`);
     }
     assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} silent relocations`);
     assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} frame jumps`);

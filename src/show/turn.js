@@ -42,6 +42,10 @@ export const CAUSE_HELPER_KEY = id => `${id}.main`;
 // 起因段（mark 的 info.cause 到同一個事件下一個 mark：空拍之後平移到幫手 FOCUS_BEAT、閃白 CAUSE_FLASH、平移回目標 FOCUS_BEAT）的上限，
 // pace 與測試單獨量（扣掉空拍）；不算進那一級劇本與 ◆ 的秒數
 export const CAUSE_CAP = 2.0;
+// 鎖住的反應（協調者裁決 2026-10-31）：引擎 fx 事件帶 lock（大停電鎖燈泡、捷運站淹水鎖代幣、大巨蛋淹水鎖棒球）是玩家要看到的事——
+// 平移到被鎖的那一格、閃白套用、等那個物品的名冊走到新站位（arriving 都清掉；球員爬上巨蛋屋頂），最多 LOCK_HOLD 秒；不冒字
+// （鎖不是升降級，標題卡會講災難）。帶 delta 的（大停電的鮮奶 −1）鏡頭照舊在鮮奶格、等完再演鮮奶的 LEVEL DOWN（那是真的降級，字要在畫面裡）
+export const LOCK_HOLD = 2.0;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['warning', 'missile', 'epilogue']);
 
@@ -70,8 +74,13 @@ const opensOnFocus = b => b?.kind === 'focus' || (b?.kind === 'together' && !!b.
 // 預設劇本（§6.6）。大停電（颱風放下的反應）：電一斷整區同時暗——零件一起閃，不一盞一盞錯開
 //   （選擇帶動升級：燈泡 ≤4 也會停電，Lv4 有九盞路燈，錯開要 2.3 s）
 const applyOf = e => B.apply(e, e.flag?.name === 'blackout' ? { stagger: 0 } : {});
+// 鎖住的反應（見 LOCK_HOLD）：閃白套用、等被鎖那個物品的名冊走到新站位
+const lockArrived = id => c => c.roster.keys().filter(k => k.startsWith(`${id}.`)).flatMap(k => c.roster.members(k))
+  .every(m => m.hidden || m.gone || m.mode !== 'home' || !m.arriving);
+export const lockBeats = e => [applyOf(e), B.until(lockArrived(e.lock), LOCK_HOLD)];
 function defaults(e) {
   if (e.kind === 'placed') return [B.apply(e)];
+  if (e.kind === 'fx' && e.lock) return e.delta && e.delta.to < e.delta.from ? [...lockBeats(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })] : lockBeats(e);
   if (e.kind === 'grow') return [B.apply(e), B.levelUp(e.item)];
   if (e.delta && e.delta.to > e.delta.from) return [applyOf(e), B.levelUp(e.delta.target)];
   if (e.delta && e.delta.to < e.delta.from) return [applyOf(e), B.levelUp(e.delta.target, { down: true, text: 'LEVEL DOWN' })];
@@ -193,7 +202,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const lead = [];
     let cause = null;   // 起因閃一下插了的話是幫手（mark 的 info.cause）
     if (!finale && e.kind !== 'wait' && shows(beats)) {
-      const item = e.kind === 'settle' ? 'tower' : e.item ?? e.delta?.target, cell = cellOf(item);
+      // 鎖住的反應（不帶 delta）平移到被鎖的那一格（e.item 是造成它的颱風）
+      const item = e.kind === 'settle' ? 'tower' : e.kind === 'fx' && e.lock && !e.delta ? e.lock : e.item ?? e.delta?.target, cell = cellOf(item);
       const helper = causeOf(e, i, s), hc = helper ? cellOf(helper) : null;
       let pan = null;        // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
       let toHelper = null;   // 起因：平移到幫手那一格的拍（null = 鏡頭已經在那一格）

@@ -447,3 +447,10 @@ test('a lock fx pans to the locked item, applies with a blink and holds until it
   const rats = { kind: 'fx', item: 'typhoon', cause: 'typhoon', flag: { name: 'domeRats', value: true } };
   assert.deepEqual(between(buildTurn([rats], base([tower]), fakeCtx()), 0).map(b => [b.kind, b.blink]), [['apply', false], ['apply', true]]);
 });
+// 第一批審稿 Minor（修正批次 2）：大停電時鮮奶還是 Lv1（delta 1 → 1，沒真的掉級、沒有 LEVEL DOWN）——鏡頭照鎖住的反應平移到被鎖的燈泡那格
+test('a blackout that cannot lower milk (Lv1, delta 1 → 1) pans to the locked bulb like any lock fx, with no LEVEL DOWN', () => {
+  const blackout = { kind: 'fx', item: 'milk', cause: 'typhoon', lock: 'bulb', flag: { name: 'blackout', value: true }, delta: { target: 'milk', from: 1, to: 1 } };
+  const seg = between(buildTurn([blackout], base([tower]), fakeCtx()), 0);
+  assert.deepEqual(seg.map(b => b.kind), ['focus', 'apply', 'hold', 'apply']);
+  assert.deepEqual(seg[0].target, cellOf('bulb'), 'pans to the locked bulb, not the milk cell');
+});

@@ -202,8 +202,10 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const lead = [];
     let cause = null;   // 起因閃一下插了的話是幫手（mark 的 info.cause）
     if (!finale && e.kind !== 'wait' && shows(beats)) {
-      // 鎖住的反應（不帶 delta）平移到被鎖的那一格（e.item 是造成它的颱風）
-      const item = e.kind === 'settle' ? 'tower' : e.kind === 'fx' && e.lock && !e.delta ? e.lock : e.item ?? e.delta?.target, cell = cellOf(item);
+      // 鎖住的反應平移到被鎖的那一格（e.item 是造成它的颱風）——除非同一條真的降了級（大停電鮮奶 −1：鏡頭留在鮮奶格演 LEVEL DOWN）；
+      // 鮮奶 Lv1 被打（delta 1 → 1，沒真的掉級、沒有 LEVEL DOWN）照樣平移到燈泡那格（第一批審稿 Minor）
+      const lockPan = e.kind === 'fx' && e.lock && !(e.delta && e.delta.to < e.delta.from);
+      const item = e.kind === 'settle' ? 'tower' : lockPan ? e.lock : e.item ?? e.delta?.target, cell = cellOf(item);
       const helper = causeOf(e, i, s), hc = helper ? cellOf(helper) : null;
       let pan = null;        // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
       let toHelper = null;   // 起因：平移到幫手那一格的拍（null = 鏡頭已經在那一格）

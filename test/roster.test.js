@@ -919,6 +919,30 @@ test('a daily member standing where a new footprint appears is relocated outside
     for (let i = 0; i < 60; i++) { roster.update(1 / 30, t); t += 1 / 30; assert.ok(!nav.inFootprint(m.pos.x, m.pos.z), `frame ${i} back inside`); }
   }
 });
+// 第一批審稿 Minor（修正批次 2）：本來就在外擴 footprint 裡的人（上一幀就在裡面，例如躲在門裡時建築長到身上、露出來）不閃白換位，
+// 照 caught 用走路速度（WALK_SPEED.people）走出來；一走到外面就回到這一趟原本的散步速度（WANDER_SPEED）
+test('a member already inside a footprint walks out at walking speed (no blink), then strolls on at the wander speed', async () => {
+  const { WALK_SPEED, WANDER_SPEED } = await import('../src/show/roster.js');
+  const { roster, nav, blink } = setup(); roster.declare('k', kids(1)); roster.snap(); const [m] = roster.members('k');
+  let t = 0; for (let i = 0; i < 600 && !(m.walking && m.trip?.left > 0.8); i++) { roster.update(1 / 30, t); t += 1 / 30; }
+  assert.ok(m.walking && Math.abs(m.trip.speed - WANDER_SPEED) < 1e-9, 'precondition: strolling at the wander speed');
+  roster.hide(m); nav.setFootprints([{ x: m.pos.x, z: m.pos.z, r: 0.6 }]);   // 藏著的時候建築長到身上（藏著的人不被換位）
+  roster.update(1 / 30, t); t += 1 / 30;
+  assert.ok(nav.inFootprint(m.pos.x, m.pos.z) && m.inside, 'precondition: inside since the last frame');
+  roster.show(m); blink.log.length = 0;
+  const steps = []; let prev = { ...m.pos }, inside = true, out = null;
+  for (let i = 0; i < 90; i++) {
+    roster.update(1 / 30, t); t += 1 / 30;
+    const d = Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z) * 30; prev = { ...m.pos };
+    if (inside && !nav.inFootprint(m.pos.x, m.pos.z)) { inside = false; out = i; }
+    if (m.walking) steps.push([inside, d]);
+  }
+  assert.ok(out !== null, 'walks out');
+  assert.deepEqual(blink.log.filter(([kind, o]) => kind === 'walker' && o === m.walker), [], 'no blink: walked, not relocated');
+  const inSpeed = steps.filter(([i]) => i).map(([, d]) => d), outSpeed = steps.filter(([i]) => !i).slice(2).map(([, d]) => d);
+  assert.ok(inSpeed.length && inSpeed.every(d => Math.abs(d - WALK_SPEED.people) < 0.05), `inside at walking speed (${inSpeed.map(d => d.toFixed(2))})`);
+  assert.ok(outSpeed.length && outSpeed.every(d => d < WANDER_SPEED + 0.05), `outside back to the stroll (${outSpeed.slice(0, 5).map(d => d.toFixed(2))})`);
+});
 // 被新建築蓋到才換位：本來就站在 footprint 裡的人（泳客站在泳池裡、球員在屋頂上：站位寫在 footprint 裡、不帶 rescue）、
 // 藏著的人、劇本手上的人，footprint 再變一次也不被換走
 test('only members newly covered by a footprint are relocated: authored spots inside a footprint, hidden and scripted members stay put', () => {

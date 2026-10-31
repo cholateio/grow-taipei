@@ -29,12 +29,13 @@ test('view: Lv1–2 the spinning storm ring sits next to 101 (typhoon anchor) wi
   assert.equal(v3['typhoon.rainbow'].parts.filter(p => p.kind === 'rail').length, 3);
   const park = landmarkWorld('park'); assert.ok(Math.hypot(v3['typhoon.park'].at.x - park.x, v3['typhoon.park'].at.z - park.z) < 1e-9);
 });
-// 外送機車（修正批次 2）：珍奶噴泉廣場以上（≥4）才接得了颱風天的外送——攤車、人龍、珍奶店（≤3）是被吹走
-test('delivery scooter rides in the rain at Lv1–2 only with boba ≥ 4 (the delivery), gone once it clears', () => {
+// 外送機車（修正批次 2）：珍奶離島分店以上（≥5）才接颱風天的外送——攤車、人龍、珍奶店（≤3）是被吹走，噴泉廣場（4）沒事。
+// 照規則颱風還在（1–2）時珍奶到不了 5，正常遊戲裡看不到機車（view 照規則留著）
+test('delivery scooter rides in the rain at Lv1–2 only with boba ≥ 5 (the delivery), gone once it clears', () => {
   for (const n of [1, 2]) {
     assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.scooter'], undefined);
-    for (const boba of [1, 2, 3]) assert.equal(typhoon.view(lv({ typhoon: n, boba }), {})['typhoon.scooter'], undefined, `boba ${boba}: no delivery`);
-    assert.equal(typhoon.view(lv({ typhoon: n, boba: 4 }), {})['typhoon.scooter'].kind, 'scooter');
+    for (const boba of [1, 2, 3, 4]) assert.equal(typhoon.view(lv({ typhoon: n, boba }), {})['typhoon.scooter'], undefined, `boba ${boba}: no delivery`);
+    assert.equal(typhoon.view(lv({ typhoon: n, boba: 5 }), {})['typhoon.scooter'].kind, 'scooter');
   }
   assert.equal(typhoon.view(lv({ typhoon: 3, boba: 5 }), {})['typhoon.scooter'], undefined);
 });
@@ -82,7 +83,7 @@ test('rain part: 240 instances, none cast shadows, drops fall', () => {
 test('cloud spins and scooter circles the centre cell', () => {
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders });
   const c = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.main']); c.update(0.5, 1); assert.notEqual(c.object.children[0].rotation.y, 0);
-  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 4 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
+  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 5 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
 // 雨的濃度跟著 app 的 weather.rain（app 每幀淡入淡出；修正批次 2 之後 Lv1–2 都是 1，放晴淡到 0）
@@ -118,7 +119,7 @@ test('view: Lv3 splits the rainbow into its own part (no cloud left); the cloud,
   assert.equal(v3['typhoon.rainbow'].footprint, false); assert.equal(v3['typhoon.rainbow'].parts.length, 3);
   assert.equal(Object.keys(v3)[0], 'typhoon.rainbow', 'rainbow first: LEVEL UP hangs on it');
   for (const n of [1, 2]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.rainbow'], undefined);
-  for (const n of [1, 2]) { const v = typhoon.view(lv({ typhoon: n, boba: 4 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
+  for (const n of [1, 2]) { const v = typhoon.view(lv({ typhoon: n, boba: 5 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
   assert.ok(typhoon.script?.placed && typhoon.script.grow[2] && typhoon.script.grow[3]); assert.equal(typhoon.script.grow[4], undefined);
   assert.equal(typhoon.script.stall, undefined, 'no stall: the typhoon never waits (no delay)');
   assert.equal(typhoon.script.fx, undefined, 'the island checks play as default fx beats (turn.js lockBeats), no reaction scripts');
@@ -268,14 +269,14 @@ test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards
   assert.ok(milk7 && milk7[1] > 4, `◆ milk 7 plays its whole script (${milk7?.[1].toFixed(1)} s)`);
   assert.ok(walking.size >= 2, `the kids walk to the arch (${walking.size})`);
 });
-// 放下那回合的檢查（§4.3，修正批次 2：全部在放下那回合）：捷運淹水（代幣 ≤3）、攤車被吹走（珍奶 ≤3）、大巨蛋淹水（棒球 ≤3）、鼠災、外送爆單（珍奶 ≥4）。
+// 放下那回合的檢查（§4.3，修正批次 2：全部在放下那回合）：捷運淹水（代幣 ≤3）、攤車被吹走（珍奶 ≤3）、大巨蛋淹水（棒球 ≤3）、鼠災。
+// 外送爆單（珍奶 ≥5）在正常遊戲裡到不了（珍奶 5 要颱風 ≥3），引擎測試用堆出來的狀態測
 // 放下劇本（躲雨）演完之後，鎖住的反應照 turn.js lockBeats 演：平移到被鎖的那一格、閃白套用、等那個物品的名冊走到新站位；
 // 量的是每一拍演完那一刻（下一個 mark）的樣子
 for (const [name, order, need] of [
   ['flood and the blown cart', ['token', 'boba', 'typhoon'], ['flooded', 'cartBlown']],
   ['dome flood', ['milk', 'baseball', 'chip', 'typhoon'], ['domeFlood']],   // 巨蛋（棒球 Lv3）蓋好了、還沒開賽
   ['dome rats', ['milk', 'token', 'baseball', 'rat', 'chip', 'typhoon'], ['domeRats']],
-  ['delivery', ['milk', 'chip', 'baseball', 'token', 'boba', 'bulb', 'typhoon'], ['boba']],   // 珍奶 ≥4 外送爆單（同回合也大停電）
 ]) {
   test(`placement turn with ${name} (real engine) live: the reactions play after the landing, the lock beats end with their rosters in place; invariants clean`, async () => {
     const { LOCK_HOLD } = await import('../src/show/turn.js');
@@ -311,7 +312,6 @@ for (const [name, order, need] of [
       assert.ok(m && Math.hypot(m.x - spot.x, m.z - spot.z) < 0.35, `the owner reached the shore by the end of the lock beat (${m?.x.toFixed(2)}, ${m?.z.toFixed(2)})`);
       assert.equal(show.stage.lv.boba, 1, 'the boba stays locked at its level');
     }
-    if (reacts.includes('boba')) assert.ok(show.stage.partObject('typhoon.scooter')?.visible, 'delivery scooter out in the rain');
     if (reacts.includes('domeRats')) assert.equal(show.roster.members('baseball.staff').length, 2);
     if (reacts.includes('domeFlood')) {
       // 修正輪 1（疑慮 4）：兩個球員在巨蛋淹水那一回合裡就爬上屋頂（y ≥ 巨蛋頂 − 0.05），一路上不瞬移、換位置不偷偷跳；
@@ -325,6 +325,9 @@ for (const [name, order, need] of [
     assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} silent relocations`);
     assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} frame jumps`);
     assert.deepEqual([...inv.walls].slice(0, 10), [], `${inv.walls.size} inside a building`);
+    // 回合演完（鎖住的反應也演完）：名冊每個人都回到日常、沒有人還藏著（playLanding 裡也查一次）
+    for (const kk of show.roster.keys()) for (const m of show.roster.members(kk)) assert.equal(m.mode, 'home', kk);
+    assert.ok(people(show).every(m => !m.hidden), 'nobody hidden at the end of the placement turn');
   });
 }
 // Lv2（修正批次 2：暴風圈還在、雲不移站）：正解第 7 回合——雲整回合停在颱風錨點、全島照樣大雨（storm 1），劇本 ≤ 3 s，沒有人躲

@@ -35,7 +35,7 @@ test('every up/jump condition references a level the other item can reach', () =
     }
   }
 });
-// 颱風四站（設計 2026-10-31 §4.3）：賴在巨蛋的 delay 拿掉；放下當回合不移（up[2] 要 age ≥ 1）
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：賴在巨蛋的 delay 拿掉；放下當回合不升（up[2] 要 age ≥ 1）
 test('jump and delay conditions compile; no item has a delay; typhoon up[2] is age ≥ 1', () => {
   const ctx = { max: Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max])) };
   for (const id of ORDER) for (const kind of ['jump', 'delay']) for (const n in ITEMS[id][kind] || {}) assert.doesNotThrow(() => compile(ITEMS[id][kind][n], ctx));
@@ -55,12 +55,12 @@ test('every action and stall condition compiles', () => {
   for (const id of ORDER) { all.push(...(ITEMS[id].fx || [])); for (const k in ITEMS[id].onLevel || {}) all.push(...ITEMS[id].onLevel[k]); all.push(...(ITEMS[id].stall || [])); }
   for (const a of all) { if (a.when) assert.doesNotThrow(() => compile(a.when, ctx)); if (a.branch) assert.doesNotThrow(() => compile(a.branch.when, ctx)); }
 });
-// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下那回合一次全部檢查（停電、淹水、巨蛋淹水、鼠災、颱風假、攤車被吹走、外送爆單），之後沒有反應
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下那回合一次全部檢查（停電、淹水、巨蛋淹水、鼠災、颱風假、攤車被吹走、外送爆單 ≥5），之後沒有反應
 test('typhoon checks all fire at placement: blackout, flood, dome flood, dome rats, day off, cart blown, delivery; no onLevel', () => {
   const t = ITEMS.typhoon;
   assert.deepEqual(t.fx.map(a => a.when), [
     { and: [pres('bulb'), maxL('bulb', 2)] }, { and: [pres('token'), maxL('token', 3)] }, { and: [pres('baseball'), maxL('baseball', 3)] },
-    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] }, minL('boba', 4),
+    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] }, minL('boba', 5),
   ]);
   assert.deepEqual(t.fx.map(a => a.lock ?? null), ['bulb', 'token', 'baseball', null, null, 'boba', null]);
   assert.deepEqual(t.fx.map(a => a.flag?.name ?? null), ['blackout', 'flooded', 'domeFlood', 'domeRats', null, 'cartBlown', null]);

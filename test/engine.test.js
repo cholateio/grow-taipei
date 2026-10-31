@@ -326,7 +326,7 @@ test('the typhoon stays Lv1 in its placement turn, then 2 (still storming), 3 (c
   assert.ok(!t6.state.flags.blackout && !t6.state.flags.flooded && !t6.state.flags.domeFlood, 'the solution is ready: bulb 3, token 5, baseball 5');
   assert.ok(!Object.keys(real.ITEMS.typhoon.onLevel ?? {}).length, 'no checks on the later levels');
 });
-// 所有檢查都在放下那回合（修正批次 2）：燈泡 ≤2 停電、代幣 ≤3 淹水、棒球 ≤3 巨蛋淹水、珍奶 ≤3 攤車被吹走、珍奶 ≥4 外送爆單
+// 所有檢查都在放下那回合（修正批次 2）：燈泡 ≤2 停電、代幣 ≤3 淹水、棒球 ≤3 巨蛋淹水、珍奶 ≤3 攤車被吹走、珍奶 ≥5 外送爆單
 const turnOf = (order, pred) => { let s = createState(real); for (let t = 0; t < order.length; t++) { const r = place(s, order[t], real); s = r.state; if (pred(r)) return { t: t + 1, r, s }; } return null; };
 test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, the bulb locked, milk −1, before any growth', () => {
   const hit = turnOf(['milk', 'baseball', 'token', 'bulb', 'typhoon'], r => r.state.flags.blackout);
@@ -354,7 +354,7 @@ test('placement check: the token ≤ 3 → flood (token locked), the baseball �
   const later = advance(r.state, real);
   assert.ok(!later.events.some(e => e.kind === 'fx' && e.cause === 'typhoon'), 'no checks after the placement turn');
 });
-test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag cartBlown); boba ≥ 4 → delivery +1 instead', () => {
+test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag cartBlown); boba 4 → nothing; boba ≥ 5 → delivery +1', () => {
   let s = createState(real);
   for (const id of ['milk', 'baseball', 'boba']) s = place(s, id, real).state;
   assert.ok(s.lv.boba >= 1 && s.lv.boba <= 3);
@@ -363,12 +363,14 @@ test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag 
   const blown = r.events.find(e => e.lock === 'boba');
   assert.equal(blown.cause, 'typhoon'); assert.equal(blown.story, '珍奶攤車被吹走了'); assert.ok(!blown.delta);
   assert.ok(!r.events.some(e => e.delta?.target === 'boba'), 'no delivery for a cart');
-  // 珍奶 ≥4（噴泉廣場）：外送爆單 +1，不吹走
-  const s0 = createState(real);
-  const shop = { ...s0, lv: { ...s0.lv, milk: 5, chip: 4, boba: 4 }, age: { ...s0.age, milk: 5, chip: 3, boba: 3 }, held: { ...s0.held, milk: 1, chip: 1, boba: 1 }, turn: 5 };
-  const d = place(shop, 'typhoon', real);
+  // 珍奶 4（噴泉廣場）：不吹走、也沒有外送；≥5（離島分店）才外送爆單 +1（協調者裁決：外送不能繞過旗艦店要等颱風過了的 up[5]）。
+  // 照規則珍奶 5 要颱風 ≥3，颱風放下那回合不會有 ≥5 的珍奶——這條在正常遊戲裡到不了，這裡用堆出來的狀態測
+  const s0 = createState(real), at = boba => ({ ...s0, lv: { ...s0.lv, milk: 5, chip: 4, token: 7, boba }, age: { ...s0.age, milk: 5, chip: 3, token: 3, boba: 3 }, held: { ...s0.held, milk: 1, chip: 1, token: 1, boba: 1 }, locked: { boba: false }, turn: 5 });
+  const four = place(at(4), 'typhoon', real);
+  assert.ok(!four.state.flags.cartBlown && !four.state.locked.boba); assert.ok(!four.events.some(e => e.kind === 'fx' && e.delta?.target === 'boba'), 'no delivery at 4');
+  const d = place(at(5), 'typhoon', real);
   assert.ok(!d.state.flags.cartBlown && !d.state.locked.boba);
-  assert.deepEqual(d.events.find(e => e.kind === 'fx' && e.delta?.target === 'boba').delta, { target: 'boba', from: 4, to: 5 });
+  assert.deepEqual(d.events.find(e => e.kind === 'fx' && e.delta?.target === 'boba').delta, { target: 'boba', from: 5, to: 6 });
 });
 // 降級當回合不升級（修正批次 2，使用者：「downgrade 當回合就不要 levelup 了」）：被負向 delta 打到的物品這回合不再長，也不列在等待裡
 test('an item knocked by a negative delta does not grow back that turn (blackout milk 6 → 5 stays 5), and grows the next turn', () => {

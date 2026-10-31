@@ -941,7 +941,9 @@ test('a member already inside a footprint walks out at walking speed (no blink),
   assert.deepEqual(blink.log.filter(([kind, o]) => kind === 'walker' && o === m.walker), [], 'no blink: walked, not relocated');
   const inSpeed = steps.filter(([i]) => i).map(([, d]) => d), outSpeed = steps.filter(([i]) => !i).slice(2).map(([, d]) => d);
   assert.ok(inSpeed.length && inSpeed.every(d => Math.abs(d - WALK_SPEED.people) < 0.05), `inside at walking speed (${inSpeed.map(d => d.toFixed(2))})`);
-  assert.ok(outSpeed.length && outSpeed.every(d => d < WANDER_SPEED + 0.05), `outside back to the stroll (${outSpeed.slice(0, 5).map(d => d.toFixed(2))})`);
+  // 下限：散步速度（不是停住、也不是還在用走路速度）；只有走到終點那一幀可以短一截
+  assert.ok(outSpeed.length > 10 && outSpeed.every(d => d < WANDER_SPEED + 0.05), `outside no faster than the stroll (${outSpeed.map(d => d.toFixed(2))})`);
+  assert.ok(outSpeed.filter(d => d < WANDER_SPEED - 0.05).length <= 1, `outside at the stroll speed, only the arrival step short (${outSpeed.map(d => d.toFixed(2))})`);
 });
 // 被新建築蓋到才換位：本來就站在 footprint 裡的人（泳客站在泳池裡、球員在屋頂上：站位寫在 footprint 裡、不帶 rescue）、
 // 藏著的人、劇本手上的人，footprint 再變一次也不被換走

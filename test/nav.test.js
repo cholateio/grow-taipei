@@ -1,7 +1,7 @@
 // test/nav.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createNav, STEP, SEPARATION } from '../src/show/nav.js';
+import { createNav, STEP, SEPARATION, SEP_PASSES } from '../src/show/nav.js';
 import { axialToWorld, cellTop, R, TOP, PLATEAU_TOP, edgeMidpoint, RING_R } from '../src/scene/hex.js';
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
 test('cell centres are walkable, water between cells is not, bridges are', () => {
@@ -350,4 +350,17 @@ test('separate: a walker on a hand-drawn path (cursor) is not pushed; the other 
   nav.separate([onPath, free], 1 / 30);
   assert.deepEqual(onPath.pos, { x: o.x, y: o.y, z: o.z }, 'the path walker stays on his line');
   assert.ok(Math.hypot(free.pos.x - o.x, free.pos.z - o.z) >= SEPARATION - 1e-9, 'the other one makes room');
+});
+// 計畫 11 任務 5（使用者 2026-10-31「走路互相重疊」）：三個走路的人擠成一串（中間那個在兩人之間、離兩邊都不到一個身寬）——
+// 只推一輪，推開 A、B 又把 B 推回 C 身上；每幀做 SEP_PASSES 輪，這一幀就全部分開（≥ 兩人半徑相加）
+test('separate: three walkers bunched in a row all end ≥ ra + rb apart after one frame with SEP_PASSES passes, but not with one pass', () => {
+  const nav = createNav(), o = c([1, 0]);
+  const row = () => [[0, 0], [0.15, 0.08], [0.3, 0]].map(([x, z]) => ({ pos: { x: o.x + x, y: o.y, z: o.z + z }, walking: true }));
+  const closest = ms => Math.min(...ms.flatMap((a, i) => ms.slice(i + 1).map(b => Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z))));
+  assert.equal(SEP_PASSES, 3);
+  const once = row(); nav.separate(once, 1 / 30, [], undefined, 1);
+  assert.ok(closest(once) < SEPARATION - 0.01, `one pass leaves an overlap (${closest(once).toFixed(4)})`);
+  const multi = row(); nav.separate(multi, 1 / 30);
+  assert.ok(closest(multi) >= SEPARATION - 1e-6, `SEP_PASSES passes resolve the row (${closest(multi).toFixed(4)})`);
+  assert.ok(multi.every(m => nav.walkable(m.pos.x, m.pos.z)), 'everyone still on walkable ground');
 });

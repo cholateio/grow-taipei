@@ -842,7 +842,11 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
 // Task 6a 修正輪（控制者裁決）：標 todo，門檻不放寬、不刪。回到 GROW 之後（當時的）兩條正解第 7 回合同時放老鼠（鼠窩 Lv2）、棒球長到 7（第 5 個觀眾進場）：
 // 觀眾從捷運站那座橋下來（落點約 (−0.6, 4.3)）直線走到門口西端 (−4.15, 4.73)，路線在 x −1.19 離窩心 (−1.19, 4.14) 只有 0.23 m，
 // 穿過老鼠散步圈（r 0.7）——量到 25 幀、最近 0.01 m（要 0.255）。錨點往南移 0.8 試過，改撞草皮觀眾與球員，已還原。留給延後的多輪人群那一輪（R10）
-test('live, the solution and the alien bad game: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '回到 GROW 後第 7 回合第 5 個觀眾從捷運站橋下來，路線離鼠窩心 0.23 m（25 幀、最近 0.01 m）——延後的多輪人群那一輪' }, async () => {
+// 計畫 11 任務 5（nav.separate 每幀 SEP_PASSES = 3 輪）：唯一正解這半已經不撞了；剩下的全是外星壞局第 7 回合鼠窩的 rat#1 走回窩
+// 擦過珍奶老闆（站在 (3.80, 5.05)），和下面 (c) 外星局那條是同一段：改前 5 幀、最近 0.02 m，改後 5 幀、最近 0.04 m。
+// 擋住的不是推擠輪數：separate 每幀都把老鼠推到 0.255，但牠讓路（sidestep）要讓的那一側（老闆和走路格南緣之間）走不到，
+// m.side 收回 0，下一幀游標又把牠放回穿過老闆的路線上（名冊每幀限速，推開的那一截只走得到一點點）——要在名冊的讓路／繞路那邊修
+test('live, the solution and the alien bad game: nest rats never overlap a person (≥ ra + rb, or only brush past while walking)', { todo: '外星局第 7 回合 rat#1 走回窩擦過珍奶老闆（多輪後 5 幀、最近 0.04 m；改前 5 幀、0.02 m）：讓路那側走不到、游標拉回路線——要修名冊的讓路' }, async () => {
   const { nestNear, nestFrames } = await livePlay();
   assert.ok(nestFrames > 300, `${nestFrames} nest-rat–person frames`);
   assert.deepEqual([...nestNear].slice(0, 20), [], `${nestNear.size} frames too close`);
@@ -851,7 +855,9 @@ test('live, the solution and the alien bad game: nest rats never overlap a perso
 // 修正批次 2：外星壞局換成列舉裡第一條以「變異鼠稱王」為標題的放法（milk,chip,bulb,token,baseball,boba,rat,typhoon）之後，
 // 第 7 回合老鼠從珍奶店走回窩，路線貼著店門口的人龍（z 5.19）和走路格南緣之間的縫走（離人龍 0.10–0.19 m，要 0.255），
 // 推開又被拉回路線上（11 幀）——HEAD（5f321be）用同一個放法一樣是 11 幀，不是這批改的；門檻不放寬、不刪，外星局那半標 todo，
-// 留給延後的多輪人群那一輪（協調者可改判）。正解那半照舊嚴格
+// 留給延後的多輪人群那一輪（協調者可改判）。正解那半照舊嚴格。
+// 計畫 11 任務 5 多輪之後量：改前 5 幀、最近 0.02 m（rat#1 對珍奶老闆，同上面鼠窩那條），改後 5 幀、最近 0.04 m——多輪推擠救不了：
+// 每幀 separate 都推到 0.255，是名冊讓路那一側（老闆與走路格南緣之間）走不到、m.side 收回 0、游標把牠拉回穿過老闆的路線
 const ALIEN_LABEL = 'milk>chip>bulb>token>baseball>boba>rat>typhoon';
 test('live, the solution: a walking rat never runs through a standing person', async () => {
   const { passStand, passFrames } = await livePlay();
@@ -859,13 +865,16 @@ test('live, the solution: a walking rat never runs through a standing person', a
   const mine = [...passStand].filter(x => !x.startsWith(ALIEN_LABEL));
   assert.deepEqual(mine.slice(0, 20), [], `${mine.length} frames too close`);
 });
-test('live, the alien bad game: a walking rat never runs through a standing person', { todo: '修正批次 2：外星局第 7 回合老鼠走回窩貼著珍奶人龍與走路格南緣的縫（11 幀、最近 0.05 m；HEAD 同一放法也是 11 幀）——延後的多輪人群那一輪' }, async () => {
+test('live, the alien bad game: a walking rat never runs through a standing person', { todo: '外星局第 7 回合 rat#1 走回窩擦過珍奶老闆（多輪後 5 幀、最近 0.04 m；改前 5 幀、0.02 m）：讓路那側走不到、游標拉回路線——要修名冊的讓路' }, async () => {
   const { passStand } = await livePlay();
   const alien = [...passStand].filter(x => x.startsWith(ALIEN_LABEL));
   assert.deepEqual(alien.slice(0, 20), [], `${alien.length} frames too close`);
 });
 // (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久——另案，先標 todo
-test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與中心格島民擦身，留待之後處理' }, async () => {
+// 計畫 11 任務 5 多輪：改前 24 幀、最近 0.04 m，改後 16 幀、最近 0.07 m（對島民、偵防師；第 9 回合）。剩下的是兩個都在走的人斜著交會：
+// separate 這一幀推開了，下一幀位置又從游標＋m.side 算（m.side 夾在 YIELD_CLEAR、照走路速度收回），十隻老鼠加島民擠在 101 四周，
+// 推開的那一截收回來又貼上——要在名冊的讓路（兩個都在走的人互相讓）那邊修，不是推擠輪數
+test('live, the solution: the cyber robot-rat army round 101 never overlaps an islander', { todo: '機器鼠軍團與島民、偵防師擦身（多輪後 16 幀、最近 0.07 m；改前 24 幀、0.04 m）：游標＋m.side 下一幀又拉回來——要修名冊的讓路' }, async () => {
   const { armyNear } = await livePlay();
   assert.deepEqual([...armyNear].slice(0, 20), [], `${armyNear.size} frames too close`);
 });

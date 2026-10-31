@@ -33,6 +33,9 @@ const ARCH = 0.08, DECK = 0.05, PLANK = 1.08 / 18, DENSE = 0.05, STEP_Y = 0.03; 
 const NEAR_STEP = 0.04, NEAR_MAX = 0.6, NEAR_DIRS = 32, ESCAPE_MAX = 1.6;
 const ROUND = [0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5];   // separate：推離站著的人時試的方向（相對直直退開，rad）
 const SQ3 = Math.sqrt(3), BRIDGE_TUCK = 0.3, RING_GROW = 0.3, RING_TRIES = 5, SLOT_SAMPLES = 72, WANDER_TRIES = 12, STAND_PASSES = 24;
+// separate 每幀最多幾輪、一輪裡沒人動超過多少就停（計畫 11 任務 5）
+export const SEP_PASSES = 3;
+const SEP_STILL = 1e-4;
 
 // 橋 = 兩格之間的中心線段（和 island.js 的 addBridge 同一組端點）
 const BRIDGES = adjacentPairs(MAIN_CELLS).map(([A, B]) => {
@@ -352,7 +355,11 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
   //   沿手畫折線走的人（m.cursor）不推（同兩兩互推）；keep(w, s, need) 回 true 的也不推——名冊用它放過「站位就在這個人旁邊」
   //   的人（第二輪審稿：站位離站好的人不到 ra + rb 時每幀被推開整段、走不到站位，在原地空走；讓他走到、站定後由 separateStanding 錯開）。
   //   一次處理一個站著的人：被一個人推開後又落進另一個人的範圍，就再推一次（不保證同時離開所有人，下一幀再修）
-  function separate(members, _dt, standing = [], keep = () => false) {
+  // 多輪（計畫 11 任務 5，使用者 2026-10-31「走路互相重疊」）：上面整輪（走路對站著、走路對走路）每幀最多做 passes 輪（預設 SEP_PASSES）——
+  //   三個人擠成一串時，推開 A、B 又把 B 推回 C 身上，只做一輪就留著重疊到下一幀（下一幀游標又拉回來）。
+  //   一輪裡沒人移動超過 SEP_STILL 就停。規則照舊（cursor 不推、can() 不推進牆／水、keep 放過的照樣放過）；
+  //   不另外限每幀推多少：名冊在 separate 之後本來就把每個人這一幀的總位移限在走路速度 × dt（不瞬移）
+  function separate(members, _dt, standing = [], keep = () => false, passes = SEP_PASSES) {
     const walkers = members.filter(m => m.walking === true);
     const can = (p, x, z) => walkable(x, z) || (!walkable(p.x, p.z) && !(padded(x, z) && !padded(p.x, p.z)));
     const put = (p, x, z) => { p.x = x; p.z = z; if (walkable(x, z)) p.y = groundY(x, z); };
@@ -364,23 +371,27 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
         if (can(p, x, z)) { put(p, x, z); return; }
       }
     };
-    for (const w of walkers) for (const s of standing) {
-      if (s === w || s.walking || w.cursor) continue;
-      const need = apart(w, s);
-      if (Math.hypot(w.pos.x - s.pos.x, w.pos.z - s.pos.z) >= need || keep(w, s, need)) continue;
-      stepOff(w, s, need);
-    }
-    for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
-      const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
-      if (d >= need) continue;
-      // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）不推：另一個人自己退開整段（第二輪：偵防師和通勤的工程師在橋上擦身）
-      if (!!walkers[i].cursor !== !!walkers[j].cursor) { const [w, r] = walkers[i].cursor ? [walkers[j], walkers[i]] : [walkers[i], walkers[j]]; stepOff(w, r, need); continue; }
-      const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
-      const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
-      const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
-      if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
-      else if (okP) put(p, ...(can(p, ...at(p, -1, 2)) ? at(p, -1, 2) : at(p, -1, 1)));
-      else if (okQ) put(q, ...(can(q, ...at(q, 1, 2)) ? at(q, 1, 2) : at(q, 1, 1)));
+    for (let pass = 0; pass < passes; pass++) {
+      const before = walkers.map(m => [m.pos.x, m.pos.z]);
+      for (const w of walkers) for (const s of standing) {
+        if (s === w || s.walking || w.cursor) continue;
+        const need = apart(w, s);
+        if (Math.hypot(w.pos.x - s.pos.x, w.pos.z - s.pos.z) >= need || keep(w, s, need)) continue;
+        stepOff(w, s, need);
+      }
+      for (let i = 0; i < walkers.length; i++) for (let j = i + 1; j < walkers.length; j++) {
+        const p = walkers[i].pos, q = walkers[j].pos, dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz), need = apart(walkers[i], walkers[j]);
+        if (d >= need) continue;
+        // 沿手畫折線走的人（m.cursor：下一幀位置又從折線算，推了也白推）不推：另一個人自己退開整段（第二輪：偵防師和通勤的工程師在橋上擦身）
+        if (!!walkers[i].cursor !== !!walkers[j].cursor) { const [w, r] = walkers[i].cursor ? [walkers[j], walkers[i]] : [walkers[i], walkers[j]]; stepOff(w, r, need); continue; }
+        const ux = d ? dx / d : 1, uz = d ? dz / d : 0, push = (need - d) / 2;
+        const at = (r, sgn, k) => [r.x + sgn * ux * push * k, r.z + sgn * uz * push * k];
+        const okP = can(p, ...at(p, -1, 1)), okQ = can(q, ...at(q, 1, 1));
+        if (okP && okQ) { put(p, ...at(p, -1, 1)); put(q, ...at(q, 1, 1)); }
+        else if (okP) put(p, ...(can(p, ...at(p, -1, 2)) ? at(p, -1, 2) : at(p, -1, 1)));
+        else if (okQ) put(q, ...(can(q, ...at(q, 1, 2)) ? at(q, 1, 2) : at(q, 1, 1)));
+      }
+      if (walkers.every((m, i) => Math.hypot(m.pos.x - before[i][0], m.pos.z - before[i][1]) <= SEP_STILL)) break;
     }
   }
 

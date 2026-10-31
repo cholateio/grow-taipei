@@ -4,7 +4,7 @@
 // 最終章（選擇帶動升級 2026-10-28，設計 §4；取代計畫 5 的倒數三回合）：第 8 個放完後全島再長 CLOSING_TURNS（1）輪，
 // 照一般回合演（沒有倒數字、沒有蒙太奇）；之後遊戲層把結局算好（endings.resolve），合成終局回合的事件
 // （飛彈警告、飛彈、真結局再接尾聲）交給演出層演（finale: true），
-// 再停 TITLE_HOLD 秒（不能跳過）才出標題卡（onFinished）。合成事件帶 flag：舞台折進 stage.flags（alarm／missile／epilogue），
+// 再停 TITLE_HOLD 秒（不能跳過）才算結束（onFinished；標題卡 2026-11-01 拿掉了，畫面就是結局）。合成事件帶 flag：舞台折進 stage.flags（alarm／missile／epilogue），
 // 引擎狀態不碰（state 只有引擎自己的回合）。
 import { ENDINGS } from './rules/endings.js';
 
@@ -17,7 +17,7 @@ export function finaleEvents(ending) {
   if (ENDINGS[ending.id].kind === 'true') out.push({ kind: 'epilogue', ending: ending.id, flag: { name: 'epilogue', value: ending.id } });
   return out;
 }
-export const TITLE_HOLD = 2;   // 標題卡前停幾秒（設計 §7：不能跳過；reduced-motion 0 秒，show.hold 管）
+export const TITLE_HOLD = 2;   // 終局演完再停幾秒才算結束（設計 §7：不能跳過；reduced-motion 0 秒，show.hold 管）
 
 export function createGame({ spec, engine, endings, ui, show, onFinished, onLevels = () => {} }) {
   // generation：每次 reset 加一。舊回合結束後看到世代不同就什麼都不做（RESET 隨時可按，§4.1）
@@ -48,7 +48,7 @@ export function createGame({ spec, engine, endings, ui, show, onFinished, onLeve
         if (!current()) return false;
       }
       // 終局回合（警告＋飛彈＋尾聲；不是引擎回合：沒有 settle、不寫 Lv、不呼叫 onLevels——全島效果由回合末的 world 拍照舞台旗標瞄準，
-      // 用引擎旗標再對一次會蓋掉飛彈／尾聲的效果）→ 停 TITLE_HOLD 秒 → 標題卡。RESET 隨時可按：世代不同就什麼都不做
+      // 用引擎旗標再對一次會蓋掉飛彈／尾聲的效果）→ 停 TITLE_HOLD 秒 → 結束。RESET 隨時可按：世代不同就什麼都不做
       const ending = endings.resolve(state, spec);
       ui.setBusy(true);
       try {

@@ -19,7 +19,7 @@ import * as engine from './rules/engine.js';
 import * as endings from './rules/endings.js';
 import { ICONS } from './ui/icons.js';
 import { createSlots } from './ui/slots.js';
-import { showHowTo, showEndCard, createTopBar } from './ui/cards.js';
+import { showHowTo, createTopBar } from './ui/cards.js';
 import { storageGet, storageSet } from './ui/format.js';
 import { createShow } from './show/index.js';
 import * as landmarks from './actors/landmarks.js';
@@ -113,12 +113,10 @@ export async function start({ params, loading }) {
     spec, engine, endings, show,
     ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
-    // 標題卡（設計 §7）：不再硬切夜晚——畫面照終局回合演完留下的狀態（遊戲層已經停過 TITLE_HOLD 秒）
-    onFinished: (ending, state) => {
-      showEndCard(uiRoot, { title: ending.title, line: endings.ENDINGS[ending.id].line, onRestart: restart });
-    },
+    // 結局：沒有標題卡（使用者 2026-11-01：直接用畫面呈現，不用文字描述）——畫面停在終局回合演完的狀態，玩家自己看；重玩按頂欄 RESET
+    onFinished: () => {},
   });
-  function restart() { uiRoot.querySelector('.card.end')?.remove(); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
+  function restart() { game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });

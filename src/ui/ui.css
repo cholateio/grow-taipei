@@ -41,11 +41,6 @@ button.primary:hover { background: #3a3333; }
 .card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }
 .card .line { margin: 0 0 14px; }
 /* 結局橫幅：貼在物品列上方，島還看得到 */
-.card.end { top: auto; bottom: 122px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); display: flex; align-items: center; justify-content: space-between; gap: 18px; text-align: left; padding: 14px 22px; }
-.card.end h2 { margin: 2px 0 4px; font-size: 22px; }
-.card.end .line { margin: 0; font-size: 14px; }
-.card.end button { flex: none; }
-@media (max-width: 640px) { .card.end { bottom: 196px; flex-direction: column; align-items: stretch; text-align: center; } }
 
 /* 表演層（CSS2D 標籤）：外層只負責被 CSS2DRenderer 用 inline transform 定位，不能有 transform 動畫；動畫一律放內層 span */
 /* GROW 風格的頭頂泡泡：符號或圖框；字級跟視窗高度走（§13.5：字 2vh、圖框 3vh，各有上下限） */

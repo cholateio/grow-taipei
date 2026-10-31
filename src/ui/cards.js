@@ -15,15 +15,6 @@ export function showHowTo(root, { onClose }) {
   return el;
 }
 
-// 結局卡是物品列上方的一條橫幅，不蓋住島：玩家要看得到結局後的場景。等級已經在物品列上，不重複列。
-export function showEndCard(root, { title, line, onRestart }) {
-  const el = card(root, 'end', `
-    <div class="text"><p class="eyebrow">THE END</p><h2>${title}</h2><p class="line">${line}</p></div>
-    <button type="button" class="primary">再玩一次</button>`);
-  el.querySelector('button').addEventListener('click', () => { el.remove(); onRestart?.(); });
-  return el;
-}
-
 export function createTopBar(root, { onReset, onHowTo }) {
   const el = document.createElement('div'); el.className = 'topbar';
   el.innerHTML = `<div class="brand"><b>GROW<br>TAIPEI</b><span>台北成長</span></div>

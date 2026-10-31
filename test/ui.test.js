@@ -14,13 +14,10 @@ test('storage helpers never throw', () => {
   assert.equal(storageSet('k', 'v', ok), true); assert.equal(storageGet('k', ok), 'v');
 });
 import { installFakeDom } from './helpers/fakedom.js';
-test('the end card is a banner: title, line and restart, no level list (the item bar already shows levels)', async () => {
-  installFakeDom(); const { showEndCard } = await import('../src/ui/cards.js');
-  const root = document.createElement('div'); let restarted = false;
-  const el = showEndCard(root, { title: '大停電', line: '全島黑掉', levels: [{ name: '鮮奶', lv: 4, max: 4 }], onRestart: () => { restarted = true; } });
-  assert.equal(el.className, 'card end'); assert.match(el.textContent, /大停電/); assert.match(el.textContent, /全島黑掉/);
-  assert.doesNotMatch(el.textContent, /Lv\./); assert.equal(el.querySelector('.levels'), null);
-  el.querySelector('button').listeners.click(); assert.ok(restarted); assert.equal(root.children.length, 0);
+// 結局卡 2026-11-01 拿掉了（使用者：直接用畫面呈現就好，不用文字描述）：cards.js 只剩怎麼玩與頂欄；重玩按頂欄 RESET
+test('there is no end card any more: cards.js exports only the how-to card and the top bar', async () => {
+  installFakeDom(); const cards = await import('../src/ui/cards.js');
+  assert.deepEqual(Object.keys(cards).sort(), ['createTopBar', 'showHowTo']);
 });
 
 // 物品列只在回合結束靜靜寫 Lv.n（§9）：沒有飛入、跳動

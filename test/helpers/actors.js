@@ -1,6 +1,7 @@
 // 演員測試共用：零等級、把 view 攤成世界座標的點（檢查不出格用）
 import { axialToWorld, cellAt, worldToAxial } from '../../src/scene/hex.js';
-import { cellOf } from '../../src/actors/anchors.js';
+import { cellOf, anchorWorld, routeBetween } from '../../src/actors/anchors.js';
+import { offset } from '../../src/actors/palette.js';
 import { measurePath, locateOnPath } from '../../src/scene/path.js';
 export const zero = { milk: 0, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: 0, boba: 0, baseball: 0 };
 export const lv = extra => ({ ...zero, ...extra });
@@ -49,3 +50,11 @@ export function focusCell(beat, ctx) {
 }
 // 假 rig 記下的 focus 呼叫（從第 n0 筆起）換成格子；'home' 記成 'home'
 export const focusTrail = (log, n0 = 0) => log.slice(n0).filter(([k]) => k === 'focus' || k === 'home').map(([k, p]) => (k === 'home' ? 'home' : worldToAxial(p.x, p.z)));
+
+// 測 path 日常（開放折線、過拱橋、走到底折返、≥ 2 人錯開）用的手畫路線：原本晶片工程師的通勤路線（廠門 → 園區南緣 → 橋 → 101 腳下）。
+// 裁決 R23（2026-10-31）起工程師改在廠區散步（wander），遊戲裡已經沒有 n ≥ 2 的開放折線，名冊的 path 機制照樣留著、照樣測
+export const OPEN_ROUTE = (() => {
+  const AT = anchorWorld('chip'), TOWER = anchorWorld('tower'), door = offset(AT, -0.3, 1.25), west = offset(AT, -1.45, 1.25);
+  const r = routeBetween([1, 0], door, [0, 0], offset(TOWER, 0.95, 0.25));
+  return [r[0], { ...west, y: r[0].y }, ...r.slice(1)];
+})();

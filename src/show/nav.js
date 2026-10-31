@@ -304,7 +304,7 @@ export function createNav({ step = STEP, rnd = Math.random } = {}) {
     }
     return out.map(({ x, y, z }) => ({ x, y, z }));
   }
-  // 手畫的折線（工程師通勤、電工主路、routeBetween 接起來的路）貼地：走路格上（格內、橋面）的點 y 換成 groundY，
+  // 手畫的折線（電工主路、routeBetween 接起來的路）貼地：走路格上（格內、橋面）的點 y 換成 groundY，
   // 兩端都在走路格上的那一段過拱橋、上下階梯就補點（同 densify）。xz 不變（補的點都在原線段上，總長一樣）；
   // loop：最後一點接回第一點那一段也補（補在最後面）。走路格外的點（衛星島）照原樣
   function groundPath(path, { loop = false } = {}) {

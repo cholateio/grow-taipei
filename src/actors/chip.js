@@ -7,7 +7,7 @@
 // 海底電纜（零件 kind 'cable'，parts.js）歸晶片管：燈泡 Lv8 先鋪好（暗），晶片 Lv6 通電發光（控制者裁決：燈泡只點亮風車與燈塔）。
 // 老鼠 ≥2 且晶片 ≥3：其中一個工程師變成拿放大鏡的「鼠類偵防師」，跟著老鼠；老鼠坐上環狀線的車時在捷運站北側等牠們下車。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv9 6–10 秒、回全景定格。
-import { anchorWorld, routeBetween, frontOf } from './anchors.js';
+import { anchorWorld, frontOf } from './anchors.js';
 import { SATELLITES, axialToWorld, TOP, WATER_Y } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
 import { builders as milkBuilders } from './milk.js';
@@ -19,16 +19,19 @@ import { ratMode } from './rat.js';   // 只在函式裡用（唯一正解之後
 export const id = 'chip';
 export const labelY = 1.5;
 const AT = anchorWorld('chip'), TOWER = anchorWorld('tower');
-// 廠門外（工程師通勤的起點）：每一級的建築最南到 z +1.0，外擴 PAD 後 1.12；門口站在 1.25，不站進建築裡（§14.1）
-const DOOR = offset(AT, -0.3, 1.25), DOOR_WEST = offset(AT, -1.45, 1.25);   // DOOR_WEST：沿園區南緣往西走到這裡才轉去橋頭
+// 廠門外（工人放下工地時走到這裡）：每一級的建築最南到 z +1.0，外擴 PAD 後 1.12；門口站在 1.25，不站進建築裡（§14.1）
+const DOOR = offset(AT, -0.3, 1.25);
 // 蓋東西站的鏡頭側距離（§14）：工地的三角錐到 z +1.06、外擴 PAD 後 1.18，鏡頭方向（z 分量 0.96）1.3 才站得到外面
 export const FRONT_R = 1.3;
 const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地
-export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（通勤的終點、天線零件送到這裡）
+export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（天線零件送到這裡）
 // 入口（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來——廠房西北、上台地那座階梯旁
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
-// 偵防師等老鼠下車的地方：捷運站北側（不在散步客繞的西橋頭、不在工程師通勤的園區南緣）——老鼠坐在環狀線的車上時追不到，站在這裡等
+// 工程師散步的圈（裁決 R23）：圈心從錨點往鏡頭側（南）移 0.8、半徑 0.9——圈心放在錨點的話，Lv4 起總部和玻璃盒把圈裡蓋到只剩 12% 走得到，
+// 而且全在廠房後面的窄巷（鏡頭看不到）；移過來之後 Lv4–9 有 37% 走得到、其中 78% 在園區前緣那條走道上，整個圈都在晶片格裡
+export const ENGINEER_WALK = { at: offset(AT, 0, 0.8), r: 0.9 };
+// 偵防師等老鼠下車的地方：捷運站北側（不在散步客繞的西橋頭、不在工程師散步的園區）——老鼠坐在環狀線的車上時追不到，站在這裡等
 const WATCH = { ...offset(anchorWorld('token'), 0.3, -1.0), yaw: 0 };
 // 偵防師盯鼠窩的地方：窩在球場格巨蛋正東（2026-10-28 錄影修正：從東南角搬過來，離巨蛋門口的觀眾 ≥ 1.09），他站在隔壁捷運格裡、
 // 往捷運格那座橋的北側看著窩（選擇帶動升級：老鼠放下當回合就生窩，常常碰上大巨蛋 Lv8 坐新線來的觀眾——球場格已經 8 個人，
@@ -37,9 +40,6 @@ const WATCH = { ...offset(anchorWorld('token'), 0.3, -1.0), yaw: 0 };
 const NEST = anchorWorld('rat');
 export const NEST_WATCH = { ...offset(NEST, 1.8, -0.55), yaw: Math.atan2(-1.8, 0.55) };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
-// 工程師上下班：廠門 → 沿園區南緣往西 → 橋 → 101 腳下（開放路徑，走到底折返）
-const COMMUTE = routeBetween([1, 0], DOOR, [0, 0], FOOT);
-export const ENGINEER_ROUTE = [COMMUTE[0], { ...DOOR_WEST, y: COMMUTE[0].y }, ...COMMUTE.slice(1)];
 
 // ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
 export const MODELS = {
@@ -177,11 +177,11 @@ export function view(lv, flags = {}) {
   if (n >= 2) {
     // 穿外套的工程師：Lv2 一個——就是 Lv1 的工人（from 'chip.worker'：工人名冊同一刻拿掉，名冊把他原地換外套閃一下；
     //   使用者 2026-10-31「人數還是太多了……晶片廠工人直接變成光頭」，裁決 R23）；Lv3 起兩個（多的那個從入口走進來）。
-    // 走上下班路線（開放路徑、走到底折返）。
-    // 騎 YouBike 的四個 2026-10-30 拿掉了（計畫 9 §5、使用者「騎腳踏車人員可以拿掉，太擠了」）：四台走通勤路線在 101 腳下的死路擠成一坨，
-    //   改繞園區的環又找不到位子——草地上的環躲不開這條通勤路線和拜訪站位（visitSpot 的鏡頭側）
+    // 日常在廠區散步（ENGINEER_WALK：園區前緣那一側，見上）。以前走上下班路線（廠門 → 園區南緣 → 橋 → 101 腳下的開放折線、走到底折返），
+    //   兩個人在 4 公尺的直線上來回、每趟過橋一次——使用者 2026-10-31「晶片廠那邊的人一直在橋邊徘徊……在 101 和晶片廠間直線來回」，裁決 R23 拿掉。
+    // 騎 YouBike 的四個 2026-10-30 拿掉了（計畫 9 §5、使用者「騎腳踏車人員可以拿掉，太擠了」）
     const detective = lv.rat >= 2 && n >= 3, k = (n >= 3 ? 2 : 1) - (detective ? 1 : 0);
-    v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: 'coat', from: 'chip.worker', home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45, entry: ENGINEER_ENTRY } };
+    v['chip.engineers'] = { kind: 'roster', at, n: k, accessory: 'coat', from: 'chip.worker', home: { kind: 'wander', ...ENGINEER_WALK, entry: ENGINEER_ENTRY } };
     // 偵防師是從工程師裡轉過來的（原地閃白換放大鏡），日常改成跟著老鼠
     // 老鼠坐車（rat 的 'train' 模式）時改成在捷運站北側等（審稿第 2 輪：一直對著飛快的列車重新規劃只會在站旁的橋頭原地踏步、擋住散步客）
     // 老鼠還在窩裡（'nest'）時站在隔壁格邊上盯著窩，不跟進球場格
@@ -269,7 +269,7 @@ export const script = {
     },
     // ★ 矽盾天線（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
     //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 天線在塔頂閃白 → LEVEL UP 時轉回晶片格。
-    //   （工程師平常在廠門與 101 腳下之間通勤，離站前都很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
+    //   （工程師平常在廠區散步，離站前很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
     //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒。
     //   Task 6a（◆ ≤ 8 s：外星第 8 回合 6 → 7 合成一段 live 9.5 s——兩級的零件一起閃、工程師離 101 比較遠）：剛開過站不到半圈的車倒回來
     //   （同燈泡 Lv7 上車，back = π）、趕路的目標 4 → 2.5 s，鏡頭飛去站前的同時列車就趕來（together；列車最快也要 1 秒多才進站）

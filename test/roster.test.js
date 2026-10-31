@@ -8,6 +8,7 @@ import { createBlink } from '../src/show/blink.js';
 import { anchorWorld } from '../src/actors/anchors.js';
 import { mulberry32 } from '../src/scene/random.js';
 import { axialToWorld, cellTop, cellAt } from '../src/scene/hex.js';
+import { OPEN_ROUTE } from './helpers/actors.js';   // 開放折線（原工程師通勤路線，裁決 R23 起只留給測 path 機制）
 installFakeDom();
 const { createRoster, HEAD_Y, WANDER_SPEED } = await import('../src/show/roster.js');
 
@@ -410,10 +411,9 @@ test('home(m, { hurry }) walks a member back at walking speed even outside the f
 });
 // 審查（任務 4）：path 成員趕回家走到折線上離他最近的那一點接上去——不是剛走進來那種錯開點（i / n，可能在路的另一頭）
 test('home(m, { hurry }) on a path member rejoins the route at its nearest point, not the staggered entry point (n = 1 homes)', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
   const { roster } = setup();
-  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
-  const [m] = roster.members('eng'), a = ENGINEER_ROUTE.at(-2), b = ENGINEER_ROUTE.at(-1), k = 0.3 / Math.hypot(b.x - a.x, b.z - a.z);
+  roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 1, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  const [m] = roster.members('eng'), a = OPEN_ROUTE.at(-2), b = OPEN_ROUTE.at(-1), k = 0.3 / Math.hypot(b.x - a.x, b.z - a.z);
   const near = { x: b.x + (a.x - b.x) * k, y: b.y, z: b.z + (a.z - b.z) * k };   // 路的終點往回 0.3：最近的點就在腳下，錯開點（起點）在路的另一頭
   roster.claim(m); roster.setPose(m, { ...near, walking: false }); roster.setFocus([[5, 5]]);
   roster.home(m, { hurry: true });
@@ -426,10 +426,10 @@ test('home(m, { hurry }) on a path member rejoins the route at its nearest point
 // 三個工程師在通勤路線上擠在一起被叫去看東西、放回來，10 秒後沿線的「相位」兩兩 ≥ 0.25 × total（開放路徑走到底折返：
 // 相位 = 往前走時的 s、折返時的 2·total − s，在 2·total 的圈上量；沿線位置本身在折返時會短暫交會，live 測試量多久貼著）
 test('path homes with n ≥ 2: members released from a script walk back to their own staggered points, not the nearest one', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js'), { measurePath } = await import('../src/scene/path.js');
+  const { measurePath } = await import('../src/scene/path.js');
   const { roster, nav } = setup(), n = 3, dt = 1 / 30;
-  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
-  const P = nav.ground(ENGINEER_ROUTE, { loop: false }), lens = measurePath(P, false), T = lens.at(-1);
+  roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  const P = nav.ground(OPEN_ROUTE, { loop: false }), lens = measurePath(P, false), T = lens.at(-1);
   const sOf = p => { let best = [Infinity, 0]; for (let i = 0; i + 1 < P.length; i++) { const a = P[i], b = P[i + 1], dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2)), d = Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); if (d < best[0]) best = [d, lens[i] + t * (lens[i + 1] - lens[i])]; } return best[1]; };
   const ms = roster.members('eng'), a = P[0], b = P[1];
   ms.forEach((m, i) => { roster.claim(m); roster.setPose(m, { x: a.x + (b.x - a.x) * (0.1 + 0.03 * i), y: a.y, z: a.z + (b.z - a.z) * (0.1 + 0.03 * i), walking: false }); });
@@ -448,13 +448,13 @@ test('path homes with n ≥ 2: members released from a script walk back to their
 // 2026-10-31（唯一正解收尾，chip.test 工程師扎堆）：錯開點只錯開接上去的那一點——別人剛好同方向經過，兩人就同速貼著走一整局。
 // 接上開放折線時看同一條線上的人的相位（同上一個測試）：同方向 < 1 公尺就往回走；端點上兩個方向是同一個相位，先站著等別人走遠（≤ 3 秒）
 test('path homes with n ≥ 2: a member rejoining next to a same-direction walker turns back, and at an end of the line waits until the other is ≥ 1 m ahead', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js'), { createPathCursor } = await import('../src/scene/path.js');
+  const { createPathCursor } = await import('../src/scene/path.js');
   const dt = 1 / 30, phase = c => (c.dir > 0 ? c.s : 2 * c.total - c.s), circ = (u, v, T) => { const d = Math.abs(u - v) % (2 * T); return Math.min(d, 2 * T - d); };
   // 線的中段：m1 的錯開點（total / 2）旁邊 m0 正往前走過 → m1 往回走，之後兩人只交會、不並排
   {
     const { roster, nav } = setup();
-    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 2, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
-    const P = nav.ground(ENGINEER_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
+    roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 2, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+    const P = nav.ground(OPEN_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
     m0.cursor = createPathCursor(P, { loop: false, s: T / 2 - 0.05 });
     const mid = createPathCursor(P, { loop: false, s: T / 2 }).locate();
     roster.claim(m1); roster.setPose(m1, { x: mid.x, y: mid.y, z: mid.z, walking: false }); roster.home(m1);
@@ -468,8 +468,8 @@ test('path homes with n ≥ 2: a member rejoining next to a same-direction walke
   // 線的端點：m0 的錯開點是起點、m1 剛從起點走開 0.2 → m0 站著等，m1 走到相位 ≥ 1 公尺外才接上
   {
     const { roster, nav } = setup();
-    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 2, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
-    const P = nav.ground(ENGINEER_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
+    roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 2, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+    const P = nav.ground(OPEN_ROUTE, { loop: false }), [m0, m1] = roster.members('eng'), T = createPathCursor(P, { loop: false }).total;
     m1.cursor = createPathCursor(P, { loop: false, s: 0.2 });
     roster.claim(m0); roster.setPose(m0, { x: P[0].x, y: P[0].y, z: P[0].z, walking: false }); roster.home(m0);
     let joined = null;
@@ -502,10 +502,9 @@ test('loops keep a constant speed: the electrician, the lighthouse keeper and th
 // 審查：path 成員看的是整條路經過的格子（不是人現在站哪一格），焦點在路的一端也照樣沿線走，不會停在格子邊上擠成一團
 // final review：path 成員不再被一幀推到位（那就是瞬移），沿線來回交會時會短暫靠近；要的是不停在一起——沒有一對在 0.25 內超過 1 秒
 test('a path member whose route touches the focus cell keeps walking and never stays within 0.25 of another member; a route off the focus halts', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
   for (const cell of [[1, 0], [0, 0]]) {
     const { roster } = setup();
-    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+    roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 3, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
     for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
     roster.setFocus([cell]);
     const ms = roster.members('eng'), start = ms.map(m => ({ ...m.pos }));
@@ -522,7 +521,7 @@ test('a path member whose route touches the focus cell keeps walking and never s
   }
   // 整條路都不在焦點格：原地停下
   const { roster } = setup();
-  roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
+  roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 1, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } }); roster.snap();
   for (let i = 0; i < 60; i++) roster.update(1 / 30, i / 30);
   roster.setFocus([[-1, 1]]); roster.update(1 / 30, 2);
   const [m] = roster.members('eng'), p = { ...m.pos };
@@ -687,9 +686,8 @@ test('out-of-focus wanderers resting within 0.25 of someone walk apart smoothly,
 });
 // 焦點在別格時停下來的 path 成員跟站著的人擠在 0.25 內：沿路再走一點才停
 test('an out-of-focus path member halted within 0.25 of a standing member walks on along its route until clear', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
-  const { roster } = setup(), R0 = ENGINEER_ROUTE[0], spot = { x: R0.x + 0.08, y: R0.y, z: R0.z, yaw: 0 };
-  roster.declare('eng', { kind: 'roster', at: R0, n: 1, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
+  const { roster } = setup(), R0 = OPEN_ROUTE[0], spot = { x: R0.x + 0.08, y: R0.y, z: R0.z, yaw: 0 };
+  roster.declare('eng', { kind: 'roster', at: R0, n: 1, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } });
   roster.declare('s', { kind: 'roster', at: spot, n: 1, home: { kind: 'stand', spots: [spot] } }); roster.snap();
   roster.setFocus([[-1, 1]]);
   const [e] = roster.members('eng'), [s] = roster.members('s');
@@ -698,12 +696,11 @@ test('an out-of-focus path member halted within 0.25 of a standing member walks 
   assert.ok(gap(e.pos, s.pos) >= 0.25 - 1e-9, `apart (${gap(e.pos, s.pos).toFixed(3)})`); assert.equal(e.walking, false, 'then halts');
 });
 // 3. path 成員被一串人推的時候不閃：每幀不超過自己的走路速度 × dt（小人 1.6、老鼠 2.0）
-test('engineers and the rat pack on ENGINEER_ROUTE never move more than walking speed × dt in a frame', async () => {
-  const { ENGINEER_ROUTE } = await import('../src/actors/chip.js');
+test('engineers and the rat pack on OPEN_ROUTE never move more than walking speed × dt in a frame', async () => {
   for (const focus of [null, [[1, 0]]]) {
     const { roster } = setup();
-    roster.declare('eng', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 3, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.45 } });
-    roster.declare('rats', { kind: 'roster', at: ENGINEER_ROUTE[0], n: 5, model: { path: 'rat.glb', h: 0.2 }, home: { kind: 'path', path: ENGINEER_ROUTE, loop: false, speed: 0.6 } });
+    roster.declare('eng', { kind: 'roster', at: OPEN_ROUTE[0], n: 3, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.45 } });
+    roster.declare('rats', { kind: 'roster', at: OPEN_ROUTE[0], n: 5, model: { path: 'rat.glb', h: 0.2 }, home: { kind: 'path', path: OPEN_ROUTE, loop: false, speed: 0.6 } });
     roster.snap(); roster.setFocus(focus);
     const ms = [...roster.members('eng'), ...roster.members('rats')], step = maxStep(roster, ms, 30 * 30);
     assert.ok(step.ok, `focus ${JSON.stringify(focus)}: ${step.who?.key}#${step.who?.i} moved ${step.max.toFixed(3)} in one frame`);
@@ -844,7 +841,7 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
   assert.deepEqual(stuck, []);
   assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building`);
 });
-// 最終審查修正：手畫的折線（工程師通勤 ENGINEER_ROUTE＝routeBetween 接起來的路、老鼠、電工主路 ROAD）唯一正解每一級都在外擴 PAD 的 footprint 外
+// 最終審查修正：手畫的折線（當時的工程師通勤路線＝routeBetween 接起來的路、老鼠、電工主路 ROAD）唯一正解每一級都在外擴 PAD 的 footprint 外
 // （每 0.02 取樣，閉合的折線含最後接回起點那段）——沿折線走的人不檢查走路格，路本身要畫在建築外
 test('every hand-drawn path home stays outside every padded footprint at every level of the solution', async () => {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
@@ -873,8 +870,8 @@ test('every hand-drawn path home stays outside every padded footprint at every l
       }
     }
   }
-  // 唯一正解：老鼠 Lv4 分岔就是最終型態（軍團繞 101 是 wander），機器鼠不再走工程師的通勤路線——手畫路線剩電工與工程師
-  assert.deepEqual([...seen].sort(), ['bulb.electrician', 'chip.engineers']);
+  // 唯一正解：老鼠 Lv4 分岔就是最終型態（軍團繞 101 是 wander）；裁決 R23 起工程師在廠區散步（wander）——手畫路線只剩電工
+  assert.deepEqual([...seen].sort(), ['bulb.electrician']);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
 // 最終審查修正：沿手畫折線（工程師通勤、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子

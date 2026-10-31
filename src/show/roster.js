@@ -6,7 +6,8 @@
 //   path 沿手畫的折線來回（不走尋路；起點依 i / n 錯開；折線先 nav.ground 貼地，過拱橋不陷進橋面）、follow 跟在另一個名冊最近的成員旁邊。
 //   同一條折線上 ≥ 2 人的名冊：劇本放回來（home()，含颱風躲雨走出來的 hurry）不接回離他最近的那一點，而是跟剛走進來的人一樣用走路速度、照尋路
 //   走回自己錯開的那一點（total × i / n）再接著走——不然一起被叫去看東西的人放回來就接在同一段、同速一直貼著走（計畫 9，2026-10-30 錄影
-//   「卡成一坨」：工程師在通勤路線上走成一串、在 101 腳下一起折返）。n 1 的（電工、衛星島繞圈）照舊接回最近的那一點
+//   「卡成一坨」：當時沿同一條開放折線來回的幾個人走成一串、在折線的端點一起折返）。n 1 的（電工、衛星島繞圈）照舊接回最近的那一點。
+//   裁決 R23（2026-10-31）之後遊戲裡已經沒有 n ≥ 2 的開放折線（工程師改在廠區散步），這套（錯開點、pathDir 的車隊判斷）是通用機制，照留
 // 'script' 模式的成員日常不碰，由劇本 setPose；home() 或 snap() 才回日常。藏起來（hidden，躲進門裡）的人不過日常、停在門口。
 // （計畫 6 拜訪用的 'away' 模式與 leave 2026-10-29 跟拜訪一起拿掉了。）
 // 衛星島上的 wander（不在主島走路格上）改成繞 ringPath(at, r) 走；stand 帶 fidget（'wave'／'jump'）的小人站定時每 3 秒做一次 0.6 秒的小動作
@@ -118,7 +119,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   const pause = () => 0.5 + rnd();
   // path 日常的折線：手畫的點 y 是格面，過拱橋那一段直線內插會陷進橋面——先 nav.ground 貼地（補點、y 換成 groundY），
-  // 每條折線算一次（同一條 ROAD／ENGINEER_ROUTE 每幀都要問）；回 { path（貼地後）, loop, lens, total }
+  // 每條折線算一次（同一條 ROAD 每幀都要問）；回 { path（貼地後）, loop, lens, total }
   const grounded = new WeakMap();
   function pathOf(h) {
     const loop = !!h.loop, hit = grounded.get(h.path); if (hit?.loop === loop) return hit;
@@ -388,7 +389,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.mode = 'home'; m.trip = null; m.cursor = null; m.rest = 0; m.settled = null;   // wander：下一幀就挑新目標；stand：下一幀開始走回 spot
     const g = groups.get(m.key), spec = g && current(g);
     if (spec?.home?.kind === 'ride') setPose(m, { ...seat(spec.home, m.i, now), walking: false });
-    // 同一條折線上 ≥ 2 人（晶片工程師、機器鼠）：劇本放回來（含 hurry）一律走回自己錯開的那一點（i / n），同剛走進來的人（見檔頭）。
+    // 同一條折線上 ≥ 2 人：劇本放回來（含 hurry）一律走回自己錯開的那一點（i / n），同剛走進來的人（見檔頭）。
     // 躲在門裡的（颱風放下躲一下）不標：他不動，放下劇本的 comeOut 讓他露出來再 home（hurry）；跳過、下一回合開始的 showAll({ walk }) 是保險
     else if (spec?.home?.kind === 'path' && spec.n >= 2) { if (!m.hidden) m.arriving = true; }
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path（n 1）的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
@@ -628,7 +629,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     m.pathWait = 0; dir ||= pathDir(m, P, s, spec, true);
     m.arriving = false; m.cursor = createPathCursor(P.path, { loop: P.loop, s, dir }); m.offPath = Math.hypot(p.x - m.pos.x, p.z - m.pos.z) > ARRIVE;
   }
-  // 接上開放折線時往哪走（2026-10-31 唯一正解收尾，chip.test 工程師扎堆）：錯開點只錯開「接上去的那一點」，同一條線上別人正在走——
+  // 接上開放折線時往哪走（2026-10-31 唯一正解收尾，當時沿開放折線來回的兩個人扎堆）：錯開點只錯開「接上去的那一點」，同一條線上別人正在走——
   //   剛好有人同方向經過這一點，兩人就同速貼著走一整局（正解第 8 回合：晶片 7 放回來的那位走到 1/3 處，晶片 8 看完放回來的那位剛好接在他旁邊）。
   //   來回走的線把（s, 方向）看成長 2 × total 的一圈上的相位（往終點 = s、往起點 = 2 total − s）；同方向的相位離別人 < CONVOY_PHASE 就改往回走
   //   （只在會貼著走時才改，平常照舊往終點走）；兩個方向都 < CONVOY_PHASE（端點上兩個方向是同一個相位）回 0＝先等一下，

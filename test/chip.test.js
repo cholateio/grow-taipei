@@ -5,7 +5,7 @@ import * as chip from '../src/actors/chip.js';
 import * as tower from '../src/actors/tower.js';
 import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 import { cellAt, RING_R, SATELLITES, axialToWorld, WATER_Y, R, worldToAxial } from '../src/scene/hex.js';
-import { C } from '../src/actors/palette.js';
+import { C, offset } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
 import { SHIELD_TEST_DUR } from '../src/actors/parts.js';
 import * as spec from '../src/rules/spec.js';
@@ -56,15 +56,15 @@ test('chip glb parts (factory, chimney, solar panels) exist and take the palette
   const roof = chip.MODELS.factory.roof * views[5]['chip.main'].models[0].h;
   for (const m of views[5]['chip.solar'].models) assert.ok(Math.abs(m.pos[1] - roof) < 0.02, 'panels sit on the factory roof');
 });
-// 計畫 9 §5（2026-10-30）：騎 YouBike 的四個拿掉了（在 101 腳下的死路擠成一坨；草地上的環躲不開通勤路線與拜訪站位）——Lv3 起三個穿外套的照樣通勤
+// 計畫 9 §5（2026-10-30）：騎 YouBike 的四個拿掉了（在 101 腳下的死路擠成一坨）
 // 修正批次 roles（裁決 R23，使用者「晶片廠工人直接變成光頭」）：Lv2 的工程師就是 Lv1 的工人（from 'chip.worker'），Lv3 起多一個
 test('engineers: the worker becomes the one engineer at Lv2 (from chip.worker), 2 in coats from Lv3; rats ≥2 turn one into a detective (people budget: engineers ≤ 2, detective 1, worker 1)', () => {
   const e2 = chip.view(lv({ chip: 2 }), {})['chip.engineers'];
-  assert.deepEqual([e2.kind, e2.n, e2.accessory, e2.from], ['roster', 1, 'coat', 'chip.worker']); assert.deepEqual(e2.home, { kind: 'path', path: chip.ENGINEER_ROUTE, loop: false, speed: 0.45, entry: chip.ENGINEER_ENTRY });
+  assert.deepEqual([e2.kind, e2.n, e2.accessory, e2.from], ['roster', 1, 'coat', 'chip.worker']); assert.deepEqual(e2.home, { kind: 'wander', at: offset(AT, 0, 0.8), r: 0.9, entry: chip.ENGINEER_ENTRY }, 'walks round the works (R23), no commute');
   for (let n = 3; n <= 9; n++) {
     const v = chip.view(lv({ chip: n }), {}), vr = chip.view(lv({ chip: n, rat: 3 }), {});   // 老鼠 Lv3 泡溫泉（沒有列車）：跟著老鼠（鼠窩那級站在隔壁格盯著，見下一個測試）
     assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory, v['chip.engineers'].from], [2, 'coat', 'chip.worker'], `lv${n}`);
-    assert.deepEqual(v['chip.engineers'].home, e2.home, `lv${n} same commute as Lv2`);
+    assert.deepEqual(v['chip.engineers'].home, e2.home, `lv${n} same walk as Lv2`);
     assert.equal(vr['chip.engineers'].n, 1); const d = vr['chip.detective'];
     assert.deepEqual([d.kind, d.n, d.accessory, d.from], ['roster', 1, 'glass', 'chip.engineers']); assert.deepEqual(d.home, { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: chip.ENGINEER_ENTRY[0] });
     assert.equal(v['chip.worker'], undefined);
@@ -84,46 +84,30 @@ test('detective: follows the rats, but watches the nest from the next cell and w
   assert.equal(nest.kind, 'stand'); assert.notDeepEqual(cellAt(p.x, p.z), cellAt(at.x, at.z), 'outside the nest cell');
   assert.ok(Math.hypot(p.x - at.x, p.z - at.z) < 2, 'close to the nest'); assert.ok(Math.abs(Math.atan2(at.x - p.x, at.z - p.z) - p.yaw) < 1e-9, 'faces the nest');
 });
-// 計畫 9（2026-10-30 錄影「卡成一坨」）：正解整局 live，每回合演完再過 15 秒——劇本放回來的人走回自己錯開的那一點（roster.js），
-// 不再接在同一段走成一串：最近的那一對 < 0.3 每次最多 1 秒（只有交會、沒有並排走）；101 腳下（FOOT 0.5 內）同時兩個不超過 1 秒；
-// 最近的那一對 ≥ 0.3 的幀數：兩個人 ≥ 90%，三個人 ≥ 70%——通勤路線只有 3.64 公尺、走到底折返，三個人兩兩每 total ÷ 0.45 ≈ 8 秒交會一次、
-// 每次 < 0.3 約 0.67 秒（相對速度 0.9），三對加起來約四分之一的時間（實測 73–77%），錯開起步也改不了交會的次數。
-// 2026-10-31（唯一正解收尾）：正解第 8 回合兩個工程師同方向貼著走了整整 15 秒（晶片 7 放回來的人剛好走過另一個人的錯開點）——
-//   舊的 ≥ 6 回合前提擋在前面一直沒量到；roster.js pathDir 修掉（接上折線時同方向太近就往回走或先等一下）
-test('live, the solution: the commuting engineers do not walk as a convoy (only brief crossings, never two at the 101 foot for > 1 s)', async () => {
-  const { turnSteps } = await import('./helpers/show.js'), DT = 1 / 30, rows = [];
-  for (const order of SOLUTIONS) {
-    const { show, run } = await headlessShow(); let s = engine.createState(spec), t = 1000;
-    for (const [i, step] of turnSteps(order).entries()) {
-      const r = step(s); s = r.state;
-      await run([...r.events, { kind: 'settle' }]);
-      let frames = 0, apart = 0, both = 0, longest = 0, close = 0, stretch = 0;
-      for (let f = 0; f < 15 / DT; f++) {
-        show.update(DT, t); t += DT; await Promise.resolve();
-        const es = show.roster.members('chip.engineers').filter(m => !m.hidden); if (es.length < 2) continue;
-        let d = Infinity; for (let a = 0; a < es.length; a++) for (let b = a + 1; b < es.length; b++) d = Math.min(d, Math.hypot(es[a].pos.x - es[b].pos.x, es[a].pos.z - es[b].pos.z));
-        frames++; if (d >= 0.3) apart++;
-        close = d < 0.3 ? close + DT : 0; stretch = Math.max(stretch, close);
-        const atFoot = es.filter(m => Math.hypot(m.pos.x - chip.FOOT.x, m.pos.z - chip.FOOT.z) < 0.5).length;
-        both = atFoot >= 2 ? both + DT : 0; longest = Math.max(longest, both);
+// 修正批次 roles（裁決 R23，使用者「晶片廠那邊的人一直在橋邊徘徊……在 101 和晶片廠間直線來回」）：工程師不再通勤（開放折線走到底折返、
+// 每趟過橋一次），改在廠區散步——唯一正解整局 live，每回合演完再過 15 秒：日常裡（不在劇本手上、不在走進來）的工程師一直在晶片格裡，
+// 不上橋、不去 101；而且真的在走（不是站著不動）
+test('live, the solution: the engineers walk round the works in the chip cell — never onto the bridge or to 101', async () => {
+  const { turnSteps } = await import('./helpers/show.js'), DT = 1 / 30, out = [], moved = new Set();
+  const { show, run } = await headlessShow(); let s = engine.createState(spec), t = 1000, frames = 0;
+  for (const [i, step] of turnSteps(SOLUTIONS[0]).entries()) {
+    const r = step(s); s = r.state;
+    await run([...r.events, { kind: 'settle' }]);
+    const start = new Map(show.roster.members('chip.engineers').map(m => [m, { ...m.pos }]));
+    for (let f = 0; f < 15 / DT; f++) {
+      show.update(DT, t); t += DT; await Promise.resolve();
+      for (const m of show.roster.members('chip.engineers')) {
+        if (m.mode !== 'home' || m.arriving || m.hidden) continue;
+        frames++;
+        const c = cellAt(m.pos.x, m.pos.z);
+        if (!c || c[0] !== CELL[0] || c[1] !== CELL[1]) out.push(`turn ${i + 1} #${m.i} at (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}) cell ${c}`);
+        const p0 = start.get(m); if (p0 && Math.hypot(m.pos.x - p0.x, m.pos.z - p0.z) > 0.3) moved.add(m);
       }
-      if (frames) rows.push({ order: order.join('>'), turn: i + 1, chip: s.lv.chip, n: show.roster.members('chip.engineers').length, apart: apart / frames, foot: longest, stretch });
     }
   }
-  if (process.env.CONVOY) console.log(JSON.stringify(rows));
-  // 唯一正解（2026-10-31）：有 ≥ 2 個工程師的回合是第 5–9 回合（晶片第 5 回合放下、2 級起兩個人）；舊的 ≥ 6 是兩條正解加起來的數。
-  // 裁決 R23：Lv2 一個、Lv3 起兩個（老鼠 ≥2 時一個變偵防師）——只剩第 6、7 回合有兩個
-  assert.ok(rows.length >= 2, `${rows.length} turns with ≥ 2 engineers`);
-  for (const r of rows) {
-    assert.ok(r.stretch <= 1, `${r.order} turn ${r.turn}: closest pair < 0.3 for ${r.stretch.toFixed(2)} s in a row`);
-    assert.ok(r.apart >= (r.n >= 3 ? 0.7 : 0.9), `${r.order} turn ${r.turn} (${r.n} engineers): closest pair ≥ 0.3 in only ${(r.apart * 100).toFixed(0)}% of frames`);
-    assert.ok(r.foot <= 1, `${r.order} turn ${r.turn}: two engineers at the 101 foot for ${r.foot.toFixed(2)} s`);
-  }
-});
-test('ENGINEER_ROUTE starts in the chip cell and ends at the tower foot', () => {
-  const r = chip.ENGINEER_ROUTE;
-  assert.deepEqual(cellAt(r[0].x, r[0].z), [1, 0]); assert.deepEqual(cellAt(r.at(-1).x, r.at(-1).z), [0, 0]);
-  assert.ok(Math.hypot(r.at(-1).x - TOWER.x, r.at(-1).z - TOWER.z) < 1.3);
+  assert.ok(frames > 1000, `${frames} engineer-frames`);
+  assert.deepEqual(out.slice(0, 10), [], `${out.length} frames outside the chip cell`);
+  assert.ok(moved.size >= 2, `engineers that walked about: ${moved.size}`);
 });
 
 // ── 海底電纜（§5、控制者裁決）：燈泡 Lv8 鋪好（暗）、晶片 Lv6 通電（亮）；從風車島沿主島南側的海面接到變電站 ──
@@ -189,7 +173,7 @@ test('every chip part and footprint corner stays inside the chip cell (the cable
   }
 });
 // Lv1 工地（2026-10-31 錄影：有人從圍籬中間穿出來）：黃色圍籬 ±0.8、牆厚 0.03 → 一個 1.66 見方的框，圍籬裡不能走
-test('chip buildings declare footprints (the Lv1 fenced site, factory, glass boxes and dome, substation; the poles stand inside the back box\'s padded outline); the factory door path stays walkable', () => {
+test('chip buildings declare footprints (the Lv1 fenced site, factory, glass boxes and dome, substation; the poles stand inside the back box\'s padded outline); the engineers\' walk round the works stays open (R23)', () => {
   const nav = createNav();
   const site = [].concat(chip.view(at(1), {})['chip.main'].footprint ?? []);
   assert.equal(site.length, 1, 'lv1 one box for the fenced site');
@@ -204,7 +188,15 @@ test('chip buildings declare footprints (the Lv1 fenced site, factory, glass box
       for (const p of v['chip.substation'].parts.filter(q => q.kind === 'cylinder' && q.color === C.wood)) assert.ok(Math.abs(p.pos[0] - b.x) <= b.w / 2 + PAD && Math.abs(p.pos[2] - b.z) <= b.d / 2 + PAD, `pole (${p.pos[0]}, ${p.pos[2]}) inside the padded box`);
     }
     nav.setFootprints(Object.values(v).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
-    for (const p of chip.ENGINEER_ROUTE.slice(0, 2)) assert.ok(nav.walkable(p.x, p.z), `lv${n} door path (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+    // 工程師在廠區散步（裁決 R23）：散步圈（園區前緣那一側、r 0.9）整個在晶片格裡，走得到的點至少三成——園區最擠的 Lv4–9 也挑得到點
+    if (n >= 2) {
+      const { at: c, r } = v['chip.engineers'].home; let ok = 0, all = 0;
+      for (let x = -r; x <= r; x += 0.05) for (let z = -r; z <= r; z += 0.05) if (x * x + z * z <= r * r) {
+        all++; if (nav.walkable(c.x + x, c.z + z)) ok++;
+        assert.deepEqual(cellAt(c.x + x, c.z + z), CELL, 'the whole disk is in the chip cell');
+      }
+      assert.ok(ok / all >= 0.3, `lv${n} wander disk ${(100 * ok / all).toFixed(0)}% walkable`);
+    }
     assert.ok(nav.walkable(frontOf(AT, chip.FRONT_R).x, frontOf(AT, chip.FRONT_R).z), `lv${n} the front stays open`);
   }
 });
@@ -329,7 +321,8 @@ test('Lv7: the staff takes the box off the train while it is held at the station
     assert.ok(knocks.slice(1).every(d => Math.abs(d) < 1e-9), `train held during the knock (${order.join('>')})`);
     assert.equal(foot.size, 1, 'one engineer brings the box to the 101 foot');
     const box = bubblesLog.slice(n).find(b => b.kind?.icon === 'chip'), [m] = foot;
-    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 2.5, 'carrying the parts (chip icon) near the foot');
+    // 裁決 R23：工程師不再通勤到 101 腳下附近，是從廠區走過來的——圖框在他出發的地方冒（晶片格，離腳下約 4 公尺），跟著他走（見下面 heads）
+    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 5, 'carrying the parts (chip icon) on his way to the foot');
     assert.ok(m && heads.length === 1, 'one chip icon');
     const hd = heads[0](), mh = m.head(); assert.ok(Math.hypot(hd.x - mh.x, hd.y - mh.y, hd.z - mh.z) < 1e-9, 'the chip icon rides on the carrier');
     assert.ok(show.stage.partKeys().includes('tower.antenna') && m);

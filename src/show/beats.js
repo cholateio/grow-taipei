@@ -196,15 +196,16 @@ export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
   };
 }
 
-// LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：拍長 1.3 s，第二個字樣在 TWICE_AFTER 秒後冒、多抬高 TWICE_DY——
+// LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：拍長 1.0 + TWICE_AFTER，第二個字樣在 TWICE_AFTER 秒後冒、多抬高 TWICE_DY——
+// 計畫 11 §設計 2：0.3／0.25 時第二個疊在第一個上（使用者 2026-10-31）；0.55 秒時第一個已升到一半淡掉，再抬高 0.35 就分得開。
 // 沒有「×2」、沒有別的字。target／text／down／twice 留在拍上（turn.js 把跳級劇本裡的 LEVEL UP 換成彈兩次的要讀）。
 // 跳過、reduced-motion（不 step）只冒第一個
-export const TWICE_AFTER = 0.3, TWICE_DY = 0.25;
+export const TWICE_AFTER = 0.55, TWICE_DY = 0.35;
 export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false } = {}) {
   let handles = [], head = null, t = 0;
   const pop = (ctx, extra = {}) => handles.push(ctx.bubbles.levelUp(head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...extra, ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) }));
   return {
-    kind: 'levelUp', dur: twice ? 1.3 : 1.0, target, text, down, twice,
+    kind: 'levelUp', dur: twice ? 1.0 + TWICE_AFTER : 1.0, target, text, down, twice,
     start(ctx) {
       const r = resolveTarget(target, ctx); if (!r) return false;
       handles = []; head = r.head; t = 0; pop(ctx);

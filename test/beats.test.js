@@ -9,7 +9,7 @@ import { axialToWorld, cellTop } from '../src/scene/hex.js';
 import { createPeople } from '../src/scene/people.js';
 import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
-const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead } = await import('../src/show/beats.js');
+const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead, TWICE_AFTER, TWICE_DY } = await import('../src/show/beats.js');
 const { GAP } = await import('../src/actors/token.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
@@ -389,13 +389,16 @@ test('ctx.speed 2: bubble, LEVEL UP and camera flight are handed real-time lengt
   const o = rail.offset; ctx.now += 0.5; tl.update(0.5); assert.ok(Math.abs(rail.offset - (o - 0.5)) < 1e-6, 'held: the train stands still in real time');
 });
 
-// 回到 GROW 設計 §4.2：跳級合成一段，LEVEL UP 彈兩次（第二次晚 0.3 秒、高一點）；起因那棟本體閃白一下（B.flash）
+// 回到 GROW 設計 §4.2：跳級合成一段，LEVEL UP 彈兩次（計畫 11 §設計 2：第二次晚 0.55 秒、高 0.35——第一個已升到一半淡掉，不疊在一起）；起因那棟本體閃白一下（B.flash）
 const fakeCtx = (extra = {}) => ({ stage: { headOf: () => ({ x: 0, y: 1, z: 0 }) }, ...extra });
-test('levelUp twice: beat lasts 1.3 s, pops the label twice (second after 0.3 s, higher)', () => {
+test('levelUp twice: beat lasts 1.55 s, pops the label twice (second after 0.55 s, 0.35 higher)', () => {
+  assert.equal(TWICE_AFTER, 0.55); assert.equal(TWICE_DY, 0.35);
   const calls = [], ctx = fakeCtx({ bubbles: { levelUp: (head, o) => { calls.push(o); return { cancel() {} }; } } });
-  const b = B.levelUp('chip', { twice: true }); assert.equal(b.dur, 1.3); assert.equal(b.twice, true); assert.equal(b.target, 'chip');
-  b.start(ctx); b.step(0.1, 0.1, ctx); assert.equal(calls.length, 1); b.step(0.35, 0.25, ctx); assert.equal(calls.length, 2);
-  assert.ok((calls[1].dy ?? 0) > (calls[0].dy ?? 0));
+  const b = B.levelUp('chip', { twice: true }); assert.ok(Math.abs(b.dur - 1.55) < 1e-9); assert.equal(b.twice, true); assert.equal(b.target, 'chip');
+  b.start(ctx); b.step(0.1, 0.1, ctx); b.step(0.3, 0.4, ctx); assert.equal(calls.length, 1, 'still one label at 0.5 s');
+  b.step(0.36, 0.05, ctx); assert.equal(calls.length, 2, 'second label at 0.55 s');
+  assert.ok(Math.abs((calls[1].dy ?? 0) - (calls[0].dy ?? 0) - 0.35) < 1e-9);
+  assert.equal(B.levelUp('chip').dur, 1.0, 'a single LEVEL UP stays 1 s');
 });
 test('flash: blinks the named part for CAUSE_FLASH; missing part → start returns false', () => {
   const blinked = [], ctx = fakeCtx({ stage: { partObject: k => (k === 'milk.main' ? { id: 1 } : null) }, blink: { part: (o, d) => blinked.push([o, d]) } });

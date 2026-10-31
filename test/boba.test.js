@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import * as boba from '../src/actors/boba.js';
+import * as THREE from '../vendor/three/three.module.js';
 import * as sat from '../src/actors/satellites.js';
 import * as bulb from '../src/actors/bulb.js';
 import * as token from '../src/actors/token.js';
@@ -447,13 +448,10 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(seen, [1, 2, 3, 4, 6]);   // Lv5 在離島（null）；修正批次 2：Lv2 是 grow（颱風外送只給 ≥4）
 });
 
-// 3×3 轉動矩陣（列優先 9 個數）：three.js Euler 'XYZ'（向量先轉 z、再 y、再 x）
-const rotXYZ = ([x, y, z]) => {
-  const a = Math.cos(x), b = Math.sin(x), c = Math.cos(y), d = Math.sin(y), e = Math.cos(z), f = Math.sin(z);
-  return [c * e, -c * f, d, a * f + b * e * d, a * e - b * f * d, -b * c, b * f - a * e * d, b * e + a * f * d, a * c];
-};
-const rotZ = t => rotXYZ([0, 0, t]);
-const mul = (A, B) => [0, 1, 2].flatMap(r => [0, 1, 2].map(c => A[r * 3] * B[c] + A[r * 3 + 1] * B[3 + c] + A[r * 3 + 2] * B[6 + c]));
+// 轉動矩陣用 three.js 自己的 Euler／Matrix4 算（獨立對照，不跟原始碼同一份公式；修正輪 1 審稿 Minor）
+const rotXYZ = r => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...r)).elements;
+const rotZ = t => new THREE.Matrix4().makeRotationZ(t).elements;
+const mul = (A, B) => new THREE.Matrix4().fromArray(A).multiply(new THREE.Matrix4().fromArray(B)).elements;
 // 計畫 13 任務 2（使用者 2026-11-01「第一階段的珍奶店太醜請重新設計」）：夜市的珍奶攤車——奶油色車身＋珊瑚裙板＋木色檯面、
 // 紅白直條遮雨棚（前緣一排小波浪）、棚上一支細桿頂著珍奶杯（杯蓋、吸管、三顆珍珠）、兩個小輪子、木色推桿（老闆那側）、檯面上兩杯小珍奶。
 // 車身尺寸、footprint 不變（0.6 × 0.5，推車、老闆站位、立牌都不搬）；不發光（一個 mesh）
@@ -484,11 +482,16 @@ test('the Lv1–2 cart: a night-market boba stall — body, skirt, counter, stri
     assert.equal(P.filter(p => p.kind === 'sphere' && p.color === C.ink && Math.abs(p.pos[1] - cup.pos[1]) < 0.1).length, 3, 'three pearls in the cup');
     const wheels = P.filter(p => p.kind === 'torus');
     assert.equal(wheels.length, 2); assert.ok(wheels.every(w => w.scale === 0.18 && Math.abs(w.pos[1] - 0.09) < 1e-9 && w.pos[0] < 0), 'two small wheels (r 0.09) toward the back');
-    assert.ok(P.some(p => p.kind === 'box' && p.color === C.wood && p.pos[0] < -body.scale[0] / 2 && p.rot), 'push bar slanting out of the back (the owner side)');
+    // 推桿（修正輪 1：原本 0.30 → 0.63 幾乎直立，推車時豎在老闆臉前）：從車身後面 0.2 高接出、接近水平地伸到 x ≈ −0.42、y ≈ 0.22
+    const bar = P.find(p => p.kind === 'box' && p.color === C.wood && p.pos[0] < -body.scale[0] / 2 && p.rot);
+    assert.ok(bar, 'push bar out of the back (the owner side)');
+    const axis = new THREE.Vector3(0, bar.scale[1] / 2, 0).applyEuler(new THREE.Euler(...bar.rot)), ends = [1, -1].map(s => [bar.pos[0] + s * axis.x, bar.pos[1] + s * axis.y]).sort((a, b) => b[0] - a[0]);
+    assert.ok(Math.abs(ends[0][0] + body.scale[0] / 2) < 0.01 && Math.abs(ends[0][1] - 0.2) < 0.01, `starts at the back face, 0.2 high (${ends[0].map(v => v.toFixed(3))})`);
+    assert.ok(Math.abs(ends[1][0] + 0.42) < 0.01 && Math.abs(ends[1][1] - 0.22) < 0.01, `ends near (−0.42, 0.22) (${ends[1].map(v => v.toFixed(3))})`);
     assert.equal(P.filter(p => p.kind === 'cylinder' && p.color === boba.TEA && Math.abs(p.scale[1] - 0.08) < 1e-9 && p.pos[1] > counter.pos[1]).length, 2, 'two little cups on the counter');
   }
   // 合併成一個黏土 mesh（同現在：沒有發光）
-  const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
+  const { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
   for (const v of [views[1]['boba.main'], boba.view(lv({ boba: 1 }), { cartBlown: true })['boba.main']]) assert.equal(f.build(v).object.children.length, 1, 'one mesh');
 });

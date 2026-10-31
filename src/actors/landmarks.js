@@ -89,7 +89,8 @@ export const builders = {
 };
 
 // 老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時池水變成淡綠色
-export function view(lv = {}, flags = {}) {
+// 舞台照模組的共同簽名 view(lv, flags, meta) 呼叫；地標用不到旗標（計畫 13 起溫泉客不看變異鼠換位置），只看 lv
+export function view(lv = {}) {
   const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !trainCars(lv.token) ? 0xbfd39c : WATER;
   return {
     // 錐、碗、熔岩痕由 builders.volcano 算；這裡只列碗底的熔岩與錐腳四顆石頭（錐腳比原本的錐台寬 0.15，石頭照比例往外挪 1.2 倍，一樣半埋在錐腳）

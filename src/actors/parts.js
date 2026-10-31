@@ -144,9 +144,13 @@ export function createPartFactory(THREE, ctx) {
     return unit.get(kind);
   };
 
-  // geometry：builder 自己算好的非索引幾何（計畫 13 火山錐）代替 kind——一樣套矩陣；自己帶頂點色就留著，沒有才塗 color
+  // geometry：builder 自己算好的幾何（計畫 13 火山錐）代替 kind——一樣套矩陣；自己帶頂點色就留著，沒有才塗 color。
+  // 防呆（修正輪 1）：索引幾何先攤平（mergeGeometries 要全部非索引）、沒有法線就自己算（clone 之後才動，不改呼叫端那份）
   function partGeometry({ kind, geometry, pos, scale = 1, rot = [0, 0, 0], color: hex }) {
-    const g = (geometry ?? baseGeo(kind)).clone(), s = Array.isArray(scale) ? scale : [scale, scale, scale];
+    let g = (geometry ?? baseGeo(kind)).clone();
+    const s = Array.isArray(scale) ? scale : [scale, scale, scale];
+    if (geometry && g.index) { const flat = g.toNonIndexed(); g.dispose(); g = flat; }
+    if (geometry && !g.attributes.normal) g.computeVertexNormals();
     g.applyMatrix4(m4.compose(new THREE.Vector3(...pos), q.setFromEuler(e.set(...rot)), new THREE.Vector3(...s)));
     if (!(geometry && g.attributes.color)) {
       color.setHex(hex);

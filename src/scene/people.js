@@ -21,9 +21,14 @@ export function hammerPose(k) {
   return { arm: ARM_UP + (ARM_HIT - ARM_UP) * e, lean: -LEAN_BACK + (LEAN_HIT + LEAN_BACK) * e };
 }
 
-// 蹲下護頭（duck，計畫 13 §設計 5 飛彈警告）：整個人下蹲 DUCK_DROP（腿往前彎 DUCK_KNEE）、兩手往前上抬到 DUCK_ARM 護住頭。
-// 前 DUCK_IN（15 %）蹲下去、中間停住、最後 15 % 站回來（smoothstep）；GESTURE_DUR.duck 1.0 s 就是 0.15 s 進、0.7 s 停、0.15 s 回
-export const DUCK_IN = 0.15, DUCK_DROP = 0.08, DUCK_ARM = -2.6, DUCK_KNEE = -1.2;
+// 蹲下護頭（duck，計畫 13 §設計 5 飛彈警告）：整個人下蹲 DUCK_DROP、兩腿往前彎 DUCK_KNEE 並收短（腳底留在站著時的高度，不插進地面）、
+// 兩手往前上抬到 DUCK_ARM 護住頭。修正輪 1：0.08＋1.2 rad 像坐在地上、腳尖插地 0.02，改成蹲。
+// 前 DUCK_IN（15 %）蹲下去、中間停住、最後 15 % 站回來（smoothstep）
+export const DUCK_IN = 0.15, DUCK_DROP = 0.05, DUCK_ARM = -2.6, DUCK_KNEE = -0.6;
+// 腿：膠囊中心在髖下 LEG_DOWN、底下那顆半球的中心再下 LEG_END——站著時半球中心離地 0.09 − 0.075 = 0.015
+const HIP_Y = 0.09, LEG_DOWN = 0.045, LEG_END = 0.03;
+// 蹲下時腿收短的倍數：髖降低 drop、腿前轉 knee 之後，半球中心還在站著時的高度
+export const legScale = (drop, knee) => Math.min(1, (LEG_DOWN + LEG_END - drop) / ((LEG_DOWN + LEG_END) * Math.cos(knee)));
 export function duckPose(k) {
   const u = Math.min(1, Math.max(0, Math.min(k, 1 - k) / DUCK_IN)), e = u * u * (3 - 2 * u);
   return { drop: DUCK_DROP * e, arm: DUCK_ARM * e + 0, knee: DUCK_KNEE * e + 0 };   // + 0：e = 0 時不留 −0
@@ -160,9 +165,9 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
     w.pos = { x: p.x, y: p.y, z: p.z };
     W.compose(new THREE.Vector3(p.x, p.y + (lie ? 0 : bike ? 0.04 : pose.bob) + jump - (dk ? dk.drop * ks : 0), p.z), q.setFromAxisAngle(up, yaw), new THREE.Vector3(ks, ks, ks));
     if (lie) W.multiply(LIE);
-    const knee = dk ? dk.knee : 0;   // 蹲下：兩腿一起往前彎（髖部降低、腿不插進地面）
-    show(!bike, 'legL', i, tr(-0.025, 0.09, 0), rx(pose.leg + knee), tr(0, -0.045, 0));
-    show(!bike, 'legR', i, tr(0.025, 0.09, 0), rx(-pose.leg + knee), tr(0, -0.045, 0));
+    const knee = dk ? dk.knee : 0, fold = dk ? [sc(1, legScale(dk.drop, dk.knee), 1)] : [];   // 蹲下：兩腿一起往前彎、收短（髖部降低、腳不插進地面）
+    show(!bike, 'legL', i, tr(-0.025, HIP_Y, 0), rx(pose.leg + knee), ...fold, tr(0, -LEG_DOWN, 0));
+    show(!bike, 'legR', i, tr(0.025, HIP_Y, 0), rx(-pose.leg + knee), ...fold, tr(0, -LEG_DOWN, 0));
     at('armL', i, L, tr(-0.065, 0.2 + lift, 0), rx(dk ? pose.arm + dk.arm : bike ? -0.9 : pose.arm), tr(0, -0.04, 0));
     // 比讚：右手固定 rx(−2.6)（跟揮手同一個舉手角度），躺下後手往天上斜舉
     if (lie) at('armR', i, L, tr(0.065, 0.2 + lift, 0), rx(-2.6), tr(0, -0.04, 0));

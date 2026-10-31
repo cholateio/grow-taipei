@@ -89,11 +89,11 @@ test('no montage path remains: buildTurn has no montage/rush branches; a warning
   assert.deepEqual(WARNING, { kind: 'warning', flag: { name: 'alarm', value: 1 } });
   const beats = buildTurn([WARNING, e], base([tower, finale, milk]), fakeCtx({ nav: navOf(2) })), kinds = kindsOf(beats);
   assert.equal(beats[0].kind, 'mark');
-  assert.deepEqual(kinds.slice(0, 7), ['apply', 'focus', 'focus', 'together', 'together', 'home', 'apply']);
-  assert.deepEqual(noMarks(beats)[0].only, ['finale.flare', 'finale.beacon']);
-  assert.ok(!kinds.slice(0, 7).includes('bubble'), 'no countdown digit');
+  assert.deepEqual(kinds.slice(0, 6), ['together', 'focus', 'together', 'together', 'home', 'apply']);
+  assert.deepEqual(noMarks(beats)[0].beats[0].only, ['finale.flare', 'finale.beacon']);
+  assert.ok(!kinds.slice(0, 6).includes('bubble'), 'no countdown digit');
   // 鮮奶的事件照常平移（warning 不算「上一個物品」：不空拍）
-  assert.deepEqual(kinds.slice(7, 9), ['focus', 'walk']);
+  assert.deepEqual(kinds.slice(6, 8), ['focus', 'walk']);
   assert.ok(!noMarks(beats).some(b => b.kind === 'wait'), 'no GAP after the warning');
   // 舞台旗標：foldEvent 折進 e.flag（alarm = 1）；劇本查 finale.script.warning
   const seen = [];

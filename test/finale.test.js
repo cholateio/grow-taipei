@@ -80,6 +80,9 @@ test('view: alarm puts finale.beacon on the 101 spire (a red lamp + a flat red b
   // 光束長 3、從球心往外（水平）、扁平
   beam.geometry.computeBoundingBox(); const bb = beam.geometry.boundingBox;
   assert.ok(Math.abs(bb.max.x - 3) < 0.05 && bb.min.x > -0.05, `beam 3 long from the lamp (${bb.min.x.toFixed(2)}..${bb.max.x.toFixed(2)})`);
+  // 修正輪 1（審稿 Important）：球心那端細、往外張開（以前畫反了，靠燈那端比燈球還大，像一面三角旗）
+  const halfAt = x0 => { const p = beam.geometry.attributes.position; let w = 0; for (let i = 0; i < p.count; i++) if (Math.abs(p.getX(i) - x0) < 0.05) w = Math.max(w, Math.abs(p.getZ(i))); return w; };
+  assert.ok(halfAt(3) > halfAt(0) * 4 && halfAt(0) < 0.05, `narrow at the lamp (${halfAt(0).toFixed(3)}), wide 3 m out (${halfAt(3).toFixed(3)})`);
   assert.ok(bb.max.y - bb.min.y < (bb.max.z - bb.min.z) * 0.6, 'flat');
   const yawAt = t => { part.update(0.1, t); return beam.rotation.y; }, wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
   assert.ok(Math.abs(wrap(yawAt(0.25) - yawAt(0) - Math.PI / 2)) < 1e-9, 'quarter turn in 0.25 s');
@@ -89,23 +92,25 @@ test('view: alarm puts finale.beacon on the 101 spire (a red lamp + a flat red b
   part.dispose();
 });
 // 警告（計畫 13 §設計 5）：紅光＋警示燈 → 鏡頭先到 101（zoom 0.9，FOCUS_BEAT）、再回全景 → 全島抬頭看紅光 1.2 s →
-// 同一批人喊「！」、蹲下護頭（duck）1.0 s → 放人（「！」等鏡頭回到全景才冒：停在 101 時島的邊緣出畫）
-test('warning beats: apply flare + beacon, focus 101 (its waist, zoom 0.9) then home, look, ！ + duck 1.0 s, release', () => {
+// 同一批人喊「！」、蹲下護頭（duck）0.8 s → 放人（「！」等鏡頭回到全景才冒：停在 101 時島的邊緣出畫）
+test('warning beats: apply flare + beacon, focus 101 (its waist, zoom 0.9) then home, look, ！ + duck 0.8 s, release', () => {
   const { B, GESTURE_DUR } = beatsMod, ctx = { B, roster: { members: () => [], keys: () => [] } };
   const beats = finale.script.warning(WARNING, { lv: {}, flags: {} }, ctx);
-  assert.deepEqual(beats.map(b => b.kind), ['apply', 'focus', 'focus', 'together', 'together', 'home']);
-  assert.equal(beats[2].target, 'home');
-  assert.deepEqual(beats[0].only, ['finale.flare', 'finale.beacon']);
+  // 修正輪 1（審稿 Minor，吹歪的終局只剩 0.7 s）：紅光、警示燈在鏡頭飛過去的途中出現（同一拍），蹲下 1.0 → 0.8
+  assert.deepEqual(beats.map(b => b.kind), ['together', 'focus', 'together', 'together', 'home']);
+  const [lit, toTower] = beats[0].beats;
+  assert.equal(lit.kind, 'apply'); assert.deepEqual(lit.only, ['finale.flare', 'finale.beacon']);
+  assert.equal(beats[1].target, 'home');
   const head = { x: 1, y: 9, z: 2 }, foot = anchorWorld('tower').y;
-  assert.equal(beats[1].kind, 'focus'); assert.deepEqual(beats[1].target({ stage: { headOf: id => (id === 'tower' ? head : null) } }), { x: 1, y: (foot + 9) / 2, z: 2 }, 'aims at the waist of 101 (half way to headOf), not the cell floor'); assert.equal(beats[1].dur, 0.8);
-  assert.ok(beats[3].beats.length === 24 && beats[3].beats.every(b => b.kind === 'gesture' && b.dur === 1.2), 'look 1.2 s');
-  const duck = beats[4].beats.filter(b => b.kind === 'gesture'), shout = beats[4].beats.filter(b => b.kind === 'bubble');
-  assert.equal(duck.length, 24); assert.ok(duck.every(b => b.dur === 1.0), 'duck 1.0 s each');
+  assert.equal(toTower.kind, 'focus'); assert.deepEqual(toTower.target({ stage: { headOf: id => (id === 'tower' ? head : null) } }), { x: 1, y: (foot + 9) / 2, z: 2 }, 'aims at the waist of 101 (half way to headOf), not the cell floor'); assert.equal(toTower.dur, 0.8);
+  assert.ok(beats[2].beats.length === 24 && beats[2].beats.every(b => b.kind === 'gesture' && b.dur === 1.2), 'look 1.2 s');
+  const duck = beats[3].beats.filter(b => b.kind === 'gesture'), shout = beats[3].beats.filter(b => b.kind === 'bubble');
+  assert.equal(duck.length, 24); assert.ok(duck.every(b => b.dur === 0.8), 'duck 0.8 s each'); assert.equal(finale.DUCK, 0.8);
   assert.equal(shout.length, 24); assert.ok(shout.every(b => b.dur === 0.8), '！ 0.8 s each');
   assert.equal(GESTURE_DUR.duck, 1.0);
 });
 // 計畫 13：鏡頭先到 101（看警示燈）、抬頭之後全島蹲下護頭 1.0 s（同一批人），整段 ≤ 4.5 s（以前 ≤ 3 s）
-test('warning live: the flare and the beacon blink in, the camera goes to 101 first, visible islanders look at FLARE_AT and say ！, then duck 1.0 s, everyone released; ≤ 4.5 s', async () => {
+test('warning live: the flare and the beacon blink in, the camera goes to 101 first, visible islanders look at FLARE_AT and say ！, then duck 0.8 s, everyone released; ≤ 4.5 s', async () => {
   const { show, run, bubblesLog, rig } = await placedShow();
   const at = finale.FLARE_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, islanders({ roster: show.roster }).length), r0 = rig.log.length;
   assert.ok(crowdSize >= 6, `islanders on the island (${crowdSize})`);
@@ -132,7 +137,7 @@ test('warning live: the flare and the beacon blink in, the camera goes to 101 fi
   const focus = rig.log.slice(r0).find(x => x[0] === 'focus'), tw = show.stage.headOf('tower'), foot = anchorWorld('tower').y;
   assert.ok(focus && Math.hypot(focus[1].x - tw.x, focus[1].z - tw.z) < 1e-6 && Math.abs(focus[1].y - (foot + tw.y) / 2) < 1e-6 && focus[2].zoom === 0.9, `the camera goes to 101 (${JSON.stringify(focus?.[1])})`);
   assert.equal(duckers.size, crowdSize, 'everyone who looked ducks'); assert.ok(lookedFirst, 'the same people: look first, then duck');
-  assert.ok(Math.abs(duckTo - duckFrom - 1.0) <= 2 / 30, `duck 1.0 s (${(duckTo - duckFrom).toFixed(2)})`);
+  assert.ok(Math.abs(duckTo - duckFrom - 0.8) <= 2 / 30, `duck 0.8 s (${(duckTo - duckFrom).toFixed(2)})`);
   assert.ok(lookTo <= duckFrom + 1e-9, 'duck after the look');
   assert.ok(rig.log.slice(r0).findIndex(x => x[0] === 'home') > rig.log.slice(r0).findIndex(x => x[0] === 'focus'), 'then back to the overview');
   assert.equal(show.stage.flags.alarm, 1);

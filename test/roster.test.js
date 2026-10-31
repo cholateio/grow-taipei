@@ -925,7 +925,7 @@ test('live, the solution and the alien bad game: everyone on a bridge stays on t
 // （走路經過別人身邊、別人走過他身邊：身體不相碰、貼近不超過 0.5 秒）
 // 任務 7–11 隔離過（正面擦身的兩個人分不開，對整局的時間極敏感）；任務 12 補上正面擦身的讓路（nav.yieldOffset：
 // 前方 0.5 內有人就往旁邊讓開，roster 的 sidestep）後重新打開——連跑三次都過，不靠調秒數
-// 2026-10-28 錄影修正：變異鼠（半徑 0.325）不和任何小人疊在一起——溫泉客站池子北側、偵防師的跟隨站位照兩人半徑相加挑
+// 2026-10-28 錄影修正：變異鼠（半徑 0.325）不和任何小人疊在一起——溫泉客泡在池裡（計畫 13，離牠 0.73）、偵防師的跟隨站位照兩人半徑相加挑
 test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, or only brushes past while walking)', async () => {
   const { mutantNear, mutantFrames } = await livePlay();
   assert.ok(mutantFrames > 300, `${mutantFrames} mutant–person frames`);

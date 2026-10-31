@@ -45,6 +45,18 @@ test('compound: a part may carry its own non-indexed geometry (kept vertex colou
   assert.equal(grey, g.attributes.position.count, 'own vertex colours kept, moved by pos');
   assert.deepEqual([...g.attributes.position.array], before, 'the source geometry is not modified');
 });
+// 修正輪 1（審稿 Minor）：帶 geometry 的零件入口防呆——索引幾何先攤平、沒有法線就自己算，照樣跟 kit 零件併得起來
+test('compound: a geometry part that is indexed and has no normals is flattened and gets normals before merging', () => {
+  const { f } = setup();
+  const g = new THREE.BoxGeometry(1, 1, 1); g.deleteAttribute('normal'); g.deleteAttribute('uv');
+  assert.ok(g.index && !g.attributes.normal);
+  const p = f.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ geometry: g, pos: [0, 0, 0], color: 0x00ff00 }, { kind: 'box', pos: [2, 0, 0], scale: 1, color: 0xff0000 }] });
+  assert.equal(p.object.children.length, 1);
+  const merged = p.object.children[0].geometry;
+  assert.equal(merged.index, null); assert.ok(merged.attributes.normal && merged.attributes.color);
+  assert.equal(merged.attributes.position.count, 36 * 2, 'two boxes, 36 vertices each');
+  assert.ok(g.index && !g.attributes.normal, 'the source geometry is untouched');
+});
 test('compound applies part position, scale and rotation to the merged geometry', () => {
   const { f } = setup();
   const p = f.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'box', pos: [5, 0, 0], scale: [2, 1, 1], color: 0xffffff }] });

@@ -156,9 +156,11 @@ const TIP = CART_TIP;
 //   車身：奶油色箱體（離地 0.06）、下半一圈珊瑚裙板（高 0.18）、頂上一片木色檯面（四周凸出 0.03）；
 //   遮雨棚：檯面上 0.3、往鏡頭那側斜的五條紅白直條（各 0.16 寬，合起來 0.8 × 0.5），後緣兩根木柱撐著，前緣垂三個小波浪（倒扣的半球）；
 //   招牌：棚左上一支細桿頂著珍奶杯（杯蓋、斜插的吸管、杯身正面三顆珍珠）；輪子：後半（老闆那側）前後兩面各一個小輪（半徑 0.09）；
-//   推桿：後面斜出 0.35（老闆的手搭在上面）；檯面上兩杯小珍奶。全部不發光，合併成一個黏土 mesh
+//   推桿：車身後面 0.2 高接出、接近水平伸到 (−0.42, 0.22)（老闆的手搭在上面）；檯面上兩杯小珍奶。全部不發光，合併成一個黏土 mesh
 const CART_BODY = { h: 0.5, d: 0.42, y0: 0.06 }, COUNTER_Y = CART_BODY.y0 + CART_BODY.h + 0.02, CANOPY_Y = COUNTER_Y + 0.32, CANOPY_TILT = 0.22;
-const CUP_Y = CANOPY_Y + 0.42, BAR_TILT = 0.35, BAR_L = 0.35;
+// 推桿（修正輪 1：原本從 0.30 斜上到 0.63、只偏垂直 20°，推車時豎在老闆臉前）：從車身後面 0.2 高接出、接近水平地伸到 (−0.42, 0.22)
+const CUP_Y = CANOPY_Y + 0.42, BAR_FROM = [-CART.w / 2, 0.2], BAR_TO = [-0.42, 0.22];
+const BAR_L = Math.hypot(BAR_TO[0] - BAR_FROM[0], BAR_TO[1] - BAR_FROM[1]), BAR_TILT = Math.atan2(BAR_FROM[0] - BAR_TO[0], BAR_TO[1] - BAR_FROM[1]);
 const cartParts = () => [
   { kind: 'box', pos: [0, CART_BODY.y0 + CART_BODY.h / 2, 0], scale: [CART.w, CART_BODY.h, CART_BODY.d], color: C.wall },
   { kind: 'box', pos: [0, CART_BODY.y0 + 0.09, 0], scale: [CART.w + 0.01, 0.18, CART_BODY.d + 0.01], color: C.coral },
@@ -172,7 +174,7 @@ const cartParts = () => [
   { kind: 'box', pos: [-0.22, CUP_Y + 0.18, -0.05], scale: [0.02, 0.14, 0.02], rot: [0, 0, -0.25], color: C.coral },
   ...[[-0.03, -0.07], [0.03, -0.07], [0, -0.03]].map(([x, y]) => ({ kind: 'sphere', pos: [-0.24 + x, CUP_Y + y, -0.05 + 0.065], scale: 0.04, color: C.ink })),
   ...[1, -1].map(s => ({ kind: 'torus', pos: [-0.14, 0.09, s * (CART_BODY.d / 2 + 0.015)], scale: 0.18, color: C.ink })),
-  { kind: 'box', pos: [-CART.w / 2 - (BAR_L / 2) * Math.sin(BAR_TILT), 0.3 + (BAR_L / 2) * Math.cos(BAR_TILT), 0], scale: [0.03, BAR_L, 0.03], rot: [0, 0, BAR_TILT], color: C.wood },
+  { kind: 'box', pos: [(BAR_FROM[0] + BAR_TO[0]) / 2, (BAR_FROM[1] + BAR_TO[1]) / 2, 0], scale: [0.03, BAR_L, 0.03], rot: [0, 0, BAR_TILT], color: C.wood },
   ...[0.1, 0.2].map(x => ({ kind: 'cylinder', pos: [x, COUNTER_Y + 0.06, 0.12], scale: [0.05, 0.08, 0.05], color: TEA })),
 ];
 // 轉動（three.js Euler 'XYZ'：向量先轉 z、再 y、再 x）↔ 3×3 矩陣（列優先）；翻倒＝整台繞 z 轉 TIP：每個零件的矩陣左乘 Rz(TIP) 再拆回 Euler

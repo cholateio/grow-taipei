@@ -461,6 +461,14 @@ test('placement turn live: people vanish at their doors without a blink, then st
     if (tr.walk >= 10) assert.ok(tr.len > 0.4, `${x.m.key} walks home at walking speed (${tr.len.toFixed(2)} in 0.5 s)`);
   }
   assert.ok(hides.filter(x => trips.get(x.m).walk >= 10).length >= 3, 'several people walk home from the doors');
+  // 計畫 13 修正輪 1：溫泉客躲完雨走回池裡——出來 8 秒後兩位都在自己的站位上、y 是池水面下 0.15（泡著）
+  const lm = await import('../src/actors/landmarks.js');
+  for (let f = 0; f < 240; f++) show.update(1 / 30, 3000 + f / 30);
+  const spots = lm.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots;
+  show.roster.members('landmarks.bathers').forEach((b, i) => {
+    assert.ok(!b.hidden && Math.hypot(b.pos.x - spots[i].x, b.pos.z - spots[i].z) < 0.1, `bather ${i} back on the spot in the pool`);
+    assert.ok(Math.abs(b.pos.y - (SP.y + 0.13 - 0.15)) < 1e-6, `bather ${i} soaking (y ${(b.pos.y - SP.y).toFixed(3)})`);
+  });
 });
 // R13：玩家在回合中途拖過鏡頭 → 放下劇本中途的 focus('home') 不把鏡頭拉回全景、不清拖過的記號；只有回合最後的 home 照回並清掉
 test('landing turn with the camera dragged mid-turn: no home before the turn-end one, which still flies home and clears the drag', async () => {

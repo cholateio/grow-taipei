@@ -29,7 +29,7 @@ import { roadsterParts } from './token.js';
 export const id = 'finale';
 
 // 警告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒、再一起蹲下護頭 DUCK 秒（真實秒數；終局回合 1 倍速）；鏡頭先拉到 101 的 zoom
-export const LOOK = 1.2, SHOUT = 0.8, DUCK = 1.0, TOWER_ZOOM = 0.9;
+export const LOOK = 1.2, SHOUT = 0.8, DUCK = 0.8, TOWER_ZOOM = 0.9;   // DUCK 1.0 → 0.8（修正輪 1：吹歪的終局只剩 0.7 s）
 
 // 紅光的位置：鏡頭對面（全景沿 −z 看過去）主島西北方、背景環山山腳前的海面上。
 // 設計 §4 寫「背景山之外」，但環山（terrain.js 半徑 25–50 隆起、遠側不壓低）山脊以外的點在 16:9 全景一律投影到 NDC y > 1（出畫），
@@ -238,7 +238,7 @@ export const builders = {
     const lampMat = new THREE.MeshStandardMaterial({ color: BEACON_RED, emissive: BEACON_RED, roughness: 0.5, metalness: 0 });
     const beamMat = new THREE.MeshBasicMaterial({ color: BEACON_RED, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide });
     const lamp = new THREE.Mesh(new THREE.SphereGeometry(BEACON_R, 16, 12), lampMat);
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.35, BEAM_L, 16, 1, true).translate(0, BEAM_L / 2, 0).rotateZ(-Math.PI / 2).scale(1, 0.25, 1), beamMat);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.02, BEAM_L, 16, 1, true).translate(0, BEAM_L / 2, 0).rotateZ(-Math.PI / 2).scale(1, 0.25, 1), beamMat);
     lamp.name = 'lamp'; beam.name = 'beam';
     for (const m of [lamp, beam]) { m.castShadow = m.receiveShadow = false; object.add(m); }
     const pose = t => {
@@ -308,7 +308,7 @@ export const towerWaist = c => { const h = c.stage.headOf('tower'); return { x: 
 export const script = {
   // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）：紅光與 101 頂上的警示燈一起出現 →
   // 鏡頭先飛到 101（FOCUS_BEAT 0.8 s，計畫 13）、馬上飛回全景 → 全島（最多 24 人）轉頭看紅光 1.2 s（鏡頭在這段飛回全景）→
-  // 同一批人頭上一起冒「！」、蹲下護頭（duck）1.0 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 3.3 s）。
+  // 同一批人頭上一起冒「！」、蹲下護頭（duck）0.8 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 2.8 s）。
   // 計畫寫「！」跟抬頭一起、回全景交給飛彈那段：鏡頭停在 101 時島的兩側與前緣出畫，24 個「！」有 11 個整段在畫面外
   // （chain.test 的字在畫面裡不變式）——改成鏡頭先回全景、「！」跟蹲下一起冒（鏡頭已經到全景）
   warning(e, s, ctx) {
@@ -316,7 +316,8 @@ export const script = {
     return [
       // 鏡頭對 101 的半腰（地面到頭頂 stage.headOf 的中點）：對那一格的地面（focus('tower')）全景距離 × 0.9 會把塔頂、警示燈切出畫面，
       // 對頭頂又整座島掉出畫面下緣、只剩背景的山（截圖量的）
-      B.apply(e, { only: ['finale.flare', 'finale.beacon'] }), B.focus(towerWaist, { zoom: TOWER_ZOOM }), B.focus('home'),
+      // 紅光、警示燈在鏡頭飛過去的途中出現（同一拍，修正輪 1：省下 apply 的 0.3 s）
+      B.together([B.apply(e, { only: ['finale.flare', 'finale.beacon'] }), B.focus(towerWaist, { zoom: TOWER_ZOOM })]), B.focus('home'),
       B.together(up.look), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
     ];
   },

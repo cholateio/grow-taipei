@@ -17,9 +17,10 @@ export const ALL = await Promise.all(IDS.map(id => import(`../../src/actors/${id
 
 const DT = 1 / 30, LIMIT = 120;
 // 裁決 R15：非關鍵劇本 ≤ 4.5 s（◆ 關鍵 6–10 s 另外量）。例外（主要是走路、R15 不准加快走路）：燈泡 Lv2 巡三站（裁決 R12 ≤ 8 s）、
-// 棒球放置的跑壘（沿壘包慢走一圈 4 s，加上從入口走到本壘）、代幣放置（島民從鄰格走來月台，R16 之後代幣格不住島民）——
+// 棒球放置的跑壘（沿壘包慢走一圈 4 s，加上從入口走到本壘）、代幣放置（島民從鄰格走來月台，R16 之後代幣格不住島民）、
+// 代幣 Lv2（裁決 R23：站長是離車站最近的島民，同樣從鄰格走到崗位才換制服，不再從站後面生一個）——
 // tools/pace.mjs 的 SCRIPT_EXCEPT 同一張表
-export const SCRIPT_MAX = 4.5, SCRIPT_EXCEPT = { 'bulb 2': 8, 'baseball 1': 6, 'token 1': 6 };
+export const SCRIPT_MAX = 4.5, SCRIPT_EXCEPT = { 'bulb 2': 8, 'baseball 1': 6, 'token 1': 6, 'token 2': 6 };
 // 裁決 R17：◆ 關鍵劇本 live 6–8 s（原 6–10，裁決 R8）——單獨演的整段（含鏡頭平移、回全景，show.elapsed）≤ KEY_MAX
 export const KEY_MAX = 8;
 

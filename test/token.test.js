@@ -569,7 +569,7 @@ test('grow 4 in a full live turn: the ring line rises and the train departs from
 });
 
 // ── 入口點、站體 footprint、站務員不穿過珍奶人龍（計畫 3.8 Task 6、§14.1）──
-test('token rosters enter from behind the station, walkable and ≥ 1.5 from every spot; Lv2 spawns the staff there', async () => {
+test('token rosters enter from behind the station, walkable and ≥ 1.5 from every spot; Lv2 no longer spawns the staff (R23)', async () => {
   const nav = createNav(), bad = [];
   for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
     const v = token.view(L({ token: n }), { flooded });
@@ -579,10 +579,30 @@ test('token rosters enter from behind the station, walkable and ≥ 1.5 from eve
   bad.push(...await entriesThroughSolutions(token, SOLUTIONS));
   assert.deepEqual(bad, []);
   assert.deepEqual(cellAt(token.STAFF_ENTRY.x, token.STAFF_ENTRY.z), CELL);
-  const beats = token.script.grow[2]({ kind: 'grow', item: 'token', to: 2 }, { lv: L({ token: 2 }), flags: {} }, fakeCtx);
-  const sp = beats.find(b => b.kind === 'spawn'), at = [];
-  sp.start({ roster: { spawnHeld: (k, p) => { at.push([k, p]); return null; } } });
-  assert.deepEqual(at, [['token.staff', token.STAFF_ENTRY]]);
+});
+// 修正批次 roles（裁決 R23，使用者「車站工人直接變成站長」）：站長是 Lv1 等車的那位島民——from + pick 'nearest'，Lv2 劇本不生人
+test('Lv2: the station master is the nearest islander (from + pick nearest); the script walks him to the post and spawns nobody', () => {
+  for (let n = 2; n <= 10; n++) { const st = token.view(L({ token: n }), {})['token.staff']; assert.deepEqual([st.from, st.pick, st.home.entry], ['landmarks.islanders', 'nearest', token.STAFF_ENTRY], `lv${n}`); }
+  const beats = flat(token.script.grow[2]({ kind: 'grow', item: 'token', to: 2 }, { lv: L({ token: 2 }), flags: {} }, fakeCtx));
+  assert.ok(!beats.some(b => b.kind === 'spawn'), `no spawn beat (${beats.map(b => b.kind)})`);
+  assert.equal(beats.find(b => b.kind === 'walk')?.to, token.POST, 'walks to the post');
+  assert.ok(beats.findIndex(b => b.kind === 'walk') < beats.findIndex(b => b.kind === 'apply'), 'walks first, then the swap');
+});
+test('live, the solution: after token 2 the station master is a former islander (same member) and the islanders are one fewer', async () => {
+  const h = await headlessShow(), { show } = h;
+  let s = engine.createState(spec), checked = false;
+  for (const step of [...SOLUTIONS[0].map(id => st => engine.place(st, id, spec))]) {
+    const r = step(s); s = r.state;
+    const before = new Set(show.roster.members('landmarks.islanders')), was = { ...show.stage.lv };
+    await h.run([...r.events, { kind: 'settle' }]);
+    if (!(show.stage.lv.token >= 2 && !(was.token >= 2))) continue;
+    const [st, ...more] = show.roster.members('token.staff');
+    assert.equal(more.length, 0); assert.ok(before.has(st), 'the staff was an islander');
+    assert.equal(st.walker.accessory, 'uniform');
+    assert.equal(show.roster.members('landmarks.islanders').length, 4 - 1 - (show.stage.lv.milk >= 3 ? 1 : 0));
+    checked = true; break;
+  }
+  assert.ok(checked, 'token 2 reached');
 });
 test('the staff entry walk to the post stays clear of the boba queue and the cart front', async () => {
   const BOBA = anchorWorld('boba'), POST = offset(AT, 0.6, 0.55);

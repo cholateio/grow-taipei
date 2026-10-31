@@ -1,4 +1,4 @@
-// 代幣（物品 v2 §4.1，max 10）：站牌＋小月台 → 小站（售票亭、站務員）→ 大車站（站體、站前廣場）→ 環狀線 3 節通勤車 → 5 節
+// 代幣（物品 v2 §4.1，max 10）：站牌＋小月台 → 小站（售票亭、站務員＝Lv1 等車的島民原地換制服，裁決 R23）→ 大車站（站體、站前廣場）→ 環狀線 3 節通勤車 → 5 節
 //   → 高鐵（白底橘線）→ ★◆ 支線通到風車島與遊樂場島（列車開過去）→ 離島接駁車 → 豪華賽博站（霓虹站體、懸浮月台）
 //   → ◆ 飛天車（Tesla Roadster 三台從屋頂斜坡起飛、繞 101 一圈、落回車站屋頂）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
 // 列車用 Kenney Train Kit（subway／bullet，車頭、中間車、車尾），賽博站用 Quaternius Cyberpunk Kit（月台、欄杆、招牌），
@@ -275,7 +275,9 @@ export function view(lv, flags) {
   // 站位落在站體（含 PAD）裡就站到最近的可走點（rescue）
   if (flags.flooded) v['token.swimmers'] = { kind: 'roster', at, n: 2, accessory: 'none', from: 'token.staff', home: { kind: 'stand', spots: [{ ...offset(at, -0.3, 0.3, -0.12), yaw: 0.5 }, { ...offset(at, 0.3, 0.15, -0.12), yaw: -2 }], rescue: true, entry: STAFF_ENTRY } };
   // 站務員一直只有一位：Lv8 原本多一位（站門另一側），人數預算（裁決 R16，全島 ≤ 30）拿掉——鮮奶節那一回合全島剛好多一個人
-  else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
+  // 站長（使用者 2026-10-31「車站工人直接變成站長」，裁決 R23）：Lv1 等車的那位島民（from + pick 'nearest'：島民名冊同時少一個，
+  //   名冊搬離 at 最近的那位、原地換制服閃一下）。淹水退了、來源沒有多的島民時由名冊從 STAFF_ENTRY 補進來
+  else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', from: 'landmarks.islanders', pick: 'nearest', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
   if (n >= 9 && !flags.flooded) v['token.deck'] = { kind: 'deck', at: DECK_AT, models: DECK_MODELS, footprint: false };
   if (n >= 4) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
@@ -370,10 +372,11 @@ export const script = {
     return [B.together([B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.wait(2.5)]), B.bubble(islander, '♪', 0.6), B.home(islander)];
   },
   grow: {
-    // 小站：閃白售票亭 → 站務員從站後面（入口）走到崗位 → ♪ → LEVEL UP
+    // 小站（裁決 R23）：離車站最近的島民（Lv1 等車的那位）走到崗位 → 售票亭長出來、名冊把他原地換成站長（制服、閃一下）→ ♪ → LEVEL UP
+    //   （沒有島民可換時——只演代幣的測試——名冊從站後面的入口補一個站長，♪ 照樣冒在他頭上）
     2(e, s, ctx) {
-      const { B } = ctx, st = staffOf();
-      return [B.apply(e, { hold: ['token.staff'] }), B.spawn('token.staff', STAFF_ENTRY), B.walk(st, POST), B.bubble(st, '♪', 0.8), B.levelUp('token'), B.home(st)];
+      const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT)), st = staffOf();
+      return [B.walk(islander, POST), B.apply(e), B.bubble(st, '♪', 0.8), B.levelUp('token'), B.home(st)];
     },
     // 大車站：站務員走到站前揮鐵鎚 → 閃白站體與廣場 → ♥ → LEVEL UP
     3(e, s, ctx) {

@@ -88,7 +88,7 @@ export function walk(who, to, { speed, delay = 0 } = {}) {
     return { mm, r, len: ctx.nav.routeLength(r), v: speed ?? mm.speed };   // 蒙太奇的兩倍速由時間軸統一換算（ctx.speed）
   };
   return {
-    kind: 'walk',
+    kind: 'walk', to,   // to 原樣留在拍上給測試看（點，或 ctx => 點）
     dur: () => wait + span,
     estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : call(delay, ctx) + p.len / p.v; },
     start(ctx) {

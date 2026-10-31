@@ -66,7 +66,7 @@ export const ITEMS = {
     // 沒有 onLevel、沒有 delay：所有檢查都在放下那回合一次做完（不用等雲移站）
     up: { 2: age('typhoon', 1), 3: auto },
     fx: [
-      { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },
+      { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, story: '全島大停電！' },   // 鮮奶 −1 2026-11-01 拿掉（使用者：不要降級；裁決 R25）
       { when: and(present('token'), max('token', 3)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },
       { when: and(present('baseball'), max('baseball', 3)), lock: 'baseball', flag: { name: 'domeFlood' }, story: '球場變游泳池了' },
       { when: and(min('rat', 3), min('baseball', 4)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },

@@ -559,7 +559,7 @@ test('no script throws: an even stride over the enumeration and EXAMPLE.hit/defl
       }
     }
   }
-  assert.ok(reached > 1000, `${reached} games reach bulb 7`);
+  assert.ok(reached > 900, `${reached} games reach bulb 7`);   // 均勻抽樣：大停電不再打鮮奶之後（R25）抽到的局 986 條到燈泡 7
   assert.deepEqual(noTrain.slice(0, 5), [], `${noTrain.length} games reach bulb 7 with no train`);
   const orders = [...strided, EXAMPLE.hit, EXAMPLE.deflect];
   const { show, run } = await headlessShow(), bad = [];

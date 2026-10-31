@@ -328,11 +328,11 @@ test('the typhoon stays Lv1 in its placement turn, then 2 (still storming), 3 (c
 });
 // 所有檢查都在放下那回合（修正批次 2）：燈泡 ≤2 停電、代幣 ≤3 淹水、棒球 ≤3 巨蛋淹水、珍奶 ≤3 攤車被吹走（外送 +1 拿掉了）
 const turnOf = (order, pred) => { let s = createState(real); for (let t = 0; t < order.length; t++) { const r = place(s, order[t], real); s = r.state; if (pred(r)) return { t: t + 1, r, s }; } return null; };
-test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, the bulb locked, milk −1, before any growth', () => {
+test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, the bulb locked, no milk penalty (R25), before any growth', () => {
   const hit = turnOf(['milk', 'baseball', 'token', 'bulb', 'typhoon'], r => r.state.flags.blackout);
   assert.equal(hit.t, 5, 'the turn the typhoon is placed');
   const kinds = hit.r.events.map(e => e.kind), fx = hit.r.events.find(e => e.lock === 'bulb');
-  assert.ok(fx && fx.cause === 'typhoon' && fx.delta?.target === 'milk' && fx.delta.to === fx.delta.from - 1);
+  assert.ok(fx && fx.cause === 'typhoon' && !fx.delta, 'the blackout locks the bulb and knocks nothing (milk −1 removed 2026-11-01)');
   assert.ok(hit.r.events.indexOf(fx) < kinds.indexOf('grow'), 'a placement reaction comes before the growth scan');
   assert.equal(hit.s.locked.bulb, true); assert.equal(hit.s.lv.bulb, 2);
   assert.ok(hit.r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.story === '颱風假！小朋友在家看電視'));
@@ -372,17 +372,17 @@ test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag 
   assert.ok(!four.events.some(e => e.kind === 'fx' && e.delta?.target === 'boba'), 'no delivery delta');
 });
 // 降級當回合不升級（修正批次 2，使用者：「downgrade 當回合就不要 levelup 了」）：被負向 delta 打到的物品這回合不再長，也不列在等待裡
-test('an item knocked by a negative delta does not grow back that turn (blackout milk 6 → 5 stays 5), and grows the next turn', () => {
-  let s = createState(real);
-  for (const id of ['milk', 'chip', 'baseball', 'token', 'rat', 'bulb']) s = place(s, id, real).state;
-  assert.equal(s.lv.milk, 6);
-  const r = place(s, 'typhoon', real);
-  assert.deepEqual(r.events.find(e => e.flag?.name === 'blackout').delta, { target: 'milk', from: 6, to: 5 });
-  assert.equal(r.state.lv.milk, 5, 'stays at 5 this turn');
+test('an item knocked by a negative delta does not grow back that turn (the rat bite: milk 2 → 1 stays 1), and grows the next turn', () => {
+  // 大停電的鮮奶 −1 2026-11-01 拿掉了（R25），規則裡剩下的負向 delta 是老鼠咬鮮奶（鮮奶 ≤2 時放老鼠）
+  const s = place(createState(real), 'milk', real).state;
+  assert.equal(s.lv.milk, 2);
+  const r = place(s, 'rat', real);
+  assert.deepEqual(r.events.find(e => e.kind === 'fx' && e.delta?.target === 'milk').delta, { target: 'milk', from: 2, to: 1 });
+  assert.equal(r.state.lv.milk, 1, 'stays at 1 this turn');
   assert.ok(!r.events.some(e => e.kind === 'grow' && e.item === 'milk'), 'no LEVEL UP after the LEVEL DOWN');
   assert.ok(!r.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'milk')), 'not listed as waiting either');
-  const next = place(r.state, 'boba', real);
-  assert.ok(next.events.some(e => e.kind === 'grow' && e.item === 'milk' && e.from === 5 && e.to === 6), 'grows the next turn');
+  const next = place(r.state, 'baseball', real);
+  assert.ok(next.events.some(e => e.kind === 'grow' && e.item === 'milk' && e.from === 1 && e.to === 2), 'grows the next turn');
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   const s = place(createState(real), 'milk', real).state;    // 鮮奶放下當回合就到 2（早餐店）；沒有棒球就蓋不了小學

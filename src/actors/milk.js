@@ -131,7 +131,7 @@ export const kidAccessory = n => (n >= 9 ? 'none' : n >= 8 ? 'coat' : n >= 7 ? '
 export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
-  // 大停電：冰箱沒電，牛奶箱變灰（颱風劇本閃白換上、LEVEL DOWN）
+  // 大停電：冰箱沒電，牛奶箱變灰（純點綴；鮮奶 −1 2026-11-01 拿掉了，R25）
   // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合閃白扶正）
   const spoiled = !!flags.blackout, tipped = !!meta.bitten;
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [

@@ -57,7 +57,7 @@ test('check passes: exactly one full order (snapshot), ending cyber', () => {
 });
 // 設計 §3：MAX 個數分布（修正批次 2：颱風三級＋降級當回合不升級之後的全枚舉）
 test('MAX-count histogram matches design 2026-10-31 §3', () => {
-  assert.deepEqual(st.maxHist, [3648, 27192, 9232, 160, 60, 21, 3, 3, 1]);
+  assert.deepEqual(st.maxHist, [3648, 27290, 9114, 180, 60, 21, 3, 3, 1]);   // R25（大停電不再打鮮奶）之後重算
   assert.ok(st.avgMax <= 3.5);
 });
 // 設計 §3：MAX 落在第 8 回合（棒球、颱風放晴）與第 9 回合（其餘六個）

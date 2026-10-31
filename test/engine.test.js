@@ -29,12 +29,14 @@ test('ages advance each turn; an item takes one step per turn and a placed item 
   const t2 = place(s, 'b', mini);          // a2（age 1）；b 剛放，同回合跟著 a ≥ 2 長到 2（放下當回合最多 Lv2）
   s = t2.state; assert.equal(s.lv.a, 2); assert.equal(s.lv.b, 2);
   assert.deepEqual(t2.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['a2', 'b2']);
-  const t3 = place(s, 'c', mini);          // a3 → b3（b3 的反應想扣 c，c 已經 1 扣不動）；c 剛放就被 b 擋住
+  const t3 = place(s, 'c', mini);          // a3 → b3（b3 的反應想扣 c，c 已經 1 扣不動，但算被打到：這回合不長、不記 stall——修正批次 2）
   s = t3.state; assert.equal(s.lv.a, 3); assert.equal(s.lv.b, 3); assert.equal(s.lv.c, 1);
   assert.deepEqual(t3.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['a3', 'b3']);
-  assert.ok(t3.events.some(e => e.kind === 'stall' && e.item === 'c'), 'the fresh c is stalled in its own turn');
-  const t4 = place(s, 'd', mini);          // 沒有人能動：c 仍被 b 擋住
+  assert.ok(t3.events.some(e => e.kind === 'fx' && e.delta?.target === 'c'), 'b3 knocks the fresh c');
+  assert.ok(!t3.events.some(e => e.kind === 'stall'), 'a knocked item sits the turn out: no stall either');
+  const t4 = place(s, 'd', mini);          // 沒有人能動：c 被 b 擋住
   assert.equal(t4.state.lv.c, 1); assert.deepEqual(t4.events.filter(e => e.kind === 'grow'), []);
+  assert.ok(t4.events.some(e => e.kind === 'stall' && e.item === 'c'), 'the next turn c is stalled by b');
 });
 test('a cascade within a turn still works: A growing lets B grow in the same scan pass', () => {
   const chain = { ORDER:['p','q','r'], ITEMS:{
@@ -304,7 +306,7 @@ test('delay[n]: while its condition holds the level waits one extra turn, otherw
   assert.equal(advance(late.state, hop).state.lv.d, 3, 'and then comes');
 });
 
-// 真的 spec（唯一正解 2026-10-31）：颱風四站（放下、車站、巨蛋、放晴）與三個檢查的時機；放下後的反應先於成長掃描
+// 真的 spec（唯一正解 2026-10-31；修正批次 2：颱風三級）：放下那回合一次全部檢查、之後 Lv2 暴風圈還在、Lv3 放晴；放下後的反應先於成長掃描
 import * as real from '../src/rules/spec.js';
 const playReal = (order, closing = 0) => {
   let s = createState(real); const lvs = [];
@@ -312,18 +314,19 @@ const playReal = (order, closing = 0) => {
   for (let i = 0; i < closing; i++) { s = advance(s, real).state; lvs.push(s.lv); }
   return { s, lvs };
 };
-// 颱風四站（設計 2026-10-31 §4.3）：放下當回合停在 Lv1（up[2] 要 age ≥ 1），之後一回合移一站：車站 2、巨蛋 3、放晴 4
-test('the typhoon stays Lv1 in its placement turn, then moves one stop a turn: 2, 3, 4', () => {
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下當回合停在 Lv1（up[2] 要 age ≥ 1），之後一回合一級：2 暴風圈還在、3 放晴
+test('the typhoon stays Lv1 in its placement turn, then 2 (still storming), 3 (cleared)', () => {
   const r = playReal(['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'], 1);
-  assert.deepEqual(r.lvs.map(l => l.typhoon), [0, 0, 0, 0, 0, 1, 2, 3, 4]);
+  assert.deepEqual(r.lvs.map(l => l.typhoon), [0, 0, 0, 0, 0, 1, 2, 3, 3]);
   let s = createState(real);
   for (const id of ['milk', 'baseball', 'token', 'bulb', 'chip']) s = place(s, id, real).state;
   const t6 = place(s, 'typhoon', real);
-  assert.ok(!t6.events.some(e => e.kind === 'grow' && e.item === 'typhoon'), 'no move in the placement turn');
+  assert.ok(!t6.events.some(e => e.kind === 'grow' && e.item === 'typhoon'), 'no level-up in the placement turn');
   assert.ok(!t6.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'a just-placed typhoon is not waiting for anyone');
-  assert.ok(!t6.state.flags.blackout, 'bulb 3 at placement: no blackout');
+  assert.ok(!t6.state.flags.blackout && !t6.state.flags.flooded && !t6.state.flags.domeFlood, 'the solution is ready: bulb 3, token 5, baseball 5');
+  assert.ok(!Object.keys(real.ITEMS.typhoon.onLevel ?? {}).length, 'no checks on the later levels');
 });
-// 三個檢查的時機：放下＝燈泡 ≤2 停電；Lv2（車站）＝代幣 ≤3 淹水、珍奶 +1；Lv3（巨蛋）＝棒球 ≤3 巨蛋淹水
+// 所有檢查都在放下那回合（修正批次 2）：燈泡 ≤2 停電、代幣 ≤3 淹水、棒球 ≤3 巨蛋淹水、珍奶 ≤3 攤車被吹走、珍奶 ≥4 外送爆單
 const turnOf = (order, pred) => { let s = createState(real); for (let t = 0; t < order.length; t++) { const r = place(s, order[t], real); s = r.state; if (pred(r)) return { t: t + 1, r, s }; } return null; };
 test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, the bulb locked, milk −1, before any growth', () => {
   const hit = turnOf(['milk', 'baseball', 'token', 'bulb', 'typhoon'], r => r.state.flags.blackout);
@@ -334,31 +337,59 @@ test('placement check: the bulb ≤ 2 when the typhoon is placed → blackout, t
   assert.equal(hit.s.locked.bulb, true); assert.equal(hit.s.lv.bulb, 2);
   assert.ok(hit.r.events.some(e => e.kind === 'fx' && e.cause === 'typhoon' && e.story === '颱風假！小朋友在家看電視'));
 });
-test('Lv2 check: the token ≤ 3 when the typhoon reaches the station → flood, the token locked; boba present → +1; nothing at placement', () => {
+test('placement check: the token ≤ 3 → flood (token locked), the baseball ≤ 3 → dome flood (baseball locked), all in the placement turn', () => {
   let s = createState(real);
-  for (const id of ['milk', 'token', 'typhoon']) s = place(s, id, real).state;
-  assert.equal(s.lv.typhoon, 1); assert.ok(!s.flags.flooded, 'no flood at placement');
-  const r = place(s, 'boba', real);
-  assert.equal(r.state.lv.typhoon, 2); assert.equal(r.state.flags.flooded, true); assert.equal(r.state.locked.token, true); assert.ok(r.state.lv.token <= 3);
-  const lock = r.events.find(e => e.lock === 'token'), deliver = r.events.find(e => e.kind === 'fx' && e.delta?.target === 'boba');
-  assert.equal(lock.cause, 'typhoon'); assert.equal(deliver.cause, 'typhoon'); assert.deepEqual(deliver.delta, { target: 'boba', from: 1, to: 2 });
-  const move = r.events.findIndex(e => e.kind === 'grow' && e.item === 'typhoon' && e.to === 2);
-  assert.ok(move >= 0 && move < r.events.indexOf(lock), 'the flood fires on the move to the station');
+  for (const id of ['milk', 'baseball', 'token']) s = place(s, id, real).state;
+  assert.ok(s.lv.token <= 3 && s.lv.baseball <= 3);
+  const r = place(s, 'typhoon', real);
+  assert.equal(r.state.lv.typhoon, 1);
+  assert.equal(r.state.flags.flooded, true); assert.equal(r.state.locked.token, true);
+  assert.equal(r.state.flags.domeFlood, true); assert.equal(r.state.locked.baseball, true);
+  for (const id of ['token', 'baseball']) {
+    const lock = r.events.find(e => e.lock === id);
+    assert.equal(lock.cause, 'typhoon'); assert.ok(r.events.indexOf(lock) < r.events.findIndex(e => e.kind === 'grow'), `${id}: before the growth scan`);
+    assert.equal(r.state.lv[id], s.lv[id], `${id} does not grow once locked`);
+  }
+  // 已經準備好的（代幣 ≥4、棒球 ≥4）淹不到；之後的回合不再檢查
+  const later = advance(r.state, real);
+  assert.ok(!later.events.some(e => e.kind === 'fx' && e.cause === 'typhoon'), 'no checks after the placement turn');
 });
-test('Lv3 check: the baseball ≤ 3 when the typhoon reaches the dome → domeFlood, the baseball locked', () => {
+test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag cartBlown); boba ≥ 4 → delivery +1 instead', () => {
   let s = createState(real);
-  for (const id of ['milk', 'baseball', 'typhoon', 'chip']) s = place(s, id, real).state;
-  assert.equal(s.lv.typhoon, 2); assert.ok(!s.flags.domeFlood); assert.equal(s.lv.baseball, 3);
-  const r = place(s, 'bulb', real);
-  assert.equal(r.state.lv.typhoon, 3); assert.equal(r.state.flags.domeFlood, true); assert.equal(r.state.locked.baseball, true); assert.equal(r.state.lv.baseball, 3);
-  assert.equal(r.events.find(e => e.lock === 'baseball').cause, 'typhoon');
+  for (const id of ['milk', 'baseball', 'boba']) s = place(s, id, real).state;
+  assert.ok(s.lv.boba >= 1 && s.lv.boba <= 3);
+  const r = place(s, 'typhoon', real);
+  assert.equal(r.state.flags.cartBlown, true); assert.equal(r.state.locked.boba, true); assert.equal(r.state.lv.boba, s.lv.boba);
+  const blown = r.events.find(e => e.lock === 'boba');
+  assert.equal(blown.cause, 'typhoon'); assert.equal(blown.story, '珍奶攤車被吹走了'); assert.ok(!blown.delta);
+  assert.ok(!r.events.some(e => e.delta?.target === 'boba'), 'no delivery for a cart');
+  // 珍奶 ≥4（噴泉廣場）：外送爆單 +1，不吹走
+  const s0 = createState(real);
+  const shop = { ...s0, lv: { ...s0.lv, milk: 5, chip: 4, boba: 4 }, age: { ...s0.age, milk: 5, chip: 3, boba: 3 }, held: { ...s0.held, milk: 1, chip: 1, boba: 1 }, turn: 5 };
+  const d = place(shop, 'typhoon', real);
+  assert.ok(!d.state.flags.cartBlown && !d.state.locked.boba);
+  assert.deepEqual(d.events.find(e => e.kind === 'fx' && e.delta?.target === 'boba').delta, { target: 'boba', from: 4, to: 5 });
+});
+// 降級當回合不升級（修正批次 2，使用者：「downgrade 當回合就不要 levelup 了」）：被負向 delta 打到的物品這回合不再長，也不列在等待裡
+test('an item knocked by a negative delta does not grow back that turn (blackout milk 6 → 5 stays 5), and grows the next turn', () => {
+  let s = createState(real);
+  for (const id of ['milk', 'chip', 'baseball', 'token', 'rat', 'bulb']) s = place(s, id, real).state;
+  assert.equal(s.lv.milk, 6);
+  const r = place(s, 'typhoon', real);
+  assert.deepEqual(r.events.find(e => e.flag?.name === 'blackout').delta, { target: 'milk', from: 6, to: 5 });
+  assert.equal(r.state.lv.milk, 5, 'stays at 5 this turn');
+  assert.ok(!r.events.some(e => e.kind === 'grow' && e.item === 'milk'), 'no LEVEL UP after the LEVEL DOWN');
+  assert.ok(!r.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'milk')), 'not listed as waiting either');
+  const next = place(r.state, 'boba', real);
+  assert.ok(next.events.some(e => e.kind === 'grow' && e.item === 'milk' && e.from === 5 && e.to === 6), 'grows the next turn');
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   const s = place(createState(real), 'milk', real).state;    // 鮮奶放下當回合就到 2（早餐店）；沒有棒球就蓋不了小學
   const r = place(s, 'rat', real);
   const bite = r.events.find(e => e.kind === 'fx' && e.delta?.target === 'milk');
-  assert.deepEqual(bite.delta, { target: 'milk', from: 2, to: 1 }); assert.equal(r.state.lv.milk, 2, 'bitten to 1, then grows back to 2 this turn');
-  assert.equal(r.state.lv.rat, 2, 'the rat itself grows in its placement turn');
+  assert.deepEqual(bite.delta, { target: 'milk', from: 2, to: 1 }); assert.equal(r.state.lv.milk, 1, 'bitten to 1 and stays there this turn (修正批次 2)');
+  assert.equal(advance(r.state, real).state.lv.milk, 2, 'grows back the next turn');
+  assert.equal(r.state.lv.rat, 1, 'the rat Lv2 needs milk ≥ 2: the bitten milk stays 1 this turn, so the rat waits');
   let t = place(createState(real), 'milk', real).state; t = place(t, 'baseball', real).state;   // 鮮奶 3（小學，沙地球場當操場）
   const late = place(t, 'rat', real);
   // 沒咬；鮮奶照常自己長到 4（回到 GROW 2026-10-29：鮮奶 4 是 auto）
@@ -426,10 +457,15 @@ test('an item with no jump[n] takes +1 even when up[n−1] and up[n] both hold',
   t = advance(t, choice).state; assert.equal(t.lv.m, 3, 'no jump[4] → +1');
   assert.deepEqual(grows(advance(t, choice)), ['m3>4', 'm4>5J'], 'its explicit jump[5] works');
 });
-// 真的 spec 沒有颱風 jump[3]：在複本上寫明（up[2] ∧ up[3]），測「跳級跨過的那一級的反應照樣觸發」
+// 真的 spec 沒有颱風 jump[3]、也沒有 onLevel（修正批次 2：檢查都在放下那回合）：在複本上寫明跳級與一條 Lv2 的反應，
+// 測「跳級跨過的那一級的反應照樣觸發」
 const crossing = { ...real, ITEMS: { ...real.ITEMS,
-  typhoon: { ...real.ITEMS.typhoon, jump: { 3: { and: [real.ITEMS.typhoon.up[2], real.ITEMS.typhoon.up[3]] } } } } };
-test('a jump across a level with onLevel fires that reaction (typhoon 1 → 3 crosses the Lv2 station check)', () => {
+  typhoon: { ...real.ITEMS.typhoon, max: 3, jump: { 3: { and: [real.ITEMS.typhoon.up[2], real.ITEMS.typhoon.up[3]] } },
+    onLevel: { 2: [
+      { when: { and: [{ present: 'token' }, { maxLevel: ['token', 3] }] }, lock: 'token', flag: { name: 'flooded' } },
+      { when: { present: 'boba' }, delta: { target: 'boba', by: 1 } },
+    ] } } } };
+test('a jump across a level with onLevel fires that reaction (typhoon 1 → 3 crosses a Lv2 check on a copy)', () => {
   const s0 = createState(crossing);
   // 颱風在 1（放下過一回合）、代幣 2、珍奶 2：1 → 2 → 3 一回合，跨過第 2 級照樣淹水、外送爆單
   const ty = { ...s0, lv: { ...s0.lv, typhoon: 1, token: 2, milk: 2, boba: 2 }, age: { ...s0.age, typhoon: 1, token: 3, milk: 3, boba: 3 }, held: { ...s0.held, typhoon: 1, token: 1, milk: 1, boba: 1 }, locked: { milk: true, boba: true }, turn: 9 };
@@ -499,10 +535,10 @@ test('via lists only the helpers that satisfied the condition: or(min chip 3, mi
   for (const e of jumps) assert.deepEqual(e.via, ['token', 'milk'], `jump event to ${e.to}: the first level's helpers first, then the second level's`);
 });
 
-// 鎖↔旗標的對照（2026-10-31 Task 5：turn.js 的起因閃與 stage.js 的老鼠 trouble 共用 engine.lockFlags）：照規則資料算，真的 spec 是這三條
-test('lockFlags(spec) reads the lock ↔ flag pairs from the rules: blackout locks the bulb, the flood the token, the dome flood the baseball', async () => {
+// 鎖↔旗標的對照（2026-10-31 Task 5：turn.js 的起因閃與 stage.js 的老鼠 trouble 共用 engine.lockFlags）：照規則資料算，真的 spec 是這四條（修正批次 2 多了攤車被吹走）
+test('lockFlags(spec) reads the lock ↔ flag pairs from the rules: blackout locks the bulb, the flood the token, the dome flood the baseball, the blown cart the boba', async () => {
   const { lockFlags } = await import('../src/rules/engine.js');
-  assert.deepEqual(lockFlags(real), { bulb: 'blackout', token: 'flooded', baseball: 'domeFlood' });
+  assert.deepEqual(lockFlags(real), { bulb: 'blackout', token: 'flooded', baseball: 'domeFlood', boba: 'cartBlown' });
   assert.equal(lockFlags(real), lockFlags(real), 'computed once per spec');
   assert.deepEqual(lockFlags({ ITEMS: { a: { fx: [{ lock: 'b', flag: { name: 'x' } }] } } }), { b: 'x' });
 });

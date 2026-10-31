@@ -48,10 +48,9 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 燈泡 | 7 ★◆ | `sat.windmill`（speed 0 → 1）、`sat.lighthouse`、`sat.beam`、`sat.keeper`、`bulb.electrician`（家換到風車島） | 程式：風車塔身＋開關箱在 island.js 的 kit、葉片是 `blades` 演員；燈塔燈室改成不發光的 kit 球（開局暗），演員亮燈。`windturbine_tall.gltf` 沒用（可選；kit 塔身不花 draw call） | — | 現有 |
 | 燈泡 | 8 ★ | `chip.cable` | 晶片的零件（任務 6，零件 kind `cable`）：燈泡 ≥8 鋪好（暗），晶片 ≥6 通電；燈泡不另畫纜線 | — | 現有 |
 | 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`、`bulb.neon.market`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅、夜市屋簷霓虹藍）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）、`Sign_2.glb`（夜市招牌，發粉紅光；換掉 Lv4 的招牌板） | CC0 | 換新 |
-| 颱風 | 1 ◆ | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈停在 101 旁邊上空＝颱風錨點、大雨；有珍奶就有外送機車在雨中繞；放下那回合全島跑去門口躲一下，2026-10-31 單一正解 §4.3） | — | 現有 |
-| 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（同一團暴風圈移到捷運站上空，雨小一點） | — | 現有 |
-| 颱風 | 3 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈移到大巨蛋上空；巨蛋淹水時 `baseball.field` 泳池一圈、球員站上屋頂，在棒球的零件裡） | — | 現有 |
-| 颱風 | 4 ◆ | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
+| 颱風 | 1 ◆ | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈停在 101 旁邊上空＝颱風錨點、全島大雨；珍奶噴泉廣場以上就有外送機車在雨中繞；放下那回合全島跑去門口躲一下；淹水、巨蛋淹水、攤車被吹走都在這回合，零件在各物品裡——修正批次 2 颱風三級） | — | 現有 |
+| 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈還在颱風錨點、雨照下，雲不移站） | — | 現有 |
+| 颱風 | 3 ◆ | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（放晴：彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
 | 老鼠 | 1 | `rat.pack` | `quat/enemies/Rat.glb`（動畫，不併；在舞台結算的 `meta.troubleAt` 那棟門口晃，沒有才在窩旁） | CC0 | 現有 |
 | 老鼠 | 2 | `rat.main`、`rat.pack` | 程式鼠窩＋`quat/enemies/Rat.glb` ×3（同 Lv1，聚到出問題的那棟門口） | CC0 | 現有 |
 | 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb` ×5（搭捷運／泡溫泉） | CC0 | 現有 |

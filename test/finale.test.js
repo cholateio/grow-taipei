@@ -101,8 +101,8 @@ test('warning skipped (instant): alarm 1, the flare is there, nobody left in scr
 });
 
 test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×844 portrait overview (lit-stage skyline)', () => {
-  const lv = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 4, chip: 9, bulb: 9 };
-  const main = tower.view(lv, {}, { total: 60 })['tower.main'], skyline = main.at.y + main.labelY;
+  const lv = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chip: 9, bulb: 9 };
+  const main = tower.view(lv, {}, { total: 59 })['tower.main'], skyline = main.at.y + main.labelY;
   assert.ok(skyline > 7, `lit skyline (${skyline})`);
   const portrait = () => {
     const camera = new THREE.PerspectiveCamera(32, 390 / 844, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
@@ -126,8 +126,8 @@ import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
 import { SHIELD } from '../src/actors/parts.js';
 import { HOLD_END, FLIGHT, DEFLECT } from '../src/actors/finale.js';
 
-// 全 MAX（唯一正解：老鼠 4、珍奶 6、颱風 4，總等級 60）
-const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 4, chip: 9, bulb: 9 }, LIT_META = { total: 60 };
+// 全 MAX（唯一正解：老鼠 4、珍奶 6；修正批次 2：颱風 3，總等級 59）
+const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chip: 9, bulb: 9 }, LIT_META = { total: 59 };
 const TOWER_AT = anchorWorld('tower');
 const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
@@ -432,8 +432,8 @@ import { UFO_N, UFO_PARTS_BIG } from '../src/actors/finale.js';
 import { SHIP_SPOT, UFO_PARTS } from '../src/actors/rat.js';
 import { island } from '../src/actors/satellites.js';
 import { C } from '../src/actors/palette.js';
-// 外星壞局：列舉裡第一條老鼠 Lv4 分岔成外星的放法
-const ALIEN_ORDER = enumerate(spec).find(r => r.state.flags.ratBranch === 'alien' && r.state.lv.rat === 4).order;
+// 外星壞局：列舉裡第一條老鼠 Lv4 分岔成外星、標題是「變異鼠稱王」的放法（修正批次 2：攤車被吹走排在外星前面，第一條外星分岔的標題是它）
+const ALIEN_ORDER = enumerate(spec).find(r => r.ending.id === 'alien' && r.state.lv.rat === 4).order;
 const meshes = o => { const out = []; o.traverse(x => { if (x.isMesh) out.push(x); }); return out; };
 
 test('view: epilogue alien draws finale.ufos (one compound, three saucers over the rocks island) and finale.aliens (three, bobbing, C.alien glow)', () => {

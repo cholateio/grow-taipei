@@ -55,18 +55,18 @@ test('check passes: exactly one full order (snapshot), ending cyber', () => {
   assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]), [['milk,baseball,token,bulb,chip,typhoon,boba,rat', 'cyber']]);
   assert.equal(st.full[0].state.flags.ratBranch, 'cyber');
 });
-// 設計 §3：MAX 個數分布（試作全枚舉的數字）
+// 設計 §3：MAX 個數分布（修正批次 2：颱風三級＋降級當回合不升級之後的全枚舉）
 test('MAX-count histogram matches design 2026-10-31 §3', () => {
-  assert.deepEqual(st.maxHist, [3990, 27492, 8516, 179, 92, 37, 11, 2, 1]);
+  assert.deepEqual(st.maxHist, [3648, 27192, 9220, 156, 74, 21, 5, 3, 1]);
   assert.ok(st.avgMax <= 3.5);
 });
-// 設計 §3：MAX 落在第 8 回合（棒球）與第 9 回合（其餘七個）
-test('the full order: MAX lands in two turns, baseball in t8 and the other seven in t9', () => {
+// 設計 §3：MAX 落在第 8 回合（棒球、颱風放晴）與第 9 回合（其餘六個）
+test('the full order: MAX lands in two turns, baseball and the typhoon in t8 and the other six in t9', () => {
   const p = pacing(st.full, spec); assert.ok(p.ok, p.failures.join('\n'));
-  assert.equal(p.maxTurns, 2); assert.equal(p.maxMaxesPerTurn, 7);
+  assert.equal(p.maxTurns, 2); assert.equal(p.maxMaxesPerTurn, 6);
 });
-test('the full order ends with the typhoon cleared (Lv4) before the missile', () => {
-  for (const r of st.full) assert.equal(r.state.lv.typhoon, 4);
+test('the full order ends with the typhoon cleared (Lv3) before the missile', () => {
+  for (const r of st.full) assert.equal(r.state.lv.typhoon, 3);
 });
 test('report: chipEighth keeps its shape (report item, not an acceptance)', () => {
   const rep = chipEighth(all, spec);
@@ -77,7 +77,7 @@ test('report: chipEighth keeps its shape (report item, not an acceptance)', () =
 // 審稿第 1 輪故事要求：照正解玩不會看到災難附註；颱風擋飛彈、鮮奶過期都當得上標題（不是永遠被前面的蓋掉）
 function storyGoals(results, s) {
   const out = [];
-  for (const r of s.full) for (const id of ['blackout', 'flood', 'domeFlood', 'domeRats', 'alien']) if (r.satisfied.includes(id)) out.push(`${r.order.join(',')} 有 ${id}`);
+  for (const r of s.full) for (const id of ['blackout', 'flood', 'domeFlood', 'cartBlown', 'domeRats', 'alien']) if (r.satisfied.includes(id)) out.push(`${r.order.join(',')} 有 ${id}`);
   for (const id of ['typhoonDeflect', 'milkExpired']) if (!results.some(r => r.ending.id === id)) out.push(`${id} 從來不是標題`);
   if (results.filter(r => r.satisfied.includes('typhoonDeflect')).every(r => r.satisfied.includes('blackout'))) out.push('颱風擋飛彈的順序都是大停電');
   return out;
@@ -85,16 +85,17 @@ function storyGoals(results, s) {
 test('story: the true solution carries no disaster extras; typhoonDeflect and milkExpired each title some orders', () => {
   assert.deepEqual(storyGoals(all, st), []);
 });
-// 設計 2026-10-31 §4.5：新壞結局大巨蛋淹水、外星改壞結局，各有順序到得了（也當得上標題）
-test('domeFlood and alien are each reached (and titled) by some order', () => {
-  for (const id of ['domeFlood', 'alien']) {
+// 設計 2026-10-31 §4.5：新壞結局大巨蛋淹水、珍奶攤被吹走（修正批次 2）、外星改壞結局，各有順序到得了（也當得上標題）
+test('domeFlood, cartBlown and alien are each reached (and titled) by some order', () => {
+  for (const id of ['domeFlood', 'cartBlown', 'alien']) {
     assert.ok(all.some(r => r.satisfied.includes(id)), `${id} reachable`);
     assert.ok(all.some(r => r.ending.id === id), `${id} titles some order`);
   }
 });
 
 // 設計 §3：正解逐回合的級數（跳級算一步）；欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
-const LV = [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,4,0,0,0,4],[6,2,3,5,0,0,0,5],[7,4,5,6,1,0,0,6],[8,6,6,7,2,0,2,7],[9,8,8,9,3,2,4,8],[10,9,9,10,4,4,6,8]];
+// 修正批次 2：颱風三級——第 6 回合放下 1、第 7 回合 2（暴風圈還在）、第 8 回合 3（放晴）、第 9 回合停在 3；其餘欄不變
+const LV = [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,4,0,0,0,4],[6,2,3,5,0,0,0,5],[7,4,5,6,1,0,0,6],[8,6,6,7,2,0,2,7],[9,8,8,9,3,2,4,8],[10,9,9,10,3,4,6,8]];
 test('the solution follows the design §3 level table turn by turn', () => {
   for (const r of st.full) {
     let s = createState(spec); const rows = [];
@@ -103,12 +104,14 @@ test('the solution follows the design §3 level table turn by turn', () => {
   }
 });
 
-// 使用者 2026-10-30 那局（晶片、燈泡、珍奶都早於代幣，颱風第 7、老鼠第 8）：代幣第 8 回合先掃到、已經 4（環狀線），
-// 颱風移到車站上空時淹不到；颱風最後停在大巨蛋上空（3）→ 吹歪；晶片停在 6 → 老鼠分岔外星，標題卡是「變異鼠稱王」
-const USER_END = [8, 6, 6, 6, 3, 4, 5, 6];   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
-test('the 2026-10-30 recorded order ends low with the alien bad ending (snapshot)', () => {
+// 使用者 2026-10-30 那局（晶片、燈泡、珍奶都早於代幣，颱風第 7、老鼠第 8）。修正批次 2（颱風放下那回合全部檢查）之後：
+// 颱風放下時代幣 2、棒球 3、珍奶 3 → 捷運淹水、大巨蛋淹水、攤車被吹走一起來（三個都鎖住）；颱風放晴（3）不吹歪；
+// 晶片停在 5 → 老鼠沒到分岔；標題卡是「捷運淹水」
+const USER_END = [8, 5, 4, 2, 3, 2, 3, 3];   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
+test('the 2026-10-30 recorded order ends low with the flood bad ending (snapshot)', () => {
   const r = playOrder(['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], spec);
   assert.deepEqual(spec.ORDER.map(id => r.state.lv[id]), USER_END);
-  assert.deepEqual(r.state.locked, {}); assert.deepEqual(r.state.flags, { milkExpired: true, ratBranch: 'alien' });
-  assert.equal(r.ending.id, 'alien'); assert.deepEqual(r.satisfied, ['alien', 'milkExpired', 'typhoonDeflect', 'shieldDown']);
+  assert.deepEqual(r.state.locked, { token: true, baseball: true, boba: true });
+  assert.deepEqual(r.state.flags, { flooded: true, domeFlood: true, cartBlown: true, milkExpired: true });
+  assert.equal(r.ending.id, 'flood'); assert.deepEqual(r.satisfied, ['flood', 'domeFlood', 'cartBlown', 'milkExpired', 'shieldDown']);
 });

@@ -8,7 +8,7 @@ import { finaleEvents } from '../../src/game.js';
 
 export const EXAMPLE = {
   hit: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],       // 結局 flood（2026-10-31 唯一正解重找）
-  deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'typhoon', 'baseball'],   // 結局 flood（2026-10-31 唯一正解重找；颱風第 7 個放，最後停在大巨蛋上空）
+  deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon'],   // 結局 flood（修正批次 2 颱風三級重找；颱風第 8 個放，最後一輪 Lv2 暴風圈還在）
 };
 
 export function finaleStep(state) {

@@ -106,7 +106,7 @@ export function foldEvent(view, e) {
   return lv === view.lv && flags === view.flags ? view : { lv, flags };
 }
 
-// 颱風到了：颱風的放下事件（唯一正解 2026-10-31 §5.1：烏雲放下那回合就到 101 上空、全島躲雨；之後一回合移一站）
+// 颱風到了：颱風的放下事件（唯一正解 2026-10-31 §5.1：烏雲放下那回合就到 101 上空、全島躲雨；修正批次 2：雲不移站，所有檢查都在這回合）
 export function landsTyphoon(e) {
   return e.kind === 'placed' && e.item === 'typhoon';
 }
@@ -144,6 +144,10 @@ function applyAction(s, a, kind, cause, rules, events, depth = 0) {
 
 // 每回合開始時各物品的級數（R4 的 +2 上限用）；鍵是 turn() 裡的工作狀態，回合結束就沒人引用
 const turnStart = new WeakMap();
+// 這回合被負向 delta 打到的物品（修正批次 2，使用者 2026-10-31「downgrade 當回合就不要 levelup 了」）：
+// 這回合不再升級、也不列在等待裡（錄影裡大停電鮮奶 −1 之後同回合又長回去，LEVEL DOWN 緊接 LEVEL UP）。
+// 只要那條負向 delta 發了就算（鮮奶 Lv1 被打、壓在 1 沒真的掉級也算——被打到了）。鍵同 turnStart
+const knockedOf = new WeakMap();
 
 function actionEvent(s, a, kind, cause, rules) {
   if (!a.test(s)) return null;
@@ -156,6 +160,7 @@ function actionEvent(s, a, kind, cause, rules) {
     const from = s.lv[target], to = Math.max(1, Math.min(rules.items[target].max, from + by, Math.max(from, cap)));
     if (by > 0 && to === from) return null;
     s.lv[target] = to; if (to !== from) s.held[target] = 0;
+    if (by < 0) knockedOf.get(s)?.add(target);
     ev.item = target;
     ev.delta = { target, from, to };
   }
@@ -183,6 +188,7 @@ function turn(state, id, spec, rules) {
   // age = 放下幾回合；held = 停在目前這一級幾回合（delay 用；升級或被 delta 改級就歸零）
   for (const k of spec.ORDER) if (s.lv[k] > 0) { s.age[k] += 1; s.held[k] = (s.held[k] ?? 0) + 1; }
   turnStart.set(s, { ...s.lv });
+  const knocked = new Set(); knockedOf.set(s, knocked);
   if (id) {
     s.lv[id] = 1; s.age[id] = 0; s.held[id] = 0;
     events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
@@ -194,6 +200,7 @@ function turn(state, id, spec, rules) {
   // 剛放下的物品當回合也參加掃描（使用者 2026-10-28：要看得出「因為我現在放了 X」）：回合開始它是 0 級，所以放下當回合最多到 Lv2。
   // 照 ORDER 反覆掃到不動為止（A 升了讓 B 升的連鎖還在），掃到誰就當場決定，不為了等跳級延後 +1。
   // delay[n] 成立時，第 n 級要在上一級多停一回合（held ≥ 2）。
+  // 這回合被負向 delta 打到的（knocked，見 knockedOf）不參加掃描；掃描途中才被打到的（onLevel 的負向 delta）從那一刻起也不再長。
   const stalled = new Set(), grown = new Set(), start = turnStart.get(s);
   const delayed = (k, n) => { const d = rules.items[k].delay[n]; return !!d && d(s) && s.held[k] < 2; };   // 第 n 級還要多等一回合
   let lastGrown = null;
@@ -202,7 +209,7 @@ function turn(state, id, spec, rules) {
     let changed = false;
     for (const k of spec.ORDER) {
       const it = rules.items[k], lv = s.lv[k];
-      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k)) continue;
+      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k)) continue;
       const st = it.stall.find(r => r.test(s));
       if (st) {
         if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
@@ -234,16 +241,16 @@ function turn(state, id, spec, rules) {
   // 只差多等一回合的物品（+1 條件成立、delay[n] 擋著，颱風賴在巨蛋）：記一個 stall 事件（演出層演「……」）；不算在等誰
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k], n = lv + 1;
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || k === id) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k) || k === id) continue;
     if (delayed(k, n) && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
   }
 
-  // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、卡在 stall 的不算；
+  // 等不到幫手的物品：整回合合成一個 wait 事件，for = 這一刻缺的幫手（剛放的、這回合升過的、被負向 delta 打到的、卡在 stall 的不算；
   // 只被「要低於／不在」擋住的不算在等誰；剛放的照舊不算——它當回合也參加掃描，但「還沒開始等」）
   const waits = [];
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k];
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || stalled.has(k) || k === id || it.up[lv + 1](s)) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k) || k === id || it.up[lv + 1](s)) continue;
     const missing = missingHelpers(it.raw[lv + 1], s, k);
     if (missing.size) waits.push({ item: k, for: spec.ORDER.filter(id => missing.has(id)) });
   }

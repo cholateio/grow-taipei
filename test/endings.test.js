@@ -8,11 +8,11 @@ import * as spec from '../src/rules/spec.js';
 const full = (over = {}, flags = {}) => ({ lv: Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max])), age: {}, locked: {}, flags, order: ORDER, turn: 8, ...over });
 const lv = (o) => ({ ...Object.fromEntries(ORDER.map(id => [id, 1])), ...o });
 
-// 颱風四站（設計 2026-10-31 §4.3）：矽盾 MAX → 擋下；否則颱風還沒放晴（< 4）→ 吹歪；否則命中
-test('missile: shield when chip max, deflect while the typhoon has not cleared (< 4), else hit', () => {
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：矽盾 MAX → 擋下；否則颱風還沒放晴（0 < lv < max：1–2）→ 吹歪；否則命中
+test('missile: shield when chip max, deflect while the typhoon has not cleared (1–2), else hit', () => {
   assert.equal(missile(full(), spec), 'shield');
-  for (const typhoon of [1, 2, 3]) assert.equal(missile(full({ lv: lv({ chip: 4, typhoon }) }), spec), 'deflect', `typhoon ${typhoon}`);
-  assert.equal(missile(full({ lv: lv({ chip: 4, typhoon: 4 }) }), spec), 'hit');
+  for (const typhoon of [1, 2]) assert.equal(missile(full({ lv: lv({ chip: 4, typhoon }) }), spec), 'deflect', `typhoon ${typhoon}`);
+  assert.equal(missile(full({ lv: lv({ chip: 4, typhoon: 3 }) }), spec), 'hit', 'cleared at Lv3');
   assert.equal(missile(full({ lv: lv({ chip: 9, typhoon: 1 }) }), spec), 'shield', 'the shield beats the clouds');
   assert.equal(missile(full({ lv: lv({ chip: 4, typhoon: 0 }) }), spec), 'hit', 'an unplaced typhoon has no clouds to deflect with');
 });
@@ -24,15 +24,15 @@ test('all max with the cyber branch is cyber, extras still listed; alien is a ba
   assert.equal(a.id, 'alien'); assert.equal(ENDINGS.alien.kind, 'bad'); assert.equal(ENDINGS.alien.title, '變異鼠稱王');
   // 標題卡那行（2026-10-31 Task 5）：外星壞局不演母艦尾聲，那行講畫面上看得到的——戴王冠的變異鼠、石堆島的綠光圈
   assert.equal(ENDINGS.alien.line, '變異老鼠戴上王冠，石堆島亮起綠光'); assert.doesNotMatch(ENDINGS.alien.line, /母艦/);
-  assert.equal(resolve(full({ lv: lv({ chip: 4, typhoon: 4 }) }, { ratBranch: 'alien' }), spec).id, 'alien', 'alien titles before the shield');
+  assert.equal(resolve(full({ lv: lv({ chip: 4, typhoon: 3 }) }, { ratBranch: 'alien' }), spec).id, 'alien', 'alien titles before the shield');
 });
 test('bad ending priority follows design §4.5: concrete disasters first, deflect and shieldDown last', () => {
   const s = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true, bobaSugar: true });
   const r = resolve(s, spec);
   assert.equal(r.id, 'blackout'); assert.equal(r.missile, 'deflect');
   assert.deepEqual(r.extras, ['flood', 'bobaSugar', 'typhoonDeflect', 'shieldDown']);
-  const every = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true, domeFlood: true, domeRats: true, ratBranch: 'alien', milkExpired: true, bobaSugar: true });
-  assert.deepEqual(satisfied(every, spec), ['blackout', 'flood', 'domeFlood', 'domeRats', 'alien', 'milkExpired', 'bobaSugar', 'typhoonDeflect', 'shieldDown']);
+  const every = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true, domeFlood: true, cartBlown: true, domeRats: true, ratBranch: 'alien', milkExpired: true, bobaSugar: true });
+  assert.deepEqual(satisfied(every, spec), ['blackout', 'flood', 'domeFlood', 'cartBlown', 'domeRats', 'alien', 'milkExpired', 'bobaSugar', 'typhoonDeflect', 'shieldDown']);
 });
 test('bobaSugar is a flag, so it holds even though milk is placed at the end', () => {
   const r = resolve(full({ lv: lv({ chip: 5, milk: 4, boba: 3 }) }, { bobaSugar: true }), spec);
@@ -63,25 +63,27 @@ test('deflect games light both typhoonDeflect and shieldDown, title card is the 
   assert.equal(resolve(s, spec).id, 'typhoonDeflect');
 });
 test('nothing satisfied and not all max → tryAgain', () => {
-  assert.equal(resolve(full({ lv: lv({ chip: spec.ITEMS.chip.max, typhoon: 4 }) }), spec).id, 'tryAgain');
+  assert.equal(resolve(full({ lv: lv({ chip: spec.ITEMS.chip.max, typhoon: 3 }) }), spec).id, 'tryAgain');
 });
-test('ENDINGS has eleven entries with Chinese titles; cyber is the only true ending; domeFlood is new', () => {
-  assert.equal(Object.keys(ENDINGS).length, 11);
+test('ENDINGS has twelve entries with Chinese titles; cyber is the only true ending; domeFlood and cartBlown are new', () => {
+  assert.equal(Object.keys(ENDINGS).length, 12);
+  // 修正批次 2：颱風放下時珍奶 ≤3 → 攤車被吹到海邊
+  assert.deepEqual(ENDINGS.cartBlown, { id: 'cartBlown', title: '珍奶攤被吹走', kind: 'bad', line: '攤車飛到海上，老闆划船去追' });
   assert.equal(ENDINGS.shieldDown.title, '矽盾未就緒'); assert.equal(ENDINGS.cyber.kind, 'true');
   assert.deepEqual(Object.values(ENDINGS).filter(e => e.kind === 'true').map(e => e.id), ['cyber']);
   assert.deepEqual(ENDINGS.domeFlood, { id: 'domeFlood', title: '大巨蛋淹水', kind: 'bad', line: '球場變游泳池，球員坐在屋頂釣魚' });
 });
-// 颱風四站（設計 2026-10-31 §4.3）：第 8 個放的颱風當回合停在 101（Lv1），最後一輪只移到車站（Lv2）——還沒放晴，飛彈被吹歪
-test('typhoon placed 8th is still over the station after the closing turn: the missile is deflected; the solution clears it to Lv4', async () => {
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：第 8 個放的颱風當回合 Lv1，最後一輪到 Lv2——暴風圈還在、還沒放晴，飛彈被吹歪
+test('typhoon placed 8th is still storming after the closing turn: the missile is deflected; the solution clears it to Lv3', async () => {
   const { advance } = await import('../src/rules/engine.js');
   const playTo = order => { let s = createState(spec); for (const id of order) s = place(s, id, spec).state; return s; };
   const late = playTo(['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'rat', 'typhoon']);
-  assert.equal(late.lv.typhoon, 1, 'no move in its placement turn');
+  assert.equal(late.lv.typhoon, 1, 'no level-up in its placement turn');
   const after = advance(late, spec).state;
   assert.equal(after.lv.typhoon, 2); assert.ok(after.lv.chip < 9, 'chip 9 needs the typhoon ≥ 3');
   assert.equal(missile(after, spec), 'deflect');
   const sol = advance(playTo(['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat']), spec).state;
-  assert.equal(sol.lv.typhoon, 4); assert.equal(missile(sol, spec), 'shield');
+  assert.equal(sol.lv.typhoon, 3); assert.equal(missile(sol, spec), 'shield');
 });
 
 // 物品 v2 §8（任務 11）→ 唯一正解（2026-10-31 §4.5）：結局讀新的狀態——唯一正解（引擎演完放置 + 最後一輪）是晶片 9 矽盾擋下、全 MAX、
@@ -110,7 +112,7 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.equal(missile(full({ lv: { ...full().lv, chip: 8 } }), spec), 'hit');
   assert.equal(resolve(full({ lv: { ...full().lv, chip: 8 } }, { ratBranch: 'cyber' }), spec).id, 'shieldDown', 'one short of MAX is not a true ending');
   const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
-  const s = perms(ORDER).map(playOut).find(st => st.lv.chip === 8 && st.lv.typhoon === 4 && st.flags.ratBranch !== 'alien' && !['blackout', 'flooded', 'domeFlood', 'domeRats', 'milkExpired', 'bobaSugar'].some(f => st.flags[f]));
+  const s = perms(ORDER).map(playOut).find(st => st.lv.chip === 8 && st.lv.typhoon === 3 && st.flags.ratBranch !== 'alien' && !['blackout', 'flooded', 'domeFlood', 'cartBlown', 'domeRats', 'milkExpired', 'bobaSugar'].some(f => st.flags[f]));
   assert.ok(s, 'some order stops the chip at 8 with no disaster');
   assert.equal(missile(s, spec), 'hit');
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
@@ -125,7 +127,7 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   // 字面值釘死（規則改了這裡跟 helpers/endings.js 一起換）
   assert.deepEqual(EXAMPLE, {
     hit: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
-    deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'typhoon', 'baseball'],
+    deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon'],
   });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);

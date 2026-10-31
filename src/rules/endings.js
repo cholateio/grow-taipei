@@ -9,6 +9,8 @@ export const ENDINGS = {
   blackout: { id: 'blackout', title: '大停電', kind: 'bad', line: '全島黑掉，只剩 101 一盞紅燈在閃' },
   flood: { id: 'flood', title: '捷運淹水', kind: 'bad', line: '車站變游泳池，大家划船上班' },
   domeFlood: { id: 'domeFlood', title: '大巨蛋淹水', kind: 'bad', line: '球場變游泳池，球員坐在屋頂釣魚' },
+  // 修正批次 2（2026-10-31）：颱風放下時珍奶還是攤車／人龍／珍奶店（≤3）→ 攤車被吹到海邊
+  cartBlown: { id: 'cartBlown', title: '珍奶攤被吹走', kind: 'bad', line: '攤車飛到海上，老闆划船去追' },
   domeRats: { id: 'domeRats', title: '大巨蛋鼠災', kind: 'bad', line: '比賽暫停，工作人員拿水桶追老鼠' },
   shieldDown: { id: 'shieldDown', title: '矽盾未就緒', kind: 'bad', line: '101 被撞成 L 形，大家躺平比讚' },
   typhoonDeflect: { id: 'typhoonDeflect', title: '颱風擋飛彈', kind: 'bad', line: '飛彈被吹進北投，變成飛彈溫泉' },
@@ -17,7 +19,7 @@ export const ENDINGS = {
   tryAgain: { id: 'tryAgain', title: '再接再厲', kind: 'neutral', line: '台北還在長大中' },
 };
 
-// 矽盾 MAX → 擋下；否則颱風放了還沒放晴（1–3，雲還在島上）→ 吹歪；否則命中（沒放的颱風沒有雲，不算吹歪）
+// 矽盾 MAX → 擋下；否則颱風放了還沒放晴（0 < lv < max：Lv1–2，暴風圈還在島上）→ 吹歪；否則命中（沒放的颱風沒有雲，不算吹歪）
 export function missile(state, spec = defaultSpec) {
   if (state.lv.chip === spec.ITEMS.chip.max) return 'shield';
   const t = state.lv.typhoon;
@@ -29,7 +31,7 @@ export function satisfied(state, spec = defaultSpec) {
   // 具體災難排前面，颱風沒放晴（吹歪）與矽盾沒滿排最後（設計 2026-10-31 §4.5）。
   // 矽盾未就緒 = 晶片沒滿（不管飛彈後來怎麼了）；被颱風吹歪時兩格圖鑑都亮
   const checks = [
-    ['blackout', f.blackout], ['flood', f.flooded], ['domeFlood', f.domeFlood], ['domeRats', f.domeRats], ['alien', f.ratBranch === 'alien'],
+    ['blackout', f.blackout], ['flood', f.flooded], ['domeFlood', f.domeFlood], ['cartBlown', f.cartBlown], ['domeRats', f.domeRats], ['alien', f.ratBranch === 'alien'],
     ['milkExpired', f.milkExpired], ['bobaSugar', f.bobaSugar],
     ['typhoonDeflect', m === 'deflect'], ['shieldDown', m !== 'shield'],
   ];

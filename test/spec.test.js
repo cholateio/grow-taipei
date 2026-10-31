@@ -8,14 +8,15 @@ test('eight items in fixed order with spec max levels', () => {
   assert.deepEqual(ORDER, ['milk','chip','bulb','token','typhoon','rat','boba','baseball']);
   assert.deepEqual(ORDER.map(id => ITEMS[id].name), ['鮮奶','晶片','燈泡','代幣','颱風','老鼠','珍奶','棒球']);
 });
-// 唯一正解（設計 2026-10-31 §2、§4）：珍奶 7 → 6、老鼠 5 → 4、颱風 3 → 4，合計 60；跳級 10 條，只在晶片／燈泡／代幣／老鼠／珍奶
-test('maxes are milk 10, token 10, chip 9, bulb 9, baseball 8, boba 6, rat 4, typhoon 4 (60 in all); exactly 10 jumps on chip/bulb/token/rat/boba', () => {
+// 唯一正解（設計 2026-10-31 §2、§4）：珍奶 7 → 6、老鼠 5 → 4；修正批次 2：颱風 4 → 3，合計 59；
+// 跳級 11 條（多了晶片 9：在 7 時放晴就直接待命），只在晶片／燈泡／代幣／老鼠／珍奶
+test('maxes are milk 10, token 10, chip 9, bulb 9, baseball 8, boba 6, rat 4, typhoon 3 (59 in all); exactly 11 jumps on chip/bulb/token/rat/boba', () => {
   const maxes = Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max]));
-  assert.deepEqual(maxes, { milk: 10, chip: 9, bulb: 9, token: 10, typhoon: 4, rat: 4, boba: 6, baseball: 8 });
-  assert.equal(ORDER.reduce((n, id) => n + ITEMS[id].max, 0), 60);
+  assert.deepEqual(maxes, { milk: 10, chip: 9, bulb: 9, token: 10, typhoon: 3, rat: 4, boba: 6, baseball: 8 });
+  assert.equal(ORDER.reduce((n, id) => n + ITEMS[id].max, 0), 59);
   const jumps = ORDER.flatMap(id => Object.keys(ITEMS[id].jump || {}).map(n => [id, +n]));
-  assert.equal(jumps.length, 10);
-  const keys = { chip: [4, 6, 8], bulb: [5, 8], token: [4, 9], rat: [4], boba: [4, 6] };
+  assert.equal(jumps.length, 11);
+  const keys = { chip: [4, 6, 8, 9], bulb: [5, 8], token: [4, 9], rat: [4], boba: [4, 6] };
   for (const id of ORDER) {
     const got = Object.keys(ITEMS[id].jump || {}).map(Number).sort((a, b) => a - b);
     assert.deepEqual(got, keys[id] ?? [], `${id} jump keys`);
@@ -54,22 +55,18 @@ test('every action and stall condition compiles', () => {
   for (const id of ORDER) { all.push(...(ITEMS[id].fx || [])); for (const k in ITEMS[id].onLevel || {}) all.push(...ITEMS[id].onLevel[k]); all.push(...(ITEMS[id].stall || [])); }
   for (const a of all) { if (a.when) assert.doesNotThrow(() => compile(a.when, ctx)); if (a.branch) assert.doesNotThrow(() => compile(a.branch.when, ctx)); }
 });
-// 颱風四站（設計 2026-10-31 §4.3）：放下＝停電＋颱風假；Lv2 車站＝捷運淹水＋外送爆單；Lv3 巨蛋＝大巨蛋淹水＋鼠災
-test('typhoon checks: placement (blackout, day off), Lv2 over the station (flood, boba +1), Lv3 over the dome (dome flood, dome rats)', () => {
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下那回合一次全部檢查（停電、淹水、巨蛋淹水、鼠災、颱風假、攤車被吹走、外送爆單），之後沒有反應
+test('typhoon checks all fire at placement: blackout, flood, dome flood, dome rats, day off, cart blown, delivery; no onLevel', () => {
   const t = ITEMS.typhoon;
-  assert.equal(t.fx.length, 2);
-  assert.deepEqual(t.fx[0].when, { and: [pres('bulb'), maxL('bulb', 2)] });
-  assert.equal(t.fx[0].lock, 'bulb'); assert.equal(t.fx[0].flag.name, 'blackout'); assert.deepEqual(t.fx[0].delta, { target: 'milk', by: -1 });
-  assert.deepEqual(t.fx[1].when, pres('milk')); assert.ok(!t.fx[1].lock && !t.fx[1].flag && !t.fx[1].delta, 'the day off only tells a story');
-  assert.deepEqual(Object.keys(t.onLevel).map(Number).sort(), [2, 3]);
-  const [flood, boba] = t.onLevel[2];
-  assert.equal(t.onLevel[2].length, 2);
-  assert.deepEqual(flood.when, { and: [pres('token'), maxL('token', 3)] }); assert.equal(flood.lock, 'token'); assert.equal(flood.flag.name, 'flooded');
-  assert.deepEqual(boba.when, pres('boba')); assert.deepEqual(boba.delta, { target: 'boba', by: 1 });
-  const [dome, rats] = t.onLevel[3];
-  assert.equal(t.onLevel[3].length, 2);
-  assert.deepEqual(dome.when, { and: [pres('baseball'), maxL('baseball', 3)] }); assert.equal(dome.lock, 'baseball'); assert.equal(dome.flag.name, 'domeFlood');
-  assert.deepEqual(rats.when, { and: [minL('rat', 3), minL('baseball', 4)] }); assert.equal(rats.flag.name, 'domeRats'); assert.ok(!rats.lock);
+  assert.deepEqual(t.fx.map(a => a.when), [
+    { and: [pres('bulb'), maxL('bulb', 2)] }, { and: [pres('token'), maxL('token', 3)] }, { and: [pres('baseball'), maxL('baseball', 3)] },
+    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] }, minL('boba', 4),
+  ]);
+  assert.deepEqual(t.fx.map(a => a.lock ?? null), ['bulb', 'token', 'baseball', null, null, 'boba', null]);
+  assert.deepEqual(t.fx.map(a => a.flag?.name ?? null), ['blackout', 'flooded', 'domeFlood', 'domeRats', null, 'cartBlown', null]);
+  assert.deepEqual(t.fx.map(a => a.delta ?? null), [{ target: 'milk', by: -1 }, null, null, null, null, null, { target: 'boba', by: 1 }]);
+  assert.deepEqual(t.fx.map(a => a.story), ['全島大停電！冰箱裡的鮮奶…', '捷運站變游泳池了', '球場變游泳池了', '老鼠被大水沖進大巨蛋！', '颱風假！小朋友在家看電視', '珍奶攤車被吹走了', '颱風天珍奶外送爆單']);
+  assert.ok(!t.onLevel && !t.delay, 'no checks on the later levels');
 });
 // 設計 §3 寫晶片 ≥6；求解器發現全滿的順序裡老鼠到 Lv4 時晶片一定已經 7 或 8，所以門檻改成 8（矽盾測試）
 // 裁決 2026-10-31：珍奶糖分超標放寬到鮮奶 ≤4（附錄的 ≤2 照這張表到不了）
@@ -89,7 +86,7 @@ test('every item has a placed story and a story per level', () => {
 });
 // 設計 2026-10-31 §5.3 的故事句；拿掉的級數不留句子
 test('stories of the re-levelled items follow design 2026-10-31 §5.3, with no text for removed levels', () => {
-  assert.deepEqual(STORIES.grow.typhoon, { 2: '颱風移到車站上空', 3: '颱風移到大巨蛋上空', 4: '雨過天晴，彩虹出來了' });
+  assert.deepEqual(STORIES.grow.typhoon, { 2: '暴風圈還在島上空', 3: '雨過天晴，彩虹出來了' });
   assert.equal(STORIES.grow.boba[5], '分店開到森林島，燈塔島旗艦店開張'); assert.equal(STORIES.grow.boba[6], '世界珍奶節');
   assert.equal(STORIES.grow.rat[4], '老鼠的最終型態');
   for (const id of ORDER) assert.deepEqual(Object.keys(STORIES.grow[id]).map(Number), Array.from({ length: ITEMS[id].max - 1 }, (_, i) => i + 2), id);
@@ -109,22 +106,23 @@ const UP = {
   chip: { 2: A, 3: minL('bulb', 3), 4: minL('milk', 4), 5: A, 6: minL('bulb', 5), 7: minL('token', 7), 8: minL('token', 7), 9: minL('typhoon', 3) },
   bulb: { 2: A, 3: pres('token'), 4: minL('milk', 3), 5: minL('baseball', 4), 6: A, 7: minL('token', 5), 8: minL('chip', 4), 9: minL('token', 7) },
   token: { 2: A, 3: minL('milk', 3), 4: minL('milk', 5), 5: minL('baseball', 2), 6: A, 7: minL('bulb', 5), 8: A, 9: minL('chip', 6), 10: minL('chip', 7) },
-  typhoon: { 2: { age: ['typhoon', 1] }, 3: A, 4: A },
+  typhoon: { 2: { age: ['typhoon', 1] }, 3: A },
   rat: { 2: or(minL('milk', 2), minL('boba', 2)), 3: minL('token', 4), 4: or(minL('chip', 3), minL('typhoon', 2)) },
-  boba: { 2: minL('milk', 3), 3: pres('chip'), 4: minL('chip', 4), 5: minL('token', 7), 6: minL('token', 9) },
+  boba: { 2: minL('milk', 3), 3: pres('chip'), 4: minL('chip', 4), 5: and(minL('token', 7), minL('typhoon', 3)), 6: minL('token', 9) },
   baseball: { 2: minL('milk', 3), 3: and(maxL('token', 7), minL('milk', 3)), 4: minL('token', 4), 5: minL('bulb', 3), 6: minL('bulb', 5), 7: minL('token', 6), 8: minL('token', 7) },
 };
 const JUMP = {
-  chip: { 4: minL('milk', 6), 6: and(minL('bulb', 5), minL('token', 6)), 8: and(minL('token', 7), minL('bulb', 6)) },
+  chip: { 4: minL('milk', 6), 6: and(minL('bulb', 5), minL('token', 6)), 8: and(minL('token', 7), minL('bulb', 6)), 9: minL('typhoon', 3) },
   bulb: { 5: and(minL('baseball', 4), minL('token', 4)), 8: and(minL('chip', 4), minL('token', 5)) },
   token: { 4: and(minL('milk', 5), minL('baseball', 3)), 9: and(minL('chip', 6), minL('bulb', 7)) },
   rat: { 4: and(minL('token', 4), minL('chip', 3)) },
   boba: { 4: and(minL('milk', 3), minL('chip', 4)), 6: and(minL('token', 9), minL('typhoon', 3)) },
 };
-test('up conditions: exactly the design 2026-10-31 appendix table', () => {
+// 修正批次 2（2026-10-31）：颱風三級、珍奶 5 加颱風 ≥3、晶片 jump[9]；其餘照附錄
+test('up conditions: exactly the design 2026-10-31 appendix table (as amended by fix batch 2)', () => {
   for (const id of ORDER) assert.deepEqual(ITEMS[id].up, UP[id], id);
 });
-test('jumps: exactly the ten of the design 2026-10-31 appendix; milk, typhoon and baseball have none', () => {
+test('jumps: exactly the eleven of the design 2026-10-31 appendix (fix batch 2 adds chip 9); milk, typhoon and baseball have none', () => {
   for (const id of ORDER) assert.deepEqual(ITEMS[id].jump ?? {}, JUMP[id] ?? {}, id);
 });
 test('baseball Lv3 (the dome) needs the milk Little League: min(milk, 3) alongside the token cap', () => {

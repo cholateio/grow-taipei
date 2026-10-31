@@ -7,9 +7,10 @@
 // 第 8 個放完後再長 CLOSING_TURNS（1）回合。引擎沒有預設跳級：只有這裡寫的 jump[n] 會跳。
 // fx：放置反應。onLevel[n]：升到 n 時的反應（跳級跨過的那一級也算）。引擎還支援 delay[n]，但這張表沒有人用（颱風賴在巨蛋拿掉了）。
 //
-// 跳級（10 條）：晶片 4／6／8、燈泡 5／8、代幣 4／9、珍奶 4／6、老鼠 4。
-// 颱風四站（§4.3）：Lv1 烏雲到 101（放下那回合；up[2] 要 age ≥ 1，所以放下當回合不移）——燈泡 ≤2 全島大停電；
-// Lv2 車站上空——代幣 ≤3 捷運淹水、珍奶外送爆單；Lv3 大巨蛋上空——棒球 ≤3 大巨蛋淹水、老鼠 ≥3 且棒球 ≥4 鼠災；Lv4 放晴。
+// 跳級（11 條）：晶片 4／6／8／9、燈泡 5／8、代幣 4／9、珍奶 4／6、老鼠 4。
+// 颱風三級（§4.3，修正批次 2 2026-10-31）：放下那回合（Lv1）全島下雨、一次全部檢查——燈泡 ≤2 全島大停電、代幣 ≤3 捷運淹水、
+// 棒球 ≤3 大巨蛋淹水、老鼠 ≥3 且棒球 ≥4 鼠災、珍奶 ≤3（攤車、人龍、珍奶店）攤車被吹走、珍奶 ≥4 外送爆單；
+// Lv2 暴風圈還在（up[2] 要 age ≥ 1，所以放下當回合不升）、Lv3 放晴。雲不移站。
 // 沒放的東西淹不到：等颱風過了再放也行。
 // 附錄唯一的改動：珍奶糖分超標的旗標從鮮奶 ≤2 放寬到 ≤4（≤2 照這張表永遠碰不到；只是旗標，不影響級數與正解）。
 //
@@ -41,9 +42,9 @@ export const ITEMS = {
     name: '晶片', max: 9,
     // 工地 → 廠房 → 園區（燈泡 ≥3）→ ★ 星群總部（喝鮮奶長大的人才：鮮奶 ≥4；鮮奶 ≥6 直接跳）→ 太陽能＋變電站
     // → ★ 海底電纜通電（燈泡 ≥5；再加代幣 ≥6 直接跳）→ ★ 矽盾天線（零件搭列車：代幣 ≥7）→ ★ 測試（代幣 ≥7；再加燈泡 ≥6 直接跳）
-    // → ★ 矽盾待命（要在暴風圈下測過：颱風 ≥3）
+    // → ★ 矽盾待命（颱風過了、放晴才待命：颱風 ≥3；在 7 時放晴就直接跳）
     up: { 2: auto, 3: min('bulb', 3), 4: min('milk', 4), 5: auto, 6: min('bulb', 5), 7: min('token', 7), 8: min('token', 7), 9: min('typhoon', 3) },
-    jump: { 4: min('milk', 6), 6: and(min('bulb', 5), min('token', 6)), 8: and(min('token', 7), min('bulb', 6)) },
+    jump: { 4: min('milk', 6), 6: and(min('bulb', 5), min('token', 6)), 8: and(min('token', 7), min('bulb', 6)), 9: min('typhoon', 3) },
   },
   bulb: {
     name: '燈泡', max: 9,
@@ -60,26 +61,20 @@ export const ITEMS = {
     jump: { 4: and(min('milk', 5), min('baseball', 3)), 9: and(min('chip', 6), min('bulb', 7)) },
   },
   typhoon: {
-    name: '颱風', max: 4,
-    // 烏雲到 101 上空（放下那回合不移：up[2] 要 age ≥ 1）→ 移到車站上空 → 移到大巨蛋上空 → 放晴（彩虹、屋頂換色、堤防）；沒有 delay
-    up: { 2: age('typhoon', 1), 3: auto, 4: auto },
-    // 放下的反應：燈泡還是路燈／整條路（≤2）→ 全島大停電；颱風假
+    name: '颱風', max: 3,
+    // 暴風圈到 101 旁邊上空、全島下雨（放下那回合：Lv1）→ 暴風圈還在、雨照下（up[2] 要 age ≥ 1）→ 放晴（彩虹、屋頂換色、堤防）。
+    // 沒有 onLevel、沒有 delay：所有檢查都在放下那回合一次做完（不用等雲移站）
+    up: { 2: age('typhoon', 1), 3: auto },
     fx: [
       { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, delta: { target: 'milk', by: -1 }, story: '全島大停電！冰箱裡的鮮奶…' },
+      { when: and(present('token'), max('token', 3)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },
+      { when: and(present('baseball'), max('baseball', 3)), lock: 'baseball', flag: { name: 'domeFlood' }, story: '球場變游泳池了' },
+      { when: and(min('rat', 3), min('baseball', 4)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
       { when: present('milk'), story: '颱風假！小朋友在家看電視' },
+      // 珍奶攤（攤車、人龍、珍奶店：≤3）擋不住颱風 → 被吹到海邊、鎖住（新壞結局 cartBlown）；噴泉廣場以上（≥4）才接得了外送
+      { when: and(present('boba'), max('boba', 3)), lock: 'boba', flag: { name: 'cartBlown' }, story: '珍奶攤車被吹走了' },
+      { when: min('boba', 4), delta: { target: 'boba', by: 1 }, story: '颱風天珍奶外送爆單' },
     ],
-    onLevel: {
-      // 車站上空：代幣還沒到環狀線（≤3）→ 捷運淹水；珍奶在場 → 外送爆單
-      2: [
-        { when: and(present('token'), max('token', 3)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },
-        { when: present('boba'), delta: { target: 'boba', by: 1 }, story: '颱風天珍奶外送爆單' },
-      ],
-      // 大巨蛋上空：棒球還沒到比賽（≤3）→ 大巨蛋淹水；老鼠已經搭捷運（≥3）、巨蛋開賽了（≥4）→ 鼠災
-      3: [
-        { when: and(present('baseball'), max('baseball', 3)), lock: 'baseball', flag: { name: 'domeFlood' }, story: '大巨蛋淹水了！' },
-        { when: and(min('rat', 3), min('baseball', 4)), flag: { name: 'domeRats' }, story: '老鼠被大水沖進大巨蛋！' },
-      ],
-    },
   },
   rat: {
     name: '老鼠', max: 4,
@@ -100,8 +95,9 @@ export const ITEMS = {
   boba: {
     name: '珍奶', max: 6,
     // 攤車 → 人龍（學生排隊：鮮奶 ≥3）→ 珍奶店（晶片在場）→ ★ 噴泉廣場（工程師客群：晶片 ≥4；再加鮮奶 ≥3 直接 2 → 4）
-    // → 離島：森林島分店＋燈塔島旗艦店（捷運到離島：代幣 ≥7）→ ★ 世界珍奶節（代幣 ≥9；颱風過了車站 ≥3 直接 4 → 6）
-    up: { 2: min('milk', 3), 3: present('chip'), 4: min('chip', 4), 5: min('token', 7), 6: min('token', 9) },
+    // → 離島：森林島分店＋燈塔島旗艦店（捷運到離島：代幣 ≥7；旗艦店等颱風過了、放晴才開：颱風 ≥3）
+    // → ★ 世界珍奶節（代幣 ≥9；放晴了直接 4 → 6）
+    up: { 2: min('milk', 3), 3: present('chip'), 4: min('chip', 4), 5: and(min('token', 7), min('typhoon', 3)), 6: min('token', 9) },
     jump: { 4: and(min('milk', 3), min('chip', 4)), 6: and(min('token', 9), min('typhoon', 3)) },
     onLevel: {
       // 糖分超標：鮮奶 ≤4（校舍還沒蓋到三層）時珍奶就到噴泉廣場。附錄原寫 ≤2，但珍奶 2 要鮮奶 ≥3、鮮奶掉了當回合就長回來，
@@ -136,7 +132,7 @@ export const STORIES = {
       7: '電工搭車去開風電，燈塔亮了', 8: '海底電纜發光，接到主島', 9: '全島賽博霓虹' },
     token: { 2: '小站開張，站務員上班', 3: '大車站和站前廣場蓋好了', 4: '環狀線通車', 5: '列車加到五節', 6: '變身高鐵',
       7: '捷運通車到離島！', 8: '離島接駁車上路', 9: '車站變成賽博風', 10: '飛天車繞著 101 飛' },
-    typhoon: { 2: '颱風移到車站上空', 3: '颱風移到大巨蛋上空', 4: '雨過天晴，彩虹出來了' },
+    typhoon: { 2: '暴風圈還在島上空', 3: '雨過天晴，彩虹出來了' },
     rat: { 2: '老鼠生了一窩', 3: '老鼠學會搭捷運', 4: '老鼠的最終型態' },
     boba: { 2: '排隊人龍出現', 3: '珍奶店開張', 4: '珍奶噴泉廣場', 5: '分店開到森林島，燈塔島旗艦店開張', 6: '世界珍奶節' },
     baseball: { 2: '木看台搭好了', 3: '大巨蛋蓋好了', 4: '比賽開打', 5: '演唱會之夜', 6: '跨年煙火', 7: '大巨蛋擴建', 8: '巨蛋捷運站直通' },

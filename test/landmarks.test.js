@@ -92,7 +92,7 @@ test('islanderCount: HOMES.length minus one for the station master only (milk ne
 // 計畫 13 §設計 4（使用者 2026-11-01「火山太醜請重新設計」）：火山換成自己的 builder——有稜角的低多邊形錐（12 邊 6 段、每個頂點決定性抖動、
 // 平面著色、頂點色三層：沙色、深棕、口緣更深），頂上凹一個碗、碗底一片熔岩、三條熔岩痕從口緣流到高度 0.6；石頭四顆照舊。
 // draw call 不比現在多：一個黏土 mesh（錐、碗、石頭）＋一個發光 mesh（熔岩，走 ctx.glow：白天／大停電歸零）；手機一個 mesh
-test('volcano builder: one faceted clay mesh with three vertex-colour bands + one lava glow mesh (crater pool and three streaks down to 0.6); deterministic; low quality merges to one', async () => {
+test('volcano builder: one faceted clay mesh with three vertex-colour bands and lava streaks painted on its faces + one glow mesh for the crater pool; deterministic; low quality merges to one', async () => {
   const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
   const spec = landmarks.view(zero, {})['landmarks.volcano'];
   assert.equal(spec.kind, 'volcano'); assert.ok(landmarks.builders?.volcano, 'landmarks.builders.volcano');
@@ -103,25 +103,28 @@ test('volcano builder: one faceted clay mesh with three vertex-colour bands + on
   assert.deepEqual(part.object.position.toArray(), [spec.at.x, spec.at.y, spec.at.z]);
   const lava = meshes.find(m => m.material.emissive?.getHex() === 0xdb6a41), clay = meshes.find(m => m !== lava);
   assert.ok(lava && clay, 'lava glows orange');
-  // 熔岩痕流到高度 0.6；碗底的熔岩在口緣（1.5）下 0.18 左右
+  // 修正輪 0：熔岩痕不是獨立零件（凸出山體的直棒），畫在錐身上——發光的只剩碗底那池熔岩（口緣 1.5 下 0.18 左右）
   lava.geometry.computeBoundingBox(); const lb = lava.geometry.boundingBox;
-  assert.ok(lb.min.y <= 0.65 && lb.min.y >= 0.5, `streaks reach down to ${lb.min.y.toFixed(2)}`); assert.ok(lb.max.y <= 1.56, `lava top ${lb.max.y.toFixed(2)}`);
+  assert.ok(lb.min.y >= 1.25 && lb.max.y <= 1.4, `only the crater pool glows (${lb.min.y.toFixed(2)}..${lb.max.y.toFixed(2)})`);
+  assert.ok(!spec.parts.some(p => p.kind === 'box'), 'no separate streak parts');
   // 錐：頂點色三層（沙色在下、口緣最深），平面著色（非索引、每個三角形三個法線一樣）
   const g = clay.geometry, pos = g.attributes.position, col = g.attributes.color, nor = g.attributes.normal;
   assert.equal(g.index, null, 'non-indexed');
   const hex = i => new THREE.Color(col.getX(i), col.getY(i), col.getZ(i)).getHex(), tol = (a, b) => Math.abs(((a >> 16) & 255) - ((b >> 16) & 255)) + Math.abs(((a >> 8) & 255) - ((b >> 8) & 255)) + Math.abs((a & 255) - (b & 255)) <= 6;
-  const bands = [0xd2b48c, 0x6b5a4e, 0x4a3f38], seen = new Set();
-  let low = 0, lowSand = 0, top = 0, topDark = 0;
+  const bands = [0xd2b48c, 0x8a7563, 0x4a3f38], seen = new Set(), STREAK = 0xe8794f;
+  let low = 0, lowSand = 0, top = 0, topDark = 0, streak = 0, streakLow = Infinity;
   for (let i = 0; i < pos.count; i += 3) {
     const y = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3, r = Math.hypot(pos.getX(i), pos.getZ(i)), c = hex(i);
     bands.forEach((b, k) => { if (tol(c, b)) seen.add(k); });
     if (tol(c, 0xb8a892)) continue;   // 石頭（ico，自己的平滑法線）
+    if (tol(c, STREAK)) { for (let j = 0; j < 3; j++) { streak++; streakLow = Math.min(streakLow, pos.getY(i + j)); } continue; }   // 熔岩痕：錐身的面塗熔岩橘
     if (r > 0.7 && y < 0.5) { low++; if (tol(c, bands[0])) lowSand++; }
     if (r > 0.6 && r < 1.1 && y > 1.42) { top++; if (tol(c, bands[2])) topDark++; }
     const n0 = [nor.getX(i), nor.getY(i), nor.getZ(i)];
     if (bands.some(b => tol(c, b))) for (const j of [1, 2]) assert.ok(Math.abs(nor.getX(i + j) - n0[0]) + Math.abs(nor.getY(i + j) - n0[1]) + Math.abs(nor.getZ(i + j) - n0[2]) < 1e-5, 'flat-shaded face');
   }
   assert.equal(seen.size, 3, 'three colour bands');
+  assert.ok(streak >= 12 && streakLow >= 0.6, `lava streaks painted on the cone: ${streak} vertices, lowest ${streakLow.toFixed(2)}`);
   assert.ok(low > 20 && lowSand / low > 0.95, `lower slope sand (${lowSand}/${low})`);
   assert.ok(top > 10 && topDark / top > 0.9, `crater rim darkest (${topDark}/${top})`);
   // 抖動過：錐腳那一圈頂點離中心不一樣遠（不是正 12 邊形），每次建出來一模一樣

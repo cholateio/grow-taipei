@@ -33,13 +33,23 @@ const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WAT
 // ── 陽明山（計畫 13 §設計 4，使用者 2026-11-01「火山太醜請重新設計」）：builders.volcano 自己算一座有稜角的低多邊形錐——
 // 錐身 12 邊 6 段（頂半徑 0.95、腳 1.45、高 1.5），每個頂點決定性抖動（mulberry32 固定種子：徑向 ±0.08、高度 ±0.04，錐腳不離地），
 // 同一個位置的頂點抖一樣（錐身頂圈、口緣環、碗口接得起來不裂）；非索引、每個三角形自己的法線＝平面著色（共用的黏土材質就畫得出稜角，
-// 不另開材質、不多 draw call）。頂點色一個三角形一色：高度 0–0.55 沙色、0.55–0.9 深棕、0.9 以上與口緣、碗更深，分層邊界也抖。
-// 頂上凹一個 0.18 深的碗（口 0.75、底 0.55，面朝內），碗底一片熔岩；三條熔岩痕從口緣沿斜面流到高度 0.6（細長盒、發光同色）。
-// 錐、碗、四顆石頭併成一個黏土 mesh，熔岩（碗底＋三條痕）一個發光 mesh（走 ctx.glow：白天、大停電歸零）——跟原本的錐台＋圓盤＋橢球一樣兩個
+// 不另開材質、不多 draw call）。頂點色一個三角形一色：高度 0–0.65 沙色、0.65–0.9 淺一點的棕（修正輪 0：0x6b5a4e 太重）、0.9 以上與口緣、碗更深，
+// 分層邊界也抖。頂上凹一個 0.18 深的碗（口 0.75、底 0.55，面朝內），碗底一片熔岩（發光）。
+// 熔岩痕（修正輪 0：原本是凸出山體的發光細長盒，像插在山上的棍子）直接塗在錐身的面上：朝鏡頭那側挑三條（STREAK_COLS），
+// 從口緣往下三個高度段（到 0.75 上下）、每段兩個面寬，最下一段往旁邊錯一個面，邊界照著面的稜線鋸齒；熔岩橘、不發光。
+// 錐、碗、四顆石頭併成一個黏土 mesh，碗底的熔岩一個發光 mesh（走 ctx.glow：白天、大停電歸零）——跟原本的錐台＋圓盤＋橢球一樣兩個
 const CONE = { top: 0.95, foot: 1.45, h: 1.5, seg: 12, rows: 6 }, CRATER = { r: 0.75, floor: 0.55, depth: 0.18 };
-const LAVA = 0xdb6a41, SLOPE = 0x6b5a4e, RIM = 0x4a3f38, VOLCANO_SEED = 7;
-const JITTER_R = 0.08, JITTER_Y = 0.04, BAND_JITTER = 0.06, BANDS = [[0.55, CLIFF], [0.9, SLOPE], [Infinity, RIM]];
-const STREAKS = [-0.6, 0.15, 0.9], STREAK_TO = 0.6;   // 熔岩痕的方位（0 = 朝鏡頭 +z）、流到的高度
+const LAVA = 0xdb6a41, SLOPE = 0x8a7563, RIM = 0x4a3f38, STREAK = 0xe8794f, VOLCANO_SEED = 7;
+const JITTER_R = 0.08, JITTER_Y = 0.04, BAND_JITTER = 0.06, BANDS = [[0.65, CLIFF], [0.9, SLOPE], [Infinity, RIM]];
+// 熔岩痕在錐身的哪幾欄（第 x 欄是方位 x/12 · 2π 到 (x+1)/12 · 2π，0 朝鏡頭 +z）、往下幾段。
+// CylinderGeometry 的三角形照「欄 x → 段 y（0 在頂）→ (a,b,d)、(b,c,d)」排：第 f 個面在 x = ⌊f / 12⌋、y = ⌊(f mod 12) / 2⌋、tri = f mod 2
+const STREAK_COLS = [10, 0, 2], STREAK_ROWS = 3;
+const onStreak = f => {
+  const x = Math.floor(f / (CONE.rows * 2)), y = Math.floor((f % (CONE.rows * 2)) / 2), tri = f % 2;
+  if (y >= STREAK_ROWS) return false;
+  // 上面幾段兩個面（整格）；最下一段是本欄的右下三角＋右邊那欄的左上三角（共用一條稜線，往旁邊錯一步）
+  return STREAK_COLS.some(c => (y < STREAK_ROWS - 1 ? x === c : (x === c && tri === 1) || (x === (c + 1) % CONE.seg && tri === 0)));
+};
 function volcanoGeometry(THREE) {
   const side = new THREE.CylinderGeometry(CONE.top, CONE.foot, CONE.h, CONE.seg, CONE.rows, true).translate(0, CONE.h / 2, 0);
   const rim = new THREE.RingGeometry(CRATER.r, CONE.top, CONE.seg).rotateX(-Math.PI / 2).translate(0, CONE.h, 0);
@@ -61,31 +71,19 @@ function volcanoGeometry(THREE) {
     }
     for (let i = 0; i < n; i += 3) {
       const yc = (p.getY(i) + p.getY(i + 1) + p.getY(i + 2)) / 3, h = k ? Infinity : yc / CONE.h + (rnd() * 2 - 1) * BAND_JITTER;
-      c.setHex((BANDS.find(([top]) => h < top) ?? BANDS.at(-1))[1]);
+      c.setHex(k === 0 && onStreak(i / 3) ? STREAK : (BANDS.find(([top]) => h < top) ?? BANDS.at(-1))[1]);
       for (let j = 0; j < 3; j++) cols.set([c.r, c.g, c.b], (i + j) * 3);
     }
     g.setAttribute('color', new THREE.BufferAttribute(cols, 3)); g.computeVertexNormals();
     return g;
   });
-  // 熔岩痕：口緣（半徑 0.95、高 1.5）沿斜面流到 STREAK_TO 高；每條兩截細長盒（上截寬、下截窄、方位偏一點，像流下來拐了一下），
-  // 沿斜面躺著、浮出斜面 0.035（抖動過的斜面凸出來的地方會蓋住一點，像順著溝流）
-  const M = THREE.Matrix4, radius = y => CONE.top + (CONE.foot - CONE.top) * (CONE.h - y) / CONE.h;
-  const segment = (t, y0, y1, w) => {
-    const L = Math.hypot(y0 - y1, radius(y1) - radius(y0)), a = Math.atan2(radius(y1) - radius(y0), y0 - y1);
-    const g = new THREE.BoxGeometry(w, L, 0.1).toNonIndexed(); g.deleteAttribute('uv');
-    return g.applyMatrix4(new M().makeRotationY(t).multiply(new M().makeTranslation(0, (y0 + y1) / 2, (radius(y0) + radius(y1)) / 2 + 0.035)).multiply(new M().makeRotationX(-a)));
-  };
-  const mid = (CONE.h + STREAK_TO) / 2;
-  const streaks = STREAKS.flatMap((t, i) => [segment(t, CONE.h + 0.02, mid - 0.03, 0.075), segment(t + (i % 2 ? -0.07 : 0.07), mid, STREAK_TO, 0.05)]);
-  return { clay: out, lava: streaks };
+  return out;
 }
 export const builders = {
   volcano(THREE, spec, ctx) {
-    const { clay, lava } = volcanoGeometry(THREE);
-    const part = ctx.build({ kind: 'compound', at: spec.at, parts: [
-      ...clay.map(geometry => ({ geometry, pos: [0, 0, 0] })), ...lava.map(geometry => ({ geometry, pos: [0, 0, 0], color: LAVA, glow: LAVA })), ...spec.parts,
-    ] });
-    for (const g of [...clay, ...lava]) g.dispose();   // compound 合併時各自 clone 過了
+    const clay = volcanoGeometry(THREE);
+    const part = ctx.build({ kind: 'compound', at: spec.at, parts: [...clay.map(geometry => ({ geometry, pos: [0, 0, 0] })), ...spec.parts] });
+    for (const g of clay) g.dispose();   // compound 合併時各自 clone 過了
     return part;
   },
 };

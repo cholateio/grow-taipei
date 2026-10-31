@@ -55,7 +55,6 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .card ol { text-align: left; margin: 0 0 16px; padding-left: 1.3em; line-height: 1.9; font-weight: 700; }
 .card .eyebrow { margin: 0; font: 700 10px ui-monospace, monospace; letter-spacing: 2px; color: #7a6f68; }
 .card .line { margin: 0 0 14px; }
-/* 結局橫幅：貼在物品列上方，島還看得到 */
 
 /* hover 只給滑鼠（觸控點過會黏住黃底） */
 @media (hover: hover) {

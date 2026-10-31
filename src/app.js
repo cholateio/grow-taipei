@@ -120,9 +120,8 @@ export async function start({ params, loading }) {
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
-  createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
-  // 演出中點畫面 = 跳過
-  view.renderer.domElement.addEventListener('click', () => { if (show.busy) show.skip(); });
+  // 跳過鍵（計畫 12）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；終局前的 hold 不顯示（show.skippable）
+  const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo, onSkip: () => show.skip() });
   if (!auto && !storageGet('grow-taipei:howto')) howTo();
 
   const clock = new THREE.Clock();
@@ -136,6 +135,7 @@ export async function start({ params, loading }) {
   };
   view.renderer.setAnimationLoop(() => {
     frame(Math.min(clock.getDelta(), 0.08));
+    topBar.setSkippable(show.skippable);
     view.render();
     // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最多，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）
     const r = autoDone && sampleCalls({ calls: view.renderer.info.render.calls, tris: view.renderer.info.render.triangles, pending: assets.pending });

@@ -39,3 +39,22 @@ test('six bubble icons in the same SVG style', () => {
   assert.deepEqual(Object.keys(BUBBLE_ICONS).sort(), ['dome','islet','lamp','mortar','school','train']);
   for (const s of Object.values(BUBBLE_ICONS)) { assert.match(s, /^<svg/); assert.match(s, /viewBox="0 0 64 64"/); }
 });
+
+// 頂欄的跳過鍵（計畫 12 Task 1）：.tools 最左一顆 data-act=skip，預設藏著；setSkippable 顯示／隱藏，按下呼叫 onSkip
+const topBar = async (opts = {}) => {
+  installFakeDom(); const { createTopBar } = await import('../src/ui/cards.js');
+  const root = document.createElement('div'), calls = [];
+  const bar = createTopBar(root, { onReset: () => calls.push('reset'), onHowTo: () => calls.push('howto'), onSkip: () => calls.push('skip'), ...opts });
+  return { root, bar, calls, btn: act => root.querySelector(`[data-act=${act}]`) };
+};
+test('the top bar has a hidden skip button first in the tools; setSkippable shows it and a press calls onSkip', async () => {
+  const { bar, calls, btn } = await topBar();
+  const skip = btn('skip');
+  assert.ok(skip, 'skip button'); assert.equal(skip.tagName, 'button'); assert.equal(skip.textContent, '跳過');
+  assert.deepEqual(skip.parent.children.map(b => b.dataset.act), ['skip', 'howto', 'reset'], 'skip is the leftmost tool');
+  assert.equal(skip.hidden, true, 'hidden by default');
+  bar.setSkippable(true); assert.equal(skip.hidden, false);
+  skip.listeners.click(); assert.deepEqual(calls, ['skip']);
+  bar.setSkippable(false); assert.equal(skip.hidden, true);
+  btn('reset').listeners.click(); btn('howto').listeners.click(); assert.deepEqual(calls, ['skip', 'reset', 'howto']);
+});

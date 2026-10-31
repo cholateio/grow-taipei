@@ -121,6 +121,8 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
       timeline.setReducedMotion(flag);
     },
     get busy() { return timeline.busy; },
+    // 頂欄的跳過鍵照這個顯示（計畫 12）：時間軸忙著、而且不在終局前的 hold（hold 本來就跳不過）
+    get skippable() { return timeline.busy && !holding; },
     get elapsed() { return timeline.elapsed; },
     get currentKind() { return timeline.currentKind; },   // 正在演哪一種拍（測試把鏡頭 focus 的秒數從劇本秒數扣掉）
     stage, roster, nav, bubbles, blink,

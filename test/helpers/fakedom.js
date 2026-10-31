@@ -11,7 +11,13 @@ export class El {
   set innerHTML(v) {
     this._html = v;
     this._text = v.replace(/<button[^>]*>[\s\S]*?<\/button>/g, '').replace(/<[^>]+>/g, '');
-    this.children = [...v.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].map(m => { const b = new El('button'); b.className = /class="([^"]*)"/.exec(m[1])?.[1] ?? ''; b._text = m[2]; b.parent = this; return b; });
+    // 按鈕的 data-* 進 dataset、hidden 屬性進 hidden（頂欄的跳過鍵預設藏著）
+    this.children = [...v.matchAll(/<button([^>]*)>([\s\S]*?)<\/button>/g)].map(m => {
+      const b = new El('button'); b.className = /class="([^"]*)"/.exec(m[1])?.[1] ?? ''; b._text = m[2]; b.parent = this;
+      for (const [, k, val] of m[1].matchAll(/data-([\w-]+)="([^"]*)"/g)) b.dataset[k] = val;
+      if (/(^|\s)hidden(\s|=|$)/.test(m[1])) b.hidden = true;
+      return b;
+    });
   }
   get classList() {
     const list = () => this.className.split(' ').filter(Boolean), set = cs => { this.className = cs.join(' '); };
@@ -21,10 +27,11 @@ export class El {
       contains: c => list().includes(c),
     };
   }
-  // 支援 'tag'、'.cls'、'tag.cls1.cls2'
+  // 支援 'tag'、'.cls'、'tag.cls1.cls2'、尾巴一個 '[data-k=v]'（'[data-act=reset]'、'button[data-act=skip]'）
   querySelector(sel) {
-    const [tag, ...cls] = sel.split('.');
-    const hit = e => (!tag || e.tagName === tag) && cls.every(c => e.className.split(' ').includes(c));
+    const attr = /\[data-([\w-]+)=["']?([^"'\]]*)["']?\]$/.exec(sel);
+    const [tag, ...cls] = (attr ? sel.slice(0, attr.index) : sel).split('.');
+    const hit = e => (!tag || e.tagName === tag) && cls.every(c => e.className.split(' ').includes(c)) && (!attr || e.dataset[attr[1]] === attr[2]);
     const walk = e => e.children.find(hit) ?? e.children.map(walk).find(Boolean); return walk(this) ?? null;
   }
 }

@@ -676,6 +676,19 @@ test('hold(s) plays s seconds, ignores skip, ends on abort; reduced-motion resol
   mid.show.setReducedMotion(true); await m; assert.equal(mid.show.busy, false);
 });
 
+// 計畫 12 Task 1：頂欄跳過鍵照 skippable 顯示——回合演著 true；終局前的 hold（不能跳過）false；閒著 false
+test('skippable: true while a turn plays, false during the hold and when idle', async () => {
+  const { show } = await headlessShow();
+  const frames = secs => { for (let t = 0; t < secs - 1e-9; t += 1 / 30) show.update(1 / 30, t); };
+  assert.equal(show.skippable, false, 'idle');
+  const p = show.turn([...engine.place(engine.createState(spec), 'milk', spec).events, { kind: 'settle' }]);
+  assert.equal(show.busy, true); assert.equal(show.skippable, true, 'a turn is playing');
+  show.skip(); await p; assert.equal(show.skippable, false, 'idle after skip');
+  const h = show.hold(2); frames(0.5);
+  assert.equal(show.busy, true); assert.equal(show.skippable, false, 'the hold before the end cannot be skipped');
+  show.abort(); await h; assert.equal(show.skippable, false);
+});
+
 // 審稿：中止過的舊 hold 收尾（Promise 的 then 晚一步才跑）不能清掉下一個 hold 的記號——不然新的 hold 被 skip 跳掉
 test('a stale aborted hold does not clear the next hold: skip still cannot end it', async () => {
   const { show } = await headlessShow();

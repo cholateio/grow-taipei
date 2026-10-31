@@ -9,3 +9,13 @@ test('main.js is a bootstrap with no static imports and loads the app dynamicall
   const tryAt = src.indexOf('try {'), dyn = src.search(/import\([^;]*'\.\/app\.js'/);
   assert.ok(tryAt >= 0 && dyn > tryAt, 'dynamic import of ./app.js inside try');
 });
+
+// 計畫 12 Task 1：跳過改成頂欄的跳過鍵——畫布不再聽 click（拖鏡頭的 pointerdown 照舊），每幀照 show.skippable 顯示／隱藏
+test('app.js skips through the top-bar button only: no canvas click listener, setSkippable(show.skippable) every frame', () => {
+  const src = readFileSync('src/app.js', 'utf8');
+  assert.doesNotMatch(src, /domElement\.addEventListener\(\s*'click'/, 'no canvas click → skip');
+  assert.match(src, /domElement\.addEventListener\(\s*'pointerdown'/, 'drag still cancels the camera flight');
+  assert.match(src, /onSkip:\s*\(\)\s*=>\s*show\.skip\(\)/);
+  const loop = src.slice(src.indexOf('setAnimationLoop('));
+  assert.match(loop, /setSkippable\(show\.skippable\)/, 'the frame loop updates the skip button');
+});

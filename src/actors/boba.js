@@ -321,12 +321,12 @@ export const script = {
         B.home(shown('boba.queue')), B.levelUp('boba'),
       ];
     },
-    // 珍奶店：老闆 …… → 揮鋤頭 → 閃白店面、招牌杯、遮雨棚（攤車收掉）；人龍挪到店門口 → LEVEL UP
+    // 珍奶店：老闆 …… → 揮鐵鎚 → 閃白店面、招牌杯、遮雨棚（攤車收掉）；人龍挪到店門口 → LEVEL UP
     3(e, s, ctx) {
       const { B } = ctx;
       return [B.bubble(owner, '……', 0.8), B.gesture(owner, 'build', 1.2, { at: SHOP }), B.apply(e), B.home(owner), B.home(shown('boba.queue')), B.levelUp('boba')];
     },
-    // 噴泉廣場（晶片 ≥2）：老闆轉向店東側揮鋤頭 → 閃白噴泉 → 排頭兩個觀光客 ♥ → LEVEL UP
+    // 噴泉廣場（晶片 ≥2）：老闆轉向店東側揮鐵鎚 → 閃白噴泉 → 排頭兩個觀光客 ♥ → LEVEL UP
     4(e, s, ctx) {
       const { B } = ctx;
       return [
@@ -343,7 +343,7 @@ export const script = {
       const hop = B.together([0, 1].map(i => B.jump(passenger(i), () => TOURIST_SPOTS[i], 0.5)));
       return [
         // 分店閃完停 0.3 s 再飛去燈塔島（審稿：一閃完就飛走看不清分店）
-        // 分店（計畫 11 §設計 3：主島那款店面，長出來）→ 0.15 s 後屋頂杯子招牌出現（跟主島 Lv3 的店與 boba.sign 一樣各佔一格；◆ 7.53 → 7.83 s）
+        // 分店（計畫 11 §設計 3：主島那款店面，長出來）→ 0.15 s 後屋頂杯子招牌出現（跟主島 Lv3 的店與 boba.sign 一樣各佔一格；◆ 7.53 → 7.83 s，貼著 ≤ 8 s 的上限：這一拍不可再加鍵）
         B.focus(FOREST, { zoom: ISLAND_ZOOM }), B.apply(e, { only: ['sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1', 'sat.forest'] }), B.wait(0.3),
         B.focus(LIGHT, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['boba.ferry', 'boba.tourists'], hold: ['boba.tourists'], blink: false }), ...sp,

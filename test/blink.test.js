@@ -181,12 +181,13 @@ test('shrink: scale.y eases in to 0.15x over SHRINK_DUR with no glow and its own
 });
 test('stop and clear end a shrink at once: the scale comes back and onEnd runs once; a shrink over a grow starts from the full scale', () => {
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), x = twoMeshes(), y = twoMeshes(), z = twoMeshes(), ends = [];
+  for (const o of [x, y, z]) o.g.position.y = 0.7;   // 縮的軸在自己的底：中途與還原後 position.y 都要回到 0.7
   blink.shrink(x.g, 0.2, () => ends.push('x')); blink.shrink(y.g, 0.2, () => ends.push('y')); blink.update(0.1);
   assert.ok(x.g.scale.y < 1 && y.g.scale.y < 1);
-  blink.stop(x.g); assert.deepEqual(x.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x']); assert.ok(!blink.has(x.g)); assert.ok(blink.has(y.g));
+  blink.stop(x.g); assert.deepEqual(x.g.scale.toArray(), [1, 1, 1]); assert.equal(x.g.position.y, 0.7, 'stop: position.y restored'); assert.deepEqual(ends, ['x']); assert.ok(!blink.has(x.g)); assert.ok(blink.has(y.g));
   blink.stop(x.g); assert.deepEqual(ends, ['x'], 'stopping twice is harmless');
-  blink.clear(); assert.deepEqual(y.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x', 'y']); assert.equal(blink.count, 0);
+  blink.clear(); assert.deepEqual(y.g.scale.toArray(), [1, 1, 1]); assert.equal(y.g.position.y, 0.7, 'clear: position.y restored'); assert.deepEqual(ends, ['x', 'y']); assert.equal(blink.count, 0);
   blink.grow(z.g); blink.update(0.05); assert.ok(z.g.scale.y < 0.5, 'mid-grow');
   blink.shrink(z.g, 0.2, () => ends.push('z')); assert.equal(z.g.scale.y, 1, 'the grow is ended first: shrinks from its own height'); assert.equal(blink.count, 1);
-  blink.update(0.25); assert.deepEqual(z.g.scale.toArray(), [1, 1, 1]); assert.deepEqual(ends, ['x', 'y', 'z']);
+  blink.update(0.25); assert.deepEqual(z.g.scale.toArray(), [1, 1, 1]); assert.equal(z.g.position.y, 0.7, 'finished: position.y restored'); assert.deepEqual(ends, ['x', 'y', 'z']);
 });

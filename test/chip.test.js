@@ -403,7 +403,7 @@ test('chip rosters enter from the 101 site and from outside the factory on the b
   assert.deepEqual(bad, []);
 });
 
-// 蓋東西站鏡頭側（§14）：廠房那一級，工人走到工地的鏡頭側揮鋤頭，揮完才閃白廠房
+// 蓋東西站鏡頭側（§14）：廠房那一級，工人走到工地的鏡頭側揮鐵鎚，揮完才閃白廠房
 test('chip grow 2: the worker builds at the fab front before the factory appears', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, seen = [];
   show.update = (dt, t) => {

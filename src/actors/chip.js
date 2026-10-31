@@ -225,7 +225,7 @@ export const script = {
     return [B.apply(e, { hold: ['chip.worker'] }), B.spawn('chip.worker', WORKER_ENTRY), B.walk(w, DOOR), B.bubble(w, '♪', 0.8), B.home(w)];
   },
   grow: {
-    // 廠房：工人走到工地的鏡頭側揮鋤頭 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）出來上班
+    // 廠房：工人走到工地的鏡頭側揮鐵鎚 → 閃白廠房（工人收工，走回 101 工地）→ 2 個工程師從廠門外（橋那側）出來上班
     2(e, s, ctx) {
       const { B } = ctx, w = worker();
       return [

@@ -137,6 +137,11 @@ test('Lv5: flagship on the lighthouse island, the ferry moored off it, two touri
   const v = views[5];
   assert.ok(onLighthouse(v['boba.flagship'].at), 'flagship on the lighthouse island');
   assert.ok(Math.hypot(v['boba.flagship'].at.x - LIGHT.x, v['boba.flagship'].at.z - LIGHT.z) > 1.0, 'clear of the lighthouse and the keeper ring');
+  // 計畫 11 任務 3 審稿：店體（主島那款，size 乘 h / 高）對觀光客站位與守塔人環（繞燈塔 r 0.6）的間距——店不壓到人
+  { const S = boba.MODELS.shop.size, k = boba.ISLET_SHOP_H / S[1], hw = S[0] * k / 2, hd = S[2] * k / 2, F = boba.FLAGSHIP;
+    const box = p => Math.hypot(Math.max(0, Math.abs(p.x - F.x) - hw), Math.max(0, Math.abs(p.z - F.z) - hd));
+    for (const t of boba.TOURIST_SPOTS) assert.ok(box(t) >= 0.3, `tourist spot ${box(t).toFixed(2)} from the shop body`);
+    assert.ok(box(LIGHT) - 0.6 >= 0.3, `keeper ring (r 0.6) ${(box(LIGHT) - 0.6).toFixed(2)} from the shop body`); }
   const f = v['boba.ferry']; assert.equal(f.path, boba.MODELS.boat.path); assert.equal(cellAt(f.at.x, f.at.z), null);
   assert.ok(Math.hypot(f.at.x - LIGHT.x, f.at.z - LIGHT.z) < HEX_R + 0.3, 'moored at the lighthouse island');
   const t = v['boba.tourists']; assert.deepEqual([t.kind, t.n, t.home.kind], ['roster', 2, 'stand']); assert.ok(t.home.spots.every(onLighthouse));
@@ -375,7 +380,7 @@ test('Lv2: three tourists come from the pier and stand in the queue', async () =
   const spots = boba.view(show.stage.lv, show.stage.flags)['boba.queue'].home.spots;
   show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.1), `tourist ${i} in line`));
 });
-// 珍奶店：老闆在攤車旁揮鋤頭 → 店面閃白；人龍走到店門口、老闆走到店門旁，站定後每個人都在自己的站位上（不卡）
+// 珍奶店：老闆在攤車旁揮鐵鎚 → 店面閃白；人龍走到店門口、老闆走到店門旁，站定後每個人都在自己的站位上（不卡）
 test('Lv3: the owner builds, the shop appears, the queue and the owner move to the shop door and settle there', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show } = h;

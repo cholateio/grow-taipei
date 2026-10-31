@@ -166,9 +166,9 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 // commit 由舞台演（會長的建築亮一下＋長出來、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK + 0.15·(n−1)——
 // 不亮的鍵照樣佔一格 stagger：拍長不變（整局的走位與節奏門檻對時間很敏感）。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
-// stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻閃（大停電：電一斷整區一起暗，拍長 BLINK）
-// tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個閃的零件一起閃、不多佔一格 stagger：
-// 加了點綴不改任何一拍的長度（整局的走位對時間很敏感）；這拍只剩點綴時照常閃一次
+// stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻 commit（大停電：電一斷整區一起，拍長 BLINK）
+// tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個 commit 的零件一起出現、不多佔一格 stagger：
+// 加了點綴不改任何一拍的長度（整局的走位對時間很敏感）；這拍只剩點綴時照常 commit 一次
 export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
   let keys = [], along = [], fired = 0, t = 0;
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）

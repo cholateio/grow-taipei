@@ -839,9 +839,9 @@ test('live, alien ending: the mutant rat never overlaps a person (≥ ra + rb, o
 });
 // 所有老鼠對小人（簡報 D 的驗收，2026-10-28 第二輪裁決拆三條）：
 // (a) 鼠窩的老鼠（老鼠 Lv1–2，繞錨點散步）對任何人——錨點搬到巨蛋正東，離門口觀眾 ≥ 1.09
-// Task 6a 修正輪（控制者裁決）：標 todo，門檻不放寬、不刪。回到 GROW 之後（當時的）兩條正解第 7 回合同時放老鼠（鼠窩 Lv2）、棒球長到 7（第 5 個觀眾進場）：
+// Task 6a 修正輪（控制者裁決）曾標 todo、門檻不放寬不刪；計畫 11 任務 5 之後翻回正式。回到 GROW 之後（當時的）兩條正解第 7 回合同時放老鼠（鼠窩 Lv2）、棒球長到 7（第 5 個觀眾進場）：
 // 觀眾從捷運站那座橋下來（落點約 (−0.6, 4.3)）直線走到門口西端 (−4.15, 4.73)，路線在 x −1.19 離窩心 (−1.19, 4.14) 只有 0.23 m，
-// 穿過老鼠散步圈（r 0.7）——量到 25 幀、最近 0.01 m（要 0.255）。錨點往南移 0.8 試過，改撞草皮觀眾與球員，已還原。留給延後的多輪人群那一輪（R10）
+// 穿過老鼠散步圈（r 0.7）——量到 25 幀、最近 0.01 m（要 0.255）。錨點往南移 0.8 試過，改撞草皮觀眾與球員，已還原。
 // 計畫 11 任務 5（nav.separate 每幀 SEP_PASSES = 3 輪）：唯一正解這半已經不撞了；剩下的全是外星壞局第 7 回合鼠窩的 rat#1 走回窩
 // 擦過珍奶老闆（站在 (3.80, 5.05)），和下面 (c) 外星局那條是同一段：改前 5 幀、最近 0.02 m，改後 5 幀、最近 0.04 m。
 // 擋住的不是推擠輪數：separate 每幀都把老鼠推到 0.255，但牠讓路（sidestep）要讓的那一側（老闆和走路格南緣之間）走不到，
@@ -856,8 +856,7 @@ test('live, the solution and the alien bad game: nest rats never overlap a perso
 // (c) 走路的老鼠經過站定的人（stand 站好了）：nav.separate 讓走路的那個退開整段，不穿過去。
 // 修正批次 2：外星壞局換成列舉裡第一條以「變異鼠稱王」為標題的放法（milk,chip,bulb,token,baseball,boba,rat,typhoon）之後，
 // 第 7 回合老鼠從珍奶店走回窩，路線貼著店門口的人龍（z 5.19）和走路格南緣之間的縫走（離人龍 0.10–0.19 m，要 0.255），
-// 推開又被拉回路線上（11 幀）——HEAD（5f321be）用同一個放法一樣是 11 幀，不是這批改的；門檻不放寬、不刪，外星局那半標 todo，
-// 留給延後的多輪人群那一輪（協調者可改判）。正解那半照舊嚴格。
+// 推開又被拉回路線上（11 幀）——HEAD（5f321be）用同一個放法一樣是 11 幀，不是這批改的；門檻不放寬、不刪（當時外星局那半標 todo，現已翻回正式）。
 // 計畫 11 任務 5 多輪之後量：改前 5 幀、最近 0.02 m（rat#1 對珍奶老闆，同上面鼠窩那條），改後 5 幀、最近 0.04 m——多輪推擠救不了：
 // 每幀 separate 都推到 0.255，是名冊讓路那一側（老闆與走路格南緣之間）走不到、m.side 收回 0、游標把牠拉回穿過老闆的路線。
 // 修正第 1 輪名冊讓路換邊／停住後 0 幀，翻回正式
@@ -873,7 +872,7 @@ test('live, the alien bad game: a walking rat never runs through a standing pers
   const alien = [...passStand].filter(x => x.startsWith(ALIEN_LABEL));
   assert.deepEqual(alien.slice(0, 20), [], `${alien.length} frames too close`);
 });
-// (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久——另案，先標 todo
+// (b) 賽博 Lv5 機器鼠軍團（10 隻繞 101 r 1.3）對中心格散步的島民：兩邊都在散步、擦身太久（曾標 todo，現已正式）
 // 計畫 11 任務 5 多輪：改前 24 幀、最近 0.04 m，改後 16 幀、最近 0.07 m（對島民、偵防師；第 9 回合）。剩下的是兩個都在走的人斜著交會：
 // separate 這一幀推開了，下一幀位置又從游標＋m.side 算（m.side 夾在 YIELD_CLEAR、照走路速度收回），十隻老鼠加島民擠在 101 四周，
 // 推開的那一截收回來又貼上。修正第 1 輪（名冊讓路：走不到的那一側換邊、兩邊都走不到讓到最遠的可走點）後 0 幀，翻回正式
@@ -1067,6 +1066,18 @@ test('a walker whose yield side is walled off passes a standing person on the ot
   assert.ok(side < -0.15, `went round the open side (z offset ${side.toFixed(2)} at the closest point)`);
   assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
   assert.ok(gap(st.pos, S) < 1e-9, 'the stander stays put');
+});
+// m.waited 在新的一趟（go）與跳過（snap）歸零：停住等人的秒數不帶到下一趟
+test('waited resets when a new trip starts and on snap', () => {
+  const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  nav.setFootprints([{ x: C.x, z: C.z + 0.5, w: 1.2, d: 0.4 }, { x: C.x, z: C.z - 0.5, w: 1.2, d: 0.4 }]);
+  roster.declare('s', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [{ ...C, yaw: 0 }] } }); roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [w] = roster.members('w');
+  for (let f = 0; f < 30 && !(w.waited > 0); f++) roster.update(1 / 30, f / 30);
+  assert.ok(w.waited > 0, 'waited while stopped short of the stander');
+  roster.snap();
+  assert.equal(w.waited, 0, 'snap resets waited');
 });
 test('a walker who cannot yield either way stops short of a standing person instead of walking through (≥ ra + rb − 0.02 throughout)', () => {
   const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };

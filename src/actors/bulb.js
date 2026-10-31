@@ -370,10 +370,10 @@ export const script = {
         B.together([B.bubble(m, '！', 0.6), B.apply(e)]), B.world({ time: TIMES.night }), B.home(m), B.levelUp('bulb'),
       ];
     },
-    // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鋤頭 → 閃白變電所（儲能櫃、變壓器亮淡藍）、♪（嗡嗡響）
+    // 變電所（晶片 ≥3 或代幣 ≥3）：電工快走到 101 西邊的空地 → 揮鐵鎚 → 閃白變電所（儲能櫃、變壓器亮淡藍）、♪（嗡嗡響）
     6(e, s, ctx) {
       const { B } = ctx, m = el(ctx);
-      // 揮一下、閃白的同時 ♪（裁決 R15 一級 ≤ 4.5 s：鋤頭 1.0 → 0.6）；他本來就在空地旁邊時走路那段至少 MIN_WALK 秒（站著等一下），整級不短於 3 秒
+      // 揮一下、閃白的同時 ♪（裁決 R15 一級 ≤ 4.5 s：鐵鎚 1.0 → 0.6）；他本來就在空地旁邊時走路那段至少 MIN_WALK 秒（站著等一下），整級不短於 3 秒
       return [
         B.together([B.walk(m, c => frontOf(SUBSTATION, SUBSTATION_FRONT.z - SUBSTATION.z, c.nav), { speed: LIGHTING_SPEED }), B.wait(MIN_WALK.substation)]),
         B.gesture(m, 'build', 0.6, { at: SUBSTATION }),

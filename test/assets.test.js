@@ -194,7 +194,7 @@ test('every file in tools/assets.json is shipped under assets/<into>/, uncompres
 
 test('docs/assets/manifest.md has one row per level of every item (60), each with a status', async () => {
   const { ITEMS, ORDER } = await import('../src/rules/spec.js');
-  // 共用（鋤頭）與結局／最終章（紅色飛天車）的列不是物品的級，不算
+  // 共用（鐵鎚）與結局／最終章（紅色飛天車）的列不是物品的級，不算
   const rows = readFileSync('docs/assets/manifest.md', 'utf8').split('\n').filter(l => l.startsWith('| ') && !l.startsWith('| 物品') && !l.startsWith('| 共用') && !l.startsWith('| 結局')).map(l => l.split('|').map(s => s.trim()));
   for (const id of ORDER) for (let lv = 1; lv <= ITEMS[id].max; lv++) {
     const hit = rows.filter(r => r[1] === ITEMS[id].name && parseInt(r[2], 10) === lv);

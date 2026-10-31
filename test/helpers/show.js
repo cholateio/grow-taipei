@@ -327,7 +327,11 @@ export function blinkLog(show) {
     blink[fn] = (o, dur, ...rest) => {
       if (!keyOf.has(o)) snap();
       if (fn === 'grow') { const last = calls.at(-1); if (last?.object === o && last.fn === 'part') last.grows = true; }
-      else calls.push({ label, object: o, key: keyOf.get(o) ?? null, fn, dur, grows: false, cause: show.currentKind === 'flash', member: holders.has(o), from: from() });
+      else {
+        // 起因：只算 B.flash（show/beats.js）自己那一次 blink.part——同一拍裡別處（例如舞台 commit）呼叫的不算
+        const src = from();
+        calls.push({ label, object: o, key: keyOf.get(o) ?? null, fn, dur, grows: false, cause: show.currentKind === 'flash' && src.startsWith('show/beats.js'), member: holders.has(o), from: src });
+      }
       return orig(o, dur, ...rest);
     };
   };

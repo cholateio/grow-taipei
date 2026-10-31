@@ -375,7 +375,7 @@ export const script = {
       const { B } = ctx, st = staffOf();
       return [B.apply(e, { hold: ['token.staff'] }), B.spawn('token.staff', STAFF_ENTRY), B.walk(st, POST), B.bubble(st, '♪', 0.8), B.levelUp('token'), B.home(st)];
     },
-    // 大車站：站務員走到站前揮鋤頭 → 閃白站體與廣場 → ♥ → LEVEL UP
+    // 大車站：站務員走到站前揮鐵鎚 → 閃白站體與廣場 → ♥ → LEVEL UP
     3(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [B.walk(st, offset(AT, 0.15, 0.75)), B.gesture(st, 'build', 1.2, { at: AT }), B.apply(e), B.bubble(st, '♥', 0.8), B.levelUp('token'), B.home(st)];

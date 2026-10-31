@@ -401,7 +401,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
         m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
-        m.cursor = null; setPose(m, { ...homePose(spec, m.i, m), walking: false });
+        m.cursor = null; m.waited = 0; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
   }
@@ -416,6 +416,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function go(m, path) {
     const last = path.at(-1), cursor = createPathCursor(path, { loop: false }), speed = m.arriving || m.mode === 'exit' ? m.speed : WANDER_SPEED;
     m.trip = path.length > 1 && cursor.total > 0 ? { cursor, left: cursor.total, last, speed, offgrid: !nav.walkable(last.x, last.z) } : null;
+    m.waited = 0;   // 新的一趟重新算等待（上一趟停住等人的秒數不帶過來）
     hurry(m, speed);
   }
   // 被新建築蓋到（2026-10-31 錄影：蓋晶片廠時島民站在工地正中間，從圍籬中間走出來）：footprint 變了的那一幀，日常裡、露出來的人

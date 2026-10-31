@@ -227,13 +227,13 @@ export const script = {
         B.home(c => c.roster.members('baseball.players')), B.levelUp('baseball'),
       ];
     },
-    // ◆ 大巨蛋：球員 …… → 圖框「巨蛋」→ 離巨蛋鏡頭側最近的球員走過去 → 揮鋤頭 ×2 → 閃白巨蛋 → 回全景定格 → LEVEL UP
+    // ◆ 大巨蛋：球員 …… → 圖框「巨蛋」→ 離巨蛋鏡頭側最近的球員走過去 → 揮鐵鎚 ×2 → 閃白巨蛋 → 回全景定格 → LEVEL UP
     // （人數預算，裁決 R16：球場格不住島民，從別格過橋找人來蓋要多 3–4 秒；沒有球員才找島民）
     3(e, s, ctx) {
       const { B } = ctx, front = c => frontOf(AT, FRONT_R, c.nav);
       const w = once(c => shown('baseball.players')(c).sort((a, b) => dist(a.pos, front(c)) - dist(b.pos, front(c)))[0] ?? nearestIslander(c, front(c)));
       return [
-        // 裁決 R17 ◆ ≤ 8 s：泡泡 0.8／0.9 → 0.6／0.7、鋤頭 1.2 → 0.9、全景停 1.4 → 1.0
+        // 裁決 R17 ◆ ≤ 8 s：泡泡 0.8／0.9 → 0.6／0.7、鐵鎚 1.2 → 0.9、全景停 1.4 → 1.0
         B.bubble(player(0), '……', 0.6), B.bubble(player(0), { icon: 'dome' }, 0.7),
         B.walk(w, front), B.gesture(w, 'build', 0.9, { at: AT }), B.gesture(w, 'build', 0.9, { at: AT }), B.apply(e), B.home(w),
         B.focus('home', { hold: 1.0 }), B.levelUp('baseball'),

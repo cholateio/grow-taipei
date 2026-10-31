@@ -263,7 +263,7 @@ test('view uses meta.total when given; stage names for the float', () => {
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
 
-// ── settle 劇本（§8.9；計畫 11 §設計 4）：跨門檻才演——回全景、換零件（長出來）、頭上寫階段名；沒有人走過去揮鋤頭 ──
+// ── settle 劇本（§8.9；計畫 11 §設計 4）：跨門檻才演——回全景、換零件（長出來）、頭上寫階段名；沒有人走過去揮鐵鎚 ──
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const labelOf = beats => {
   let text = null; const ctx = { stage: { headOf: () => ({ x: 0, y: 0, z: 0 }) }, bubbles: { levelUp: (h, o) => { text = o.text; return { cancel() {} }; } } };
@@ -319,7 +319,7 @@ test('headless: the turn crossing into 點燈 shows the label', async () => {
   assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });
 
-// 計畫 11 §設計 4：101 跨階沒有人揮鋤頭——跨進「蓋一半」那一段 settle 裡沒有人在演 build、也沒有人被叫去走路
+// 計畫 11 §設計 4：101 跨階沒有人揮鐵鎚——跨進「蓋一半」那一段 settle 裡沒有人在演 build、也沒有人被叫去走路
 test('the 101 stage upgrade: nobody walks over or plays build during the crossing settle', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, builds = [];
   let settling = false;
@@ -336,11 +336,11 @@ test('the 101 stage upgrade: nobody walks over or plays build during the crossin
     await h.run([...r.events, { kind: 'settle' }], i + 1 < turns.length ? { instant: true } : { onMark: e => { if (e.kind === 'settle') settling = true; } });
   }
   assert.ok(settling, 'the settle played');
-  assert.deepEqual(builds.slice(0, 5), [], `${builds.length} build frames during the settle`);
+  assert.deepEqual(builds, [], `${builds.length} build frames during the settle`);
   assert.equal(show.stage.meta.total, crossed);
 });
 
-// §14.4 大升級回全景：回全景（換零件之前）→ 長出來、LEVEL UP 在全景裡演，頭頂不出框（計畫 11 §設計 4：不再先飛去 101 那一格看人揮鋤頭）
+// §14.4 大升級回全景：回全景（換零件之前）→ 長出來、LEVEL UP 在全景裡演，頭頂不出框（計畫 11 §設計 4：不再先飛去 101 那一格看人揮鐵鎚）
 test('a stage crossing: focus(home) runs before apply and LEVEL UP, nobody builds; the rig is at the overview when the LEVEL UP appears', async () => {
   // 真的 rig；controls.update 像 OrbitControls 一樣讓鏡頭看著注視點（飛行中也是）
   const camera = new THREE.PerspectiveCamera(32, 16 / 9, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };

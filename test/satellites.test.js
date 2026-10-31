@@ -256,7 +256,7 @@ test('islet stages that move: the swing swings, the carousel turns, the second t
 });
 
 // 位置：每段零件在自己的島上（離島心 ≤ ISLET_R；棧橋伸到岸外一點、仍在 R 以內），離守塔人的圈、觀光客、小孩、老鼠、電工的站位都 ≥ 0.3；
-// draw call：每座島上衛星零件（compound 數材質、builders 實際建出來數 mesh；名冊不算、老鼠一隻 1）≤ 6
+// draw call（指 sat.* 零件，不含 boba.flagship 等珍奶自己的零件）：每座島上衛星零件（compound 數材質、builders 實際建出來數 mesh；名冊不算、老鼠一隻 1）≤ 6
 import { TOURIST_SPOTS, DOCK, FERRY_PATH, FERRY_H } from '../src/actors/boba.js';
 import { readFileSync } from 'node:fs';
 import { TOP } from '../src/scene/hex.js';

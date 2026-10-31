@@ -211,7 +211,7 @@ test('Lv2: the second player spawns at its entry behind the stands and walks ont
   const spots = baseball.view(show.stage.lv, show.stage.flags)['baseball.players'].home.spots;
   show.roster.members('baseball.players').forEach((m, i) => assert.ok(near(m.pos, spots[i], 0.15), `player ${i} on the field`));
 });
-// 蓋東西站鏡頭側（§14）：大巨蛋那一級，離巨蛋鏡頭側最近的球員（裁決 R16：球場格不住島民）在那裡揮兩次鋤頭
+// 蓋東西站鏡頭側（§14）：大巨蛋那一級，離巨蛋鏡頭側最近的球員（裁決 R16：球場格不住島民）在那裡揮兩次鐵鎚
 const gestureLog = (show, keys, frontAt) => {
   const update = show.update, log = [];
   show.update = (dt, t) => {

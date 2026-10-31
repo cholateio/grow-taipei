@@ -528,13 +528,13 @@ for (const how of ['skip', 'reset']) {
     const { show, run } = await headlessShow(), steps = turnSteps(SOLUTIONS[0]);
     let s = engine.createState(spec);
     for (const step of steps.slice(0, 2)) { const r = step(s); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
-    const r = steps[2](s), shrinking = [], shrink = show.blink.shrink;
-    show.blink.shrink = (o, ...rest) => { shrinking.push(o); return shrink(o, ...rest); };
+    const r = steps[2](s), shrinking = [], shrinkY = new Map(), shrink = show.blink.shrink;
+    show.blink.shrink = (o, ...rest) => { shrinking.push(o); shrinkY.set(o, o.position.y); return shrink(o, ...rest); };
     const p = show.turn([...r.events, { kind: 'settle' }]);
     for (let t = 0; t < 60 && !(shrinking.length && show.blink.has(shrinking[0]) && shrinking[0].scale.y < 0.9); t += 1 / 30) { show.update(1 / 30, t); await Promise.resolve(); }
     assert.ok(shrinking.length && shrinking[0].scale.y < 0.9, 'caught a part mid-shrink');
     if (how === 'skip') { show.skip(); await p; } else { show.reset(); await p.catch(() => {}); }
-    for (const o of shrinking) { assert.equal(o.parent, null, 'dropped'); assert.equal(o.scale.y, 1, 'restored first'); assert.ok(!show.blink.has(o)); }
+    for (const o of shrinking) { assert.equal(o.parent, null, 'dropped'); assert.equal(o.scale.y, 1, 'restored first'); assert.equal(o.position.y, shrinkY.get(o), 'position.y restored too'); assert.ok(!show.blink.has(o)); }
     assert.equal(show.blink.count, 0);
   });
 }

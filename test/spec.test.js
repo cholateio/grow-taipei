@@ -55,17 +55,18 @@ test('every action and stall condition compiles', () => {
   for (const id of ORDER) { all.push(...(ITEMS[id].fx || [])); for (const k in ITEMS[id].onLevel || {}) all.push(...ITEMS[id].onLevel[k]); all.push(...(ITEMS[id].stall || [])); }
   for (const a of all) { if (a.when) assert.doesNotThrow(() => compile(a.when, ctx)); if (a.branch) assert.doesNotThrow(() => compile(a.branch.when, ctx)); }
 });
-// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下那回合一次全部檢查（停電、淹水、巨蛋淹水、鼠災、颱風假、攤車被吹走、外送爆單 ≥5），之後沒有反應
-test('typhoon checks all fire at placement: blackout, flood, dome flood, dome rats, day off, cart blown, delivery; no onLevel', () => {
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下那回合一次全部檢查（停電、淹水、巨蛋淹水、鼠災、颱風假、攤車被吹走），之後沒有反應；外送爆單 +1 拿掉了（死規則，協調者裁決）
+test('typhoon checks all fire at placement: blackout, flood, dome flood, dome rats, day off, cart blown; no delivery delta, no onLevel', () => {
   const t = ITEMS.typhoon;
   assert.deepEqual(t.fx.map(a => a.when), [
     { and: [pres('bulb'), maxL('bulb', 2)] }, { and: [pres('token'), maxL('token', 3)] }, { and: [pres('baseball'), maxL('baseball', 3)] },
-    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] }, minL('boba', 5),
+    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] },
   ]);
-  assert.deepEqual(t.fx.map(a => a.lock ?? null), ['bulb', 'token', 'baseball', null, null, 'boba', null]);
-  assert.deepEqual(t.fx.map(a => a.flag?.name ?? null), ['blackout', 'flooded', 'domeFlood', 'domeRats', null, 'cartBlown', null]);
-  assert.deepEqual(t.fx.map(a => a.delta ?? null), [{ target: 'milk', by: -1 }, null, null, null, null, null, { target: 'boba', by: 1 }]);
-  assert.deepEqual(t.fx.map(a => a.story), ['全島大停電！冰箱裡的鮮奶…', '捷運站變游泳池了', '球場變游泳池了', '老鼠被大水沖進大巨蛋！', '颱風假！小朋友在家看電視', '珍奶攤車被吹走了', '颱風天珍奶外送爆單']);
+  assert.deepEqual(t.fx.map(a => a.lock ?? null), ['bulb', 'token', 'baseball', null, null, 'boba']);
+  assert.deepEqual(t.fx.map(a => a.flag?.name ?? null), ['blackout', 'flooded', 'domeFlood', 'domeRats', null, 'cartBlown']);
+  assert.deepEqual(t.fx.map(a => a.delta ?? null), [{ target: 'milk', by: -1 }, null, null, null, null, null]);
+  assert.ok(!t.fx.some(a => a.delta?.target === 'boba'), 'no delivery +1 (dead rule removed)');
+  assert.deepEqual(t.fx.map(a => a.story), ['全島大停電！冰箱裡的鮮奶…', '捷運站變游泳池了', '球場變游泳池了', '老鼠被大水沖進大巨蛋！', '颱風假！小朋友在家看電視', '珍奶攤車被吹走了']);
   assert.ok(!t.onLevel && !t.delay, 'no checks on the later levels');
 });
 // 設計 §3 寫晶片 ≥6；求解器發現全滿的順序裡老鼠到 Lv4 時晶片一定已經 7 或 8，所以門檻改成 8（矽盾測試）

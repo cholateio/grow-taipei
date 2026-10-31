@@ -29,13 +29,12 @@ test('view: Lv1–2 the spinning storm ring sits next to 101 (typhoon anchor) wi
   assert.equal(v3['typhoon.rainbow'].parts.filter(p => p.kind === 'rail').length, 3);
   const park = landmarkWorld('park'); assert.ok(Math.hypot(v3['typhoon.park'].at.x - park.x, v3['typhoon.park'].at.z - park.z) < 1e-9);
 });
-// 外送機車（修正批次 2）：珍奶離島分店以上（≥5）才接颱風天的外送——攤車、人龍、珍奶店（≤3）是被吹走，噴泉廣場（4）沒事。
-// 照規則颱風還在（1–2）時珍奶到不了 5，正常遊戲裡看不到機車（view 照規則留著）
-test('delivery scooter rides in the rain at Lv1–2 only with boba ≥ 5 (the delivery), gone once it clears', () => {
+// 外送機車（修正批次 2）：純點綴（規則裡沒有外送 +1，協調者裁決）——颱風天珍奶噴泉廣場以上（≥4）有人騎車送；攤車、人龍、珍奶店（≤3）是被吹走
+test('delivery scooter rides in the rain at Lv1–2 only with boba ≥ 4 (cosmetic), gone once it clears', () => {
   for (const n of [1, 2]) {
     assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.scooter'], undefined);
-    for (const boba of [1, 2, 3, 4]) assert.equal(typhoon.view(lv({ typhoon: n, boba }), {})['typhoon.scooter'], undefined, `boba ${boba}: no delivery`);
-    assert.equal(typhoon.view(lv({ typhoon: n, boba: 5 }), {})['typhoon.scooter'].kind, 'scooter');
+    for (const boba of [1, 2, 3]) assert.equal(typhoon.view(lv({ typhoon: n, boba }), {})['typhoon.scooter'], undefined, `boba ${boba}: no delivery`);
+    assert.equal(typhoon.view(lv({ typhoon: n, boba: 4 }), {})['typhoon.scooter'].kind, 'scooter');
   }
   assert.equal(typhoon.view(lv({ typhoon: 3, boba: 5 }), {})['typhoon.scooter'], undefined);
 });
@@ -83,7 +82,7 @@ test('rain part: 240 instances, none cast shadows, drops fall', () => {
 test('cloud spins and scooter circles the centre cell', () => {
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: typhoon.builders });
   const c = f.build(typhoon.view(lv({ typhoon: 2 }), {})['typhoon.main']); c.update(0.5, 1); assert.notEqual(c.object.children[0].rotation.y, 0);
-  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 5 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
+  const s = f.build(typhoon.view(lv({ typhoon: 2, boba: 4 }), {})['typhoon.scooter']); s.update(0, 0); const p0 = s.object.children[0].position.clone(); s.update(0, 1);
   assert.ok(p0.distanceTo(s.object.children[0].position) > 0.5); assert.ok(Math.abs(Math.hypot(p0.x, p0.z) - 1.95) < 1e-6);
 });
 // 雨的濃度跟著 app 的 weather.rain（app 每幀淡入淡出；修正批次 2 之後 Lv1–2 都是 1，放晴淡到 0）
@@ -119,7 +118,7 @@ test('view: Lv3 splits the rainbow into its own part (no cloud left); the cloud,
   assert.equal(v3['typhoon.rainbow'].footprint, false); assert.equal(v3['typhoon.rainbow'].parts.length, 3);
   assert.equal(Object.keys(v3)[0], 'typhoon.rainbow', 'rainbow first: LEVEL UP hangs on it');
   for (const n of [1, 2]) assert.equal(typhoon.view(lv({ typhoon: n }), {})['typhoon.rainbow'], undefined);
-  for (const n of [1, 2]) { const v = typhoon.view(lv({ typhoon: n, boba: 5 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
+  for (const n of [1, 2]) { const v = typhoon.view(lv({ typhoon: n, boba: 4 }), {}); for (const k of ['typhoon.main', 'typhoon.rain', 'typhoon.scooter']) assert.equal(v[k].footprint, false, `${k} Lv${n}`); }
   assert.ok(typhoon.script?.placed && typhoon.script.grow[2] && typhoon.script.grow[3]); assert.equal(typhoon.script.grow[4], undefined);
   assert.equal(typhoon.script.stall, undefined, 'no stall: the typhoon never waits (no delay)');
   assert.equal(typhoon.script.fx, undefined, 'the island checks play as default fx beats (turn.js lockBeats), no reaction scripts');
@@ -270,7 +269,7 @@ test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards
   assert.ok(walking.size >= 2, `the kids walk to the arch (${walking.size})`);
 });
 // 放下那回合的檢查（§4.3，修正批次 2：全部在放下那回合）：捷運淹水（代幣 ≤3）、攤車被吹走（珍奶 ≤3）、大巨蛋淹水（棒球 ≤3）、鼠災。
-// 外送爆單（珍奶 ≥5）在正常遊戲裡到不了（珍奶 5 要颱風 ≥3），引擎測試用堆出來的狀態測
+// （外送爆單 +1 拿掉了：死規則，協調者裁決）
 // 放下劇本（躲雨）演完之後，鎖住的反應照 turn.js lockBeats 演：平移到被鎖的那一格、閃白套用、等那個物品的名冊走到新站位；
 // 量的是每一拍演完那一刻（下一個 mark）的樣子
 for (const [name, order, need] of [

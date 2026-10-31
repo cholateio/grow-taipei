@@ -1,8 +1,8 @@
 // 颱風（唯一正解 2026-10-31 §4.3、§5.1；修正批次 2：三級，max 3）：Lv1 暴風雲到 101 旁邊上空（放下那回合：全島大雨、全島跑去門口躲一下；
-//   珍奶離島分店以上有外送機車在雨中繞；衛星島的風車被吹得搖）→ Lv2 暴風圈還在原地、雨照下（雲不移站）
+//   珍奶噴泉廣場以上有外送機車在雨中繞（純點綴）；衛星島的風車被吹得搖）→ Lv2 暴風圈還在原地、雨照下（雲不移站）
 //   → Lv3 風停、彩虹、河濱公園、屋頂換色、堤防沿主島水道一圈。「所有房子換新屋頂」由各模組的 roofColor(…, rebuilt(lv)) 處理。雨、機車整段 Lv1–2 都在。
 // 劇本：颱風雲是主角——◆ 放下：飄進來 → 鼓脹、下大雨 → 全島 ！跑去門口躲一下、又走出來淋雨；Lv2：鏡頭對著雲 → 鼓一下 → …… → LEVEL UP；
-//   ◆ Lv3 雨過天晴。全島檢查（大停電、颱風假、捷運淹水、大巨蛋淹水、鼠災、攤車被吹走、外送爆單）都是放下那回合接著的 fx 事件，
+//   ◆ Lv3 雨過天晴。全島檢查（大停電、颱風假、捷運淹水、大巨蛋淹水、鼠災、攤車被吹走）都是放下那回合接著的 fx 事件，
 //   照一般事件演（turn.js 預設劇本；鎖住的反應是 lockBeats），這裡不寫反應劇本。修正輪 1 裁決：躲雨不再是回合狀態，同一回合後面的升級照常演。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { R, TOP, MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, cellAt } from '../scene/hex.js';
@@ -55,8 +55,8 @@ export function view(lv) {
     ] };
     // 雨不是建築：出現時只亮、不長（stage.js growsOn）——放下劇本裡大家等雨亮完才出發去躲，躲進門的那一刻沒有東西在閃
     v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
-    // 外送機車：珍奶離島分店以上（≥5）才接颱風天的外送（spec.js 颱風 fx；攤車、人龍、珍奶店 ≤3 是被吹走，噴泉廣場 4 沒事）
-    if (lv.boba >= 5) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
+    // 外送機車：純點綴（規則裡沒有外送 +1，協調者裁決）——珍奶噴泉廣場以上（≥4）颱風天有人騎車送；攤車、人龍、珍奶店 ≤3 是被吹走
+    if (lv.boba >= 4) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
     return v;
   }
   // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山。自己一個零件（雲散了沒有 main）：Lv3 劇本讓它從台地後升起

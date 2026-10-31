@@ -159,6 +159,29 @@ test('live, the solution: at milk 3 the islander who brought the milk becomes on
   }
   assert.ok(checked, 'milk 3 reached');
 });
+// 修正輪 1（審稿 Important #1）：代幣 2 比鮮奶 3 早到的局——站長先轉走一個島民（留下的人重新編號），鮮奶 3 再轉走一個：
+// 那一回合留下的島民沒有任何人換配件、閃一下（以前編號變了、配件照新編號換，帽子無緣無故不見還閃一下）
+test('live, token 2 before milk 3: in the milk 3 turn no islander who stays changes accessory or blinks', async () => {
+  const h = await headlessShow(), { show } = h, order = ['token', 'milk', 'baseball', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
+  let s = engine.createState(spec), checked = false;
+  const blinked = new Set(), walkerBlink = show.blink.walker;
+  show.blink.walker = (w, ...rest) => { blinked.add(w); return walkerBlink(w, ...rest); };
+  for (const step of turnSteps(order)) {
+    const r = step(s); s = r.state;
+    const was = { ...show.stage.lv }, isl = show.roster.members('landmarks.islanders'), swaps = [];
+    for (const m of isl) { const set = m.walker.setAccessory; m.walker.setAccessory = a => { swaps.push({ m, what: `#${m.i} ${m.walker.accessory} -> ${a}` }); return set(a); }; }
+    blinked.clear();
+    await h.run([...r.events, { kind: 'settle' }]);
+    if (!(show.stage.lv.milk >= 3 && !(was.milk >= 3))) continue;
+    assert.ok(was.token >= 2, 'token 2 came first');
+    const stayed = show.roster.members('landmarks.islanders');
+    assert.equal(stayed.length, landmarks.HOMES.length - 2);
+    assert.deepEqual(swaps.filter(x => stayed.includes(x.m)).map(x => x.what), [], 'no accessory swap on an islander who stays');
+    assert.deepEqual(stayed.filter(m => blinked.has(m.walker)).map(m => m.i), [], 'no blink on an islander who stays');
+    checked = true; break;
+  }
+  assert.ok(checked, 'milk 3 reached');
+});
 test('milk 3→2 removes the kids and frees walkers (review focus 3)', async () => {
   const { people, run } = await headlessShow({ modules: [milk] });
   await run([{ kind: 'placed', item: 'milk', to: 1 }, { kind: 'grow', item: 'milk', from: 1, to: 2 }, { kind: 'grow', item: 'milk', from: 2, to: 3 }], { instant: true });

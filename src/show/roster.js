@@ -49,13 +49,17 @@ const BRIDGE_SIDE = 0.12;   // 橋上迎面讓路最多橫移多少（橋面半�
 const NEAR_PATH = 0.6;   // path 日常：路線的終點離折線上那一點這麼近才直接走上去（橋頭在走路格外，nearestWalkable 離它不到一格）
 const FOLLOW_SLACK = 0.2, FOLLOW_REPLAN = 0.5;   // follow：離目標超過 dist + 0.2 才動身；目標走開 0.5 以上就重新規劃
 const FOLLOW_DIRS = 24, FOLLOW_RETRY = 1;   // follow 的站位：目標周圍 dist、dist + 0.2 兩圈各 24 個方向挑；站著貼著別人又挑不到時 1 秒後再挑
-const YIELD_WAIT = 1.5, CLIP_STEPS = 20;   // 讓不開、停住等站著的人：最多等 1.5 秒，這一趟就到這裡；讓的那一側走不到時往那邊找走得到的最遠點，切 20 段看（計畫 11 任務 5）
+export const YIELD_WAIT = 1.5;
+const CLIP_STEPS = 20;   // 讓不開、停住等站著的人：最多等 1.5 秒，這一趟就到這裡；讓的那一側走不到時往那邊找走得到的最遠點，切 20 段看（計畫 11 任務 5）
 const CONVOY_PHASE = 1.0, PATH_WAIT = 3;   // 接上折線時離同方向的人 < 1 公尺（相位）就改往回走、兩個方向都太近就站著等 ≤ 3 秒（pathDir）
 const FIDGET_EVERY = 3, FIDGET_DUR = 0.6, FIDGET_SHIFT = 1.1;   // fidget：每 3 秒一次、一次 0.6 秒；第 i 個人錯開 1.1i 秒
 const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度、轉過去／轉回來各 0.2 秒（同小人的 look 轉向）
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
+// accFor：已經在場的人（同 shirtFor）——配件是陣列（島民 ['none', 'cap']）、陣列裡本來就有他現在這件就不換。
+// pick 讓待退的人頂位、take 搬走人之後重新編號，編號變了但人沒換身分：不換配件、不閃（修正輪 1，審稿 Important #1）
+const accFor = (spec, i, cur) => (Array.isArray(spec.accessory) && spec.accessory.includes(cur) ? cur : accOf(spec, i));
 // 衣服顏色：一個色或陣列（照 i 取）；沒宣告回 undefined（小人自己抽一件）。shirtFor：已經在場的人——陣列裡本來就有他這件就不換
 // （名冊重新編號不換衣服、不閃），換身分過來、顏色不在陣列裡的才換成第 i 件
 const shirtOf = (spec, i) => { const s = spec.shirt; return Array.isArray(s) ? s[i % s.length] : s; };
@@ -273,8 +277,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   function restyle(m, spec, i) {
     m.speed = spec.speed ?? WALK_SPEED[m.kind];
     if (m.walker) {
-      // people：配件、衣服（換身分過來的島民換成黃衣，見 shirtFor）或身高（鮮奶 Lv3 長高 1.3）變了就原地換，頭頂跟著抬高
-      const acc = accOf(spec, i), scale = spec.scale ?? 1, shirt = spec.shirt === undefined ? m.walker.shirt : shirtFor(spec, i, m.walker.shirt);
+      // people：配件（見 accFor）、衣服（換身分過來的島民換成黃衣，見 shirtFor）或身高（鮮奶 Lv3 長高 1.3）變了就原地換，頭頂跟著抬高
+      const acc = accFor(spec, i, m.walker.accessory), scale = spec.scale ?? 1, shirt = spec.shirt === undefined ? m.walker.shirt : shirtFor(spec, i, m.walker.shirt);
       if (m.walker.accessory === acc && m.walker.scale === scale && m.walker.shirt === shirt) return false;
       if (m.walker.accessory !== acc) m.walker.setAccessory(acc);
       if (m.walker.shirt !== shirt) m.walker.setShirt(shirt);

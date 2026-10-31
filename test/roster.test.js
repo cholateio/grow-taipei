@@ -10,7 +10,7 @@ import { mulberry32 } from '../src/scene/random.js';
 import { axialToWorld, cellTop, cellAt } from '../src/scene/hex.js';
 import { OPEN_ROUTE } from './helpers/actors.js';   // 開放折線（原工程師通勤路線，裁決 R23 起只留給測 path 機制）
 installFakeDom();
-const { createRoster, HEAD_Y, WANDER_SPEED } = await import('../src/show/roster.js');
+const { createRoster, HEAD_Y, WANDER_SPEED, YIELD_WAIT } = await import('../src/show/roster.js');
 
 const AT = anchorWorld('milk');
 const kids = n => ({ kind: 'roster', at: AT, n, shirt: 0xfcea8b, home: { kind: 'wander', at: AT, r: 1.0 } });
@@ -260,6 +260,27 @@ test('from + pick nearest skips a hidden source member', () => {
   const { roster, nav } = setup(), { near, far } = islandersAt(roster, nav);
   roster.hide(near); roster.declare('src', isle(1)); roster.declare('dst', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
   assert.deepEqual(roster.members('dst'), [far]); assert.deepEqual(roster.members('src'), [near]);
+});
+// 修正輪 1（審稿 Important #1）：配件照 i 輪流的名冊（島民 ['none', 'cap']），pick 讓待退的人頂位、take 重新編號之後，
+// 他的編號變了但人沒換身分——陣列裡本來就有他現在的配件就不換、不閃（以前下一次 apply 才發現不一樣：setAccessory ＋ glint，帽子無緣無故不見）
+test('from + pick nearest twice: the islanders left behind keep their accessories and never blink (renumbering is not a swap)', () => {
+  const { roster, blink, nav } = setup(), isle4 = n => ({ ...isle(n), accessory: ['none', 'cap'] });
+  roster.declare('src', isle4(4)); roster.flush();
+  const ms = roster.members('src'), far = (k, dx) => nav.nearestWalkable({ x: AT.x + dx, y: AT.y, z: AT.z + 2.5 + 0.3 * k });
+  ms.forEach((m, k) => roster.setPose(m, { ...far(k, k - 1.5) }));
+  roster.setPose(ms[0], { ...nav.nearestWalkable({ x: AT.x + 0.2, y: AT.y, z: AT.z + 0.2 }) });   // 第一次搬 m0（留下的 m3 頂他的 0 號）
+  const acc = new Map(ms.map(m => [m, m.walker.accessory])), leftBlinks = stay => blink.log.filter(([k, w]) => k === 'walker' && stay.some(m => m.walker === w));
+  roster.declare('src', isle4(3)); roster.declare('a', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('a'), [ms[0]]);
+  roster.setPose(ms[1], { ...nav.nearestWalkable({ x: AT.x + 0.2, y: AT.y, z: AT.z + 0.2 }) });   // 第二次搬 m1（留下的 m2 頂他的 1 號）
+  roster.declare('src', isle4(2)); roster.declare('b', { ...kids(1), at: AT, from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('b'), [ms[1]]);
+  const left = roster.members('src');
+  assert.deepEqual(new Set(left), new Set([ms[2], ms[3]]));
+  assert.deepEqual(left.map(m => m.walker.accessory), left.map(m => acc.get(m)), 'accessories unchanged');
+  assert.deepEqual(leftBlinks(left), [], 'no blink on the islanders who stayed');
+  roster.declare('src', { ...isle4(2), home: { kind: 'wander', at: AT, r: 1.2 } }); roster.flush();   // 之後的 apply 也不補換
+  assert.deepEqual(left.map(m => m.walker.accessory), left.map(m => acc.get(m))); assert.deepEqual(leftBlinks(left), []);
 });
 // 名冊宣告的 shirt 是陣列時照 i 取（棒球員白／藏青、溫泉客、人龍）——以前整個陣列塞給小人，setHex 讀成 NaN 塗成黑的
 test('an array shirt is picked by i at spawn', () => {
@@ -1131,6 +1152,30 @@ test('a walker whose yield side is walled off passes a standing person on the ot
   assert.ok(side < -0.15, `went round the open side (z offset ${side.toFixed(2)} at the closest point)`);
   assert.ok(worst <= 1 + 1e-6, `fastest frame ${worst.toFixed(2)} × walking speed`);
   assert.ok(gap(st.pos, S) < 1e-9, 'the stander stays put');
+});
+// 修正批次 roles（裁決 R23）：兩邊都讓不開（窄走道）時停住的判斷看所有站著的人，不只看要讓的那一個——
+// 要讓的 s 在前方、另一個站著的 t 在側後方：以前讓 s 讓到卡住，一步一步踩進 t（0.207，要 0.25）；現在這一步會踩進 t 就停住，
+// 等 YIELD_WAIT 秒他還在就放棄這一趟（重新找路），全程離兩個人都 ≥ 兩人半徑相加 − 0.02，站著的人不被推動
+test('stuck in a narrow lane: a walker yielding to the stander ahead stops rather than stepping into another stander beside-behind, and gives up the trip after YIELD_WAIT', async () => {
+  const { roster, nav } = setup(), C = centre([-1, 0]), L = { ...C, x: C.x - 1, yaw: 0 }, R = { ...C, x: C.x + 1, yaw: 0 };
+  nav.setFootprints([{ x: C.x, z: C.z + 0.5, w: 2.4, d: 0.4 }, { x: C.x, z: C.z - 0.5, w: 2.4, d: 0.4 }]);   // 外擴後走道只剩 |dz| < 0.18
+  const S = { ...C, z: C.z + 0.05, yaw: 0 }, T = { ...C, x: C.x - 0.3, z: C.z - 0.12, yaw: 0 };
+  roster.declare('s', { kind: 'roster', at: S, n: 1, home: { kind: 'stand', spots: [S] } });
+  roster.declare('t', { kind: 'roster', at: T, n: 1, home: { kind: 'stand', spots: [T] } }); roster.snap();
+  roster.declare('w', { kind: 'roster', at: C, n: 1, home: { kind: 'stand', spots: [R], entry: L } });
+  const [w] = roster.members('w'), [s] = roster.members('s'), [t] = roster.members('t'), need = radiusOf(w) + radiusOf(t);
+  let minS = Infinity, minT = Infinity, stopped = null, first = null, dropped = null;
+  for (let f = 0; f < 120; f++) {
+    roster.update(1 / 30, f / 30);
+    minS = Math.min(minS, gap(w.pos, s.pos)); minT = Math.min(minT, gap(w.pos, t.pos));
+    if (stopped === null && w.trip && !w.walking && f > 0) { stopped = f; first = w.trip; }
+    if (stopped !== null && dropped === null && w.trip !== first) dropped = f;
+  }
+  assert.ok(minT >= need - 0.02, `closest to the stander beside-behind ${minT.toFixed(3)}`);
+  assert.ok(minS >= need - 0.02, `closest to the stander ahead ${minS.toFixed(3)}`);
+  assert.ok(stopped !== null, 'stops in the lane');
+  assert.ok(dropped !== null && (dropped - stopped) / 30 <= YIELD_WAIT + 0.1, `gives up the trip ${dropped === null ? 'never' : ((dropped - stopped) / 30).toFixed(2) + ' s'} after stopping`);
+  assert.ok(gap(s.pos, S) < 1e-9 && gap(t.pos, T) < 1e-9, 'the standers stay put');
 });
 // 計畫 11 最終修正（全分支審稿 #1）：劇本手上站著的人（claim 了、沒在走）也算站著的人——日常走路的人碰上他照樣自己退開（他不動）。
 // 以前名冊只把日常（home）的人當站著的人，島民從兩個人中間擠過去時只被日常的那個推，整個人壓到劇本手上的小孩身上（t4 鮮奶 Lv5 量到 0.045 m、18 幀）。

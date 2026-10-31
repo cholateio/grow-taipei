@@ -218,21 +218,6 @@ export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false
   };
 }
 
-// 起因提示（回到 GROW 設計 §4.2）：零件 key（turn.js 給幫手的本體 <id>.main）整棟彈一下 dur 秒（blink.nod：壓一下再彈過頭，不亮——裁決 R21，
-// 使用者 2026-10-31 19:58 錄影：亮 0.4 s 看起來就是「學校閃了好幾次」）。拍的 kind 仍叫 flash（turn.js／pace／測試都認這個名字）。
-// 這一級沒有那個零件（被鎖、淹水換了站體……）或瞬間演（跳過、reduced-motion）→ 0 秒、不彈
-export const CAUSE_FLASH = 0.4;
-export function flash(key, dur = CAUSE_FLASH) {
-  return {
-    kind: 'flash', key, dur,
-    start(ctx) {
-      if (ctx.instant) return false;
-      const o = ctx.stage.partObject?.(key); if (!o) return false;
-      ctx.blink.nod(o, dur);
-    },
-  };
-}
-
 // 鏡頭跟主線（§13.1）：target 是格子 [q, r]（平移到格子中心）、物品 id（那個物品的格子）或點 { x, y, z }，
 // 也可以是 ctx => 上面三種（演到這拍才算：主角到時候在哪一格；回 null 這拍跳過）；
 // 1 秒平移＋拉近到全景距離 × zoom，名冊只讓那一格的人做日常（§13.4）。玩家拖過鏡頭 → 不動、不佔時間。
@@ -486,5 +471,5 @@ export function jump(who, target, dur = 0.5) {
 
 export const B = {
   spawn, walk, bubble, gesture, apply, levelUp, focus, world, worldNow, wait, until, home, together, move, scaleIn, replay,
-  hideParts, showParts, flash, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
+  hideParts, showParts, trainDepart, trainStop, trainRun, trainRuns, trainHead, seat, ridePose, jump, tilt, partHead,
 };

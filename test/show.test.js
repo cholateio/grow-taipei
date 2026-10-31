@@ -457,35 +457,28 @@ test('skip during a jump lands both levels', async () => {
   assert.deepEqual(snapshot(live.show), snapshot(ref.show));
 });
 
-// 回到 GROW 設計 §4.2 的整局探針：唯一正解 live 演完（真的鏡頭 rig），跳級合成、起因閃一下之後共用不變式照樣乾淨
-// （不穿牆、不瞬移、換位置閃白、每回合回全景、每個 LEVEL UP 字樣至少一半時間在畫面裡）；
-// 每回合起因閃一下 ≤ 4 段（mark 的 info.cause；真的閃了的看 blink.part 收到 CAUSE_FLASH 秒），
+// 回到 GROW 設計 §4.2 的整局探針：唯一正解 live 演完（真的鏡頭 rig），跳級合成之後共用不變式照樣乾淨
+// （不穿牆、不瞬移、換位置閃白、每回合回全景、每個 LEVEL UP 字樣至少一半時間在畫面裡）；mark 的 info 不再有 cause（起因提示 2026-10-31 拿掉，R22）；
 // LEVEL UP 彈兩次的第二個字樣（bubbles.levelUp 收到 dy）次數 = 引擎這回合 jump: true 的 grow 個數
-test('the solution live with merged jumps and cause flashes: invariants clean, ≤ 6 cause flashes per turn, one twice LEVEL UP per engine jump', async () => {
-  const { CAUSE_FLASH } = await import('../src/show/turn.js');
+test('the solution live with merged jumps: invariants clean, no cause marks, one twice LEVEL UP per engine jump', async () => {
   for (const order of SOLUTIONS) {
     const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
-    let flashed = 0, seconds = 0, causes = 0, total = 0, lit = 0;
-    const nod = show.blink.nod, levelUp = show.bubbles.levelUp;
-    show.blink.nod = (o, dur, ...rest) => { if (dur === CAUSE_FLASH) flashed++; return nod(o, dur, ...rest); };
+    let seconds = 0;
+    const levelUp = show.bubbles.levelUp;
     show.bubbles.levelUp = (head, opts = {}) => { if (opts.dy > 0) seconds++; return levelUp(head, opts); };
     let s = engine.createState(spec);
     for (const [i, step] of turnSteps(order).entries()) {
-      const r = step(s); s = r.state; flashed = 0; seconds = 0; causes = 0;
+      const r = step(s); s = r.state; seconds = 0;
       const what = `${order.join('>')} turn ${i + 1}`;
       inv.label(what);
-      await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { inv.label(`${what} [${e.kind} ${e.item ?? ''}${e.to ?? ''}]`); if (info?.cause) causes++; } });
+      await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => { inv.label(`${what} [${e.kind} ${e.item ?? ''}${e.to ?? ''}]`); assert.equal(info?.cause, undefined, `${what}: no cause segment`); } });
       inv.turnEnd();
       // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決）：各一個 LEVEL UP，不算
       const isKey = e => !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
       const jumps = r.events.filter(e => e.kind === 'grow' && e.jump && !(isKey(e) && isKey({ ...e, to: e.to - 1 }))).length;
-      // 起因段上限 6（唯一正解修正輪 1：第 8 回合有 6 個有起因的升級，各段另外量 ≤ CAUSE_CAP）
-      assert.ok(causes <= 6 && flashed <= causes, `${what}: ${causes} cause segments, ${flashed} flashes`);
       assert.equal(seconds, jumps, `${what}: one twice LEVEL UP per jump (${jumps})`);
-      total += causes; lit += flashed;
       assert.deepEqual(show.stage.lv, s.lv, `${what}: stage levels equal the engine`);
     }
-    assert.ok(total > 0 && lit > 0, `${order.join('>')}: some cause flashes play (${lit}/${total})`);
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);
     assert.deepEqual([...inv.pops].slice(0, 20), [], `${inv.pops.size} silent relocations`);
@@ -494,10 +487,10 @@ test('the solution live with merged jumps and cause flashes: invariants clean, �
   }
 });
 
-// 計畫 11 §設計 1／裁決 R15、使用者 2026-10-31「閃一下」（長出來的建築不再亮）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 都是起因提示（flash 拍）——
-// 建築只長出來（blink.grow，不配 blink.part）、其餘零件直接出現、拿掉的縮下去（blink.shrink）。名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。
-// 量表印在 diagnostic；共用不變式照樣乾淨
-test('the solution live: no stage part glows; the cause hint nods; buildings grow without a glow; removals shrink; invariants clean', async t => {
+// 計畫 11 §設計 1／裁決 R15、R20、R22（使用者 2026-10-31「閃一下」：長出來的建築不再亮、起因提示整個拿掉）：唯一正解整局 live（真的鏡頭 rig），
+// 舞台零件從頭到尾一次 blink.part 都沒有——建築只長出來（blink.grow）、其餘零件直接出現、拿掉的縮下去（blink.shrink）。
+// 名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。量表印在 diagnostic；共用不變式照樣乾淨
+test('the solution live: no stage part ever glows; buildings grow without a glow; removals shrink; invariants clean', async t => {
   for (const order of SOLUTIONS) {
     const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), log = blinkLog(show);
     let s = engine.createState(spec);
@@ -508,12 +501,12 @@ test('the solution live: no stage part glows; the cause hint nods; buildings gro
       await run([...r.events, { kind: 'settle' }], { onMark: e => { const ev = `${e.kind} ${e.item ?? ''}${e.to ?? ''}`; inv.label(`${what} [${ev}]`); log.label(`${i + 1} ${ev}`); } });
       inv.turnEnd();
     }
-    const row = c => `${c.label} | ${c.fn}${c.dur ? ` ${c.dur}` : ''} | ${c.key ?? '?'} | ${c.cause ? 'cause' : ''}${c.member ? 'member' : ''} | ${c.from}`;
+    const row = c => `${c.label} | ${c.fn}${c.dur ? ` ${c.dur}` : ''} | ${c.key ?? '?'} | ${c.member ? 'member' : ''} | ${c.from}`;
     t.diagnostic(`${order.join('>')}: ${log.calls.length} calls\n${log.calls.map(row).join('\n')}`);
     const parts = log.calls.filter(c => c.fn === 'part' && !c.member);
-    assert.deepEqual(parts.map(row), [], 'no stage part glows at all (R21: the cause hint nods instead; growing buildings only grow)');
-    const grows = log.calls.filter(c => c.fn === 'grow'), nods = log.calls.filter(c => c.fn === 'nod');
-    assert.ok(grows.length && nods.length && nods.every(c => c.cause), `buildings still grow; the cause hint nods and only nods (${nods.filter(c => !c.cause).map(row)})`);
+    assert.deepEqual(parts.map(row), [], 'no stage part glows at all (R20／R22: growing buildings only grow; no cause hint)');
+    const grows = log.calls.filter(c => c.fn === 'grow');
+    assert.ok(grows.length, 'buildings still grow');
     assert.ok(grows.every(c => c.from.startsWith('actors/stage.js')), `grow only from the stage commit: ${grows.filter(c => !c.from.startsWith('actors/stage.js')).map(row)}`);
     assert.ok(log.calls.some(c => c.fn === 'shrink'), 'removed parts shrink');
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
@@ -540,46 +533,6 @@ for (const how of ['skip', 'reset']) {
     assert.equal(show.blink.count, 0);
   });
 }
-
-// Task 3 裁決 B（Task 6 落實）：起因段（mark 的 info.cause：空拍、平移到幫手、閃白、平移回目標）自己一個 mark、單獨量——
-// 有起因的升級，劇本秒數（不含 focus 拍、扣掉空拍）跟同一回合把 via 拿掉（沒有起因段）演出來的一樣（差 ≤ 0.2 s：日常的人位置不同）；
-// run() 回的整回合劇本秒數也不含閃白；起因段扣掉空拍 ≥ CAUSE_FLASH、≤ CAUSE_CAP（多 0.2 s 是每拍接下一拍的幀取整）；playLive 把它掛在事件的 cause 上
-test('a caused grow\'s script seconds exclude the cause segment, which is measured on its own (≤ CAUSE_CAP)', async () => {
-  const { CAUSE_FLASH, CAUSE_CAP } = await import('../src/show/turn.js'), { playLive } = await import('./helpers/show.js');
-  const order = SOLUTIONS[0], steps = turnSteps(order);
-  // 第一個有起因段的回合（grow 的 via 不是颱風）
-  let s0 = engine.createState(spec), at = -1;
-  for (const [i, step] of steps.entries()) { const r = step(s0); s0 = r.state; if (r.events.some(e => e.kind === 'grow' && e.via?.length && e.via[0] !== 'typhoon' && !e.jump)) { at = i; break; } }
-  assert.ok(at >= 0, 'a solution turn has a caused grow');
-  const playTurn = async strip => {
-    const { show, run, scriptElapsed } = await headlessShow();
-    let s = engine.createState(spec), out = null;
-    for (const [i, step] of steps.slice(0, at + 1).entries()) {
-      const r = step(s); s = r.state;
-      const evs = [...r.events.map(e => (strip && e.via ? { ...e, via: [] } : e)), { kind: 'settle' }], marks = [];
-      const secs = await run(evs, { instant: i < at, onMark: (e, info) => marks.push({ e, at: show.elapsed, sc: scriptElapsed(), info }) });
-      if (i === at) out = { secs, marks, endSc: scriptElapsed() };
-    }
-    return out;
-  };
-  const caused = await playTurn(false), plain = await playTurn(true);
-  // 每個事件劇本那一段（不是起因段的 mark）的劇本秒數；拿掉 via 的那次事件是複本，用「種類 物品 級」對（一回合裡不重複）
-  const id = e => `${e.kind} ${e.item} ${e.to}`;
-  const scripts = t => new Map(t.marks.flatMap((m, j) => (m.info?.cause ? [] : [[id(m.e), (t.marks[j + 1]?.sc ?? t.endSc) - m.sc - (m.info?.gap ?? 0)]])));
-  const a = scripts(caused), b = scripts(plain);
-  const segs = caused.marks.flatMap((m, j) => (m.info?.cause ? [[m, caused.marks[j + 1]]] : []));
-  assert.ok(segs.length > 0, 'the turn plays a cause segment');
-  for (const [m, next] of segs) {
-    assert.equal(next.e, m.e, 'the cause segment is followed by its own event\'s mark'); assert.equal(next.info.cause, undefined); assert.equal(next.info.gap, 0);
-    const live = next.at - m.at - (m.info.gap ?? 0), k = id(m.e);
-    assert.ok(live >= CAUSE_FLASH && live <= CAUSE_CAP + 0.2, `${m.e.item} ${m.e.to} cause segment ${live.toFixed(2)} s`);
-    assert.ok(Math.abs(a.get(k) - b.get(k)) <= 0.2, `${m.e.item} ${m.e.to}: script ${a.get(k).toFixed(2)} s with the cause segment, ${b.get(k).toFixed(2)} s without`);
-  }
-  assert.ok(Math.abs(caused.secs - plain.secs) <= 0.3, `run() script seconds ${caused.secs.toFixed(2)} vs ${plain.secs.toFixed(2)} without causes`);
-  // playLive：起因段不另成一筆，掛在事件的 cause 上；事件自己的 live 不含它
-  const ev = (await playLive(order)).filter(x => x.turn === at + 1 && x.cause);
-  assert.ok(ev.length === segs.length && ev.every(x => x.cause.live >= CAUSE_FLASH && x.cause.live <= CAUSE_CAP + 0.2 && x.cause.helper === x.e.via[0]), JSON.stringify(ev.map(x => x.cause)));
-});
 
 // Task 6a 修正輪（控制者裁決）：劇本永遠不丟錯——沒法照原樣演就演退路（燈泡 Lv7 沒列車那種）。修正輪 2：列舉的前 20 個太像（都是鮮奶、晶片、燈泡開頭），
 // 改成整份列舉每隔 STRIDE 個取一個，加上兩局固定的壞結局。
@@ -649,8 +602,8 @@ test('both new solutions play to the end without a script error at every level (
 });
 
 // 唯一正解修正輪 1：拿掉舊的使用者規則（計畫 4 任務 9：颱風登陸之後同一回合只演 [apply, LEVEL UP]）——颱風放下的回合，
-// 後面的事件照一般事件建拍：有起因閃一下、劇本裡的走路／泡泡／小動作照演
-test('after the typhoon is placed the rest of the turn is built like any turn: cause flashes, walks, bubbles and gestures stay', async () => {
+// 後面的事件照一般事件建拍：劇本裡的走路／泡泡／小動作照演（起因提示 2026-10-31 拿掉了，R22）
+test('after the typhoon is placed the rest of the turn is built like any turn: walks, bubbles and gestures stay', async () => {
   const { buildTurn } = await import('../src/show/turn.js');
   const { B: beats } = await import('../src/show/beats.js');
   const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
@@ -667,7 +620,6 @@ test('after the typhoon is placed the rest of the turn is built like any turn: c
   for (const b of out) { if (b.kind === 'mark') { b.start({ onMark: e => { cur = e; } }); if (!seg.has(cur)) seg.set(cur, []); } else if (cur) seg.get(cur).push(b); }
   i0 = events.findIndex(engine.landsTyphoon);
   const later = events.slice(i0 + 1).flatMap(e => flat(seg.get(e) ?? [])).map(b => b.kind);
-  assert.ok(later.includes('flash'), 'cause flashes after the typhoon is placed');
   assert.ok(later.includes('walk') || later.includes('crowd'), `scripts with walks play (${[...new Set(later)]})`);
   assert.ok(later.includes('bubble') || later.includes('gesture'), 'bubbles / gestures play');
 });

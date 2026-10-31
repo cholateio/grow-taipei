@@ -13,16 +13,13 @@
 //   主迴圈之後另跑兩局固定的壞結局（test/helpers/endings.js 的 EXAMPLE.hit／deflect）：計畫 6 起放置與最後一輪也 live（同樣的回合門檻——
 //   設計 §6：60 秒上限在唯一正解與 EXAMPLE 上驗），最後一列「終局 x/12 s」。超過 22／12 都算失敗。
 //   再跑一局「老鼠跑遠」（FAR_TROUBLE：放下的老鼠跑去最遠的 trouble 門口，唯一正解 §5.2），門檻同壞結局
-// 起因段（回到 GROW 設計 §4.2，Task 3 裁決 B）：有起因的升級前面那段（空拍之後平移到幫手、閃白、平移回目標）有自己的 mark（info.cause）——
-//   單獨量（事件秒數扣掉空拍），不算進那一級劇本與 ◆ 的秒數；超過 CAUSE_CAP 2 s 多於 WARN_OVER 只印 ⚠。每回合印「起因 x s」（這回合起因段合計）
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
 import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
-import { CAUSE_CAP } from '../src/show/turn.js';
 
-// §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了，上限留著當餘裕——起因段另量）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
+// §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了、起因提示 2026-10-31 拿掉了，上限留著當餘裕）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
 // 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
 const MIN = 4, MAX = 60, KEY_EXTRA = 8, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 // 終局回合（選擇帶動升級 §6）：真結局（警告＋飛彈＋尾聲）≤ 22 s、壞結局（警告＋飛彈）≤ 12 s（多了警告約 2.5 s）；
@@ -59,19 +56,11 @@ async function playOrder(order, head0, finaleMax) {
     const what = kind === 'place' ? `第 ${i + 1} 回合（${name(id)}）` : '最後一輪';
     // 放置回合與最後一輪同一套門檻（選擇帶動升級 §6：最後一輪就是一般回合）
     const keys = marks.filter(m => m[3]?.key).length, cap = MAX + KEY_EXTRA * Math.max(0, keys - 1);
-    // 獨立量的段（起因）：事件秒數扣掉空拍
-    const segLive = j => span(j)[0] - (marks[j][3]?.gap ?? 0);
-    // 起因段（info.cause）：扣掉空拍的秒數，這回合合計
-    const causes = marks.reduce((t, m, j) => t + (m[3]?.cause ? segLive(j) : 0), 0);
-    cells.push(`${head} ${s1(secs)}/${cap} s ◆ ${keys} 起因 ${s1(causes)}`);
+    cells.push(`${head} ${s1(secs)}/${cap} s ◆ ${keys}`);
     if (secs < MIN || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < MIN ? `< ${MIN}` : `> ${cap}，◆ ${keys} 個`}）`);
     // 每個非關鍵劇本 ≤ SCRIPT_MAX、◆ ≤ KEY_MAX——live 秒數看日常裡的人在哪，會差半秒上下，只印警告（⚠，不算失敗）；
     // 劇本本身的上限由各物品測試單獨量（test/*.test.js 的 SCRIPT_MAX／KEY_MAX）。回合秒數超過上限才算失敗
     marks.forEach(([e, , , info], j) => {
-      if (info?.cause) {
-        if (segLive(j) > CAUSE_CAP + WARN_OVER) warnings.push(`${head0} ${what} 起因 ${info.cause}→${label(e)} ${s1(segLive(j))} s（> ${CAUSE_CAP}）`);
-        return;
-      }
       const script = span(j)[1];
       const cap = SCRIPT_EXCEPT[`${e.item} ${e.kind === 'placed' ? 1 : e.to}`] ?? SCRIPT_MAX;
       if (!info?.key && e.kind !== 'settle' && script > cap + WARN_OVER) warnings.push(`${head0} ${what} ${label(e)} 劇本 ${s1(script)} s（> ${cap}）`);
@@ -84,7 +73,6 @@ async function playOrder(order, head0, finaleMax) {
       // 「事件秒數（劇本秒數）」，◆ 標關鍵劇本
       const parts = marks.map(([e, , , info], j) => {
         const [t, sc] = span(j);
-        if (info?.cause) return `起因 ${info.cause}→${e.item} ${s1(t)}`;
         return `${info?.key ? '◆' : ''}${label(e)} ${s1(t)}${Math.abs(t - sc) > 0.05 ? `（${s1(sc)}）` : ''}`;
       });
       details.push(`  ${head}：${parts.join('、')}`);

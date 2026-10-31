@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
 import { createPeople } from '../src/scene/people.js';
-import { createBlink, GROW_DUR, GROW_HOLD, GROW_PEAK, BLINK, GLOW, SHRINK_DUR, SHRINK_TO, NOD_DUR, NOD_DIP, NOD_PEAK } from '../src/show/blink.js';
+import { createBlink, GROW_DUR, GROW_HOLD, GROW_PEAK, BLINK, GLOW, SHRINK_DUR, SHRINK_TO} from '../src/show/blink.js';
 
 const twoMeshes = () => {
   const g = new THREE.Group(), a = new THREE.MeshStandardMaterial({ color: 0xdb6a41 }), b = new THREE.MeshBasicMaterial({ color: 0x5a88b2 });
@@ -118,28 +118,6 @@ test('grow starts gently: 0.1 s into the rise it is still under a quarter high',
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), o = new THREE.Group();
   blink.grow(o); blink.update(GROW_HOLD + 0.1);
   assert.ok(o.scale.y < 0.25, `${o.scale.y.toFixed(3)}`);
-});
-// 起因提示改成彈一下（裁決 R21，使用者 2026-10-31 19:58 錄影：幫手那棟每次亮 0.4 s 看起來就是「學校閃了好幾次」）：
-// 不換材質、只動 scale.y——先壓到 NOD_DIP、再彈過 NOD_PEAK、回 1，共 NOD_DUR 秒；底不動（原點就是底）、x／z 不動
-test('nod: no material change; scale.y dips to 0.9 then overshoots to 1.06 and settles back over NOD_DUR; the base stays put', () => {
-  assert.equal(NOD_DUR, 0.4); assert.equal(NOD_DIP, 0.9); assert.equal(NOD_PEAK, 1.06);
-  const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), { g, a, b, meshes } = twoMeshes();
-  g.scale.set(1.2, 0.8, 1.2); g.position.set(1, 0.65, 2);
-  blink.nod(g); assert.ok(blink.has(g)); assert.equal(blink.count, 1);
-  assert.deepEqual(meshes().map(m => m.material), [a, b], 'materials untouched at t = 0');
-  const dt = 1 / 120; let min = 9, minAt = 0, max = 0, maxAt = 0;
-  for (let i = 1; i * dt < NOD_DUR - 1e-9; i++) {
-    blink.update(dt); const t = i * dt, k = g.scale.y / 0.8;
-    if (k < min) { min = k; minAt = t; } if (k > max) { max = k; maxAt = t; }
-    assert.deepEqual(meshes().map(m => m.material), [a, b], 'never glows'); assert.deepEqual(g.position.toArray(), [1, 0.65, 2]);
-    assert.equal(g.scale.x, 1.2); assert.equal(g.scale.z, 1.2); assert.ok(blink.has(g));
-  }
-  assert.ok(Math.abs(min - NOD_DIP) < 1e-3 && minAt < maxAt, `dips to 0.9 first (${min.toFixed(3)} at ${minAt.toFixed(3)} s)`);
-  assert.ok(Math.abs(max - NOD_PEAK) < 1e-3 && maxAt < NOD_DUR, `then overshoots to 1.06 (${max.toFixed(3)} at ${maxAt.toFixed(3)} s)`);
-  blink.update(dt); assert.deepEqual(g.scale.toArray(), [1.2, 0.8, 1.2], 'exactly the starting scale at the end'); assert.ok(!blink.has(g)); assert.equal(blink.count, 0);
-  // 再彈一次只重算時間；stop／clear 立刻回原大小
-  blink.nod(g); blink.update(0.1); blink.nod(g); blink.update(0.1); blink.stop(g); assert.deepEqual(g.scale.toArray(), [1.2, 0.8, 1.2]); assert.ok(!blink.has(g));
-  blink.nod(g); blink.update(0.2); blink.clear(); assert.deepEqual(g.scale.toArray(), [1.2, 0.8, 1.2]); assert.equal(blink.count, 0);
 });
 test('a part that glows and grows counts once; the glow still fades in BLINK; stop and clear end the grow at its starting scale', () => {
   const blink = createBlink(THREE, { people: createPeople(THREE, { max: 2 }) }), x = twoMeshes(), y = twoMeshes();

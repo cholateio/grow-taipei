@@ -5,7 +5,7 @@ import * as spec from '../src/rules/spec.js';
 import { installFakeDom } from './helpers/fakedom.js';
 installFakeDom();
 const turnModule = await import('../src/show/turn.js');
-const { buildTurn, estimateTurn, GAP, CAUSE_FLASH, CAUSE_HELPER_KEY } = turnModule;
+const { buildTurn, estimateTurn, GAP } = turnModule;
 const { B } = await import('../src/show/beats.js');
 const { cellOf } = await import('../src/actors/anchors.js');
 const finale = await import('../src/actors/finale.js');
@@ -304,18 +304,17 @@ test('a merged jump plays the highest key level among n−1 and n: n−1 key, n 
   assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
 });
 // Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：矽盾測試不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
-// 各演自己的 ◆ 劇本、各一個（不是彈兩次的）LEVEL UP、各自一個 apply；起因閃一下只在第一級前面（第二級帶著 jump 和 via 也不插）
-test('a jump between two key levels is not merged: both levels play their own key script with a single LEVEL UP, the cause flash only before the first', () => {
+// 各演自己的 ◆ 劇本、各一個（不是彈兩次的）LEVEL UP、各自一個 apply（起因提示 2026-10-31 拿掉了，R22）
+test('a jump between two key levels is not merged: both levels play their own key script with a single LEVEL UP', () => {
   const asked = [], fn = n => { const f = (e, s, c) => { asked.push(n); return [c.B.wait(2), c.B.levelUp('chip')]; }; f.key = true; return f; };
   const mod = { id: 'chip', view() {}, script: { grow: { 8: fn(8), 9: fn(9) } } };
   const raw = buildTurn([grow('chip', 8, ['milk']), grow('chip', 9, ['milk'], { jump: true })], { ...base([quietTower, helperLike('milk'), mod]), lv: { ...zero, chip: 7 } }, fakeCtx());
   assert.deepEqual(asked, [8, 9], 'both key scripts are asked');
   const marks = marksOf(raw);
-  assert.deepEqual(marks.map(m => [m.e.to, !!m.info.cause, m.info.key, !!m.info.skipped]), [[8, true, false, false], [8, false, true, false], [9, false, true, false]]);
-  const first = between(raw, 1), second = between(raw, 2);
-  assert.deepEqual(kindsOf(first), ['wait', 'levelUp', 'apply']); assert.equal(first[1].twice, false, 'a single LEVEL UP');
-  assert.deepEqual(kindsOf(second), ['wait', 'levelUp', 'apply'], 'no cause flash, no pan (same cell) before the second'); assert.equal(second[1].twice, false);
-  assert.ok(!hasFlash(second));
+  assert.deepEqual(marks.map(m => [m.e.to, m.info.key, !!m.info.skipped]), [[8, true, false], [9, true, false]]);
+  const first = between(raw, 0), second = between(raw, 1);
+  assert.deepEqual(kindsOf(first), ['focus', 'wait', 'levelUp', 'apply'], 'pan to the chip cell, then the first key script'); assert.equal(first[2].twice, false, 'a single LEVEL UP');
+  assert.deepEqual(kindsOf(second), ['wait', 'levelUp', 'apply'], 'no pan (same cell) before the second'); assert.equal(second[1].twice, false);
   // 只有一級是 ◆ 的照舊合成（上一個測試）
 });
 // 選擇帶動升級裁決 R6：代幣 Lv4 也標 ◆（2 → 4 一定跳級，環狀線是主線）
@@ -339,58 +338,14 @@ test('a grow with via plays no visit: no mark {visit}, nobody walks before the s
   assert.ok(!spotted.some(b => b.kind === 'walk' || b.kind === 'fade' || (b.kind === 'together' && b.beats.some(x => x.kind === 'walk' || x.kind === 'fade'))));
 });
 
-// 起因閃一下（回到 GROW 設計 §4.2）：grow 的 via 非空（阻擋解除的 +1、所有跳級）→ 鏡頭先到 via[0] 那一格、那棟本體閃白 CAUSE_FLASH 秒，
-// 再照常平移到被升級的那一格。颱風當 via（天氣）、登陸之後、跳級的第一級、終局回合都不閃
-const hasFlash = beats => beats.some(b => b.kind === 'flash' || (b.kind === 'together' && hasFlash(b.beats)));
-test('cause flash: a grow with via opens with focus(helper cell) + flash(<helper>.main), then the usual pan to the target', () => {
-  assert.equal(CAUSE_FLASH, 0.4); assert.equal(CAUSE_HELPER_KEY('milk'), 'milk.main');
-  const raw = buildTurn([grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
-  // 起因段自己一個 mark（Task 3 裁決 B：pace 與測試單獨量）：mark { cause } → 平移到幫手、閃白、平移回目標；同一個事件再一個 mark → 劇本
-  const seg = between(raw, 0);
-  assert.deepEqual(kindsOf(seg), ['focus', 'flash', 'focus']);
-  assert.deepEqual(seg[0].target, cellOf('milk')); assert.equal(seg[1].key, 'milk.main'); assert.equal(seg[1].dur, CAUSE_FLASH); assert.deepEqual(seg[2].target, cellOf('chip'));
-  assert.deepEqual(kindsOf(between(raw, 1)).slice(0, 2), ['wait', 'levelUp'], 'the script follows its own mark');
-  const [m0, m1] = marksOf(raw);
-  assert.equal(m0.info.cause, 'milk'); assert.equal(m0.info.key, false);
-  assert.equal(m1.e, m0.e, 'both marks belong to the same event'); assert.equal(m1.info.cause, undefined); assert.equal(m1.info.gap, 0);
-  // 鏡頭已經在幫手那格（上一個事件是鮮奶）：不再平移到鮮奶格，只閃
-  const already = buildTurn([grow('milk', 2, []), grow('chip', 2, ['milk'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
-  assert.deepEqual(kindsOf(between(already, 1)).slice(0, 3), ['wait', 'flash', 'focus']);
-  // via 兩個以上只閃第一個
-  const two = buildTurn([grow('chip', 2, ['milk', 'bulb'])], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
-  assert.deepEqual(between(two, 0).filter(b => b.kind === 'flash').map(b => b.key), ['milk.main']);
-});
-test('no cause flash: typhoon as via, the first level of a jump, empty via, finale turn (after the typhoon is placed it flashes as usual)', () => {
-  const mods = () => [quietTower, helperLike('milk'), helperLike('typhoon'), chipLike()];
-  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['typhoon'])], base(mods()), fakeCtx())), 'typhoon');
-  const landed = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk'])], base(mods()), fakeCtx());
-  assert.ok(hasFlash(between(landed, 1)), 'no indoors any more (唯一正解修正輪 1): the cause flash plays after the typhoon placed event');
-  const jump = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base(mods()), fakeCtx());
-  assert.deepEqual(between(jump, 0), [], 'first level of a jump: mark only'); assert.ok(hasFlash(between(jump, 1)), 'the merged second level carries the flash');
-  assert.ok(!hasFlash(buildTurn([grow('chip', 2, [])], base(mods()), fakeCtx())), 'no via');
-  // 終局旗標走 buildTurn 的第二個參數（同上面 missile／epilogue 的測試）
-  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['milk'])], { ...base(mods()), finale: true }, fakeCtx())), 'finale');
-});
-// 最終修正 2：被鎖住的幫手不當起因——淹水的捷運站還有 token.main（游泳池），停電的燈泡還有 bulb.main，閃它們會讀成「游泳池／黑掉的燈讓老鼠長大」。
-// 鎖是規則表裡帶 lock 的那幾條（spec：停電鎖燈泡、淹水鎖代幣），演出層看得到的是它們一起立的旗標；同一回合前面的事件才立旗也算
-test('no cause flash from a locked helper: flooded token, blacked-out bulb (flag from earlier turns or earlier in this turn)', () => {
-  const mods = () => [quietTower, helperLike('token'), helperLike('bulb'), chipLike()];
-  assert.ok(hasFlash(buildTurn([grow('chip', 2, ['token'])], base(mods()), fakeCtx())), 'precondition: a dry token station flashes');
-  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['token'])], { ...base(mods()), flags: { flooded: true } }, fakeCtx())), 'flooded token');
-  assert.ok(!hasFlash(buildTurn([grow('chip', 2, ['bulb'])], { ...base(mods()), flags: { blackout: true } }, fakeCtx())), 'blacked-out bulb');
-  assert.ok(hasFlash(buildTurn([grow('chip', 2, ['bulb'])], { ...base(mods()), flags: { flooded: true } }, fakeCtx())), 'the flood only locks the token');
-  const sameTurn = buildTurn([{ kind: 'fx', item: 'turn', cause: 'typhoon', flag: { name: 'flooded', value: true } }, grow('chip', 2, ['token'])], base(mods()), fakeCtx());
-  assert.ok(!hasFlash(sameTurn), 'flooded earlier in the same turn');
-});
 // 唯一正解修正輪 1：颱風放下不再讓同一回合後面的事件只演 [apply, LEVEL UP]——躲雨是放下劇本裡的一小段（躲一下又走出來），
-// 後面的升級照一般事件演（劇本、起因閃一下、跳級合成）；放下本身是 ◆（§5.3 颱風 1：mark 標 key，pace 算 ◆ 個數）
+// 後面的升級照一般事件演（劇本、跳級合成；起因提示 2026-10-31 拿掉了，R22）；放下本身是 ◆（§5.3 颱風 1：mark 標 key，pace 算 ◆ 個數）
 const placedLike = () => { const placed = (e, s, c) => [c.B.wait(1), c.B.focus('home')]; placed.key = true; return { id: 'typhoon', view() {}, script: { placed } }; };
-test('after the typhoon placed event the rest of the turn plays normally (scripts, cause flash, merged jump); the placed event is a key event', () => {
+test('after the typhoon placed event the rest of the turn plays normally (scripts, merged jump); the placed event is a key event', () => {
   const after = buildTurn([{ kind: 'placed', item: 'typhoon', to: 1 }, grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), placedLike(), chipLike()]), fakeCtx());
   const without = buildTurn([grow('chip', 2, ['milk']), grow('chip', 3, ['milk'], { jump: true })], base([quietTower, helperLike('milk'), chipLike()]), fakeCtx());
   assert.equal(marksOf(after)[0].info.key, true, 'the typhoon placed event is a key event');
   assert.deepEqual(between(after, 1), [], 'the first level of the jump is a mark only');
-  assert.ok(hasFlash(between(after, 2)), 'the cause flash plays');
   assert.deepEqual(kindsOf(between(after, 2)).filter(k => k !== 'wait' && k !== 'focus'), kindsOf(between(without, 1)).filter(k => k !== 'wait' && k !== 'focus'), 'the merged level plays the same script as without the typhoon');
   assert.ok(between(after, 2).filter(b => b.kind === 'levelUp').every(b => b.twice));
 });

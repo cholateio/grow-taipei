@@ -58,3 +58,22 @@ test('the top bar has a hidden skip button first in the tools; setSkippable show
   bar.setSkippable(false); assert.equal(skip.hidden, true);
   btn('reset').listeners.click(); btn('howto').listeners.click(); assert.deepEqual(calls, ['skip', 'reset', 'howto']);
 });
+
+// 重玩迴圈（計畫 12 Task 2）：遊戲結束後 RESET 加 glow（珊瑚底白字、輕輕放大），RESET 之後拿掉；沒有任何新文字
+test('setFinished toggles the glow class on RESET only, without adding text', async () => {
+  const { root, bar, btn } = await topBar();
+  const reset = btn('reset'), text = root.textContent;
+  assert.equal(reset.classList.contains('glow'), false);
+  bar.setFinished(true); assert.equal(reset.classList.contains('glow'), true);
+  assert.equal(btn('howto').classList.contains('glow'), false); assert.equal(btn('skip').classList.contains('glow'), false);
+  assert.equal(root.textContent, text, 'no new text');
+  bar.setFinished(false); assert.equal(reset.classList.contains('glow'), false);
+});
+test('ui.css: the glowing RESET is coral with white text, pulses 1 → 1.06 every 1.6 s, and stays still under reduced motion', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync('src/ui/ui.css', 'utf8');
+  const rule = /\.tools button\.glow\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+  assert.match(rule, /background:\s*var\(--coral\)/); assert.match(rule, /color:\s*#fff/); assert.match(rule, /animation:\s*reset-glow 1\.6s/);
+  assert.match(css, /@keyframes reset-glow\s*\{[^}]*scale\(1\)[^}]*\}[^}]*scale\(1\.06\)/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.tools button\.glow\s*\{\s*animation:\s*none/);
+});

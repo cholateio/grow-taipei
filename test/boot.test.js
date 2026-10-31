@@ -19,3 +19,10 @@ test('app.js skips through the top-bar button only: no canvas click listener, se
   const loop = src.slice(src.indexOf('setAnimationLoop('));
   assert.match(loop, /setSkippable\(show\.skippable\)/, 'the frame loop updates the skip button');
 });
+
+// 計畫 12 Task 2：遊戲結束（onFinished）RESET 變醒目，restart 拿掉
+test('app.js lights RESET on finish and turns it off on restart', () => {
+  const src = readFileSync('src/app.js', 'utf8');
+  assert.match(src, /onFinished:\s*\(\)\s*=>\s*topBar\.setFinished\(true\)/);
+  assert.match(/function restart\(\)\s*\{[^}]*\}/.exec(src)?.[0] ?? '', /topBar\.setFinished\(false\)/);
+});

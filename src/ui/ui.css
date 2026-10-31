@@ -16,6 +16,11 @@ button.primary:hover { background: #3a3333; }
 .tools button { background: var(--cream); box-shadow: var(--shadow); padding: 0 14px; font-weight: 700; min-width: 44px; }
 .tools button:hover { background: var(--yellow); }
 .tools button[hidden] { display: none; }
+/* 重玩迴圈（計畫 12）：遊戲結束後 RESET 珊瑚底白字、每 1.6 s 輕輕放大一次；reduced-motion 不動 */
+.tools button.glow { background: var(--coral); color: #fff; animation: reset-glow 1.6s ease-in-out infinite; }
+.tools button.glow:hover { background: #c45a34; }
+@keyframes reset-glow { 0%, 70%, 100% { transform: scale(1); } 35% { transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .tools button.glow { animation: none; } }
 
 .slots { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; grid-template-columns: repeat(8, 64px); gap: 8px;
   background: #fff8f4e0; backdrop-filter: blur(10px); padding: 10px 12px 16px; border-radius: 18px; box-shadow: var(--shadow); }

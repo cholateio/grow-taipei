@@ -113,10 +113,11 @@ export async function start({ params, loading }) {
     spec, engine, endings, show,
     ui: { setLevel: (...a) => slots.setLevel(...a), setPlaced: id => slots.setPlaced(id), setBusy: f => slots.setBusy(f), reset: () => slots.reset() },
     onLevels: applyWorld,
-    // 結局：沒有標題卡（使用者 2026-11-01：直接用畫面呈現，不用文字描述）——畫面停在終局回合演完的狀態，玩家自己看；重玩按頂欄 RESET
-    onFinished: () => {},
+    // 結局：沒有標題卡（使用者 2026-11-01：直接用畫面呈現，不用文字描述）——畫面停在終局回合演完的狀態，玩家自己看；
+    // 重玩按頂欄 RESET：結束後它變醒目（計畫 12 重玩迴圈），restart 拿掉
+    onFinished: () => topBar.setFinished(true),
   });
-  function restart() { game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
+  function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
   const pick = id => game.pick(id);
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick });
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });

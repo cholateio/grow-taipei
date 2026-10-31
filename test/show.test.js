@@ -494,10 +494,10 @@ test('the solution live with merged jumps and cause flashes: invariants clean, �
   }
 });
 
-// 計畫 11 §設計 1／裁決 R15（亮一下只剩四種：建築長出來、起因提示、名冊換位／換裝、扶正）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 不是會長的建築（同一個零件緊接著 blink.grow）
-// 就是起因提示（flash 拍）——其餘零件直接出現、拿掉的縮下去（blink.shrink）。名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。
+// 計畫 11 §設計 1／裁決 R15、使用者 2026-10-31「閃一下」（長出來的建築不再亮）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 都是起因提示（flash 拍）——
+// 建築只長出來（blink.grow，不配 blink.part）、其餘零件直接出現、拿掉的縮下去（blink.shrink）。名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。
 // 量表印在 diagnostic；共用不變式照樣乾淨
-test('the solution live: every blink.part on a stage part is a growing building or the cause flash; removals shrink; invariants clean', async t => {
+test('the solution live: every blink.part on a stage part is the cause flash; buildings grow without a glow; removals shrink; invariants clean', async t => {
   for (const order of SOLUTIONS) {
     const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam }), log = blinkLog(show);
     let s = engine.createState(spec);
@@ -508,11 +508,13 @@ test('the solution live: every blink.part on a stage part is a growing building 
       await run([...r.events, { kind: 'settle' }], { onMark: e => { const ev = `${e.kind} ${e.item ?? ''}${e.to ?? ''}`; inv.label(`${what} [${ev}]`); log.label(`${i + 1} ${ev}`); } });
       inv.turnEnd();
     }
-    const row = c => `${c.label} | ${c.fn}${c.dur ? ` ${c.dur}` : ''} | ${c.key ?? '?'} | ${c.grows ? 'grow' : ''}${c.cause ? 'cause' : ''}${c.member ? 'member' : ''} | ${c.from}`;
+    const row = c => `${c.label} | ${c.fn}${c.dur ? ` ${c.dur}` : ''} | ${c.key ?? '?'} | ${c.cause ? 'cause' : ''}${c.member ? 'member' : ''} | ${c.from}`;
     t.diagnostic(`${order.join('>')}: ${log.calls.length} calls\n${log.calls.map(row).join('\n')}`);
     const parts = log.calls.filter(c => c.fn === 'part' && !c.member);
-    assert.deepEqual(parts.filter(c => !c.grows && !c.cause).map(row), [], 'only growing buildings and cause flashes glow');
-    assert.ok(parts.some(c => c.grows) && parts.some(c => c.cause), 'buildings still glow as they grow; the cause flash is still there');
+    assert.deepEqual(parts.filter(c => !c.cause).map(row), [], 'only cause flashes glow on stage parts (no stray part calls, growing buildings included)');
+    const grows = log.calls.filter(c => c.fn === 'grow');
+    assert.ok(grows.length && parts.some(c => c.cause), 'buildings still grow; the cause flash is still there');
+    assert.ok(grows.every(c => c.from.startsWith('actors/stage.js')), `grow only from the stage commit: ${grows.filter(c => !c.from.startsWith('actors/stage.js')).map(row)}`);
     assert.ok(log.calls.some(c => c.fn === 'shrink'), 'removed parts shrink');
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
     assert.deepEqual([...inv.jumps].slice(0, 20), [], `${inv.jumps.size} frame jumps`);

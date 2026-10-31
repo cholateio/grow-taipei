@@ -135,8 +135,8 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   return {
     kind: 'gesture', dur,
     start(ctx) {
-      // 零件剛套用（apply 之後緊接著 puff）：還在長出來（blink.grow，GROW_DUR）——先收掉再記 base，不然 base 是長到一半的大小、演完就一直不對。
-      // blink.stop 連那個零件的亮一下（glow）也一起收掉，提早一幀熄（看不出來，接受）
+      // 零件剛套用（apply 之後緊接著 puff）：還在長出來（blink.grow，GROW_HOLD + GROW_DUR）——先收掉再記 base，不然 base 是長到一半的大小、演完就一直不對。
+      // blink.stop 會讓長到一半的零件直接跳到原大小（puff 接在長出來後面的才會遇到）
       if (isPartKey(who)) { obj = partOf(who, ctx); if (!obj) return false; ctx.blink?.stop(obj); base = obj.scale.clone(); return; }
       m = memberOf(who, ctx); if (!m || m.hidden) { m = null; return false; }
       ctx.roster.claim(m);   // 名冊日常不再擺這個人，sniff／jump 才不會被蓋掉
@@ -163,7 +163,7 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
 }
 
 // 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
-// commit 由舞台演（會長的建築亮一下＋長出來、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK + 0.15·(n−1)——
+// commit 由舞台演（會長的建築長出來（不亮）、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK + 0.15·(n−1)——
 // 不亮的鍵照樣佔一格 stagger：拍長不變（整局的走位與節奏門檻對時間很敏感）。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
 // stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻 commit（大停電：電一斷整區一起，拍長 BLINK）

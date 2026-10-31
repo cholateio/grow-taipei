@@ -347,9 +347,9 @@ test('Lv5 live: the forest branch appears, then the ferry carries two tourists f
     assert.deepEqual(trail.slice(-4), [String(worldToAxial(FC.x, FC.z)), String(worldToAxial(LIGHT.x, LIGHT.z)), String(CELL), 'home'], `${what}: ${trail}`);
     assert.equal(show.roster.members('sat.forest').length, 2); assert.ok(show.stage.partObject('sat.forest.stage1'), `${what}: forest branch`);
     assert.ok(show.stage.partObject('sat.lighthouse.stage2') && show.stage.partObject('boba.flagship'), `${what}: pier and flagship`);
-    // 計畫 11 §設計 3：兩座離島店是建築——亮一下＋長出來；屋頂的杯子招牌直接出現（不亮）
+    // 計畫 11 §設計 3：兩座離島店是建築——長出來（使用者 2026-10-31「閃一下」之後不亮）；屋頂的杯子招牌直接出現（不長、不亮）
     assert.ok(show.stage.partObject('sat.forest.shop') && show.stage.partObject('sat.forest.sign') && show.stage.partObject('boba.flagship.sign'), `${what}: both shops have a cup sign`);
-    const grew = new Set(log.calls.slice(from).filter(c => c.fn === 'part' && c.grows).map(c => c.key));
+    const grew = new Set(log.calls.slice(from).filter(c => c.fn === 'grow').map(c => c.key));
     for (const k of ['sat.forest.shop', 'boba.flagship']) assert.ok(grew.has(k), `${what}: ${k} grows (${[...grew]})`);
     for (const k of ['sat.forest.sign', 'boba.flagship.sign']) assert.ok(!log.calls.slice(from).some(c => c.key === k), `${what}: ${k} just appears`);
     const ys = frames.map(f => f.drone).filter(y => y != null); assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);

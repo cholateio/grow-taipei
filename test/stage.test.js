@@ -7,7 +7,7 @@ import { createGlowRegistry } from '../src/scene/glow.js';
 import { createPeople, ringPath } from '../src/scene/people.js';
 installFakeDom();
 const { createStage, diffParts, troubleOf, troubleSpot, growsOn } = await import('../src/actors/stage.js');
-const { createBlink, GROW_DUR, BLINK, SHRINK_DUR } = await import('../src/show/blink.js');
+const { createBlink, GROW_DUR, GROW_HOLD, BLINK, SHRINK_DUR } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
 // 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
@@ -58,39 +58,48 @@ test('deferred keeps the old part and hides the new until commit; commitAll reve
   stage.commit('milk.main'); assert.ok(!parts().includes(old)); assert.equal(stage.pendingKeys().length, 1);
   stage.commitAll(); assert.ok(parts().every(o => o.visible)); assert.equal(stage.pendingKeys().length, 0);
 });
-// §13.2：換零件＝舊的立刻拿掉（新的矮樁蓋住它，不縮）、新的亮一下；新增＝新的亮一下；移除＝舊的縮下去，縮完才拿掉（計畫 11 §設計 1）。
-// 修正批次 2：新零件同時「長出來」（blink.grow：scale.y 0.15 → 1.06 → 1、GROW_DUR）
-test('commit reveals the fresh part and blinks it; the old part is dropped', () => {
+// §13.2：換零件＝舊的立刻拿掉（新的矮樁蓋住它，不縮）、新的出現；新增＝新的出現；移除＝舊的縮下去，縮完才拿掉（計畫 11 §設計 1）。
+// 修正批次 2：會長的新零件「長出來」（blink.grow：scale.y 停在 0.15 GROW_HOLD 秒，再 GROW_DUR 秒長到 1，最後衝過頭到 1.04 落回 1）；
+// 使用者 2026-10-31「閃一下」：長的時候不亮（commit 只呼叫 blink.grow，不呼叫 blink.part；整棟白光就是那道 glow）
+const spyOn = blink => {
+  const calls = [];
+  for (const fn of ['part', 'grow']) { const orig = blink[fn]; blink[fn] = (o, ...rest) => { calls.push([fn, o]); return orig(o, ...rest); }; }
+  return calls;
+};
+const matsOf = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; };
+test('commit reveals the fresh part and grows it without a glow; the old part is dropped', () => {
   const { stage, parts, blink } = setup(); stage.apply(placed); const old = parts()[0];
-  stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main');
-  const mats = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; }, own = mats(fresh);
+  stage.apply(grow(3), { deferred: true }); const fresh = stage.partObject('milk.main'), own = matsOf(fresh), calls = spyOn(blink);
   stage.commit('milk.main');
+  assert.deepEqual(calls, [['grow', fresh]], 'grow is called, part is not');
   assert.ok(!parts().includes(old), 'replaced: old dropped at once'); assert.ok(!blink.has(old), 'replaced: the old part does not shrink');
-  assert.deepEqual(old.scale.toArray(), [1, 1, 1]); assert.equal(fresh.visible, true); assert.ok(lit(blink, fresh)); assert.equal(blink.count, 1);
+  assert.deepEqual(old.scale.toArray(), [1, 1, 1]); assert.equal(fresh.visible, true); assert.ok(blink.has(fresh)); assert.equal(blink.count, 1);
+  assert.deepEqual(matsOf(fresh), own, 'its own materials: no glow');
   const y0 = fresh.position.y;
   assert.ok(Math.abs(fresh.scale.y - 0.15) < 1e-9, 'the fresh part grows from 0.15x high'); assert.equal(fresh.scale.x, 1); assert.equal(fresh.scale.z, 1);
-  stage.commit('milk.lamp'); assert.ok(lit(blink, stage.partObject('milk.lamp'))); assert.equal(blink.count, 2);
-  blink.update(0.16); assert.deepEqual(mats(fresh), own, 'the glow is over after BLINK: its own materials again'); assert.ok(blink.has(fresh), 'still growing');
-  assert.ok(fresh.scale.y < 0.3, `a stub while it glowed (${fresh.scale.y.toFixed(2)})`);
-  blink.update(0.25); assert.ok(fresh.scale.y > 0.8, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
+  stage.commit('milk.lamp'); assert.equal(blink.count, 2); assert.deepEqual(calls.map(([fn]) => fn), ['grow', 'grow']);
+  blink.update(GROW_HOLD - 0.01); assert.ok(Math.abs(fresh.scale.y - 0.15) < 1e-9, `still a stub during the hold (${fresh.scale.y.toFixed(2)})`);
+  blink.update(0.31); assert.ok(fresh.scale.y > 0.5 && fresh.scale.y < 1, `growing (${fresh.scale.y.toFixed(2)})`); assert.equal(fresh.position.y, y0, 'from its base: the position does not move');
+  assert.deepEqual(matsOf(fresh), own, 'never glows while it grows');
   blink.update(GROW_DUR); assert.equal(blink.count, 0); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
 });
 // 只有建築會長（協調者裁決，stage.js growsOn）：footprint false 的、不是 compound／glb／campus 的、tagAlong 點綴不長；grow: true／false 蓋過（tagAlong 不行）。
-// 計畫 11 §設計 1／裁決 R15（亮一下只剩四種；舞台這裡管建築長出來那一種）：只有會長的零件亮一下；其餘直接出現——不亮、不長、blink 不管它
-test('only buildings grow and only growing parts glow: footprint false, other kinds and tagAlong parts just appear; an explicit grow flag overrides', () => {
+// 計畫 11 §設計 1／裁決 R15、使用者 2026-10-31「閃一下」：舞台的 commit 從不亮（不呼叫 blink.part）；會長的只 grow，其餘直接出現——不長、blink 不管它
+test('only buildings grow and nothing glows on commit: footprint false, other kinds and tagAlong parts just appear; an explicit grow flag overrides', () => {
   const box = extra => ({ kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }], ...extra });
   const cases = { 'milk.a': [box({ footprint: false }), false], 'milk.b': [box({ tagAlong: true }), false], 'milk.c': [box({ footprint: { r: 0.3 }, grow: false }), false],
     'milk.d': [box({ footprint: false, grow: true }), true], 'milk.e': [box({}), true], 'milk.f': [box({ footprint: { r: 0.3 } }), true],
     'milk.g': [box({ tagAlong: true, grow: true }), false] };
   const mod = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? Object.fromEntries(Object.entries(cases).map(([k, [v]]) => [k, v])) : {}) };
-  const { stage, blink } = setup([mod]); stage.apply(placed, { deferred: true });
-  const own = o => { const out = []; o.traverse(m => { if (m.isMesh) out.push(m.material); }); return out; };
+  const { stage, blink } = setup([mod]); stage.apply(placed, { deferred: true }); const calls = spyOn(blink);
   for (const [k, [v, grows]] of Object.entries(cases)) {
-    const o = stage.partObject(k), mats = own(o); stage.commit(k);
+    const o = stage.partObject(k), mats = matsOf(o), n = calls.length; stage.commit(k);
     assert.equal(growsOn(v), grows, `${k} growsOn`); assert.equal(o.visible, true, `${k} shown`);
-    if (grows) assert.ok(lit(blink, o) && o.scale.y < 1, `${k} glows and grows`);
-    else { assert.ok(!blink.has(o), `${k} just appears`); assert.deepEqual(own(o), mats, `${k} keeps its own materials (no glow)`); assert.equal(o.scale.y, 1); }
+    assert.deepEqual(matsOf(o), mats, `${k} keeps its own materials (no glow)`);
+    if (grows) { assert.deepEqual(calls.slice(n), [['grow', o]], `${k} grows, no part`); assert.ok(blink.has(o) && o.scale.y < 1, `${k} grows`); }
+    else { assert.deepEqual(calls.slice(n), [], `${k}: neither grow nor part`); assert.ok(!blink.has(o), `${k} just appears`); assert.equal(o.scale.y, 1); }
   }
+  assert.ok(!calls.some(([fn]) => fn === 'part'), 'commit never calls blink.part');
   assert.equal(blink.count, Object.values(cases).filter(([, g]) => g).length, 'only the growing parts are in blink');
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的

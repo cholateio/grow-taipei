@@ -1,9 +1,9 @@
 // 舞台：演員的外觀只由「等級向量 + 旗標 + meta」決定（§7.1）。每個模組 view(lv, flags, meta) → { key: partSpec }，
-// 舞台比對前後兩份 view：沒變的零件不動，變了的立刻換掉，並回報換了哪些鍵（動畫全交給演出層：泡泡出 LEVEL UP；亮一下只剩四種——建築長出來、起因提示、名冊換位／換裝、扶正，計畫 11 裁決 R15）。
+// 舞台比對前後兩份 view：沒變的零件不動，變了的立刻換掉，並回報換了哪些鍵（動畫全交給演出層：泡泡出 LEVEL UP；亮一下只剩三種——起因提示、名冊換位／換裝、扶正；建築只長出來不亮，計畫 11 裁決 R15、使用者 2026-10-31「閃一下」）。
 // deferred：新零件先藏著、舊零件先留著，等演出層 commit(key) 才換（§13.2）：換零件＝舊的立刻拿掉（新的矮樁蓋住它）、新的出現；
-//   新增＝新的出現；移除＝舊的縮下去（blink.shrink），縮完才拿掉。新零件只有會長的建築（growsOn）亮一下＋長出來，其餘直接出現（計畫 11 §設計 1）。
+//   新增＝新的出現；移除＝舊的縮下去（blink.shrink），縮完才拿掉。新零件只有會長的建築（growsOn）長出來（不亮），其餘直接出現（計畫 11 §設計 1）。
 //   commitAll（跳過、回合收尾）不亮，縮到一半要拿掉的也立刻拿掉；commitAll({ shrinking: true })（拍照常演完）讓縮到一半的縮完自己走。
-// blink：show/blink.js 的亮一下；沒給（單元測試）就不亮，移除的立刻拿掉。
+// blink：show/blink.js 的亮一下／長出來／縮下去；沒給（單元測試）就不長，移除的立刻拿掉。
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
 import { createPartFactory } from './parts.js';
 import { anchorWorld, frontOf } from './anchors.js';
@@ -45,7 +45,7 @@ export function troubleSpot(item, lv, flags, modules) {
 }
 
 // 長出來（blink.grow，修正批次 2 協調者裁決）只給建築：kind 是 compound／glb／campus、footprint 不是 false、不是 tagAlong 點綴的才長；
-// 其他（footprint false 的雲、雨、纜線、軌道與列車、霓虹、光環、UFO、堤防、彩虹、被吹到海裡的攤車、離島點綴……）不長也不亮（計畫 11 §設計 1：直接出現）——
+// 其他（footprint false 的雲、雨、纜線、軌道與列車、霓虹、光環、UFO、堤防、彩虹、被吹到海裡的攤車、離島點綴……）不長（計畫 11 §設計 1：直接出現）——
 // 它們的 at 常在地面或原點、畫在高處，從底部長會變成從地面／水裡升上來。零件 spec 可寫 grow: true／false 蓋過；tagAlong 點綴寫了也不長（跟著主零件，不另外亮）
 const GROW_KINDS = new Set(['compound', 'glb', 'campus']);
 export const growsOn = spec => !spec?.tagAlong && (typeof spec?.grow === 'boolean' ? spec.grow : GROW_KINDS.has(spec?.kind) && spec.footprint !== false);
@@ -107,8 +107,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   // 亮一下／長出來／縮下去中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
   function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
 
-  // glint：要不要演（commitAll、換裝前收掉舊的 pending 都不演，直接換）。計畫 11 §設計 1／裁決 R15（亮一下只剩四種：建築長出來、起因提示、名冊換位／換裝、扶正；舞台的 commit 管的是第一種）：
-  //   新零件是會長的建築（growsOn）才亮一下＋長出來（blink.grow，修正批次 2），其餘直接出現、不亮——
+  // glint：要不要演（commitAll、換裝前收掉舊的 pending 都不演，直接換）。計畫 11 §設計 1／裁決 R15（舞台的 commit 管建築長出來）：
+  //   新零件是會長的建築（growsOn）才長出來（blink.grow，修正批次 2），其餘直接出現、不亮——
+  //   長的建築也不亮（不再 blink.part）：使用者 2026-10-31「閃一下」，30 fps 錄影裡整棟一片白就是這道光（長出來的曲線見 blink.js grow）；
   //   使用者 2026-10-31「建築物還是會閃一下」：鏡頭對著正面時，背面的點綴（圍欄、路燈、煙、離島三段……）換掉也在亮；
   //   換零件的舊的立刻拿掉（新的矮樁蓋住它）；只拿掉的舊零件縮下去（blink.shrink），縮完才拿掉、不亮
   function commit(key, glint = true) {
@@ -117,7 +118,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     if (p.fresh) {
       if (p.old) drop(p.old);
       const o = p.fresh.part.object; o.visible = true;
-      if (glint && growsOn(p.fresh.spec)) { blink?.part(o); blink?.grow(o); }
+      if (glint && growsOn(p.fresh.spec)) blink?.grow(o);
     } else if (glint && blink) {
       dying.add(p.old);
       blink.shrink(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });

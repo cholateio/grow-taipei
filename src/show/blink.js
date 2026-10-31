@@ -6,28 +6,36 @@
 //     每幀照原材質當下的強度算（夜晚、大停電調的是原材質）。沒有 emissive 的（MeshBasicMaterial）把 color 往白 lerp 同一個比例。
 //     時間到換回原材質、dispose 複本，再呼叫 onEnd。
 //   grow(object3d, dur = GROW_DUR)：長出來（修正批次 2，取代小彈一下 0.94 → 1：使用者「建築物升級時只會原地閃爍」）——記下呼叫時的 scale，
-//     只動 y：先在 GROW_FROM 倍停 GROW_HOLD 秒（就是亮一下的那段：玩家看到一截發亮的矮樁），再花 dur 秒以 ease-out-back 長到 GROW_PEAK 倍、
-//     回 1 倍（共 GROW_HOLD + dur）；x、z 不動。零件的原點就是它的底（at，零件從 y 0 往上蓋），所以是從地面長上來，object.position 不動。
-//     結束設回記下的 scale（壓扁過的零件也不會被設成 1）。和亮一下（part）同時開始，亮一下照舊 BLINK 秒淡掉。哪些零件會長由 stage.js growsOn 決定（只有建築）
+//     只動 y：先在 GROW_FROM 倍停 GROW_HOLD 秒（矮樁），再花 dur 秒以 ease-in-out（smoothstep）長到 1 倍，最後 25 %（SETTLE 之後）疊一個小衝過頭、
+//     最高 GROW_PEAK 倍再落回 1 倍（共 GROW_HOLD + dur）；x、z 不動。零件的原點就是它的底（at，零件從 y 0 往上蓋；glb 模型由 assets.spawn 把底放在 y 0，
+//     晚到的模型加進零件的 group 時也吃 group 的 scale），所以是從地面長上來，object.position 不動。結束設回記下的 scale（壓扁過的零件也不會被設成 1）。
+//     使用者 2026-10-31「閃一下」（30 fps 錄影：矮樁只停一幀、三幀內就長滿，整棟一片白）：舊曲線 ease-out-back 0.5 s 在 0.1 s 就到 0.72，
+//     加上同時亮一下（part）的白光——改成先停 0.2 s、慢慢起步，長的時候不亮（stage.js commit 只呼叫 grow）。哪些零件會長由 stage.js growsOn 決定（只有建築）
 //   shrink(object3d, dur = SHRINK_DUR, onEnd?)：縮下去（計畫 11 §設計 1：要拿掉的零件不亮）——記下呼叫時的 scale 與位置，只動 y：以 ease-in 花 dur 秒
 //     從 1 倍縮到 SHRINK_TO 倍，材質不換。軸是零件自己的底（呼叫時包圍盒的最低點）：建築的原點就是底，position 不動；
 //     畫在高處的（颱風雲、煙、雨——原點在地面）在自己的底部壓扁，不會整團掉到地上。包圍盒是空的（還沒載到的模型）就用原點。
 //     時間到先設回記下的 scale 與位置再呼叫 onEnd（舞台在 onEnd 拿掉它）。正在長的先收掉 grow（從自己的高度縮）。stop／clear：立刻回原樣並呼叫 onEnd
 //   walker(w, dur)：小人是 InstancedMesh 的一個實例，改用 people.flashInstance 把整個實例塗白、時間到重塗原色（名冊換位置用，照舊）。
-// 哪些東西會亮（計畫 11 §設計 1／裁決 R15，亮一下只剩四種）：長出來的建築（stage.js commit，growsOn）、起因提示（beats.flash）、名冊的人換位置／換裝、扶正（被撞歪的零件下一回合開頭，turn.js upright）。
+// 哪些東西會亮（計畫 11 §設計 1／裁決 R15；使用者 2026-10-31「閃一下」之後長出來的建築不再亮、只長）：起因提示（beats.flash）、名冊的人換位置／換裝、扶正（被撞歪的零件下一回合開頭，turn.js upright）。
 // 亮到一半再亮同一個東西：計時重來，不再複製一次。父子各自 part（巢狀）：後來的那個跳過已經在亮的 mesh（各自換回自己的原材質）。clear()：全部立刻回原樣（跳過、RESET）。
 // stop(object 或 walker)：只把這一個立刻收掉（要拿掉、放回模型池的東西先換回原材質與原大小，複本才不會被帶走）。
 // has(object 或 walker)：這一個現在正在亮、正在長或正在縮（測試查「換位置的那一幀有閃」）。count：正在亮／長／縮／閃的東西有幾個（同一個東西只算一次）。
 export const BLINK = 0.15;
 export const GLOW = 0.35;
-export const GROW_DUR = 0.5, GROW_HOLD = 0.15;   // 長高的秒數；長之前先停在矮樁的秒數（＝亮一下 BLINK，協調者裁決：曲線不藏在白光裡）
-const GROW_FROM = 0.15, GROW_PEAK = 1.06;
+export const GROW_DUR = 0.6, GROW_HOLD = 0.2;   // 長高的秒數（smoothstep，最後 25 % 帶衝過頭）；長之前先停在矮樁的秒數（30 fps 停 6 幀，看得出是從矮樁長起來）
+export const GROW_PEAK = 1.04;   // 衝過頭最高幾倍（測試量它）
+const GROW_FROM = 0.15, SETTLE = 0.75;   // 矮樁幾倍高；長高那段的第幾成之後才開始衝過頭
 export const SHRINK_DUR = 0.2, SHRINK_TO = 0.15;   // 縮下去的秒數；縮到幾倍高（之後拿掉）
-// ease-out-back：f(0) = 0、f(1) = 1，中途衝過頭 1 + 4s³ / (27 (s + 1)²)；s = 1.4 衝到 1.0706，乘上 (1 − GROW_FROM) 剛好是 GROW_PEAK 1.06
-const BACK = 1.4;
-const easeOutBack = k => { const u = k - 1; return 1 + (BACK + 1) * u ** 3 + BACK * u ** 2; };
+const smooth = k => k * k * (3 - 2 * k);
+// 衝過頭的鼓包：u 0 → 1 是長高那段的最後 25 %，u²(1 − u)³ 兩端斜率都是 0（接得順、停得穩），u = 0.4 最高、除掉 0.03456 正規化成 1；
+// OVER 是疊在 smoothstep 上的高度：兩者加起來最高點剛好 GROW_PEAK（數值解，約在長高那段的 0.87 處、從呼叫起 0.72 s）
+const bump = u => (u * u * (1 - u) ** 3) / 0.03456, OVER = 0.08456;
 // t：從呼叫起算的秒數；前 GROW_HOLD 秒停在 GROW_FROM，之後 dur 秒長上去
-const growAt = (t, dur) => (t <= GROW_HOLD ? GROW_FROM : GROW_FROM + (1 - GROW_FROM) * easeOutBack(Math.min(1, (t - GROW_HOLD) / dur)));
+function growAt(t, dur) {
+  if (t <= GROW_HOLD) return GROW_FROM;
+  const k = Math.min(1, (t - GROW_HOLD) / dur), v = GROW_FROM + (1 - GROW_FROM) * smooth(k);
+  return k > SETTLE ? v + OVER * bump((k - SETTLE) / (1 - SETTLE)) : v;
+}
 const easeOut = k => 1 - (1 - k) ** 2;
 const shrinkAt = k => 1 - (1 - SHRINK_TO) * Math.min(1, k) ** 2;   // ease-in：一開始慢、越縮越快
 

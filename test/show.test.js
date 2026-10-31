@@ -494,7 +494,7 @@ test('the solution live with merged jumps and cause flashes: invariants clean, �
   }
 });
 
-// 計畫 11 §設計 1（亮一下只剩兩種）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 不是會長的建築（同一個零件緊接著 blink.grow）
+// 計畫 11 §設計 1／裁決 R15（亮一下只剩四種：建築長出來、起因提示、名冊換位／換裝、扶正）：唯一正解整局 live（真的鏡頭 rig），舞台零件的每一次 blink.part 不是會長的建築（同一個零件緊接著 blink.grow）
 // 就是起因提示（flash 拍）——其餘零件直接出現、拿掉的縮下去（blink.shrink）。名冊的人（模型 holder 換位置／換裝的閃白，計畫 6 裁決 R3）不是零件，不算。
 // 量表印在 diagnostic；共用不變式照樣乾淨
 test('the solution live: every blink.part on a stage part is a growing building or the cause flash; removals shrink; invariants clean', async t => {

@@ -76,7 +76,7 @@ test('commit reveals the fresh part and blinks it; the old part is dropped', () 
   blink.update(GROW_DUR); assert.equal(blink.count, 0); assert.deepEqual(fresh.scale.toArray(), [1, 1, 1]);
 });
 // 只有建築會長（協調者裁決，stage.js growsOn）：footprint false 的、不是 compound／glb／campus 的、tagAlong 點綴不長；grow: true／false 蓋過（tagAlong 不行）。
-// 計畫 11 §設計 1（亮一下只剩兩種）：只有會長的零件亮一下；其餘直接出現——不亮、不長、blink 不管它
+// 計畫 11 §設計 1／裁決 R15（亮一下只剩四種；舞台這裡管建築長出來那一種）：只有會長的零件亮一下；其餘直接出現——不亮、不長、blink 不管它
 test('only buildings grow and only growing parts glow: footprint false, other kinds and tagAlong parts just appear; an explicit grow flag overrides', () => {
   const box = extra => ({ kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 }], ...extra });
   const cases = { 'milk.a': [box({ footprint: false }), false], 'milk.b': [box({ tagAlong: true }), false], 'milk.c': [box({ footprint: { r: 0.3 }, grow: false }), false],

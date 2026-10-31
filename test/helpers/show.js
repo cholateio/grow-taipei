@@ -28,10 +28,10 @@ export const KEY_MAX = 8;
 // rig：換成真的鏡頭 rig（測試鏡頭最後停在哪）；run 每幀也推它
 // quality：'low' 時零件與名冊省 draw call（手機畫質，裁決 R18），演出要照樣演完
 export async function headlessShow({ modules = ALL, reducedMotion = false, seed = 21, rig: realRig = null, quality = 'high' } = {}) {
-  const spawned = [], released = [];
+  const spawned = [], released = [], paths = [];   // paths：每次 spawn 要的模型路徑（tools/startup-bytes.mjs 量開局載入）
   const assets = {
-    spawned, released,
-    spawn: async (path, opts = {}) => { const g = new THREE.Group(); g.userData.mixer = { timeScale: 1 }; opts.parent?.add(g); spawned.push(g); return g; },
+    spawned, released, paths,
+    spawn: async (path, opts = {}) => { paths.push(path); const g = new THREE.Group(); g.userData.mixer = { timeScale: 1 }; opts.parent?.add(g); spawned.push(g); return g; },
     release: g => { released.push(g); g.removeFromParent(); },
     update() {},
   };

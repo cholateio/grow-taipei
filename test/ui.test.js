@@ -77,3 +77,32 @@ test('ui.css: the glowing RESET is coral with white text, pulses 1 → 1.06 ever
   assert.match(css, /@keyframes reset-glow\s*\{[^}]*scale\(1\)[^}]*\}[^}]*scale\(1\.06\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.tools button\.glow\s*\{\s*animation:\s*none/);
 });
+
+// 開局載入（計畫 12 Task 4）：柴犬（純點綴、528 KB）等第一幀畫出來之後才載，不擋開局；開局模型 ≤ 1.5 MB
+test('startup bytes: the shiba is deferred past the first frame and the opening models stay within 1.5 MB', async () => {
+  const { measure, GOAL } = await import('../tools/startup-bytes.mjs');
+  const { SHIBA } = await import('../src/app.js');
+  const { startup, deferred, glbBytes } = await measure();
+  assert.ok(!startup.some(r => r.path === SHIBA.path), 'the shiba is not loaded at startup');
+  assert.deepEqual(deferred.map(r => r.path), [SHIBA.path]);
+  assert.ok(glbBytes <= GOAL, `startup glb ${glbBytes} > ${GOAL}`);
+});
+test('createLater runs the queued jobs once, after the first frame is drawn', async () => {
+  installFakeDom(); const { createLater } = await import('../src/app.js');
+  const queued = [], ran = [];
+  const later = createLater(fn => queued.push(fn));
+  later.add(() => ran.push('a')); later.add(() => ran.push('b'));
+  assert.equal(queued.length, 0, 'nothing before the first frame'); assert.equal(later.done, false);
+  later.drawn(); later.drawn();
+  assert.equal(queued.length, 1, 'scheduled once'); assert.deepEqual(ran, []);
+  queued[0](); assert.deepEqual(ran, ['a', 'b']); assert.equal(later.done, true);
+  later.add(() => ran.push('c')); assert.equal(queued.length, 2); queued[1](); assert.deepEqual(ran, ['a', 'b', 'c']);
+});
+test('app.js spawns the shiba through createLater, calls drawn() after the first render, and waits for it before reporting draw calls', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync('src/app.js', 'utf8');
+  assert.match(src, /later\.add\(\(\) => assets\.spawn\(SHIBA\.path/);
+  const loop = src.slice(src.indexOf('setAnimationLoop('));
+  assert.ok(loop.indexOf('later.drawn()') > loop.indexOf('view.render()'), 'drawn() after the render');
+  assert.match(loop, /autoDone && later\.done && sampleCalls/);
+});

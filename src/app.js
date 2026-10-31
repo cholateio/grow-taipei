@@ -41,6 +41,34 @@ import { ANCHORS, cellCentre, cellOf } from './actors/anchors.js';
 
 const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
+// 開局的點綴模型（tools/startup-bytes.mjs 也讀這裡量開局載入）：
+// 台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品），每格三棵，種子固定
+const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
+export function treeSpawns() {
+  const trng = mulberry32(3);
+  return PLATEAU_CELLS.flatMap(cell => Array.from({ length: 3 }, (_, i) => {
+    const c = axialToWorld(...cell), a = Math.PI * (1.15 + i * 0.35 + trng() * 0.15), d = 1.45 + trng() * 0.25;
+    return { path: `kenney/nature/${TREES[Math.floor(trng() * TREES.length)]}.glb`, opts: { x: c.x + Math.cos(a) * d, y: cellTop(cell), z: c.z + Math.sin(a) * d, h: 0.7 + trng() * 0.4, ry: trng() * 6, tint: { leaf: LEAVES[i % 3], bark: 0x9c7a4e } } };
+  }));
+}
+// 一隻柴犬沿中心格的步道反向散步（純裝飾，§7.3）
+export const SHIBA = { path: 'quat/animals/ShibaInu.glb', opts: { h: 0.22, anim: 'Walk' } };
+// 延到第一幀畫出來之後才載的點綴（路徑；startup-bytes 不算進開局）：柴犬 528 KB，比開局其他模型加起來還大（計畫 12）
+export const DEFERRED_DECOR = [SHIBA.path];
+
+// 第一幀畫出來之後才做的事（純點綴的模型不擋開局）：add 收集；每幀迴圈在 render 之後呼叫 drawn()，第一次才交給 schedule
+// （閒置時跑，最多等 0.5 秒）。done：收集的事都做了（截圖回報 draw call 要等它，見下面的 sampleCalls）
+const idle = fn => (globalThis.requestIdleCallback ? globalThis.requestIdleCallback(fn, { timeout: 500 }) : setTimeout(fn, 0));
+export function createLater(schedule = idle) {
+  const jobs = [];
+  let asked = false, done = false;
+  return {
+    add(fn) { if (done) schedule(fn); else jobs.push(fn); },
+    drawn() { if (asked) return; asked = true; schedule(() => { for (const fn of jobs.splice(0)) fn(); done = true; }); },
+    get done() { return done; },
+  };
+}
+
 export async function start({ params, loading }) {
 
   if (params.get('simulateFail') === 'webgl') throw new Error('瀏覽器不支援 WebGL');
@@ -55,20 +83,14 @@ export async function start({ params, loading }) {
   view.scene.add(terrain.group);
   const people = createPeople(THREE, { low: quality === 'low' });
   view.scene.add(people.group);   // 島民六人是 landmarks.js 的名冊（演出層管）
-  // CC0 模型：台地北半側種樹（中央讓給火山與溫泉，主島其他格留給物品）。海上的船是演員（satellites.js）。載入失敗不擋開機。
+  // CC0 模型：台地的樹（treeSpawns）。海上的船是演員（satellites.js）。載入失敗不擋開機。
   const assets = createAssets(THREE);
-  const TREES = ['tree_default', 'tree_oak', 'tree_detailed', 'tree_fat', 'tree_small'], LEAVES = [0x9bbd7e, 0x8aaf70, 0x6f9560];
-  const trng = mulberry32(3), decor = new THREE.Group(); view.scene.add(decor);
-  Promise.all([
-    ...PLATEAU_CELLS.flatMap(cell => Array.from({ length: 3 }, (_, i) => {
-      const c = axialToWorld(...cell), a = Math.PI * (1.15 + i * 0.35 + trng() * 0.15), d = 1.45 + trng() * 0.25;
-      return assets.spawn(`kenney/nature/${TREES[Math.floor(trng() * TREES.length)]}.glb`, { x: c.x + Math.cos(a) * d, y: cellTop(cell), z: c.z + Math.sin(a) * d, h: 0.7 + trng() * 0.4, ry: trng() * 6, parent: decor, tint: { leaf: LEAVES[i % 3], bark: 0x9c7a4e } });
-    })),
-  ]).catch(e => console.warn('裝飾模型載入失敗', e));
-  // 一隻柴犬沿中心格的步道反向散步（純裝飾，§7.3）
+  const decor = new THREE.Group(); view.scene.add(decor);
+  Promise.all(treeSpawns().map(t => assets.spawn(t.path, { ...t.opts, parent: decor }))).catch(e => console.warn('裝飾模型載入失敗', e));
   let shiba = null;
   const shibaPath = createPathCursor([...ringPath(axialToWorld(0, 0), 1.8, cellTop([0, 0]))].reverse());
-  assets.spawn('quat/animals/ShibaInu.glb', { h: 0.22, anim: 'Walk', parent: decor }).then(m => { shiba = m; }).catch(e => console.warn('柴犬載入失敗', e));
+  const later = createLater();
+  later.add(() => assets.spawn(SHIBA.path, { ...SHIBA.opts, parent: decor }).then(m => { shiba = m; }).catch(e => console.warn('柴犬載入失敗', e)));
   const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
   setTime(TIMES[params.get('time')] ?? TIMES.day);
   // 鏡頭：OrbitControls（阻尼、禁平移、仰角 25°–70°、距離 3–70）+ 全景／飛行
@@ -138,8 +160,10 @@ export async function start({ params, loading }) {
     frame(Math.min(clock.getDelta(), 0.08));
     topBar.setSkippable(show.skippable);
     view.render();
+    later.drawn();   // 第一幀畫出來了：延後的點綴（柴犬）開始載
     // 自動播放（截圖）演完、模型都載好之後回報 draw call（穩定幾幀取最多，renderer.js 的 createCallSampler），tools/shot.mjs 會印出來（§10 目標 ≤ 150）
-    const r = autoDone && sampleCalls({ calls: view.renderer.info.render.calls, tris: view.renderer.info.render.triangles, pending: assets.pending });
+    // 延後的點綴也要先開始載（later.done），assets.pending 才算得到它
+    const r = autoDone && later.done && sampleCalls({ calls: view.renderer.info.render.calls, tris: view.renderer.info.render.triangles, pending: assets.pending });
     if (r) console.warn(`[grow] calls=${r.calls} tris=${r.tris}`);
   });
   loading.hidden = true;

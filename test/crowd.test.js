@@ -31,7 +31,7 @@ test('islanders excludes hidden, arriving, riding, model members and anyone off 
   const { show } = await placedShow(), c = { roster: show.roster };
   const all = everyone(show);
   assert.ok(all.some(m => !m.walker), 'the cast includes models (rats)');
-  assert.ok(show.roster.members('chip.engineers').length >= 2, 'engineers on the island');
+  assert.ok(show.roster.members('chip.engineers').length >= 1, 'engineers on the island');   // 裁決 R23：兩個工程師、老鼠 ≥2 時一個變偵防師
   const list = islanders(c);
   assert.ok(list.length >= 6, `islanders found (${list.length})`);
   for (const m of list) assert.ok(m.walker && !m.hidden && !m.arriving && m.mode === 'home' && cellAt(m.pos.x, m.pos.z));

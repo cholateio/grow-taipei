@@ -518,10 +518,12 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (side && !nav.passable(p.x, p.z)) { side = toward(m.side ?? 0, 0); p = at(side); if (!nav.passable(p.x, p.z)) { side = 0; p = c; } }
     m.side = side;
     const out = side ? { ...c, x: p.x, y: nav.groundY(p.x, p.z), z: p.z } : c;
-    // 兩邊都讓不開（stuck）、要讓的是站著的人（沒在走、也沒有這一趟——停下來等人的不算，不然兩個等的人互等），
-    // 這一步又會踩進他（離他不到兩人半徑相加、又比現在更近）：停住，不穿過去
-    const o = m.yielding?.stuck ? m.yielding.who : null, dOut = o && Math.hypot(o.pos.x - out.x, o.pos.z - out.z);
-    const near = o && !o.walking && !o.trip && dOut < radiusOf(m) + radiusOf(o) && dOut < Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z);
+    // 兩邊都讓不開（stuck）時，這一步會踩進任何一個站著的人（沒在走、也沒有這一趟——停下來等人的不算，不然兩個等的人互等；
+    // 離他不到兩人半徑相加、又比現在更近）：停住，不穿過去。
+    // 不只看要讓的那一個（修正批次 roles，裁決 R23 之後外星壞局第 8 回合量到）：路線順著人龍那一排走時，yieldTarget 挑的是前面那一個，
+    //   讓到一半卡住、停住的判斷只看他，一步一步踩進旁邊那一個（0.03 m）
+    const stepsInto = o => { if (o.walking || o.trip) return false; const d = Math.hypot(o.pos.x - out.x, o.pos.z - out.z); return d < radiusOf(m) + radiusOf(o) && d < Math.hypot(o.pos.x - m.pos.x, o.pos.z - m.pos.z); };
+    const near = !!m.yielding?.stuck && others.some(stepsInto);
     return near ? { ...out, wait: true } : out;
   }
   // 家在焦點格裡嗎：wander 看家的中心、stand 看站位、path 看折線經過的任何一格（軸座標，衛星島也算一格）

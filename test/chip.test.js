@@ -57,14 +57,15 @@ test('chip glb parts (factory, chimney, solar panels) exist and take the palette
   for (const m of views[5]['chip.solar'].models) assert.ok(Math.abs(m.pos[1] - roof) < 0.02, 'panels sit on the factory roof');
 });
 // 計畫 9 §5（2026-10-30）：騎 YouBike 的四個拿掉了（在 101 腳下的死路擠成一坨；草地上的環躲不開通勤路線與拜訪站位）——Lv3 起三個穿外套的照樣通勤
-test('engineers: 2 in coats commute to 101 at Lv2, 3 in coats from Lv3; rats ≥2 turn one into a detective (people budget: engineers ≤ 3, detective 1, worker 1)', () => {
+// 修正批次 roles（裁決 R23，使用者「晶片廠工人直接變成光頭」）：Lv2 的工程師就是 Lv1 的工人（from 'chip.worker'），Lv3 起多一個
+test('engineers: the worker becomes the one engineer at Lv2 (from chip.worker), 2 in coats from Lv3; rats ≥2 turn one into a detective (people budget: engineers ≤ 2, detective 1, worker 1)', () => {
   const e2 = chip.view(lv({ chip: 2 }), {})['chip.engineers'];
-  assert.deepEqual([e2.kind, e2.n, e2.accessory], ['roster', 2, 'coat']); assert.deepEqual(e2.home, { kind: 'path', path: chip.ENGINEER_ROUTE, loop: false, speed: 0.45, entry: chip.ENGINEER_ENTRY });
+  assert.deepEqual([e2.kind, e2.n, e2.accessory, e2.from], ['roster', 1, 'coat', 'chip.worker']); assert.deepEqual(e2.home, { kind: 'path', path: chip.ENGINEER_ROUTE, loop: false, speed: 0.45, entry: chip.ENGINEER_ENTRY });
   for (let n = 3; n <= 9; n++) {
     const v = chip.view(lv({ chip: n }), {}), vr = chip.view(lv({ chip: n, rat: 3 }), {});   // 老鼠 Lv3 泡溫泉（沒有列車）：跟著老鼠（鼠窩那級站在隔壁格盯著，見下一個測試）
-    assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory], [3, 'coat'], `lv${n}`);
+    assert.deepEqual([v['chip.engineers'].n, v['chip.engineers'].accessory, v['chip.engineers'].from], [2, 'coat', 'chip.worker'], `lv${n}`);
     assert.deepEqual(v['chip.engineers'].home, e2.home, `lv${n} same commute as Lv2`);
-    assert.equal(vr['chip.engineers'].n, 2); const d = vr['chip.detective'];
+    assert.equal(vr['chip.engineers'].n, 1); const d = vr['chip.detective'];
     assert.deepEqual([d.kind, d.n, d.accessory, d.from], ['roster', 1, 'glass', 'chip.engineers']); assert.deepEqual(d.home, { kind: 'follow', key: 'rat.pack', dist: 0.6, entry: chip.ENGINEER_ENTRY[0] });
     assert.equal(v['chip.worker'], undefined);
   }
@@ -110,8 +111,9 @@ test('live, the solution: the commuting engineers do not walk as a convoy (only 
     }
   }
   if (process.env.CONVOY) console.log(JSON.stringify(rows));
-  // 唯一正解（2026-10-31）：有 ≥ 2 個工程師的回合是第 5–9 回合（晶片第 5 回合放下、2 級起兩個人）；舊的 ≥ 6 是兩條正解加起來的數
-  assert.ok(rows.length >= 5, `${rows.length} turns with ≥ 2 engineers`);
+  // 唯一正解（2026-10-31）：有 ≥ 2 個工程師的回合是第 5–9 回合（晶片第 5 回合放下、2 級起兩個人）；舊的 ≥ 6 是兩條正解加起來的數。
+  // 裁決 R23：Lv2 一個、Lv3 起兩個（老鼠 ≥2 時一個變偵防師）——只剩第 6、7 回合有兩個
+  assert.ok(rows.length >= 2, `${rows.length} turns with ≥ 2 engineers`);
   for (const r of rows) {
     assert.ok(r.stretch <= 1, `${r.order} turn ${r.turn}: closest pair < 0.3 for ${r.stretch.toFixed(2)} s in a row`);
     assert.ok(r.apart >= (r.n >= 3 ? 0.7 : 0.9), `${r.order} turn ${r.turn} (${r.n} engineers): closest pair ≥ 0.3 in only ${(r.apart * 100).toFixed(0)}% of frames`);
@@ -257,6 +259,32 @@ test('the ◆ key nodes are Lv7, Lv8 (R6) and Lv9 (R11); the Lv9 standby holds o
   assert.ok(i > 0 && j > i, 'holds on the overview before LEVEL UP');
   assert.equal(beats[0].kind, 'focus'); assert.equal(beats[0].target, 'home', 'opens on the overview (the whole dome)');
 });
+// 裁決 R23：Lv2 劇本不生人——工人揮完鐵鎚，名冊在 apply 時把他原地換成外套工程師（同一個小人、閃一下）
+test('Lv2: no spawn beats; the worker hammers, then the swap', () => {
+  const beats = flat(chip.script.grow[2]({ kind: 'grow', item: 'chip', to: 2 }, { lv: at(2), flags: {} }, fakeCtx));
+  assert.ok(!beats.some(b => b.kind === 'spawn'), `no spawn (${beats.map(b => b.kind)})`);
+  const g = beats.findIndex(b => b.kind === 'gesture'), a = beats.findIndex(b => b.kind === 'apply');
+  assert.ok(g >= 0 && a > g, 'hammer, then apply');
+});
+test('live, the solution: after chip 2 the one engineer is the former worker (same member) and the worker roster is empty; Lv3 adds one', async () => {
+  const h = await headlessShow(), { show } = h, { turnSteps } = await import('./helpers/show.js'), update = show.update;
+  let s = engine.createState(spec), seen2 = false, seen3 = false, worker = null;
+  show.update = (dt, t) => { update(dt, t); worker ??= show.roster.members('chip.worker')[0] ?? null; };   // 工人放下、長到 2 常在同一回合
+  for (const step of turnSteps(SOLUTIONS[0])) {
+    const r = step(s); s = r.state;
+    const was = { ...show.stage.lv };
+    await h.run([...r.events, { kind: 'settle' }]);
+    const es = show.roster.members('chip.engineers');
+    if (show.stage.lv.chip >= 2 && !(was.chip >= 2)) {
+      assert.ok(worker && es.includes(worker), 'the worker is now an engineer'); assert.equal(worker.walker.accessory, 'coat');
+      assert.equal(show.roster.members('chip.worker').length, 0);
+      seen2 = true;
+    }
+    if (show.stage.lv.chip >= 3) { assert.equal(es.length + show.roster.members('chip.detective').length, 2, `chip ${show.stage.lv.chip}`); assert.ok(es.includes(worker) || show.roster.members('chip.detective').includes(worker)); seen3 = true; }
+    if (seen3) break;
+  }
+  assert.ok(seen2 && seen3);
+});
 // 唯一正解晶片 Lv3 時老鼠還沒放：另找一局老鼠先生窩、晶片才長到 3
 test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
@@ -265,7 +293,7 @@ test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！',
   const { n } = await liveAt(h, ['milk', 'chip', 'rat', 'bulb', 'token'], isChip(3));
   assert.ok(show.stage.lv.rat >= 2);
   const [d] = show.roster.members('chip.detective'); assert.equal(d?.walker.accessory, 'glass');
-  assert.equal(show.roster.members('chip.engineers').length, 2);   // 3 個穿外套的，一個變偵防師（計畫 9 §5 拿掉騎車的之後）
+  assert.equal(show.roster.members('chip.engineers').length, 1);   // 2 個穿外套的，一個變偵防師（裁決 R23）
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '！' && Math.hypot(b.at.x - d.head().x, b.at.z - d.head().z) < 2), 'detective ！');
 });
 

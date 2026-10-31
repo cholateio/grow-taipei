@@ -219,6 +219,52 @@ test('from prefers a member who existed before this declaration', () => {
   assert.equal(roster.members('chip.engineers').length, 3); assert.equal(people.walkers.length, 4, 'engineers topped up at flush');
   assert.deepEqual(roster.members('chip.engineers').map(m => m.i), [0, 1, 2]);
 });
+// 修正批次 roles（2026-10-31，裁決 R23）：「初始的人物直接變成角色」——from + pick: 'nearest' 搬來源名冊裡離 spec.at 最近的那個人
+//   （含待退的、不含藏起來的），只搬來源這次讓出來的人數（來源沒有待退的人就不搬，從入口補）；選中的不是待退的那個，待退的人留下來頂他的位子
+const isle = n => ({ kind: 'roster', at: AT, n, home: { kind: 'wander', at: AT, r: 1.0 } });
+function islandersAt(roster, nav) {
+  roster.declare('src', isle(2)); roster.flush();
+  const [near, far] = roster.members('src');
+  const p = nav.nearestWalkable({ x: AT.x + 0.3, y: AT.y, z: AT.z + 0.3 }), q = nav.nearestWalkable({ x: AT.x + 3.5, y: AT.y, z: AT.z });
+  roster.setPose(near, { ...p }); roster.setPose(far, { ...q });
+  return { near, far };
+}
+test('from + pick nearest moves the source member closest to spec.at, repaints the shirt, blinks, stays put', () => {
+  const { roster, people, blink, nav } = setup(), { near, far } = islandersAt(roster, nav);
+  near.walker.shirt = 0x123456; const at = { ...near.pos }, before = blink.log.length;
+  roster.declare('src', isle(1)); roster.declare('dst', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('dst'), [near], 'the one next to spec.at');
+  assert.deepEqual(roster.members('src'), [far], 'the far one stays (in place of the one who left)');
+  assert.equal(people.walkers.length, 2, 'nobody new, nobody walks out');
+  assert.equal(near.walker.shirt, 0xfcea8b, 'shirt repainted to the new role');
+  assert.ok(blink.log.slice(before).some(([k, w]) => k === 'walker' && w === near.walker), 'blinks once on the swap');
+  assert.deepEqual([near.pos.x, near.pos.z], [at.x, at.z], 'swapped in place');
+});
+test('from without pick still moves the last member (the one the source lets go)', () => {
+  const { roster, nav } = setup(), { near, far } = islandersAt(roster, nav);
+  roster.declare('src', isle(1)); roster.declare('dst', { ...kids(1), from: 'src' }); roster.flush();
+  assert.deepEqual(roster.members('dst'), [far]); assert.deepEqual(roster.members('src'), [near]);
+});
+test('from + pick nearest takes only what the source gives up: no surplus → the new role walks in from its entry', () => {
+  const { roster, people, nav } = setup(), { near, far } = islandersAt(roster, nav);
+  roster.declare('dst', { ...kids(2), from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('src'), [near, far], 'source keeps its declared n');
+  assert.equal(roster.members('dst').length, 2); assert.equal(people.walkers.length, 4, 'both new');
+  const { roster: r2, people: p2, nav: n2 } = setup(), a = islandersAt(r2, n2);
+  r2.declare('src', isle(1)); r2.declare('dst', { ...kids(2), from: 'src', pick: 'nearest' }); r2.flush();
+  assert.equal(r2.members('dst')[0], a.near, 'one moved over'); assert.equal(r2.members('dst').length, 2);
+  assert.deepEqual(r2.members('src'), [a.far]); assert.equal(p2.walkers.length, 3, 'one walks in');
+});
+test('from + pick nearest skips a hidden source member', () => {
+  const { roster, nav } = setup(), { near, far } = islandersAt(roster, nav);
+  roster.hide(near); roster.declare('src', isle(1)); roster.declare('dst', { ...kids(1), from: 'src', pick: 'nearest' }); roster.flush();
+  assert.deepEqual(roster.members('dst'), [far]); assert.deepEqual(roster.members('src'), [near]);
+});
+// 名冊宣告的 shirt 是陣列時照 i 取（棒球員白／藏青、溫泉客、人龍）——以前整個陣列塞給小人，setHex 讀成 NaN 塗成黑的
+test('an array shirt is picked by i at spawn', () => {
+  const { roster } = setup(); roster.declare('k', { ...kids(2), shirt: [0x111111, 0x222222] });
+  assert.deepEqual(roster.members('k').map(m => m.walker.shirt), [0x111111, 0x222222]);
+});
 // Task 14：衛星島（不在主島走路格上）的 wander 家：繞 ringPath(at, r) 走，不被 nav 拉回主島
 test('a wander home off the main island loops around a ring instead of being pulled back onto the island', async () => {
   const { SATELLITES, axialToWorld, cellAt } = await import('../src/scene/hex.js');

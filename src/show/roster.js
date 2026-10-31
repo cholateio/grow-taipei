@@ -55,6 +55,10 @@ const GLANCE = 0.6, GLANCE_TURN = 0.2;   // look 的 fidget：瞥過去的角度
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const accOf = (spec, i) => { const a = spec.accessory ?? 'none'; return Array.isArray(a) ? a[i % a.length] : a; };
+// 衣服顏色：一個色或陣列（照 i 取）；沒宣告回 undefined（小人自己抽一件）。shirtFor：已經在場的人——陣列裡本來就有他這件就不換
+// （名冊重新編號不換衣服、不閃），換身分過來、顏色不在陣列裡的才換成第 i 件
+const shirtOf = (spec, i) => { const s = spec.shirt; return Array.isArray(s) ? s[i % s.length] : s; };
+const shirtFor = (spec, i, cur) => (Array.isArray(spec.shirt) && spec.shirt.includes(cur) ? cur : shirtOf(spec, i));
 const look = md => `${!!md?.antenna},${!!md?.eye},${!!md?.crown}`;   // 模型的「配件」：天線、獨眼、王冠
 const body = md => JSON.stringify([md?.path, md?.h, md?.anim, md?.tint, md?.glow]);   // 模型本體：變了就換一個 holder
 // path 日常：第 s 公尺的位置、離 p 最近的那一點在第幾公尺（P 是 pathOf 貼地後的折線）
@@ -240,7 +244,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       arriving: false, settled: null,   // arriving：正在走回家（焦點不限制）；settled：站定在哪個 spot
     };
     m.head = () => ({ x: m.pos.x, y: m.pos.y + m.headY, z: m.pos.z });
-    if (kind === 'people') m.walker = people.spawn({ controlled: true, shirt: spec.shirt, accessory: accOf(spec, i), scale });
+    if (kind === 'people') m.walker = people.spawn({ controlled: true, ...(spec.shirt !== undefined && { shirt: shirtOf(spec, i) }), accessory: accOf(spec, i), scale });
     else { m.extras = []; m.dress = spec.model; load(m, spec.model); }
     place(m); fresh.add(m);
     return m;
@@ -264,14 +268,15 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (m.holder) { blink?.stop(m.holder); dress(m, {}); assets.release(m.holder); }
   }
 
-  // 依宣告調整一個成員的外觀（people：配件、身高；模型：本體與天線／眼睛）；有換就閃白，回傳有沒有換
+  // 依宣告調整一個成員的外觀（people：配件、衣服顏色、身高；模型：本體與天線／眼睛）；有換就閃白，回傳有沒有換
   function restyle(m, spec, i) {
     m.speed = spec.speed ?? WALK_SPEED[m.kind];
     if (m.walker) {
-      // people：配件或身高（鮮奶 Lv3 長高 1.3）變了就原地換，頭頂跟著抬高
-      const acc = accOf(spec, i), scale = spec.scale ?? 1;
-      if (m.walker.accessory === acc && m.walker.scale === scale) return false;
+      // people：配件、衣服（換身分過來的島民換成黃衣，見 shirtFor）或身高（鮮奶 Lv3 長高 1.3）變了就原地換，頭頂跟著抬高
+      const acc = accOf(spec, i), scale = spec.scale ?? 1, shirt = spec.shirt === undefined ? m.walker.shirt : shirtFor(spec, i, m.walker.shirt);
+      if (m.walker.accessory === acc && m.walker.scale === scale && m.walker.shirt === shirt) return false;
       if (m.walker.accessory !== acc) m.walker.setAccessory(acc);
+      if (m.walker.shirt !== shirt) m.walker.setShirt(shirt);
       m.walker.scale = m.scale = scale; m.headY = headYOf(spec);
       glint(m); return true;
     }
@@ -292,9 +297,10 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       m.i = i; restyle(m, spec, i);
       if (moved && m.mode === 'home') { home(m); m.arriving = spec.home?.kind !== 'ride'; }
     });
-    const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null;
-    while (src && g.members.length < spec.n && (src.leaving.length || src.members.length)) {
-      const m = src.leaving.length ? src.leaving.pop() : take(src);
+    const src = spec.from && spec.from !== g.key ? groups.get(spec.from) : null, near = spec.pick === 'nearest';
+    // pick 'nearest'：只搬來源這次讓出來的人（待退的），但挑的是離 spec.at 最近的那個（見 pickNearest）；來源沒讓人就不搬、照常從入口補
+    while (src && g.members.length < spec.n && (near ? src.leaving.length : src.leaving.length || src.members.length)) {
+      const m = near ? pickNearest(src, spec.at) : src.leaving.length ? src.leaving.pop() : take(src);
       m.key = g.key; m.i = g.members.length; m.trip = null; m.cursor = null; m.rest = 0; g.members.push(m);
       if (!restyle(m, spec, m.i)) glint(m);   // 換身分一定閃一下
     }
@@ -307,6 +313,18 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     if (fresh.has(src.members[k])) k = src.members.length - 1;
     const [m] = src.members.splice(k, 1); src.members.forEach((o, i) => { o.i = i; });
     return m;
+  }
+
+  // pick 'nearest'（修正批次 roles，裁決 R23：送牛奶的島民原地變小學生、等車的島民變站長）：來源的成員與待退的人裡
+  //   （藏起來的不算）離 p 最近的那個；選中的是留下來的成員，就由最後一個待退的人頂他的位子（同一個編號，家不變），來源人數照宣告
+  function pickNearest(src, p) {
+    const d = m => Math.hypot(m.pos.x - p.x, m.pos.z - p.z);
+    let best = null;
+    for (const m of [...src.members, ...src.leaving]) if (!m.hidden && (!best || d(m) < d(best))) best = m;
+    if (!best || src.leaving.includes(best)) { const m = best ?? src.leaving.at(-1); src.leaving.splice(src.leaving.indexOf(m), 1); return m; }
+    const k = src.members.indexOf(best), stay = src.leaving.pop();
+    src.members[k] = stay; stay.i = k;
+    return best;
   }
 
   function declare(key, spec, { hold = false } = {}) {

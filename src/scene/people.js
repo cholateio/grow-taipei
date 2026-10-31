@@ -101,6 +101,8 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
       if (!ACCESSORIES.includes(acc)) throw new Error(`people: unknown accessory ${acc}`);
       w.accessory = acc; const i = walkers.indexOf(w); if (i >= 0) paint(i, w);
     };
+    // 換衣服顏色（名冊換身分：島民變小學生換黃衣，修正批次 roles）；外套（'coat'）照舊由 paint 塗白
+    w.setShirt = hex => { w.shirt = hex; const i = walkers.indexOf(w); if (i >= 0) paint(i, w); };
     walkers.push(w); resize(); place(w, 0);
     return w;
   }

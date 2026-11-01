@@ -60,7 +60,7 @@ test('typhoon checks all fire at placement: blackout, flood, dome flood, dome ra
   const t = ITEMS.typhoon;
   assert.deepEqual(t.fx.map(a => a.when), [
     { and: [pres('bulb'), maxL('bulb', 2)] }, { and: [pres('token'), maxL('token', 3)] }, { and: [pres('baseball'), maxL('baseball', 3)] },
-    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 3)] },
+    { and: [minL('rat', 3), minL('baseball', 4)] }, pres('milk'), { and: [pres('boba'), maxL('boba', 1)] },   // 計畫 14：攤車被吹走 ≤3 → ≤1（只剩攤車）
   ]);
   assert.deepEqual(t.fx.map(a => a.lock ?? null), ['bulb', 'token', 'baseball', null, null, 'boba']);
   assert.deepEqual(t.fx.map(a => a.flag?.name ?? null), ['blackout', 'flooded', 'domeFlood', 'domeRats', null, 'cartBlown']);

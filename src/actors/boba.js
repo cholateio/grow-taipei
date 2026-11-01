@@ -150,7 +150,7 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
   ];
 }).flat();
 
-// ── 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3，flags.cartBlown；珍奶鎖住不長）：攤車翻倒在珍奶格東岸外的淺水裡（格邊之外、
+// ── 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3；計畫 14 改成 ≤1（只有攤車），雨中放下的攤車也算；flags.cartBlown；珍奶鎖住不長）：攤車翻倒在珍奶格東岸外的淺水裡（格邊之外、
 // 不在走路格、不算 footprint——不擋電工主路，Lv3 放晴的堤防在格面上、離格心 2.08，碰不到），老闆站到岸邊最東的可走點、面向海看著它。
 // 翻倒照拿掉撞攤車之前的寫法：零件自己轉（攤車的零件都沒有 rot，整台繞 z 轉 TIP，頂朝外海）。Lv1–2 是攤車本身（boba.main）被吹走；
 // Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
@@ -449,5 +449,8 @@ export const script = {
 script.grow[5].key = script.grow[6].key = true;
 
 // 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–4 攤車／店／噴泉廣場（錨點）；Lv5 離島（森林島分店、燈塔島旗艦店）→ null；
-// Lv6 珍奶節 → 主島的店
-export const visitSpot = n => ((n >= 1 && n <= 4) || n === 6 ? { ...AT, r: 0.9 } : null);
+// Lv6 珍奶節 → 主島的店。
+// 計畫 14：有人龍（Lv2 起）時換到人龍尾巴西邊（錨點西 1.2，往鏡頭側 0.9）——錨點正面被 stage.troubleSpot 拉回格心 1.3 之內，
+// 剛好落在人龍那一排上（正解第 8 回合珍奶 4 在等颱風放晴、老鼠守在這裡，在排隊的人中間鑽來鑽去）。Lv1 攤車沒有人龍，照舊在攤車前
+export const QUEUE_SIDE = offset(AT, -1.2, 0);
+export const visitSpot = n => (n === 1 ? { ...AT, r: 0.9 } : (n >= 2 && n <= 4) || n === 6 ? { ...QUEUE_SIDE, r: 0.9 } : null);

@@ -130,8 +130,8 @@ test('ui.css: every :hover rule sits inside @media (hover: hover)', async () => 
 test('npm run shot includes phone360-live and phone360-end at 360×780', async () => {
   const { readFileSync } = await import('node:fs');
   const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
-  assert.match(shot, /'phone360-live=auto=milk,baseball,token,bulb,chip,typhoon,boba,rat&live=1&warp=3&quality=low'/);
-  assert.match(shot, /phone360-end=auto=milk,baseball,token,bulb,chip,typhoon,boba,rat&quality=low/);
+  assert.match(shot, /'phone360-live=auto=milk,baseball,token,bulb,chip,boba,typhoon,rat&live=1&warp=3&quality=low'/);   // 計畫 14 的正解
+  assert.match(shot, /phone360-end=auto=milk,baseball,token,bulb,chip,boba,typhoon,rat&quality=low/);
   assert.match(readFileSync('tools/shot.mjs', 'utf8'), /phone360'\) \? '360,780'/);
 });
 

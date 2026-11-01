@@ -428,7 +428,7 @@ test('placed: the owner pushes the cart in at walking speed — every frame the 
 test('Lv2: three tourists come from the pier and stand in the queue', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, firsts = new Map();
   show.update = (dt, t) => { update(dt, t); for (const m of show.roster.members('boba.queue')) if (!firsts.has(m)) firsts.set(m, { ...m.pos }); };
-  await liveAt(h, ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'], isBoba(2));
+  await liveAt(h, SOLUTIONS[0], isBoba(2));   // 計畫 14：舊的順序珍奶在老鼠 Lv2 之後放、被咬住長不到 2，改用正解（第 6 回合放下當回合 2）
   assert.equal(firsts.size, 3);
   for (const p of firsts.values()) assert.ok(boba.PIER.some(q => near(p, show.nav.nearestWalkable(q), 0.3)), 'spawned at the pier');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);

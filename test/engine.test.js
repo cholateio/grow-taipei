@@ -315,15 +315,16 @@ const playReal = (order, closing = 0) => {
   return { s, lvs };
 };
 // 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：放下當回合停在 Lv1（up[2] 要 age ≥ 1），之後一回合一級：2 暴風圈還在、3 放晴
+// 計畫 14：正解換成颱風第 7 個放（鮮奶 棒球 代幣 燈泡 晶片 珍奶 颱風 老鼠）
 test('the typhoon stays Lv1 in its placement turn, then 2 (still storming), 3 (cleared)', () => {
-  const r = playReal(['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'], 1);
-  assert.deepEqual(r.lvs.map(l => l.typhoon), [0, 0, 0, 0, 0, 1, 2, 3, 3]);
+  const r = playReal(['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'], 1);
+  assert.deepEqual(r.lvs.map(l => l.typhoon), [0, 0, 0, 0, 0, 0, 1, 2, 3]);
   let s = createState(real);
-  for (const id of ['milk', 'baseball', 'token', 'bulb', 'chip']) s = place(s, id, real).state;
-  const t6 = place(s, 'typhoon', real);
-  assert.ok(!t6.events.some(e => e.kind === 'grow' && e.item === 'typhoon'), 'no level-up in the placement turn');
-  assert.ok(!t6.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'a just-placed typhoon is not waiting for anyone');
-  assert.ok(!t6.state.flags.blackout && !t6.state.flags.flooded && !t6.state.flags.domeFlood, 'the solution is ready: bulb 3, token 5, baseball 5');
+  for (const id of ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba']) s = place(s, id, real).state;
+  const t7 = place(s, 'typhoon', real);
+  assert.ok(!t7.events.some(e => e.kind === 'grow' && e.item === 'typhoon'), 'no level-up in the placement turn');
+  assert.ok(!t7.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'typhoon')), 'a just-placed typhoon is not waiting for anyone');
+  assert.ok(!t7.state.flags.blackout && !t7.state.flags.flooded && !t7.state.flags.domeFlood && !t7.state.flags.cartBlown, 'the solution is ready: bulb 5, token 6, baseball 6, boba 2 (the queue holds the cart)');
   assert.ok(!Object.keys(real.ITEMS.typhoon.onLevel ?? {}).length, 'no checks on the later levels');
 });
 // 所有檢查都在放下那回合（修正批次 2）：燈泡 ≤2 停電、代幣 ≤3 淹水、棒球 ≤3 巨蛋淹水、珍奶 ≤3 攤車被吹走（外送 +1 拿掉了）
@@ -354,15 +355,21 @@ test('placement check: the token ≤ 3 → flood (token locked), the baseball �
   const later = advance(r.state, real);
   assert.ok(!later.events.some(e => e.kind === 'fx' && e.cause === 'typhoon'), 'no checks after the placement turn');
 });
-test('placement check: boba ≤ 3 → the cart is blown away (boba locked, flag cartBlown); a fountain plaza (4) is left alone; no delivery +1', () => {
+// 計畫 14：門檻 ≤3 → ≤1——只剩一台攤車（Lv1）才被吹走；排隊人龍（Lv2）起有人顧著攤車（唯一解要珍奶 2 撐過颱風，見設計 §8 R30）
+test('placement check: boba ≤ 1 → the cart is blown away (boba locked, flag cartBlown); the queue (2) and the fountain plaza (4) are left alone; no delivery +1', () => {
   let s = createState(real);
-  for (const id of ['milk', 'baseball', 'boba']) s = place(s, id, real).state;
-  assert.ok(s.lv.boba >= 1 && s.lv.boba <= 3);
+  for (const id of ['chip', 'boba']) s = place(s, id, real).state;   // 沒有鮮奶：珍奶 2 要鮮奶 ≥3，停在攤車
+  assert.equal(s.lv.boba, 1);
   const r = place(s, 'typhoon', real);
   assert.equal(r.state.flags.cartBlown, true); assert.equal(r.state.locked.boba, true); assert.equal(r.state.lv.boba, s.lv.boba);
   const blown = r.events.find(e => e.lock === 'boba');
   assert.equal(blown.cause, 'typhoon'); assert.equal(blown.story, '珍奶攤車被吹走了'); assert.ok(!blown.delta);
   assert.ok(!r.events.some(e => e.delta?.target === 'boba'), 'no delivery for a cart');
+  let q = createState(real);
+  for (const id of ['milk', 'baseball', 'boba']) q = place(q, id, real).state;
+  assert.equal(q.lv.boba, 2, 'precondition: the queue');
+  const queue = place(q, 'typhoon', real);
+  assert.ok(!queue.state.flags.cartBlown && !queue.state.locked.boba, 'the queue holds the cart');
   // 珍奶 4（噴泉廣場）：不吹走、也沒有外送 +1（協調者裁決：外送 +1 是死規則，拿掉了；機車只是 view 的點綴）
   let t = createState(real);
   for (const id of ['milk', 'chip', 'baseball', 'token', 'boba', 'bulb']) t = place(t, id, real).state;

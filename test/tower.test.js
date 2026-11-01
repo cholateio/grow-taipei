@@ -363,7 +363,7 @@ test('a stage crossing: focus(home) runs before apply and LEVEL UP, nobody build
   };
   // 跨進「101 完工」的那一回合（頭頂 7.75，舊的全景會出框）：唯一正解的完工落在第 6 回合＝颱風放下的回合。
   // 修正輪 1 之後放下回合不再只留套用與 LEVEL UP（indoorSettle 拿掉了），101 的完整劇本照演——改回正解（2026-10-31 Task 5）
-  const ORDER = ['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
+  const ORDER = ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'];   // 計畫 14 的正解
   const steps = turnSteps(ORDER).slice(0, towerCrossings(ORDER).at.full), events = [];
   let s = engine.createState(spec);
   for (const [i, step] of steps.entries()) {

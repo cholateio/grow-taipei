@@ -405,7 +405,10 @@ test('Lv3 train: all five run to the nest-side shore and hop on together while t
     if (prev) roof.forEach((r, i) => { if (r && !prev[i]) boards.push({ i, held, a: Math.atan2(show.roster.members('rat.pack')[i].pos.z, show.roster.members('rat.pack')[i].pos.x) }); });
     prev = roof;
   };
-  const { e, secs, n } = await liveAt(h, SOLUTIONS[0], isRat(3));
+  // 計畫 14：正解的老鼠 Lv3 是第 9 回合 2 → 4 合併跳級的第一級（正式演出只有 mark），而且第 8 回合晶片、珍奶在等颱風放晴，
+  // 老鼠 Lv2 守在晶片總部門口（離窩最遠的那棟）——單獨演第 3 級要從那裡跑回窩邊，量的不是這一題要的「從窩邊上車」。
+  // 改用老鼠自己 2 → 3 的一局（第 5 回合，上一回合沒人出問題、老鼠在窩邊）
+  const { e, secs, n } = await liveAt(h, ['milk', 'baseball', 'token', 'rat', 'bulb'], isRat(3));
   checkRat(h, e, secs, n);
   assert.deepEqual(boards.map(b => b.i).sort(), [0, 1, 2, 3, 4], 'all five board');
   assert.equal(show.roster.members('rat.pack').length, 5, 'the nest of three plus the two that come out of it (plan 9 §5)');
@@ -526,12 +529,13 @@ test('placed without trouble keeps the old landing beats (…… sniff look ！ 
 test('a bite that costs milk a level: crate tips, kids ！ run to the school gate and vanish quietly, LEVEL DOWN', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let st = engine.createState(spec);
-  // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 3 再咬掉一級（選擇帶動升級：鮮奶 up[3] 要有棒球）
-  for (const id of ['rat', 'milk', 'baseball']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.equal(show.stage.lv.milk, 3); assert.equal(show.roster.members('milk.kids').length, 2);   // 裁決 R23：兩個小學生
+  // 物品 v2：小學生 Lv3 才有（§4.2），所以堆到鮮奶 ≥3 再咬掉一級（選擇帶動升級：鮮奶 up[3] 要有棒球）。
+  // 計畫 14：鮮奶在老鼠之後放會被咬住長不上去（R30），改成老鼠第 3 個放（鮮奶 3 → 4 照長，沒咬）
+  for (const id of ['milk', 'baseball', 'rat']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
+  assert.equal(show.stage.lv.milk, 4); assert.equal(show.roster.members('milk.kids').length, 2);   // 裁決 R23：兩個小學生
   const hidden = [], hide = show.roster.hide; show.roster.hide = m => { hidden.push(m.key); return hide(m); };
   const n = bubblesLog.length, crate = show.stage.partObject('milk.crate');
-  const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 3, to: 2 }, story: '老鼠咬破鮮奶箱' }]);
+  const secs = await run([{ kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 4, to: 3 }, story: '老鼠咬破鮮奶箱' }]);
   assert.ok(secs >= 4 && secs <= 14, `${secs.toFixed(1)} s`);
   assert.notEqual(show.stage.partObject('milk.crate'), crate, 'crate rebuilt tipped');
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 3, 'rat ！ and both kids ！');

@@ -82,7 +82,7 @@ test('typhoon placed 8th is still storming after the closing turn: the missile i
   const after = advance(late, spec).state;
   assert.equal(after.lv.typhoon, 2); assert.ok(after.lv.chip < 9, 'chip 9 needs the typhoon ≥ 3');
   assert.equal(missile(after, spec), 'deflect');
-  const sol = advance(playTo(['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat']), spec).state;
+  const sol = advance(playTo(['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat']), spec).state;   // 計畫 14 的正解
   assert.equal(sol.lv.typhoon, 3); assert.equal(missile(sol, spec), 'shield');
 });
 

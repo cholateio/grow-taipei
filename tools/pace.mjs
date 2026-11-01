@@ -103,8 +103,9 @@ for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹歪']]) {
 }
 
 // 老鼠跑遠處的 trouble（唯一正解 §5.2、2026-10-31 Task 5）：放下的老鼠爬上岸直接跑去上一回合出問題的那棟門口聞一聞。
-//   列舉裡 trouble 離上岸點最遠的是晶片 HQ（8.8 m，晶片在等燈泡）：這一局第 8 回合放老鼠。命中局（EXAMPLE.hit）第 6 回合也是放老鼠，trouble 是早餐店（近的）
-const FAR_TROUBLE = ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'];
+//   列舉裡（老鼠第 8 個放）trouble 離上岸點最遠的是晶片園區（8.1 m，晶片在等燈泡）：這一局第 8 回合放老鼠。命中局（EXAMPLE.hit）第 6 回合也是放老鼠，trouble 是早餐店（近的）。
+//   計畫 14：舊的那局（鮮奶 棒球 晶片 代幣 颱風 燈泡 珍奶 老鼠）燈泡在雨中放下、大停電，trouble 變成路燈（4.9 m），重找：颱風第 1 個放、放晴之後才放其他的
+const FAR_TROUBLE = ['typhoon', 'milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'rat'];
 {
   const head = `老鼠跑遠（${FAR_TROUBLE.map(name).join('、')}）`;
   const { cells, details, total } = await playOrder(FAR_TROUBLE, '老鼠跑遠', BAD_FINALE_MAX);

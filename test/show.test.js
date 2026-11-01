@@ -567,7 +567,7 @@ test('no script throws: an even stride over the enumeration and EXAMPLE.hit/defl
       }
     }
   }
-  assert.ok(reached > 900, `${reached} games reach bulb 7`);   // 均勻抽樣：大停電不再打鮮奶之後（R25）抽到的局 986 條到燈泡 7
+  assert.ok(reached > 700, `${reached} games reach bulb 7`);   // 整份列舉：R25 之後 986 條到燈泡 7；計畫 14（雨中放下的燈泡／代幣被鎖）之後 770 條
   assert.deepEqual(noTrain.slice(0, 5), [], `${noTrain.length} games reach bulb 7 with no train`);
   const orders = [...strided, EXAMPLE.hit, EXAMPLE.deflect];
   const { show, run } = await headlessShow(), bad = [];
@@ -803,8 +803,9 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
     user1030: ['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], levels: ['milk', 'token', 'chip', 'bulb', 'baseball', 'boba', 'rat', 'typhoon'],
     // 老鼠最後放、當回合就生窩，那時老鼠 0 在遠處出問題的那棟門口：生窩的 ♥ 冒在窩上（鏡頭平移去的那格），不是老鼠 0 頭上（最終修正）
     farNest: ['milk', 'baseball', 'chip', 'token', 'typhoon', 'bulb', 'boba', 'rat'],
-    // 颱風第 3 個放（修正批次 2：放下那回合棒球 2 → 大巨蛋淹水，鎖在 2），第 8 回合放下的老鼠跑到巨蛋前
-    typhoon3rd: ['milk', 'baseball', 'typhoon', 'token', 'bulb', 'chip', 'boba', 'rat'],
+    // 颱風第 3 個放（修正批次 2：放下那回合棒球 2 → 大巨蛋淹水，鎖在 2）。計畫 14：颱風之後兩回合還在下雨，放代幣／燈泡會淹水／停電
+    // （trouble 換成燈泡），改成雨中放晶片、老鼠（第 5 回合放下的老鼠跑到巨蛋前），放晴後再放燈泡、代幣，第 8 回合放下的珍奶被老鼠咬住
+    typhoon3rd: ['milk', 'baseball', 'typhoon', 'chip', 'rat', 'bulb', 'token', 'boba'],
   };
   const placed = rat.script.placed, sniffs = [];
   rat.script.placed = (...a) => placed(...a).map(b => (b.kind !== 'gesture' ? b : { ...b, start(c) { sniffs.push({ ...c.roster.members('rat.pack')[0].pos }); return b.start(c); } }));
@@ -842,7 +843,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   assert.equal(at('user1030', 9).mode, 'nest', 'the rat waits for the token: still a nest');
   const { frontOf } = await import('../src/actors/anchors.js');
   // 放下劇本讀的是上一回合（第 6 回合）結算的 troubleAt：車站照那一刻的代幣級（2026-10-31 Task 5：原本寫死代幣 3）
-  // 颱風第 3 個放：第 2 回合棒球放到 2、第 3 回合颱風放下時大巨蛋淹水（鎖在 2，到終局都是 2）；第 8 回合的一窩聚在巨蛋前
+  // 颱風第 3 個放：第 2 回合棒球放到 2、第 3 回合颱風放下時大巨蛋淹水（鎖在 2，到終局都是 2）；第 8 回合的一窩聚在巨蛋前（鎖住的比被咬的珍奶優先）
   assert.ok(!at('typhoon3rd', 2).flags.domeFlood && at('typhoon3rd', 3).flags.domeFlood, 'the dome floods on turn 3, the placement turn');
   for (let t = 2; t <= 9; t++) assert.equal(at('typhoon3rd', t).lv.baseball, 2, `turn ${t}: baseball locked at 2`);
   const t8 = at('typhoon3rd', 8), bb = ALL.find(m => m.id === 'baseball').visitSpot(2, { lv: t8.lv, flags: t8.flags }), dome = frontOf(bb, bb.r);

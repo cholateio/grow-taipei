@@ -46,24 +46,24 @@ test('check #6 is wired: a spec failing pacing fails check', () => {
   assert.ok(check(results, late).failures.some(f => /節奏/.test(f)));
 });
 
-// 唯一正解（設計 2026-10-31 §2、§3）：全 MAX 剛好一條，鮮奶 棒球 代幣 燈泡 晶片 颱風 珍奶 老鼠 ⇒ 賽博龐克
+// 唯一正解（設計 2026-10-31 §2、§3；計畫 14 R29／R30 之後重找）：全 MAX 剛好一條，鮮奶 棒球 代幣 燈泡 晶片 珍奶 颱風 老鼠 ⇒ 賽博龐克
 import { chipEighth } from '../src/solver/run.js';
 const all = enumerate(spec), st = stats(all, spec);
 test('check passes: exactly one full order (snapshot), ending cyber', () => {
   const c = check(all, spec);
   assert.deepEqual(c.failures, []);
-  assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]), [['milk,baseball,token,bulb,chip,typhoon,boba,rat', 'cyber']]);
+  assert.deepEqual(st.full.map(r => [r.order.join(','), r.ending.id]), [['milk,baseball,token,bulb,chip,boba,typhoon,rat', 'cyber']]);
   assert.equal(st.full[0].state.flags.ratBranch, 'cyber');
 });
 // 設計 §3：MAX 個數分布（修正批次 2：颱風三級＋降級當回合不升級之後的全枚舉）
 test('MAX-count histogram matches design 2026-10-31 §3', () => {
-  assert.deepEqual(st.maxHist, [3648, 27290, 9114, 180, 60, 21, 3, 3, 1]);   // R25（大停電不再打鮮奶）之後重算
+  assert.deepEqual(st.maxHist, [3972, 33364, 2746, 145, 57, 26, 8, 1, 1]);   // 計畫 14（R29 雨一直下、R30 老鼠一直咬、攤車被吹走 ≤3 → ≤1）之後重算
   assert.ok(st.avgMax <= 3.5);
 });
-// 設計 §3：MAX 落在第 8 回合（棒球、颱風放晴）與第 9 回合（其餘六個）
-test('the full order: MAX lands in two turns, baseball and the typhoon in t8 and the other six in t9', () => {
+// 設計 §3：MAX 落在第 8 回合（棒球）與第 9 回合（其餘七個，颱風在最後一輪放晴）——計畫 14 颱風改第 7 個放
+test('the full order: MAX lands in two turns, baseball in t8 and the other seven in t9', () => {
   const p = pacing(st.full, spec); assert.ok(p.ok, p.failures.join('\n'));
-  assert.equal(p.maxTurns, 2); assert.equal(p.maxMaxesPerTurn, 6);
+  assert.equal(p.maxTurns, 2); assert.equal(p.maxMaxesPerTurn, 7);
 });
 test('the full order ends with the typhoon cleared (Lv3) before the missile', () => {
   for (const r of st.full) assert.equal(r.state.lv.typhoon, 3);
@@ -94,8 +94,9 @@ test('domeFlood, cartBlown and alien are each reached (and titled) by some order
 });
 
 // 設計 §3：正解逐回合的級數（跳級算一步）；欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
-// 修正批次 2：颱風三級——第 6 回合放下 1、第 7 回合 2（暴風圈還在）、第 8 回合 3（放晴）、第 9 回合停在 3；其餘欄不變
-const LV = [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,4,0,0,0,4],[6,2,3,5,0,0,0,5],[7,4,5,6,1,0,0,6],[8,6,6,7,2,0,2,7],[9,8,8,9,3,2,4,8],[10,9,9,10,3,4,6,8]];
+// 計畫 14：珍奶第 6 回合放下 2（人龍）、第 7 回合跳 4（噴泉廣場）；颱風第 7 回合放下 1（珍奶 4 吹不走）、第 8 回合 2（雨中放老鼠，老鼠不怕雨）、
+// 第 9 回合 3（放晴：晶片 9 矽盾待命、珍奶 4 → 6 直接世界珍奶節）；其餘欄跟舊正解一樣
+const LV = [[2,0,0,0,0,0,0,0],[3,0,0,0,0,0,0,2],[4,0,0,2,0,0,0,3],[5,0,2,4,0,0,0,4],[6,2,3,5,0,0,0,5],[7,4,5,6,0,0,2,6],[8,6,6,7,1,0,4,7],[9,8,8,9,2,2,4,8],[10,9,9,10,3,4,6,8]];
 test('the solution follows the design §3 level table turn by turn', () => {
   for (const r of st.full) {
     let s = createState(spec); const rows = [];
@@ -105,13 +106,13 @@ test('the solution follows the design §3 level table turn by turn', () => {
 });
 
 // 使用者 2026-10-30 那局（晶片、燈泡、珍奶都早於代幣，颱風第 7、老鼠第 8）。修正批次 2（颱風放下那回合全部檢查）之後：
-// 颱風放下時代幣 2、棒球 3、珍奶 3 → 捷運淹水、大巨蛋淹水、攤車被吹走一起來（三個都鎖住）；颱風放晴（3）不吹歪；
-// 晶片停在 5 → 老鼠沒到分岔；標題卡是「捷運淹水」
-const USER_END = [8, 5, 4, 2, 3, 2, 3, 3];   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
+// 颱風放下時代幣 2、棒球 3 → 捷運淹水、大巨蛋淹水一起來（兩個都鎖住）；珍奶 3（珍奶店）計畫 14 起不吹走（攤車被吹走只剩 ≤1），之後長到 4；
+// 颱風放晴（3）不吹歪；晶片停在 5 → 老鼠沒到分岔；標題卡是「捷運淹水」
+const USER_END = [8, 5, 4, 2, 3, 2, 4, 3];   // 欄位照 ORDER：鮮奶 晶片 燈泡 代幣 颱風 老鼠 珍奶 棒球
 test('the 2026-10-30 recorded order ends low with the flood bad ending (snapshot)', () => {
   const r = playOrder(['milk', 'baseball', 'chip', 'bulb', 'boba', 'token', 'typhoon', 'rat'], spec);
   assert.deepEqual(spec.ORDER.map(id => r.state.lv[id]), USER_END);
-  assert.deepEqual(r.state.locked, { token: true, baseball: true, boba: true });
-  assert.deepEqual(r.state.flags, { flooded: true, domeFlood: true, cartBlown: true, milkExpired: true });
-  assert.equal(r.ending.id, 'flood'); assert.deepEqual(r.satisfied, ['flood', 'domeFlood', 'cartBlown', 'milkExpired', 'shieldDown']);
+  assert.deepEqual(r.state.locked, { token: true, baseball: true });
+  assert.deepEqual(r.state.flags, { flooded: true, domeFlood: true, milkExpired: true });
+  assert.equal(r.ending.id, 'flood'); assert.deepEqual(r.satisfied, ['flood', 'domeFlood', 'milkExpired', 'shieldDown']);
 });

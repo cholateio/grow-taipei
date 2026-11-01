@@ -106,8 +106,8 @@ import * as milk from '../src/actors/milk.js';
 import { worldEffects } from '../src/actors/world.js';
 import { B } from '../src/show/beats.js';
 import { headlessShow, playItem, turnSteps, overviewRig, gameInvariants, KEY_MAX } from './helpers/show.js';
-// 唯一正解（§3；修正批次 2）：颱風第 6 回合放下（到 101、全部檢查）、第 7 回合 Lv2 暴風圈還在、第 8 回合放晴
-const SOLUTION = ['milk', 'baseball', 'token', 'bulb', 'chip', 'typhoon', 'boba', 'rat'];
+// 唯一正解（§3；計畫 14 重找）：颱風第 7 回合放下（到 101、全部檢查）、第 8 回合 Lv2 暴風圈還在（雨中放老鼠）、第 9 回合（最後一輪）放晴
+const SOLUTION = ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'];
 const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
 const fakeCtx = () => ({ B, roster: { members: () => [], keys: () => [] }, stage: {} });
 const placedE = { kind: 'placed', item: 'typhoon', to: 1 }, growE = to => ({ kind: 'grow', item: 'typhoon', from: to - 1, to });
@@ -255,10 +255,11 @@ test('placement turn with reactions (blackout, real engine) live as one turn: th
   assert.ok(seg <= KEY_MAX, `landing ${seg.toFixed(1)} s`);
 });
 // 正解的放下回合（第 6 回合）：颱風假；躲一下又出來之後，同一回合的升級照一般事件演——◆ 鮮奶 7（大學）的小孩走去拱門、跳起來
-test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards the turn plays normally (◆ milk 7 gathers the kids, later grows are not cut to apply + LEVEL UP)', async () => {
-  const h = await headlessShow(), { show } = h, walking = new Set(), update = show.update;
-  let after0 = false;
-  show.update = (dt, t) => { update(dt, t); if (after0) for (const m of show.roster.members('milk.kids')) if (m.mode === 'script' && m.walking) walking.add(m); };
+// 計畫 14：正解的颱風放下回合（第 7 回合）裡的 ◆ 是代幣 7（捷運通車到離島：列車開出去、離島冒出來），不再是鮮奶 7
+test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards the turn plays normally (◆ token 7 runs the train to the islets, later grows are not cut to apply + LEVEL UP)', async () => {
+  const h = await headlessShow(), { show } = h, update = show.update;
+  let after0 = false, trains = 0;
+  show.update = (dt, t) => { const before = h.rail.offset; update(dt, t); if (after0 && h.rail.offset !== before) trains++; };
   const evs = await turnWith(h.run, SOLUTION, landing);
   const run = h.run; h.run = (e, o) => run(e, { ...o, onMark: x => { if (!landing(x) && evs.indexOf(x) > evs.findIndex(landing)) after0 = true; o?.onMark?.(x); } });
   let res;
@@ -266,9 +267,9 @@ test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards
   const { reacts, seg, after } = res;
   assert.ok(reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
   assert.ok(seg <= KEY_MAX, `landing ${seg.toFixed(1)} s`);
-  const milk7 = after.findLast(([e]) => e.kind === 'grow' && e.item === 'milk' && e.to === 7);   // 最後一個 mark 是劇本（前一個是起因段）
-  assert.ok(milk7 && milk7[1] > 4, `◆ milk 7 plays its whole script (${milk7?.[1].toFixed(1)} s)`);
-  assert.ok(walking.size >= 2, `the kids walk to the arch (${walking.size})`);
+  const token7 = after.findLast(([e]) => e.kind === 'grow' && e.item === 'token' && e.to === 7);
+  assert.ok(token7 && token7[1] > 4, `◆ token 7 plays its whole script (${token7?.[1].toFixed(1)} s)`);
+  assert.ok(trains > 30, `the train runs after the landing (${trains} frames)`);
 });
 // 放下那回合的檢查（§4.3，修正批次 2：全部在放下那回合）：捷運淹水（代幣 ≤3）、攤車被吹走（珍奶 ≤3）、大巨蛋淹水（棒球 ≤3）、鼠災。
 // （外送爆單 +1 拿掉了：死規則，協調者裁決）
@@ -440,6 +441,7 @@ test('placement turn live: people vanish at their doors without a blink, then st
     for (const m of people(show)) {
       const tr = trips.get(m); if (!tr || tr.done) continue;
       if (!m.hidden && tr.outAt === null) tr.outAt = t;
+      if (tr.outAt !== null && tr.first === undefined && m.trip) tr.first = m.trip.left;   // 走出來的第一趟有多長（家就在門口的人一下就到、接著散步）
       if (tr.outAt !== null) { tr.frames++; if (m.walking) tr.walk++; tr.len += Math.min(Math.hypot(m.pos.x - tr.at.x, m.pos.z - tr.at.z), (m.speed ?? 1.6) * dt); tr.at = { ...m.pos }; if (tr.frames >= 15) tr.done = true; }
     }
   };
@@ -453,12 +455,13 @@ test('placement turn live: people vanish at their doors without a blink, then st
   const bathers = hides.filter(x => x.m.key === 'landmarks.bathers');
   assert.equal(bathers.length, 2, 'both bathers take shelter');
   for (const x of bathers) assert.ok(Math.hypot(x.at.x - bath.x, x.at.z - bath.z) < 0.6, `bather ${x.m.i} hides at the bathhouse (${Math.hypot(x.at.x - bath.x, x.at.z - bath.z).toFixed(2)})`);
-  // 走出來之後的前 0.5 秒：家比 0.4 遠的人在走、走得比日常散步快（0.5 s 走了 0.4 以上；散步 0.5/s 只走得到 0.25）
+  // 走出來之後的前 0.5 秒：家比 0.4 遠的人在走、走得比日常散步快（0.5 s 走了 0.4 以上；散步 0.5/s 只走得到 0.25）。
+  // 「家比 0.4 遠」照走出來的第一趟算（計畫 14 正解換了之後：晶片工程師從園區門口出來、散步圈就在門口，第一趟 0.2 就到、接著散步，不算）
   for (const x of hides) {
     const tr = trips.get(x.m); if (x.m.gone) continue;
     assert.ok(tr.outAt !== null, `${x.m.key} comes out`);
     assert.ok(!blinked.has(x.m.walker), `${x.m.key} does not blink coming out`);
-    if (tr.walk >= 10) assert.ok(tr.len > 0.4, `${x.m.key} walks home at walking speed (${tr.len.toFixed(2)} in 0.5 s)`);
+    if (tr.walk >= 10 && tr.first > 0.4) assert.ok(tr.len > 0.4, `${x.m.key} walks home at walking speed (${tr.len.toFixed(2)} in 0.5 s)`);
   }
   assert.ok(hides.filter(x => trips.get(x.m).walk >= 10).length >= 3, 'several people walk home from the doors');
   // 計畫 13 修正輪 1：溫泉客躲完雨走回池裡——出來 8 秒後兩位都在自己的站位上、y 是池水面下 0.15（泡著）
@@ -494,7 +497,8 @@ test('landing turn with the camera dragged mid-turn: no home before the turn-end
 
 
 // 正解整局 live（真的鏡頭 rig）：共用不變式乾淨（不穿牆、不瞬移、換位置閃白、回全景、標籤在畫面裡）；颱風三段（修正批次 2）——◆ 放下與放晴 live ≤ 8 s，
-// Lv2 劇本 ≤ 3 s；第 6 回合放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）
+// Lv2 劇本 ≤ 3 s；第 7 回合（計畫 14 之前第 6 回合）放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）；
+// 放晴落在第 9 回合（最後一輪）
 test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 ≤ 8 s live, the Lv2 script ≤ 3 s', async () => {
   const cam = overviewRig(), { show, run, scriptElapsed } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
   let s = engine.createState(spec);
@@ -512,7 +516,7 @@ test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 �
     });
   }
   assert.deepEqual(Object.keys(seg).map(Number), [1, 2, 3]);
-  assert.deepEqual([seg[1].turn, seg[2].turn, seg[3].turn], [6, 7, 8]);
+  assert.deepEqual([seg[1].turn, seg[2].turn, seg[3].turn], [7, 8, 9]);
   assert.ok(seg[1].key && seg[3].key && !seg[2].key, '◆ placed and Lv3');
   for (const n of [1, 3]) assert.ok(seg[n].live <= KEY_MAX, `◆ typhoon ${n} live ${seg[n].live.toFixed(2)} s`);
   assert.ok(seg[2].script <= LV2_MAX, `typhoon 2 script ${seg[2].script.toFixed(2)} s`);

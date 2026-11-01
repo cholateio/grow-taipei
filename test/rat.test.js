@@ -790,3 +790,21 @@ test('live, a whole game with the boba bitten (rat before boba): no script error
   assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} jumps`);
   assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} pops`);
 });
+// 遠的那種：吹歪局（EXAMPLE.deflect）第 6 回合放珍奶，老鼠 Lv2 守在遠處出問題的那棟門口，跑來咬也 ≤ 4.5 s（pace 原本量到 4.9 s）
+test('rat bites the fresh boba from a far trouble door (EXAMPLE.deflect turn 6) within 4.5 s', async () => {
+  const { EXAMPLE } = await import('./helpers/endings.js');
+  const { run, scriptElapsed } = await headlessShow();
+  let s = engine.createState(spec), secs = null;
+  for (const step of turnSteps(EXAMPLE.deflect)) {
+    const r = step(s); s = r.state;
+    if (!r.events.some(isBite('boba'))) { await run([...r.events, { kind: 'settle' }]); continue; }   // 前面的回合也照常演（老鼠站在哪跟前面怎麼演有關）
+    // 整回合照正式演出演（同 pace：劇本秒數不含鏡頭 focus 拍，再扣掉前面補的空拍）
+    const marks = [];
+    await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => marks.push([e, scriptElapsed(), info?.gap ?? 0]) });
+    const k = marks.findIndex(([e]) => isBite('boba')(e));
+    secs = marks[k + 1][1] - marks[k][1] - marks[k][2];
+    break;
+  }
+  assert.ok(secs !== null, 'the deflect game bites the boba');
+  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+});

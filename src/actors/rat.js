@@ -237,7 +237,8 @@ function nibble(e, ctx) {
   if (!at) return null;
   const r = once(c => c.roster.nearest(KEY, at));
   return [
-    B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
+    // 聞 1.2 s、！ 0.8 s（預設 1.5／1.2 的話老鼠從遠處出問題的那棟跑來要 4.9 s，一級 ≤ 4.5：吹歪局第 6 回合）
+    B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.gesture(r, 'sniff', 1.2), B.bubble(r, '！', 0.8),
     B.apply(e, { only: [part] }), B.apply(e), B.home(r),
   ];
 }

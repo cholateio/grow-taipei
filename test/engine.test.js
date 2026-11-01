@@ -708,3 +708,37 @@ test('heldBy(state, id): the biter recorded in the bitten flag while its bite.wh
   assert.equal(after.state.lv.r, 3); assert.equal(heldBy(after.state, 'm', two), null, 'only the recorded biter holds it');
   assert.equal(after.state.lv.m, 2, 'free once its own biter left');
 });
+
+// 修正輪 2：咬之前先「不咬」試跑一次這回合（同一個 turn()、工作狀態的複本、不往外發事件、試跑裡不再試跑），
+// 試跑結束時咬它的那個已經升出 bite.while（老鼠搭上捷運）就不咬——全枚舉（含最後一輪）裡「咬了、被咬的同一回合又長」是 0 次
+test('R30 rat (fix round 2): over all 8! orders, nothing bitten ever grows in the turn it was bitten', () => {
+  let bites = 0, same = 0;
+  const walk = (s, left) => {
+    if (!left.length) return;
+    for (const id of left) {
+      const r = place(s, id, real);
+      for (const e of r.events) if (e.flag?.name?.startsWith('bitten_')) { bites++; if (r.events.some(g => g.kind === 'grow' && g.item === e.item)) same++; }
+      walk(r.state, left.filter(x => x !== id));
+    }
+  };
+  walk(createState(real), real.ORDER);
+  assert.ok(bites > 10000, `${bites} bites`);
+  assert.equal(same, 0, `${same} bitten-and-released-in-the-same-turn placements`);
+});
+// 試跑看的是整回合：放下那一刻老鼠還上不了車（代幣 3），同一回合掃描裡代幣先長到 4、老鼠才上車——這種也不咬
+test('R30 rat (fix round 2): the rat boards later in the same scan (the token reaches 4 this turn) → no bite', () => {
+  // 列舉裡找一條：放下珍奶那一刻老鼠 2、代幣 ≤3，這回合結束老鼠 ≥3
+  const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
+  let found = null;
+  for (const order of perms(real.ORDER)) {
+    let s = createState(real);
+    for (const id of order) {
+      const before = s, r = place(s, id, real); s = r.state;
+      if (id === 'boba' && before.lv.rat === 2 && before.lv.token <= 3 && s.lv.rat >= 3) { found = { order, r }; break; }
+    }
+    if (found) break;
+  }
+  assert.ok(found, 'such a placement exists');
+  assert.ok(!found.r.events.some(e => e.flag?.name === 'bitten_boba'), `${found.order.join(',')}: not bitten`);
+  assert.ok(!found.r.state.flags.bitten_boba);
+});

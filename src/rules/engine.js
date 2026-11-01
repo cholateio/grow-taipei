@@ -134,14 +134,6 @@ export function heldBy(state, id, spec = defaultSpec) {
   const b = rulesOf(spec).items[w]?.bite;
   return b && b.while(state) ? w : null;
 }
-// w 照這一刻的狀態，這回合的那一步（spec 寫的 jump 先、否則 up；不超過 max）會不會升出自己的 bite.while（修正輪 1 裁決 4）
-function leavesNow(w, s, rules) {
-  const it = rules.items[w], lv = s.lv[w];
-  if (!(lv > 0) || s.locked[w]) return false;
-  const to = lv + 2 <= it.max && it.jump[lv + 2]?.(s) ? lv + 2 : lv + 1 <= it.max && it.up[lv + 1]?.(s) ? lv + 1 : lv;
-  return to !== lv && !it.bite.while({ ...s, lv: { ...s.lv, [w]: to } });
-}
-
 export const isPlaced = (state, id) => state.lv[id] > 0;
 export const isComplete = state => Object.values(state.lv).every(n => n > 0);
 export const isAllMax = (state, spec = defaultSpec) => spec.ORDER.every(id => state.lv[id] === spec.ITEMS[id].max);
@@ -199,7 +191,8 @@ export function place(state, id, spec = defaultSpec) {
 // 沒有放置的回合（最後一輪成長：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合，才是飛彈警告）
 export function advance(state, spec = defaultSpec) { return turn(state, null, spec, rulesOf(spec)); }
 
-function turn(state, id, spec, rules) {
+// noBite：試跑用（修正輪 2）——這回合不咬、也不再試跑
+function turn(state, id, spec, rules, { noBite = false } = {}) {
   const s = { lv: { ...state.lv }, age: { ...state.age }, held: { ...state.held }, locked: { ...state.locked }, flags: { ...state.flags }, order: id ? [...state.order, id] : [...state.order], turn: state.turn + 1 };
   const events = [];
 
@@ -220,11 +213,16 @@ function turn(state, id, spec, rules) {
     }
     // 計畫 14 R30 咬：bite.while 成立的物品 w（老鼠 Lv1–2）咬剛放下的 id（在 bite.targets 裡）：立 bitten_<id> = w（記下是誰咬的）、
     // 發 fx 事件（item 是被咬的那個，演出層鏡頭對著它；cause w；故事句在規格 bite.story）。被咬的在 w 的 bite.while 還成立期間不長（見 heldBy）。
-    // 不咬：雨中當場被吹走（鎖住）的（攤車已經在海裡）；照這一刻的狀態 w 這回合就會升出 bite.while 的（修正輪 1 裁決 4：
-    // 老鼠這回合就搭上捷運——不演「咬了當回合又放過」，同「降級當回合不升級」那一類可讀性）。一個物品只被咬一次（第一個咬的）
+    // 不咬：雨中當場被吹走（鎖住）的（攤車已經在海裡）；這回合結束時 w 已經升出 bite.while 的（修正輪 1 裁決 4、修正輪 2：
+    // 老鼠這回合就搭上捷運——不演「咬了當回合又放過」，同「降級當回合不升級」那一類可讀性）。後者先「不咬」試跑一次這回合
+    // （同一個 turn()、從回合開始的 state 再跑一份工作狀態、事件不往外發；試跑裡不咬、也不再試跑），試跑結束時看 w 的 bite.while。
+    // 一個物品只被咬一次（第一個咬的）
+    let trial = null;
     for (const w of spec.ORDER) {
       const b = rules.items[w].bite;
-      if (w === id || !b?.targets.includes(id) || !b.while(s) || s.locked[id] || leavesNow(w, s, rules)) continue;
+      if (noBite || w === id || !b?.targets.includes(id) || !b.while(s) || s.locked[id]) continue;
+      trial ??= turn(state, id, spec, rules, { noBite: true }).state;
+      if (!b.while(trial)) continue;
       const name = `bitten_${id}`;
       s.flags[name] = w;
       const ev = { kind: 'fx', item: id, cause: w, flag: { name, value: w } };

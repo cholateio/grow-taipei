@@ -205,6 +205,12 @@
   - 目視：`boba-cart`、`boba-cart-close`、`boba-blown`、`boba-blown-close`（對照 `*-before`）；`spring-soak`；`volcano-new-front`（對照 `volcano-before-front`；計畫給的 `cam=-1,5,-6,-2,1.2,-7.5` 對著海，`volcano-new`／`volcano-now` 兩張都只有水）；`warning-at101`、`warning-new`、`warning-duck`。另外請看：警告時鏡頭只在 101 附近停約 0.3 s 就飛回全景（FOCUS_BEAT 0.8 s 到了馬上回）；溫泉客走進池子那一段，小腿會穿過池緣的石頭。警告那三張要另起一個 scratch 根目錄、把 `app.js` 的 warp 迴圈改成每幀讓出 microtask 才拍得到（同步 warp 跨不過回合，終局在最後一個放置的兩回合之後），`app.js` 沒改。
   - 既有問題（沒修）：火山沒有 footprint，住火山格的島民會穿過山體散步（量到離山心最近 0.08）。
 
+- R28（2026-11-01，修正批次 max-skip）：**棒球／珍奶 MAX 要一眼看得出來、跳過鍵放進物品列**（使用者看壞結局截圖：「棒球和珍奶店的 level max 不夠明顯」「建議跳過按鈕放到下方物品欄裡面，用 Skip icon」）。規則層沒動、全枚舉仍剛好一解；沒有文字、泡泡提示。
+  1. **棒球 Lv8**（原本巨蛋跟 Lv7 一模一樣、只多環狀線上的月台）：巨蛋本身變——圓頂最高點一顆直徑 0.45 的白色大棒球（兩條紅縫線是貼球面的小圓，軸朝左前、右前，從鏡頭看是「( )」）；四座球場燈塔（高 1.1 細柱＋深藍燈架、一排三顆暖白燈 `glow: C.warm`，面向巨蛋往下俯），站在外擴後的巨蛋外、應援棒之間（前兩座 (±1.2, 0.6)、後兩座 (±0.6, −1.1)；東北邊是草皮散步圈與橋頭），每根柱一個 r 0.06 的小 footprint；外牆一圈三角旗（高 0.42、橢圓 1.16 × 1.01，24 面六色、門口上方空著）。三角旗共用新的 `src/actors/bunting.js`（kit `prism` 立起來尖朝下、繩子拋物線下垂；`eulerYawPitch` 把「先俯仰再轉 yaw」換成零件的 Euler XYZ）。全部併進 `baseball.deco`（Lv8 才帶 footprint 陣列＋`grow: false`，照舊直接出現）——**沒塞進 `baseball.platform`**：月台的 at 在環狀線上、footprint false，燈柱要擋人得另開 footprint，巨蛋格的 deco 座標本來就相對巨蛋。黏土同一個 mesh，暖白燈板多一個發光 mesh：**wide-end 248 → 249**（上限 250）、手機不多（phone-end 142）。◆ Lv8 劇本：月台出現那一拍 `baseball.deco` 一起出現（拍數不變）。**「跟著長」照舊是直接出現**：deco 從地面長的話球會從圓頂裡面升上來。
+  2. **珍奶 Lv6**（原本主島只多格邊幾束小氣球）：屋頂杯子招牌變成超大充氣珍奶杯（同一個 cup-tea glb、h 0.32 → 0.65，中心往後收、前緣照舊只凸出屋頂前緣 0.08；`storefront` 多一個 `inset` 參數，離島店不變；標籤移到杯頂 1.85）；店門口氣球拱門（13 顆珊瑚／黃／白、半徑 0.3、兩腳落在門兩側、店牆前 0.05，沒有 footprint，離人龍與老闆 ≥ 0.23）；店東牆上方到噴泉柱頂一串六色三角旗。拱門、旗串併進 `boba.yard`（不多 draw call）。◆ Lv6 劇本：大杯子（`boba.sign`）跟氣球、拱門同一拍出現（原本留到最後一拍；拍數不變）。**拱門頂在遮雨棚底下**：拱門跨到棚外會碰到人龍（店門口 0.7）和老闆，鏡頭從上往下看時拱頂被棚子擋住，看得到兩側與兩腳。三角旗串不是 2026-10-28 拿掉的那種矩形旗面。
+  3. **跳過鍵**：拿掉物品列上方的浮動膠囊（`createSkipButton`）；`createSlots` 最後一格是跳過鍵——⏭ 圖示（`SKIP_ICON`，兩個右三角＋一條直線）、`aria-label`／`title`「跳過」、沒有文字。一直在、不跳版面：沒有演出時停用（淡），演出中（`show.skippable`，`app.js` 每幀 `slots.setSkippable`、同值不寫 DOM）啟用、珊瑚底白圖示；`setBusy`／`reset` 不碰它，終局前的 hold 停用。版面：桌機第 9 欄 44 × 72；手機（≤ 640）第 5 欄跨兩排；窄螢幕（≤ 380）物品格 58、跳過欄 36（360 寬整條 324）；`--slots-h` 98／178 不變。381–389 寬（手機版 356 寬）左右邊距只剩 12.5–16 px，照簡報的斷點沒改。
+  - 目視：`maxskip-baseball-7`／`maxskip-baseball-8`（`cam=baseball`）；`maxskip-boba-4`／`maxskip-boba-6`、`maxskip-boba-6-close`（主島 Lv5 的店跟 Lv4 一樣——Lv5 只多離島；正解裡珍奶 4 → 6 跳級，沒有停在 Lv5 的局面可拍）；`phone-live`、`phone360-live`、`wide-live`（演出中跳過鍵珊瑚色）、`phone-end`（停用）。
+
 ## 附錄：試作的規則表（2026-10-31，全枚舉剛好一解）
 
 ```js

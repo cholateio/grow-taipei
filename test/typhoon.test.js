@@ -594,3 +594,22 @@ test('fix3 B live: in the typhoon Lv1 and Lv2 turns (and 10 s after each) the ra
     assert.deepEqual([...inv.jumps].slice(0, 3), [], `${what}: nobody teleports`);
   }
 });
+
+// 修正輪 1 裁決 3：攤車被吹走只剩 ≤1（計畫 14）——珍奶 Lv2–3（人龍）時，颱風放下的躲雨裡人龍留一位不躲、站在攤車旁顧著
+// （其他人照躲），看得出「有人顧著攤車所以沒被吹走」；珍奶 ≥4（噴泉廣場）照舊全部去躲
+test('placement turn live: with boba Lv2–3 one of the queue stays out in the rain by the cart (the others hide); at boba 4 everyone hides', async () => {
+  const boba = await import('../src/actors/boba.js');
+  for (const [order, guard] of [[SOLUTION, true], [['milk', 'chip', 'baseball', 'token', 'boba', 'bulb', 'typhoon'], false]]) {
+    const h = await headlessShow(), { show } = h;
+    const evs = await turnWith(h.run, order, landing), n = show.stage.lv.boba;
+    assert.equal(n, guard ? 2 : 4, `precondition: boba ${n} at the landing`);
+    const queue = show.roster.members('boba.queue');
+    const { hides } = await playLanding(h, evs);
+    const hid = new Set(hides.map(x => x.m)), stayed = queue.filter(m => !hid.has(m));
+    if (guard) {
+      assert.equal(stayed.length, 1, `one of the queue stays (${stayed.length} of ${queue.length})`);
+      assert.ok(Math.hypot(stayed[0].pos.x - boba.SHOP.x, stayed[0].pos.z - boba.SHOP.z) < 1.0, 'by the cart');
+      assert.equal(hides.filter(x => x.m.key === 'boba.queue').length, queue.length - 1, 'the rest of the queue hides');
+    } else assert.equal(stayed.length, 0, 'at the fountain plaza everyone hides');
+  }
+});

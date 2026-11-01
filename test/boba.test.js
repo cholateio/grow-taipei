@@ -540,13 +540,13 @@ test('the Lv1–2 cart: a night-market boba stall — body, skirt, counter, stri
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
   for (const v of [views[1]['boba.main'], boba.view(lv({ boba: 1 }), { cartBlown: true })['boba.main']]) assert.equal(f.build(v).object.children.length, 1, 'one mesh');
 });
-// 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3，flags.cartBlown）：攤車翻倒在珍奶格東岸外的淺水裡（不在島上、沒有 footprint、放晴的堤防碰不到），
-// 老闆站到岸邊走得到的地方、面向海（fidget look）；Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
-test('view: a blown cart lies tipped in the sea off the boba cell, the owner stands on the shore looking at it; at Lv3 the shop stays and the cart is boba.blown', async () => {
+// 攤車被吹走（修正批次 2；計畫 14 起颱風放下時珍奶 ≤1，或雨中放下的攤車，flags.cartBlown）：攤車翻倒在珍奶格東岸外的淺水裡（不在島上、沒有 footprint、放晴的堤防碰不到），
+// 老闆站到岸邊走得到的地方、面向海（fidget look）。修正輪 1 裁決 3：Lv3「店前那台攤車被吹走」（boba.blown）走不到、刪了——只量 Lv1
+test('view: a blown cart lies tipped in the sea off the boba cell, the owner stands on the shore looking at it (Lv1; there is no boba.blown any more)', async () => {
   const { LEVEE_R } = await import('../src/actors/typhoon.js');
   const c = axialToWorld(...CELL), nav = createNav();
-  for (const n of [1, 2, 3]) {
-    const v = boba.view(lv({ boba: n, milk: 3 }), { cartBlown: true }), cart = n < 3 ? v['boba.main'] : v['boba.blown'];
+  for (const n of [1]) {
+    const v = boba.view(lv({ boba: n, milk: 3 }), { cartBlown: true }), cart = v['boba.main'];
     assert.equal(cart.kind, 'compound'); assert.equal(cart.footprint, false, `Lv${n} no footprint`);
     assert.ok(near(cart.at, boba.BLOWN, 1e-9), `Lv${n} at BLOWN`); assert.equal(cellAt(cart.at.x, cart.at.z), null, 'in the sea, off the island');
     assert.ok(Math.hypot(cart.at.x - c.x, cart.at.z - c.z) > LEVEE_R + 0.1, 'outside the Lv3 levee');
@@ -565,9 +565,7 @@ test('view: a blown cart lies tipped in the sea off the boba cell, the owner sta
     assert.ok(nav.walkable(o.spots[0].x, o.spots[0].z), 'the owner spot is walkable');
     assert.ok(Math.abs(o.spots[0].yaw - Math.atan2(boba.BLOWN.x - o.spots[0].x, boba.BLOWN.z - o.spots[0].z)) < 1e-9, 'facing the cart in the sea');
   }
-  const shop = boba.view(lv({ boba: 3, milk: 3 }), { cartBlown: true });
-  assert.equal(shop['boba.main'].kind, 'glb', 'the Lv3 shop still stands');
-  assert.equal(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.blown'], undefined);
+  for (const n of [1, 2, 3, 4, 6]) assert.equal(boba.view(lv({ boba: n, milk: 3 }), { cartBlown: true })['boba.blown'], undefined, `lv${n}: no boba.blown`);
   assert.ok(near(boba.view(lv({ boba: 2, milk: 3 }), {})['boba.main'].at, boba.SHOP, 1e-9), 'not blown: the cart at its stall');
 });
 

@@ -153,8 +153,8 @@ const fleetParts = () => Array.from({ length: FLEET_N }, (_, i) => {
 
 // ── 攤車被吹走（修正批次 2：颱風放下時珍奶 ≤3；計畫 14 改成 ≤1（只有攤車），雨中放下的攤車也算；flags.cartBlown；珍奶鎖住不長）：攤車翻倒在珍奶格東岸外的淺水裡（格邊之外、
 // 不在走路格、不算 footprint——不擋電工主路，Lv3 放晴的堤防在格面上、離格心 2.08，碰不到），老闆站到岸邊最東的可走點、面向海看著它。
-// 翻倒照拿掉撞攤車之前的寫法：零件自己轉（攤車的零件都沒有 rot，整台繞 z 轉 TIP，頂朝外海）。Lv1–2 是攤車本身（boba.main）被吹走；
-// Lv3 店還在，被吹走的是店前那台攤車（boba.blown）
+// 翻倒照拿掉撞攤車之前的寫法：零件自己轉（攤車的零件都沒有 rot，整台繞 z 轉 TIP，頂朝外海）。被吹走的是攤車本身（boba.main）。
+// （修正輪 1 裁決 3：≤1 之後 Lv3「店前那台攤車被吹走」（boba.blown）走不到，刪掉）
 const CELL = axialToWorld(0, 1), APOTHEM = R * Math.sqrt(3) / 2;
 export const BLOWN = { x: CELL.x + APOTHEM + 0.1, y: WATER_Y - 0.02, z: AT.z + 0.2 };   // 格邊外 0.1 的水面
 export const CART_TIP = -1.2;   // 往海那邊倒（頂朝 +x）
@@ -271,7 +271,6 @@ export function view(lv, flags = {}) {
     const [shop, sign] = n >= 6 ? storefront(SHOP, SHOP_H, BIG_CUP_H, BIG_CUP_INSET) : storefront(SHOP, SHOP_H, CUP_H);
     v['boba.main'] = { ...shop, labelY: SHOP_H + (n >= 6 ? 0.85 : 0.55), footprint: { w: SHOP_W, d: SHOP_W } };   // 標籤在大杯子頂上
     v['boba.sign'] = sign;
-    if (blown) v['boba.blown'] = blownCart();
   }
   // 世界珍奶節的氣球、MAX 的氣球拱門與三角旗併在院子這個零件裡（整局截圖的 draw call ≤ 150）
   // 只有立牌擋人（SIGN_FOOTPRINT）；院子不是會長的建築（grow false：有了 footprint 也照舊直接出現，Lv6 海岸的氣球不從珍奶格長出來）

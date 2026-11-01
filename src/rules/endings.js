@@ -9,7 +9,7 @@ export const ENDINGS = {
   blackout: { id: 'blackout', title: '大停電', kind: 'bad', line: '全島黑掉，只剩 101 一盞紅燈在閃' },
   flood: { id: 'flood', title: '捷運淹水', kind: 'bad', line: '車站變游泳池，大家划船上班' },
   domeFlood: { id: 'domeFlood', title: '大巨蛋淹水', kind: 'bad', line: '球場變游泳池，球員坐在屋頂釣魚' },
-  // 修正批次 2（2026-10-31）：颱風放下時珍奶還是攤車／人龍／珍奶店（≤3）→ 攤車被吹到海邊
+  // 修正批次 2（2026-10-31）：颱風放下時珍奶還是攤車（計畫 14 從 ≤3 改成 ≤1；雨中放下的攤車也算）→ 攤車被吹到海邊
   cartBlown: { id: 'cartBlown', title: '珍奶攤被吹走', kind: 'bad', line: '攤車飛到海上，老闆划船去追' },
   domeRats: { id: 'domeRats', title: '大巨蛋鼠災', kind: 'bad', line: '比賽暫停，工作人員拿水桶追老鼠' },
   shieldDown: { id: 'shieldDown', title: '矽盾未就緒', kind: 'bad', line: '101 被撞成 L 形，大家躺平比讚' },

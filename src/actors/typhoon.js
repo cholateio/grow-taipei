@@ -62,7 +62,7 @@ export function view(lv) {
     ] };
     // 雨不是建築：出現時只亮、不長（stage.js growsOn）——放下劇本裡大家等雨亮完才出發去躲，躲進門的那一刻沒有東西在閃
     v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
-    // 外送機車：純點綴（規則裡沒有外送 +1，協調者裁決）——珍奶噴泉廣場以上（≥4）颱風天有人騎車送；攤車、人龍、珍奶店 ≤3 是被吹走
+    // 外送機車：純點綴（規則裡沒有外送 +1，協調者裁決）——珍奶噴泉廣場以上（≥4）颱風天有人騎車送；只有攤車（≤1，計畫 14）會被吹走，人龍、珍奶店有人顧著
     if (lv.boba >= 4) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
     return v;
   }
@@ -183,6 +183,7 @@ const cloudView = p => ({ x: p.x, y: 2.6, z: p.z }), CLOUD_ZOOM = 0.8;
 const cloudFocus = (B, p) => B.focus(cloudView(p), { zoom: CLOUD_ZOOM });
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 
+const BOBA_AT = anchorWorld('boba');
 // 全島看得見的小人：所有名冊裡 people 的成員（模型的老鼠不算），躲起來的不算
 const everyone = c => c.roster.keys().flatMap(k => c.roster.members(k)).filter(m => m.kind === 'people' && !m.hidden);
 // 最近的建築門口：離 pos 最近的主島建築（footprint 中心），從它面向 pos 那一側找最近的可走點；沒有建築就原地。
@@ -218,7 +219,10 @@ export const script = {
     const { B } = ctx, cast = once(c => everyone(c).filter(m => cellAt(m.pos.x, m.pos.z)));
     // 走出來：躲著的人露出來（就在門口，不閃）、交回日常並標 hurry（走路速度、不等焦點），其他被叫去的人一樣放回日常
     const comeOut = { kind: 'home', dur: 0, start(c) { for (const m of cast(c) ?? []) { if (m.hidden) c.roster.show(m); c.roster.home(m, { hurry: true }); } } };
-    const shelter = crowd(B, c => cast(c).map(m => toDoor(B, m)));
+    // 修正輪 1 裁決 3：珍奶 Lv2–3（攤車前有人龍、還沒到噴泉廣場）時人龍留一位不躲——離攤車最近的那位站在原地顧著攤車
+    //   （攤車被吹走只剩珍奶 ≤1：有人龍就吹不走，計畫 14 R30）；他照樣冒 ！、之後照樣放回日常
+    const guard = once(c => (s.lv.boba >= 2 && s.lv.boba <= 3 ? c.roster.nearest('boba.queue', BOBA_AT, { visible: true }) : null));
+    const shelter = crowd(B, c => cast(c).filter(m => m !== guard(c)).map(m => toDoor(B, m)));
     return [
       cloudFocus(B, AT), B.apply(e, { only: ['typhoon.main'], blink: false }),
       B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 2.5 }),   // 飄進來 3 → 2.5 s（裁決 R17）

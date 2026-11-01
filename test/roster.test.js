@@ -1197,6 +1197,37 @@ test('stuck in a narrow lane: a walker yielding to the stander ahead stops rathe
   assert.ok(dropped !== null && (dropped - stopped) / 30 <= YIELD_WAIT + 0.1, `gives up the trip ${dropped === null ? 'never' : ((dropped - stopped) / 30).toFixed(2) + ' s'} after stopping`);
   assert.ok(gap(s.pos, S) < 1e-9 && gap(t.pos, T) < 1e-9, 'the standers stay put');
 });
+// 修正批次 max-skip 修正輪 1（審稿 Important 1，既有問題留帳）：兩隻前後走的老鼠從站著的人旁邊擦過、後面那隻在推前面那隻——
+// 名冊每幀限速夾回推擠的位移時，夾回的點落在原位置與推開後的點之間，前面那隻被壓進站著的人兩人半徑內。
+// 現場：島民家中心 (−0.5, 0.9) 時外星壞局第 8 回合 rat#0 擠過站著的偵防師 2 幀、0.14 m（要 0.255 × BODY_K 以上）；(−0.5, 1.0) 目前剛好 0 幀。
+// 試過兩種通用修法都退回：nav.separate 收尾再退開站著的人一次（剩 1 幀）、限速夾回不切進站著的人（擋住走出去的人與環線上的人，3 條測試回歸）。
+// 空地上拼的兩隻老鼠＋站著的人（加牆、不同間距試了五種）都讓得開、重現不了——這裡直接重演現場：把島民的家暫時挪回 (−0.5, 0.9)、外星壞局演到第 8 回合
+test('two rats walking nose to tail past a stander: the one in front is never pushed into the stander by the one behind (alien game turn 8 replay)', { todo: 'speed clamp after separate squeezes the leading walker into a stander (alien game turn 8 with the islander home at (−0.5, 0.9): 2 frames, 0.14 m) — two generic fixes tried and reverted' }, async () => {
+  const landmarks = await import('../src/actors/landmarks.js'), { headlessShow } = await import('./helpers/show.js');
+  const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { offset } = await import('../src/actors/palette.js');
+  const was = landmarks.HOMES[0], order = ['milk', 'chip', 'bulb', 'token', 'baseball', 'boba', 'rat', 'typhoon'], bad = [];
+  landmarks.HOMES[0] = offset(centre([0, 0]), -0.5, 0.9);
+  try {
+    const { show, run } = await headlessShow(), update = show.update;
+    let turn = 0;
+    show.update = (dt, tt) => {
+      update(dt, tt); if (turn !== 8) return;
+      const det = show.roster.members('chip.detective')[0]; if (!det || det.walking || det.mode !== 'home' || !det.settled) return;
+      for (const r of show.roster.members('rat.pack')) {
+        if (r.mode !== 'home' || !r.walking || r.hidden) continue;
+        const d = gap(r.pos, det.pos), need = radiusOf(r) + radiusOf(det);
+        if (d < 0.64 * need) bad.push(`rat#${r.i} ${d.toFixed(3)} from the standing detective (need ≥ ${(0.64 * need).toFixed(3)})`);
+      }
+    };
+    let s = engine.createState(spec);
+    for (const [i, id] of order.entries()) {
+      const r = engine.place(s, id, spec); s = r.state; turn = i + 1;
+      await run([...r.events, { kind: 'settle' }]);
+      for (let f = 0; f < 600 && show.roster.keys().some(k => show.roster.members(k).some(m => m.arriving && !m.gone)); f++) show.update(1 / 30, 1000 + f / 30);
+    }
+  } finally { landmarks.HOMES[0] = was; }
+  assert.deepEqual(bad, [], `${bad.length} frames`);
+});
 // 計畫 11 最終修正（全分支審稿 #1）：劇本手上站著的人（claim 了、沒在走）也算站著的人——日常走路的人碰上他照樣自己退開（他不動）。
 // 以前名冊只把日常（home）的人當站著的人，島民從兩個人中間擠過去時只被日常的那個推，整個人壓到劇本手上的小孩身上（t4 鮮奶 Lv5 量到 0.045 m、18 幀）。
 // 兩個站著的人相距 0.4（< 兩人身寬 0.5，擠不過去）：劇本手上的那個跟日常的那個一樣，走路的人兩邊各貼一半（≥ 0.64 × 兩人半徑相加），不壓到他身上

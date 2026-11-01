@@ -13,7 +13,7 @@ export const id = 'landmarks';
 // 他的家不在格心、在 101 西南邊（鏡頭那側、往捷運站的橋那邊，格心往 (−0.5, 1.0)）、散步半徑 ISLANDER_R 1.0：
 // 101 工地蓋住格子中間一大塊，格心半徑 1.8 散步時會走到 101 北側，從那裡繞到站務崗位要 8.3 m（5.2 s），代幣 Lv2 的劇本超過 6 s 例外；
 // 西南這一塊到崗位最遠 5.6 m（3.5 s）、到月台 5.4 m（散步中心 (−0.5, 0.9) 時外星壞局第 8 回合兩隻老鼠擠過站著的偵防師 2 幀，
-// 同 roster.test 鼠群擦身那一類對軌跡敏感的老問題，(−0.5, 1.0) 量到 0 幀）
+// 同 roster.test 鼠群擦身那一類對軌跡敏感的老問題，(−0.5, 1.0) 目前剛好 0 幀，見 roster.test 的 todo「two rats walking nose to tail past a stander」）
 export const HOME_R = 1.8;   // 散步半徑：格子中心常被建築蓋住，要夠大才挑得到走得到的點（鮮奶節的小孩同一個半徑，milk.js）
 export const ISLANDER_R = 1.0;
 export const HOMES = [offset(cellCentre([0, 0]), -0.5, 1.0)];

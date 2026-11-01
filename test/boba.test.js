@@ -178,6 +178,48 @@ test('Lv6: one balloon bunch on each sea-facing main-cell edge (one part, no fla
   assert.equal(boba.view(lv({ boba: 6, typhoon: 2 }), {})['boba.fleet'], undefined, 'the fleet stays in port during the storm');
 });
 
+// ── MAX（修正批次 max-skip §B，使用者 2026-11-01「棒球和珍奶店的 level max 不夠明顯」）：Lv6 主島的店要變——
+// 屋頂的杯子招牌變成超大充氣珍奶杯（同一個 glb、高 0.6–0.7、比店身矮）、店門口一座氣球拱門、店到噴泉一串三角旗（拱門與旗串在院子 compound 裡）──
+test('MAX Lv6: the roof cup becomes a giant inflatable cup (same glb, h 0.6–0.7, under the shop height, still on the roof front); Lv3–5 keep the 0.32 cup', () => {
+  for (let n = 3; n <= 5; n++) assert.equal(views[n]['boba.sign'].h, 0.32, `lv${n}`);
+  const s = views[6]['boba.sign'], m = views[6]['boba.main'];
+  assert.equal(s.path, boba.MODELS.cup.path); assert.equal(s.footprint, false);
+  assert.ok(s.h >= 0.6 && s.h <= 0.7 && s.h < m.h, `cup h ${s.h}`);
+  const w = m.footprint.w;
+  assert.ok(Math.abs(s.at.y - (m.at.y + m.h)) < 1e-9 && Math.abs(s.at.x - m.at.x) < 1e-9, 'on the roof');
+  const depth = s.h * boba.MODELS.cup.size[2] / boba.MODELS.cup.size[1];
+  assert.ok(s.at.z > m.at.z && s.at.z + depth / 2 > m.at.z + w / 2 && s.at.z + depth / 2 < m.at.z + w / 2 + 0.15, 'its front at the roof front edge (overhangs ≤ 0.15)');
+});
+test('MAX Lv6: a balloon arch over the shop door (12–16 coral / yellow / white balloons on a half circle, a foot each side of the door, under the awning, no footprint, clear of the queue and the owner); none before Lv6', async () => {
+  for (let n = 2; n <= 5; n++) assert.ok(!views[n]['boba.yard'].parts.some(p => p.arch || p.pennant), `lv${n} no arch / pennants`);
+  const y = views[6]['boba.yard'], arch = y.parts.filter(p => p.arch), m = views[6]['boba.main'];
+  assert.ok(arch.length >= 12 && arch.length <= 16 && arch.every(p => p.kind === 'sphere'), `${arch.length} balloons`);
+  assert.ok(arch.every(p => [C.coral, C.yellow, C.white].includes(p.color)) && new Set(arch.map(p => p.color)).size === 3);
+  assert.equal([].concat(y.footprint).length, 1, 'the yard footprint is still the sign only');
+  const W = pt => ({ x: y.at.x + pt.pos[0], y: pt.pos[1], z: y.at.z + pt.pos[2] }), pts = arch.map(W);
+  const door = m.at.x, front = m.at.z + m.footprint.w / 2;
+  assert.ok(pts.some(p => p.x < door - 0.2 && p.y < 0.1) && pts.some(p => p.x > door + 0.2 && p.y < 0.1), 'a foot on each side of the door');
+  assert.ok(pts.every(p => p.z > front && p.z < front + 0.12), 'right in front of the shop wall');
+  assert.ok(Math.max(...pts.map(p => p.y)) > 0.4, 'rises over the door');
+  const awning = y.parts.filter(p => p.rot?.[0] > 0.3), under = Math.min(...awning.map(p => p.pos[1] - 0.12 * Math.sin(0.45) - 0.03));
+  assert.ok(pts.every(p => p.y + 0.05 < under + 0.08), 'under the awning');
+  const people = [...views[6]['boba.queue'].home.spots, boba.ownerSpot(6)];
+  for (const p of pts) for (const q of people) assert.ok(Math.hypot(p.x - q.x, p.z - q.z) >= 0.12 || p.y > 0.42, `balloon (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}) clear of the person at (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`);
+});
+test('MAX Lv6: a string of pennants from the shop to the fountain (five or more colours, clay, inside the cell)', () => {
+  const y = views[6]['boba.yard'], flags = y.parts.filter(p => p.pennant), m = views[6]['boba.main'];
+  assert.ok(flags.length >= 5 && new Set(flags.map(p => p.color)).size >= 5, `${flags.length} pennants`);
+  assert.ok(y.parts.every(p => !p.glow), 'all clay: no extra draw call');
+  const W = p => ({ x: y.at.x + p.pos[0], z: y.at.z + p.pos[2] }), F = boba.FOUNTAIN, pts = flags.map(W);
+  const near = (p, q, d) => Math.hypot(p.x - q.x, p.z - q.z) < d;
+  assert.ok(pts.some(p => near(p, F, 0.35)), 'reaches the fountain');
+  assert.ok(pts.some(p => Math.abs(p.x - (m.at.x + m.footprint.w / 2)) < 0.2 && Math.abs(p.z - m.at.z) < 0.45), 'starts at the shop');
+});
+test('◆ Lv6: the giant cup comes in the same beat as the balloons and the arch', () => {
+  const beats = boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, { B, roster: { members: () => [] } });
+  const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b])), first = flat(beats).find(b => b.kind === 'apply' && Array.isArray(b.only));
+  assert.ok(['boba.yard', 'boba.sign'].every(k => first.only.includes(k)), String(first.only));
+});
 // ── draw call：整格（含旗艦店、小船、無人機、船隊）≤ 14 ──
 function drawCalls(v) {
   const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size;

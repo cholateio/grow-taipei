@@ -2,12 +2,14 @@
 //   → 噴泉廣場（噴泉在店的東側、離鏡頭那邊，不擋店）
 //   → ◆ 離島：森林島分店＋燈塔島旗艦店同一級（原本的 Lv5 連鎖店＋Lv6 旗艦店併成一級：小森林島分店、觀光船多兩艘、茶屋桌椅（satellites.js）；
 //     燈塔島開店，兩個觀光客坐小船從碼頭過去、住在島上，棧橋；外送無人機兩台繞著店飛；兩座離島店都是主島那款店面＋杯子招牌，計畫 11）
-//   → ◆ 世界珍奶節（原本的 Lv7；全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子）。
+//   → ◆ 世界珍奶節（原本的 Lv7；全島海岸綁氣球、掛燈籠的船隊繞島、101 打「世界珍奶節」；2026-10-28 錄影修正：不用任何旗子（矩形旗面）；
+//     MAX 主島的店也變：屋頂超大充氣珍奶杯、店門口氣球拱門、店到噴泉一串彩色三角旗——修正批次 max-skip §B，使用者 2026-11-01 要的三角旗串，不是旗面）。
 // 人數預算（使用者 2026-10-26）：人龍最多 3 人（2026-10-28 錄影修正：4 → 3，珍奶格太擠）、不再有閒晃的觀光客；燈塔島住 2 個觀光客。
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；颱風外送是颱風模組的劇本，不在這裡（老鼠撞翻攤車：唯一正解 §5.2 拿掉了）。
 // 劇本（§6）：一級 ≤ 4.5 秒；◆ Lv5、Lv6 ≤ 8 秒（Lv6 最後回全景定格）。
 import { anchorWorld } from './anchors.js';
 import { C, offset } from './palette.js';
+import { bunting } from './bunting.js';
 import { island } from './satellites.js';
 import { stormy } from './world.js';
 import { BLINK } from '../show/blink.js';
@@ -58,13 +60,18 @@ const SHOP_TINT = { '^DarkWood$': C.coral, '^DarkBrown$': C.wood, '^Dark$': C.wo
 // 珍奶店體：店面 glb（高 h）＋屋頂前緣的杯子招牌（高 cupH；離前緣 0.15 × h / SHOP_H）——主島的店與兩座離島店（森林島分店 sat.forest.shop、
 // 燈塔島旗艦店，計畫 11 §設計 3：原本是三角屋頂小屋與早餐店那款一層店面）共用。回傳 [店, 杯子]，呼叫端再補 footprint、grow、low。
 // 函數宣告（會提升）：satellites.js 和本檔互相匯入，它的 view 執行時本檔早就跑完（碰得到下面的 const）
-export function storefront(at, h, cupH) {
+// inset：杯子中心離屋頂前緣多遠（預設 0.15 × h / SHOP_H；MAX 的大杯子往後收，見 BIG_CUP）
+export function storefront(at, h, cupH, inset = 0.15 * h / SHOP_H) {
   const w = MODELS.shop.size[0] * h / MODELS.shop.size[1];
   return [
     { kind: 'glb', at, path: MODELS.shop.path, h, tint: SHOP_TINT },
-    { kind: 'glb', at: offset(at, 0, w / 2 - 0.15 * h / SHOP_H, h), path: MODELS.cup.path, h: cupH, footprint: false },
+    { kind: 'glb', at: offset(at, 0, w / 2 - inset, h), path: MODELS.cup.path, h: cupH, footprint: false },
   ];
 }
+// MAX（Lv6，修正批次 max-skip §B；使用者 2026-11-01「棒球和珍奶店的 level max 不夠明顯」）：屋頂的杯子招牌變成超大充氣珍奶杯——
+// 同一個 glb 只改高度（0.32 → 0.65，比店身 1.0 矮；不多 draw call）。杯子深 = 高 × 0.29 / 0.2，中心往後收到杯子前緣只凸出屋頂前緣 0.08（同小杯子的凸出量）
+export const CUP_H = 0.32, BIG_CUP_H = 0.65;
+const BIG_CUP_INSET = BIG_CUP_H * MODELS.cup.size[2] / MODELS.cup.size[1] / 2 - 0.08;
 // 離島店：高 0.8、杯子 0.26。店是建築（衛星島沒有走路格，footprint false → 寫 grow: true 才長出來，stage.js growsOn）；
 // 杯子是點綴，手機不畫（low: false：兩座店各 +1 個 draw call，手機全 MAX 本來就快 150）
 export const ISLET_SHOP_H = 0.8, ISLET_CUP_H = 0.26;
@@ -222,6 +229,18 @@ function yardParts(n, fresh) {
     ...sign,
   ];
 }
+// MAX 的店門口（Lv6，修正批次 max-skip §B，相對 AT）：
+//   氣球拱門：店牆前 0.05、跨在門前的半圓（半徑 0.3、圓心離地 0.13），兩腳各一顆落在門兩側、弧上 11 顆，珊瑚／黃／白輪流（直徑 0.09）。
+//     頂（0.43）在遮雨棚底下（棚的前緣離地約 0.45）；人龍（店門口 0.7）、老闆站位都離拱門 ≥ 0.23——拱門是裝飾，沒有 footprint；
+//   三角旗串：店東牆前緣上方（離地 0.88）拉到噴泉柱頂（0.62），六面（寬 0.12、垂 0.14）、繩子垂 0.06。兩樣都併進院子的 compound（黏土，不多 draw call）
+const ARCH = { r: 0.3, y0: 0.13, ball: 0.09, colors: [C.coral, C.yellow, C.white] };
+function maxYardParts() {
+  const sx = SHOP.x - AT.x, sz = SHOP.z - AT.z, z = sz + SHOP_W / 2 + 0.05;
+  const pts = [[sx - ARCH.r, ARCH.ball / 2], ...Array.from({ length: 11 }, (_, i) => { const a = Math.PI * (1 - i / 10); return [sx + Math.cos(a) * ARCH.r, ARCH.y0 + Math.sin(a) * ARCH.r]; }), [sx + ARCH.r, ARCH.ball / 2]];
+  const arch = pts.map(([x, y], i) => ({ kind: 'sphere', pos: [x, y, z], scale: ARCH.ball, color: ARCH.colors[i % 3], arch: true }));
+  const from = [sx + SHOP_W / 2 + 0.02, 0.88, sz + SHOP_W / 2 - 0.05], to = [FOUNTAIN.x - AT.x, 0.62, FOUNTAIN.z - AT.z];
+  return [...arch, ...bunting(from, to, { n: 6, sag: 0.06, w: 0.12, h: 0.14 })];
+}
 // 噴泉：矮池子、水面、珍奶色的柱子與頂上三顆珍珠（不發光：整局截圖的 draw call ≤ 150）
 const fountainParts = () => [
   { kind: 'cylinder', pos: [0, 0.06, 0], scale: [FOUNTAIN_R * 2, 0.12, FOUNTAIN_R * 2], color: C.curb },
@@ -237,14 +256,14 @@ export function view(lv, flags = {}) {
   if (n < 3) {
     v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: cartParts() };
   } else {
-    const [shop, sign] = storefront(SHOP, SHOP_H, 0.32);
-    v['boba.main'] = { ...shop, labelY: SHOP_H + 0.55, footprint: { w: SHOP_W, d: SHOP_W } };
+    const [shop, sign] = n >= 6 ? storefront(SHOP, SHOP_H, BIG_CUP_H, BIG_CUP_INSET) : storefront(SHOP, SHOP_H, CUP_H);
+    v['boba.main'] = { ...shop, labelY: SHOP_H + (n >= 6 ? 0.85 : 0.55), footprint: { w: SHOP_W, d: SHOP_W } };   // 標籤在大杯子頂上
     v['boba.sign'] = sign;
     if (blown) v['boba.blown'] = blownCart();
   }
-  // 世界珍奶節的氣球併在院子這個零件裡（整局截圖的 draw call ≤ 150）
+  // 世界珍奶節的氣球、MAX 的氣球拱門與三角旗併在院子這個零件裡（整局截圖的 draw call ≤ 150）
   // 只有立牌擋人（SIGN_FOOTPRINT）；院子不是會長的建築（grow false：有了 footprint 也照舊直接出現，Lv6 海岸的氣球不從珍奶格長出來）
-  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: SIGN_FOOTPRINT, grow: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? balloonParts(AT) : [])] };
+  if (n >= 2) v['boba.yard'] = { kind: 'compound', at: AT, footprint: SIGN_FOOTPRINT, grow: false, parts: [...yardParts(n, fresh), ...(n >= 6 ? [...balloonParts(AT), ...maxYardParts()] : [])] };
   if (n >= 4) v['boba.fountain'] = { kind: 'compound', at: FOUNTAIN, footprint: { r: FOUNTAIN_R }, parts: fountainParts() };
   // 老闆日常：站著搖杯（每 3 秒揮一下手）；站位萬一落進別的 footprint，rescue 讓他站到最近的可走點
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
@@ -400,13 +419,14 @@ export const script = {
         B.apply(e), B.focus('boba'), B.together([launch(), B.levelUp('boba')]),
       ];
     },
-    // ◆ 世界珍奶節（原本的 Lv7）：老闆 ！ → 回全景，全島海岸的氣球、繞島的船隊閃白出現 → 101 頭上打「世界珍奶節」→
+    // ◆ 世界珍奶節（原本的 Lv7）：老闆 ！ → 回全景，全島海岸的氣球、繞島的船隊、店頂的大杯子、店門口的氣球拱門與旗串出現 → 101 頭上打「世界珍奶節」→
     //   排隊的觀光客 ♥ → 全景定格 → LEVEL UP
     6(e, s, ctx) {
       const { B } = ctx;
       return [
         B.bubble(owner, '！', 0.8),
-        B.together([B.focus('home', { hold: 1.2 }), B.apply(e, { only: ['boba.yard', 'boba.fleet'] })]),
+        // MAX 的大杯子（boba.sign）跟氣球、拱門、旗串同一拍出現（原本留到最後一拍；拍數不變）
+        B.together([B.focus('home', { hold: 1.2 }), B.apply(e, { only: ['boba.yard', 'boba.sign', 'boba.fleet'] })]),
         B.levelUp('tower', { text: '世界珍奶節' }),   // 鏡頭停在全景時打字（全景裝得下 101 頭頂，§14.4；拉近 101 格會切掉頭頂）
         B.together([B.focus('home', { hold: 1.5 }), ...Array.from({ length: QUEUE_MAX }, (_, i) => B.bubble(tourist(i), '♥', 1.0))]),
         B.apply(e), B.levelUp('boba'),

@@ -65,6 +65,10 @@ export const ITEMS = {
     // 暴風圈到 101 旁邊上空、全島下雨（放下那回合：Lv1）→ 暴風圈還在、雨照下（up[2] 要 age ≥ 1）→ 放晴（彩虹、屋頂換色、堤防）。
     // 沒有 onLevel、沒有 delay：所有檢查都在放下那回合一次做完（不用等雲移站）
     up: { 2: age('typhoon', 1), 3: auto },
+    // 雨一直下（計畫 14 R29，使用者 2026-11-01「我在颱風後放棒球和車站，雨繼續下，但怎麼沒有淹水？」）：
+    // 颱風 Lv1–2（還在下雨）時放下的物品 X，當場套用下面 fx 裡 lock === X 的那一條（燈泡停電、代幣淹水、棒球巨蛋淹水、珍奶攤車被吹走）；
+    // X 剛放下是 Lv1，門檻必成立。鮮奶、晶片、老鼠沒有被鎖的那條，不受影響。放晴（Lv3）之後放就沒事
+    rain: { while: and(min('typhoon', 1), max('typhoon', 2)) },
     fx: [
       { when: and(present('bulb'), max('bulb', 2)), lock: 'bulb', flag: { name: 'blackout' }, story: '全島大停電！' },   // 鮮奶 −1 2026-11-01 拿掉（使用者：不要降級；裁決 R25）
       { when: and(present('token'), max('token', 3)), lock: 'token', flag: { name: 'flooded' }, story: '捷運站變游泳池了' },

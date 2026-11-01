@@ -131,3 +131,8 @@ test('baseball Lv3 (the dome) needs the milk Little League: min(milk, 3) alongsi
   const leaves = c => !c || typeof c !== 'object' ? [] : [c, ...(c.and || []).flatMap(leaves), ...(c.or || []).flatMap(leaves)];
   assert.ok(leaves(ITEMS.baseball.up[3]).some(l => l.minLevel?.[0] === 'milk' && l.minLevel[1] === 3), 'min(milk, 3)');
 });
+// 計畫 14 R29：颱風下雨期間（Lv1–2）之後放下的物品當場套颱風那條檢查——規格宣告 rain.while，引擎通用處理
+test('typhoon rain lasts while it is Lv1..2', () => {
+  assert.deepEqual(ITEMS.typhoon.rain, { while: { and: [minL('typhoon', 1), maxL('typhoon', 2)] } });
+  for (const id of ORDER) if (id !== 'typhoon') assert.ok(!('rain' in ITEMS[id]), `${id} has no rain`);
+});

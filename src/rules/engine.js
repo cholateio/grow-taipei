@@ -81,9 +81,10 @@ function rulesOf(spec) {
     // jumpRaw 留著原條件，升級事件的 via 在決定的那一刻用 satisfiedHelpers 算
     for (let n = 3; n <= it.max; n++) if (it.jump?.[n]) { jump[n] = compile(it.jump[n], ctx); jumpRaw[n] = it.jump[n]; }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
+    const rain = it.rain ? compile(it.rain.while, ctx) : null;
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), rain, onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -193,6 +194,13 @@ function turn(state, id, spec, rules) {
     s.lv[id] = 1; s.age[id] = 0; s.held[id] = 0;
     events.push({ kind: 'placed', item: id, to: 1, story: spec.STORIES.placed[id] });
     for (const a of rules.items[id].fx) applyAction(s, a, 'fx', id, rules, events);
+    // 災害一直有效（計畫 14 R29 雨）：rain.while 成立的物品 w（颱風 Lv1–2，看的是回合開始的級數——成長掃描還沒跑），
+    // 對剛放下的 id 跑 w 的 fx 裡 lock === id 的那幾條（照常測 when），事件照一般 fx 格式（cause w）。物品 id 不寫死，全由規格宣告
+    for (const w of spec.ORDER) {
+      const hz = rules.items[w];
+      if (w === id || !hz.rain?.(s)) continue;
+      for (const a of hz.fx) if (a.lock === id) applyAction(s, a, 'fx', w, rules, events);
+    }
   }
 
   // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5、選擇帶動升級 §3）：每回合每個物品只走一步——在 n−2 且 jump[n]

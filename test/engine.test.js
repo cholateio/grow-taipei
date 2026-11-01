@@ -543,3 +543,62 @@ test('lockFlags(spec) reads the lock ↔ flag pairs from the rules: blackout loc
   assert.equal(lockFlags(real), lockFlags(real), 'computed once per spec');
   assert.deepEqual(lockFlags({ ITEMS: { a: { fx: [{ lock: 'b', flag: { name: 'x' } }] } } }), { b: 'x' });
 });
+
+// 計畫 14 R29 颱風雨一直有效：颱風 Lv1–2（還在下雨）時放下的燈泡／代幣／棒球／珍奶，當場套用颱風那條檢查（鎖＋旗標＋故事句），
+// 排在 placed 之後、成長掃描之前；鮮奶、晶片、老鼠不受影響；颱風 3（放晴）之後放沒事；颱風放下那回合的檢查不重複
+const turnEvents = order => { let s = createState(real), r; for (const id of order) { r = place(s, id, real); s = r.state; } return { r, s }; };
+test('R29 rain: a token placed while the typhoon is Lv1 floods at once (locked, flag flooded, story), before the growth scan, and stays Lv1', () => {
+  const { r, s } = turnEvents(['milk', 'typhoon', 'token']);
+  assert.equal(s.lv.typhoon, 2, 'the typhoon was Lv1 when the token came down (it grows to 2 in this scan)');
+  const fx = r.events.find(e => e.kind === 'fx' && e.lock === 'token');
+  assert.ok(fx, 'a flood lock event');
+  assert.deepEqual({ cause: fx.cause, flag: fx.flag, story: fx.story }, { cause: 'typhoon', flag: { name: 'flooded', value: true }, story: '捷運站變游泳池了' });
+  const kinds = r.events.map(e => e.kind);
+  assert.equal(r.events.indexOf(fx), kinds.indexOf('placed') + 1, 'right after the placed event');
+  assert.ok(!r.events.some((e, i) => e.kind === 'grow' && i < r.events.indexOf(fx)), 'before any growth');
+  assert.equal(s.locked.token, true); assert.equal(s.flags.flooded, true); assert.equal(s.lv.token, 1, 'locked: no growth this turn');
+  assert.equal(r.events.filter(e => e.cause === 'typhoon').length, 1, 'only the check for the placed item');
+});
+test('R29 rain: baseball, boba and bulb placed while the typhoon is Lv2 get dome flood, the blown cart and the blackout', () => {
+  for (const [item, flag, story] of [['baseball', 'domeFlood', '球場變游泳池了'], ['boba', 'cartBlown', '珍奶攤車被吹走了'], ['bulb', 'blackout', '全島大停電！']]) {
+    const { r, s } = turnEvents(['milk', 'typhoon', 'chip', item]);
+    assert.equal(r.events.find(e => e.kind === 'placed').item, item);
+    assert.equal(s.lv.typhoon, 3, `${item}: the typhoon was Lv2 at placement, clears this turn`);
+    const fx = r.events.find(e => e.kind === 'fx' && e.lock === item);
+    assert.ok(fx, `${item}: locked by the rain`);
+    assert.equal(fx.cause, 'typhoon'); assert.equal(fx.flag.name, flag); assert.equal(fx.story, story);
+    assert.equal(r.events.indexOf(fx), 1, `${item}: right after placed`);
+    assert.equal(s.locked[item], true); assert.equal(s.lv[item], 1, `${item}: does not grow once locked`);
+  }
+});
+test('R29 rain: after the sky clears (typhoon Lv3) nothing happens; milk, chip and rat are never hit by the rain', () => {
+  const late = turnEvents(['milk', 'typhoon', 'chip', 'rat', 'boba']);
+  assert.equal(late.r.state.lv.typhoon, 3);
+  assert.ok(!late.r.events.some(e => e.cause === 'typhoon'), 'the typhoon was already Lv3: no blown cart');
+  assert.ok(!late.s.flags.cartBlown && !late.s.locked.boba);
+  for (const item of ['chip', 'rat']) {
+    const { r } = turnEvents(['milk', 'typhoon', item]);
+    assert.ok(!r.events.some(e => e.cause === 'typhoon'), `${item}: no rain check`);
+  }
+  const milk = turnEvents(['chip', 'typhoon', 'milk']);
+  assert.ok(!milk.r.events.some(e => e.cause === 'typhoon'), 'milk: no rain check (the day-off story is only at the typhoon placement)');
+});
+test('R29 rain: the typhoon placement turn checks are unchanged and are not repeated by the rain on later turns', () => {
+  const { r, s } = turnEvents(['milk', 'token', 'typhoon']);
+  assert.deepEqual(r.events.filter(e => e.cause === 'typhoon').map(e => e.flag?.name ?? e.story), ['flooded', '颱風假！小朋友在家看電視']);
+  const next = place(s, 'baseball', real);
+  assert.deepEqual(next.events.filter(e => e.cause === 'typhoon').map(e => e.lock), ['baseball'], 'only the new baseball; the token is not flooded twice');
+});
+test('R29 rain is declared in the spec, not hard-coded: a mini spec with rain on w locks a placed x while w is 1..2', () => {
+  const w = { ORDER: ['w', 'x', 'y'], ITEMS: {
+    w: { name: 'W', max: 3, up: { 2: { always: true }, 3: { always: true } }, rain: { while: { and: [{ minLevel: ['w', 1] }, { maxLevel: ['w', 2] }] } },
+         fx: [{ when: { and: [{ present: 'x' }, { maxLevel: ['x', 1] }] }, lock: 'x', flag: { name: 'wet' }, story: 'x 濕了' }] },
+    x: { name: 'X', max: 2, up: { 2: { always: true } } }, y: { name: 'Y', max: 2, up: { 2: { always: true } } } },
+    AFTER_TURN: [], STORIES: { placed: { w: '', x: '', y: '' }, grow: { w: { 2: '', 3: '' }, x: { 2: '' }, y: { 2: '' } } } };
+  const s = place(createState(w), 'w', w).state;    // w 放下當回合長到 2
+  const r = place(s, 'x', w);
+  assert.equal(r.state.locked.x, true); assert.equal(r.state.lv.x, 1);
+  assert.deepEqual(r.events[1], { kind: 'fx', item: 'w', cause: 'w', lock: 'x', flag: { name: 'wet', value: true }, story: 'x 濕了' });
+  const t = place(place(createState(w), 'w', w).state, 'y', w).state;   // w 3
+  assert.ok(!place(t, 'x', w).state.locked.x, 'w Lv3: no rain');
+});

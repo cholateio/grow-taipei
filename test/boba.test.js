@@ -461,8 +461,10 @@ test('Lv4 with low milk is the sugar rush: the people on the main island ♥', a
   assert.ok(e4, 'boba reaches Lv4'); assert.equal(rest[0]?.flag?.name, 'bobaSugar', 'the sugar flag follows');
   const n = bubblesLog.length, secs = await run([e4, ...rest, { kind: 'settle' }]);
   // 修正批次 max-skip §E：島民只剩一位（代幣 Lv2 起沒有），一起 ♥ 的是主島上在日常裡的人（最多 10 位；珍奶 Lv4 本身的 ♥ 是 2 個）
-  const hearts = bubblesLog.slice(n).filter(b => b.kind === '♥').length;
+  const all = bubblesLog.slice(n).filter(b => b.kind === '♥'), hearts = all.length;
   assert.ok(hearts >= 2 + 5, `${hearts} ♥: the sugar rush has a crowd`);
+  assert.ok(hearts <= 2 + 10, `${hearts} ♥: the sugar rush caps at 10 people (+ the 2 of boba Lv4)`);
+  for (const b of all) assert.ok(MAIN_CELLS.some(c => String(c) === String(cellAt(b.at.x, b.at.z))), `♥ at (${b.at.x.toFixed(2)}, ${b.at.z.toFixed(2)}) on a main-island cell`);
   assert.ok(secs <= 20, `${secs.toFixed(1)} s`);
   assert.equal(show.stage.flags.bobaSugar, true);
 });

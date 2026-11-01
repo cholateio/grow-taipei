@@ -155,7 +155,9 @@ export function view(lv, flags = {}) {
   } else {
     // 大巨蛋（glb）
     const big = n >= 7, m = big ? MODELS.domeB : MODELS.domeA, h = big ? DOME_H.b : DOME_H.a;
-    v['baseball.main'] = { kind: 'glb', at, path: m.path, h, tint: DOME_TINT, labelY: h + 0.35, footprint: DOME_FP };
+    // 標籤：Lv8 頂上坐著大棒球（h − 0.03 到 h + 0.42），h + 0.35 會從球裡冒出來 → h + 0.6（修正輪 1）。擴建的高巨蛋（Lv7 起）就用 h + 0.6：
+    // 只改 Lv8 的話 main 的 spec 在 Lv7 → Lv8 變了，舞台會把巨蛋整個換掉重長一次（◆ Lv8 多一格 stagger，整段 8.13 s 超過 8）
+    v['baseball.main'] = { kind: 'glb', at, path: m.path, h, tint: DOME_TINT, labelY: h + (big ? 0.6 : 0.35), footprint: DOME_FP };
     // 底座、門口、頂縫透光（Lv4 暖黃；演唱會起跟應援棒、LED 帶同一個霓虹藍——一種發光色一個 draw call，整局截圖 ≤ 150）、
     // 應援棒（Lv5）、外牆 LED 帶（Lv7）：一個零件
     const deco = [

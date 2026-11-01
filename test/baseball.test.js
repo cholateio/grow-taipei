@@ -115,6 +115,10 @@ test('MAX Lv8: a giant baseball on the roof, four stadium light towers with warm
   assert.ok(flags.length >= 20 && new Set(flags.map(p => p.color)).size >= 5, `${flags.length} pennants`);
   for (const f of flags) assert.ok((f.pos[0] / 1.09) ** 2 + (f.pos[2] / 0.945) ** 2 > 1 && (f.pos[0] / 1.25) ** 2 + (f.pos[2] / 1.1) ** 2 < 1, 'hung around the dome wall');
   assert.ok(flags.every(f => f.pos[1] > 0.25 && f.pos[1] < 0.6), 'along the lower edge of the dome');
+  // 標籤（LEVEL UP、泡泡掛在 main 的 labelY）在大棒球頂上，不從球裡冒出來（修正輪 1 審稿 Minor：h + 0.35 = 1.55 落在球裡 1.17–1.62）
+  const top = ball[0].pos[1] + D / 2;
+  assert.ok(views[8]['baseball.main'].labelY > top, `Lv8 labelY ${views[8]['baseball.main'].labelY} above the ball top ${top.toFixed(2)}`);
+  assert.deepEqual(views[7]['baseball.main'], views[8]['baseball.main'], 'the dome itself is the same spec at Lv7 and Lv8 (not replaced and regrown at Lv8)');
 });
 test('MAX Lv8 towers: outside the padded dome, each pole its own small footprint, clear of every roster spot, the lawn walk, entries and the concert sticks', async () => {
   const { PAD } = await import('../src/show/nav.js'), { growsOn } = await import('../src/actors/stage.js'), d8 = views[8]['baseball.deco'];
@@ -128,6 +132,9 @@ test('MAX Lv8 towers: outside the padded dome, each pole its own small footprint
   for (const f of fp) {
     const x = AT.x + f.x, z = AT.z + f.z;
     assert.ok((f.x / (1.15 + PAD)) ** 2 + (f.z / (0.95 + PAD)) ** 2 > 1, 'outside the padded dome');
+    // 燈柱外擴後（r + PAD）跟巨蛋外擴後的橢圓相連——等於巨蛋多一個凸塊，柱子和巨蛋之間沒有夾縫讓人卡進去（修正輪 1 審稿 Minor）
+    const toDome = Math.min(...Array.from({ length: 360 }, (_, k) => { const a = k / 180 * Math.PI; return Math.hypot(f.x - Math.cos(a) * (1.15 + PAD), f.z - Math.sin(a) * (0.95 + PAD)); }));
+    assert.ok(toDome < f.r + PAD, `the padded pole touches the padded dome (${toDome.toFixed(3)} < ${(f.r + PAD).toFixed(2)}): a bump on the dome, no crevice`);
     assert.deepEqual(cellAt(x, z), CELL);
     for (const s of spots) assert.ok(Math.hypot(s.x - x, s.z - z) >= R0, `spot (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) clear of the tower`);
     assert.ok(Math.hypot(baseball.LAWN.x - x, baseball.LAWN.z - z) >= baseball.LAWN_R + 0.18, 'outside the lawn walk');

@@ -77,13 +77,14 @@ function defaults(e) {
   return [B.apply(e, { blink: false })];
 }
 
-// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換。
+// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換；
+// 別的字（101 頭上的「世界珍奶節」這種標題字，不是升級）也不換——修正批次 trim §A：珍奶 4 → 6 合成演 ◆6 之後它才會落在跳級裡。
 // 列車進站拍（trainStop）的 during 也換：拍上的 during 就是它裡面依序演的那個陣列，就地換掉元素（燈泡 Lv7 的 LEVEL UP 在列車停靠的 during 裡）
 function withTwice(beats) {
   return beats.map(b => {
     if (b.kind === 'together' && b.beats) { const sub = withTwice(b.beats); return sub.some((x, k) => x !== b.beats[k]) ? together(sub) : b; }
     if (b.kind === 'trainStop' && Array.isArray(b.during)) { withTwice(b.during).forEach((x, k) => { b.during[k] = x; }); return b; }
-    return b.kind === 'levelUp' && !b.down && !b.twice ? B.levelUp(b.target, { text: b.text, twice: true }) : b;
+    return b.kind === 'levelUp' && !b.down && !b.twice && b.text === 'LEVEL UP' ? B.levelUp(b.target, { text: b.text, twice: true }) : b;
   });
 }
 

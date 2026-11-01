@@ -7,13 +7,12 @@ import { C } from './palette.js';
 import { builders as ratBuilders } from './rat.js';
 import { kidAccessory } from './milk.js';
 import * as spec from '../rules/spec.js';
-import { DOCK, isletShop } from './boba.js';
 import { stormy } from './world.js';
 import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export const id = 'satellites';
-const TOP_SAT = satTop(), GOLD = 0xe8c547;
-// 函數宣告（不是 const）：boba.js 匯入 island、這裡又匯入 boba 的 DOCK（循環）——宣告會提升，誰先載入都叫得到（不碰本檔的 const）
+const GOLD = 0xe8c547;
+// 函數宣告（不是 const）：別的模組可能在本檔的 const 初始化之前就叫到它（以前 boba.js 與本檔互相匯入；宣告會提升，誰先載入都叫得到）
 export function island(kind) { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: satTop(), z: c.z }; }
 // 衛星島面高度 TOP_SAT 的唯一來源：也是函數宣告（island 在本檔的 const 初始化之前就可能被叫到，碰 TOP_SAT 會 TDZ）
 function satTop() { return TOP - 0.2; }
@@ -28,8 +27,8 @@ const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 // 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
 export const POWERED = 7;
 export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout;
-// 珍奶連鎖店（物品 v2 §4.7 Lv5）：小森林島開分店、觀光船多兩艘
-export const BRANCH = 5;
+// 珍奶 Lv5（外送無人機）：海上的觀光船多兩艘。修正批次 trim §A：小森林島分店、茶屋、觀光客，燈塔島棧橋全砍了，只留海上的船
+const BOBA_BOATS = 5;
 
 export function view(lv, flags) {
   const v = {}, storm = stormy(lv), on = powered(lv, flags);
@@ -47,11 +46,6 @@ export function view(lv, flags) {
   // 物品 v2：鮮奶 Lv3 才有小學生（Lv2 是早餐店），配件跟鮮奶格的小孩同一張表
   if (lv.token >= 8 && lv.milk >= 3) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: kidAccessory(lv.milk), home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
-  }
-  // 小森林島的觀光客跟著珍奶分店（物品 v2：Lv5 連鎖店）一起來：珍奶 Lv5 的劇本鏡頭移過去時閃白出現（§8.7）
-  if (lv.boba >= BRANCH) {
-    const f = island('forest'), yaw = Math.atan2(-f.x, -f.z);   // 面向主島拍照
-    v['sat.forest'] = { kind: 'roster', at: f, n: 2, accessory: 'suitcase', home: { kind: 'stand', spots: [{ ...at('forest', 0.3, 1.1), yaw }, { ...at('forest', -0.2, 1.25), yaw }] } };
   }
   // 石堆上的老鼠；賽博最終型態（老鼠 Lv4，10 隻軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
   if (lv.rat >= 3 && !(lv.rat >= 4 && flags.ratBranch === 'cyber') && flags.epilogue !== 'alien') v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
@@ -77,50 +71,37 @@ export function view(lv, flags) {
   ] : [{ kind: 'rbox', pos: [0.2, 0.37, 0.2], scale: [0.58, 0.08, 0.43], color: GOLD }])] };
   Object.assign(v, stages(lv, flags, on));
   // low: false——?quality=low（手機）不畫海上的小船（點綴，一艘一個 draw call，裁決 R18）
-  if (!storm) v['sat.boats'] = { kind: 'boats', at: { x: 0, y: WATER_Y - 0.02, z: 0 }, n: 2 + (lv.boba >= 2 ? 2 : 0) + (lv.boba >= BRANCH ? 2 : 0), low: false };
+  if (!storm) v['sat.boats'] = { kind: 'boats', at: { x: 0, y: WATER_Y - 0.02, z: 0 }, n: 2 + (lv.boba >= 2 ? 2 : 0) + (lv.boba >= BOBA_BOATS ? 2 : 0), low: false };
   return v;
 }
 
 // ── 離島三段（計畫 6 §7）：每座島 = 空島（island.js 的 kit）→ 第一段 → 第二段，觸發固定照表、兩段各自獨立（亂放時第二段可以先出現）。
 // 零件：一段一個零件 sat.<島>.stage1／stage2（裁決 R7：下一段出現時已經站著的東西不重閃）。同一級一起出現的基座跟第一段併在一起：
-// 階梯丘的營區（晶片 Lv3）在 sat.pyramid.stage1——基座手機照畫，點綴零件標 low: false（與 stage: 1／2）。小森林的分店（珍奶 Lv5）原本也併在
-// sat.forest.stage1，計畫 11 §設計 3 改成主島珍奶店的 glb，自己兩個零件 sat.forest.shop／sign（glb 不能併進 compound）。
+// 階梯丘的營區（晶片 Lv3）在 sat.pyramid.stage1——基座手機照畫，點綴零件標 low: false（與 stage: 1／2）。
+// 修正批次 trim §A（使用者 2026-11-01「離島珍奶店全砍」）：小森林的分店（sat.forest.shop／sign）與第一段茶屋桌椅、燈塔島第二段棧橋（都只為珍奶 Lv5 存在）
+// 拿掉——燈塔島只剩第一段（燈泡 Lv7 小屋）、小森林只剩第二段（燈泡 Lv9 燈籠串，鍵名照舊 sat.forest.stage2；STAGE 表第一段留 null）。
 // 寶箱島的海鷗是自己的 sat.chest.stage1（不併進寶箱：寶箱開箱時才變）。會動的段：鞦韆（架子＋座位一個 mesh）、旋轉木馬、金幣，
 // 第二支風機的轉子在 sat.windmill 裡（rig：幾組各繞 pivot 動的零件併成一個 mesh）。
 // footprint: false（衛星島沒有走路格）；零件位置都相對島心（at = island(kind)）。
 // 每段閃白出現由舞台的 apply 管（那一級的劇本鏡頭在這座島就跟著閃白，否則回合末）。各島已經有的東西與要讓開的站位：
-//   燈塔島：塔身半徑 0.25、守塔人繞 0.6 一圈、東南一棵樹 (0.9, 0.5)、西南旗艦店 (-1.15, 0.85)、觀光客 (-1.3, 1.5)／(-0.95, 1.6)、小船停在 boba.DOCK
+//   燈塔島：塔身半徑 0.25、守塔人繞 0.6 一圈、東南一棵樹 (0.9, 0.5)
 //   風車島：風機 (0, 0)、開關箱 (0.3, 0.25)、電工散步 (0.5, 0.75) r 0.35、小屋 (-0.7, 0.4)、支線停在東邊 (1.0, 0)、電纜往東南下水
 //   石堆島：四顆石頭（最大的 (-0.4, 0.3)）、兩隻老鼠站在兩顆大石頭頂上、綠光圈半徑 1.1
 //   階梯丘：五層梯田（最上層半徑 0.27、頂 0.9；營區在頂上）
 //   遊樂場島：溜滑梯 (0.3, 0) 往南、樹 (-0.7, 0.3)、小孩繞 (-0.2, 0.3) r 0.5、支線停在西南 (-0.5, 0.87)
-//   小森林：五棵樹、分店 (0.93, 1.03)（店身 0.65 見方）、觀光客 (0.3, 1.1)／(-0.2, 1.25)
+//   小森林：五棵樹（原本的分店、觀光客拿掉了，trim §A）
 //   寶箱島：寶箱 (0.2, 0.2)、樹 (-0.6, -0.3)
 // draw call：每個零件黏土一個 + 每種發光色一個；每座島的衛星零件 ≤ 6（satellites.test）。全 MAX 一般畫質截圖（計畫 6 任務 6 修正第 1 輪實測）：
 //   wide-end 249 → 245、end 246 → 243、alien 208 → 205（手機 143／137 不變）；省下來的是營區／分店併第一段、鞦韆與兩支轉子各一個 mesh（裁決 R7：≤ 246）。
+//   trim §A：分店 glb、杯子、茶屋桌椅、棧橋拿掉（衛星島一般畫質 −4、手機 −1）。
 //   low: false——?quality=low（手機）不畫點綴：全 MAX 的手機截圖本來就 143（≤ 150），十幾個點綴放不下（併進黏土也一段一個）
 // tagAlong：跟同一拍第一個閃的零件一起閃、不多佔 stagger（beats.apply）——加了點綴，劇本與整局的時間一格不變。
-//   含基座的第一段（階梯丘）不標：營區是那一級的主角，跟原本的 sat.camp 一樣自己佔一格（小森林的分店 sat.forest.shop 自己佔一格，第一段 tagAlong）。
-//   計畫 11 §設計 3：分店 glb＋杯子招牌 +2（wide-end 加回到 248：Roadster 尾燈不再發光省 4，含尾聲紅色跑車）
-export const STAGE = { lighthouse: [['bulb', 7], ['boba', 5]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
-  playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6]] };
+//   含基座的第一段（階梯丘）不標：營區是那一級的主角，跟原本的 sat.camp 一樣自己佔一格。
+export const STAGE = { lighthouse: [['bulb', 7]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
+  playground: [['token', 8], ['milk', 10]], forest: [null, ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;
 // 第二支風機：塔頂 (-0.55, 1.2, -0.9) 相對島心；轉子在塔頂前 0.1，換成相對主轉子（at('windmill', 0, 0.12, 1.6)）的位置
 const TWIN_HUB = [-0.55, 1.2, -0.9], TWIN = [TWIN_HUB[0], TWIN_HUB[1] - 1.6, TWIN_HUB[2] + 0.1 - 0.12];
-// 棧橋：燈塔島西南岸朝小船停的地方（boba.DOCK）伸出去、靠在小船旁邊。沿 d（島心 → DOCK）量的 s：DOCK 在 s 2.56，
-// 這條線上的海岸（六角島緣）在 s ≈ 2.3；板面 s 2.2–2.85——一小段搭在路緣上、大部分伸在水面上，遠端過了船身中段。
-// 往側邊（n 的負向）讓開 LAT 0.68：小船最後一段航線（船寬 0.71、長 1.3，Boat.glb 量的）掃過的範圍離板面 ≥ 0.09，
-// 停好時船側離板面 ≈ 0.17（看得出靠在棧橋旁）；觀光客在 n 的正向那側、離板面 ≥ 0.6。
-// 板面頂在島面上 0.02（蓋在路緣上），柱子從水面下插上來
-// （第一次用到才算：boba.js 先載入時，本檔先跑、DOCK 還沒初始化）
-let pier = null;
-const PIER = () => pier ??= (() => {
-  const c = island('lighthouse'), dx = DOCK.x - c.x, dz = DOCK.z - c.z, m = Math.hypot(dx, dz), d = [dx / m, dz / m], n = [d[1], -d[0]], LAT = -0.68;
-  const pt = (s, lat = LAT) => [d[0] * s + n[0] * lat, d[1] * s + n[1] * lat];
-  return { pt, yaw: Math.atan2(d[0], d[1]), d, n, LAT };
-})();
-export const PIER_SPAN = [2.2, 2.85];   // 板面沿 d 的起訖（相對島心；測試量海岸與小船用）
-export const pierFrame = () => PIER();
 // 寶箱島 1：一隻海鷗停在寶箱蓋上（全 MAX 開箱後蓋子掀起來，改站到箱子東邊的草地上）
 function gull(open) {
   const g = open ? [0.72, 0, 0.42] : [0.3, 0.41, 0.25];
@@ -143,19 +124,12 @@ function stages(lv, flags, on) {
     if (has(kind, i)) v[`sat.${kind}.stage${i + 1}`] = { kind: 'compound', at: island(kind), footprint: false, ...(base.length ? {} : { tagAlong: true, low: false }), parts: [...base, ...deco(i + 1, parts())] };
   };
   const anim = (kind, i, part) => { if (has(kind, i)) v[`sat.${kind}.stage${i + 1}`] = { at: island(kind), footprint: false, tagAlong: true, low: false, ...part }; };
-  // 燈塔島 1：守塔人小屋——白牆紅頂，在島的東北（守塔人的圈外、樹的北邊）；2：棧橋碼頭——板面一條、橫板四片、柱子四根
-  const P = PIER(), [s0, s1] = PIER_SPAN, deck = (s, y, sc, color) => { const [x, z] = P.pt(s); return { kind: 'box', pos: [x, y, z], scale: sc, rot: [0, P.yaw, 0], color }; };
-  const sea = WATER_Y - TOP_SAT - 0.05;   // 柱腳在水面下 0.05
+  // 燈塔島 1：守塔人小屋——白牆紅頂，在島的東北（守塔人的圈外、樹的北邊）（第二段棧橋碼頭是珍奶渡船的，trim §A 拿掉）
   put('lighthouse', 0, () => [
     { kind: 'box', pos: [0.7, 0.15, -1.15], scale: [0.42, 0.3, 0.32], color: C.cream },
     { kind: 'hip', pos: [0.7, 0.38, -1.15], scale: [0.5, 0.18, 0.4], color: C.coral },
     { kind: 'box', pos: [0.7, 0.09, -0.985], scale: [0.1, 0.18, 0.02], color: C.window },
     { kind: 'cylinder', pos: [0.84, 0.45, -1.2], scale: [0.06, 0.14, 0.06], color: C.wall },
-  ]);
-  put('lighthouse', 1, () => [
-    deck((s0 + s1) / 2, 0.0, [0.24, 0.04, s1 - s0], C.wood),   // 頂在 +0.02；第二段的第一個零件是板面（測試量海岸與小船）
-    ...[2.32, 2.47, 2.62, 2.77].map(s => deck(s, 0.025, [0.3, 0.02, 0.05], 0xb48560)),
-    ...[[2.45, 0.1], [2.45, -0.1], [2.8, 0.1], [2.8, -0.1]].map(([s, l]) => { const [x, z] = P.pt(s, P.LAT + l); return { kind: 'cylinder', pos: [x, sea / 2, z], scale: [0.05, -sea, 0.05], color: C.wood }; }),
   ]);
   // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的 twin 轉子；塔身是這個零件的第一個）＋電池屋（西邊，通電時亮一條綠燈）；
   // 2：變電小站——水泥墊、變壓箱、兩個礙子（霓虹藍，同 chip.cable 的光）
@@ -213,18 +187,10 @@ function stages(lv, flags, on) {
       { kind: 'rbox', pos: [x, 0.2, z], scale: [0.06, 0.08, 0.14], rot: [0, -a, 0], color: [C.white, C.blue, C.yellow, C.wall][i] },
     ]; }),
   ] });
-  // 小森林：分店（珍奶 Lv5）是主島珍奶店那款店面＋屋頂杯子招牌（計畫 11 §設計 3：原本是併在第一段裡的三角屋頂小屋）——
-  // glb 不能併進 compound，自己兩個零件 sat.forest.shop／sign（店會長出來、手機照畫；杯子手機不畫，boba.js isletShop）；
-  // 店挪到 (0.93, 1.03)（店身 0.65 見方，比原本的小屋大）：北緣離 (0.7, 0.4) 那棵樹的樹冠（半徑 ≈ 0.3）、西緣離觀光客都 ≥ 0.3，東南角在步道環內（六角半徑 2.08 < 2.11）；
-  // 1：茶屋桌椅——分店北邊兩張圓桌、四張小凳（第一段只剩點綴：tagAlong、手機不畫）；
+  // 小森林（trim §A：第一段的珍奶分店與茶屋桌椅拿掉，島上留原本的五棵樹）；
   // 2：燈籠串——兩棵樹之間（西南那棵到東邊那棵）一條往鏡頭側彎的繩子掛六顆燈籠（暖黃發光；大停電時暗）
   const lit = !flags.blackout, bez = k => { const P0 = [-0.45, 0.62, 0.62], C1 = [0.05, 0.5, 0.95], P2 = [0.55, 0.62, 0.55], u = 1 - k; return P0.map((a, j) => u * u * a + 2 * u * k * C1[j] + k * k * P2[j]); };
   const lamps = Array.from({ length: 6 }, (_, i) => bez((i + 0.5) / 6)), knots = Array.from({ length: 7 }, (_, i) => bez(i / 6));
-  if (has('forest', 0)) [v['sat.forest.shop'], v['sat.forest.sign']] = isletShop(at('forest', 0.93, 1.03));
-  put('forest', 0, () => [0, 1].flatMap(i => { const x = 1.25 + i * 0.2, z = 0.2 - i * 0.5; return [   // 六角半徑 ≤ 1.9：離島緣的步道環（2.11 起）遠
-    { kind: 'cylinder', pos: [x, 0.17, z], scale: [0.24, 0.025, 0.24], color: C.wood }, { kind: 'cylinder', pos: [x, 0.08, z], scale: [0.04, 0.16, 0.04], color: C.wood },
-    { kind: 'cylinder', pos: [x - 0.18, 0.06, z + 0.05], scale: [0.1, 0.12, 0.1], color: C.coral }, { kind: 'cylinder', pos: [x + 0.18, 0.06, z - 0.05], scale: [0.1, 0.12, 0.1], color: C.coral },
-  ]; }));
   put('forest', 1, () => [
     ...knots.slice(1).map((b, i) => { const a = knots[i], dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], l = Math.hypot(dx, dy, dz);
       return { kind: 'box', pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2 + 0.06, (a[2] + b[2]) / 2], scale: [0.012, 0.012, l], rot: [-Math.asin(dy / l), Math.atan2(dx, dz), 0], color: C.ink }; }),

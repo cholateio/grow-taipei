@@ -34,7 +34,7 @@ test('lighthouse is dark until bulb 7 (no light, no beam), lit and sweeping from
   for (const bulb of [7, 9]) { const v = sat.view(lv({ bulb }), {}); assert.ok(v['sat.lighthouse'].parts.some(p => p.glow)); assert.equal(v['sat.beam'].kind, 'beam'); }
   assert.equal(sat.view(lv({ bulb: 7 }), { blackout: true })['sat.lighthouse'], undefined);
 });
-test('playground kids come with the shuttle and need a school; forest tourists and the shop need the chain', () => {
+test('playground kids come with the shuttle and need a school; no boba tourists or shop on the forest islet (trim §A)', () => {
   // 小孩是坐接駁車（物品 v2：代幣 Lv8）來的：代幣 Lv8 的劇本 hold 住名冊、在車旁 spawn
   assert.equal(sat.view(lv({ token: 7, milk: 3 }), {})['sat.playground'], undefined);
   assert.equal(sat.view(lv({ token: 8, milk: 1 }), {})['sat.playground'], undefined);
@@ -44,9 +44,9 @@ test('playground kids come with the shuttle and need a school; forest tourists a
   assert.ok(Math.hypot(kids.home.at.x - c.x, kids.home.at.z - c.z) < 0.5, 'wanders on the playground island');
   // 配件跟鮮奶格的小孩一樣（物品 v2 §4.2：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了）
   assert.deepEqual([3, 5, 6, 7, 8, 9, 10].map(n => sat.view(lv({ token: 8, milk: n }), {})['sat.playground'].accessory), ['none', 'none', 'cap', 'mortar', 'coat', 'none', 'none']);
-  // 物品 v2：珍奶 Lv5 連鎖店（Lv4 是噴泉廣場）
-  assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest'], undefined); assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest'].n, 2); assert.equal(sat.view(lv({ boba: 4 }), {})['sat.forest.stage1'], undefined);
-  assert.equal(sat.view(lv({ boba: 5 }), {})['sat.forest.stage1'].kind, 'compound');
+  // 修正批次 trim §A（使用者 2026-11-01「離島珍奶店全砍」）：珍奶 Lv5 改成主島的外送無人機——小森林島沒有觀光客、分店、茶屋桌椅
+  for (let b = 0; b <= 6; b++) for (const k of ['sat.forest', 'sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1']) assert.equal(sat.view(lv({ boba: b, bulb: 9 }), {})[k], undefined, `boba ${b} ${k}`);
+  assert.equal('BRANCH' in sat, false);
 });
 test('camp at chip 3, rocks get rats at rat 3 (not alongside the cyber army), chest opens only when everything is MAX', () => {
   assert.equal(sat.view(lv({ chip: 2 }), {})['sat.pyramid.stage1'], undefined); assert.ok(sat.view(lv({ chip: 3 }), {})['sat.pyramid.stage1'].parts.some(p => p.glow));
@@ -63,8 +63,7 @@ test('every satellite part sits on its island (within R of the island centre) ex
   const centres = SATELLITES.map(s => axialToWorld(s.q, s.r));
   for (const v of [sat.view(allMax, {}), sat.view(lv({ token: 4, milk: 5, boba: 5, chip: 3, rat: 3, bulb: 7 }), {})]) for (const [k, s] of Object.entries(v)) {
     if (k === 'sat.boats') continue;
-    // 棧橋（燈塔島第二段）伸到海上：離島三段的測試另外量海岸與小船
-    const pts = [s.at, ...(s.parts ?? []).filter(() => k !== 'sat.lighthouse.stage2').map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
+    const pts = [s.at, ...(s.parts ?? []).map(p => ({ x: s.at.x + p.pos[0], z: s.at.z + p.pos[2] })), ...(s.stand ?? []), ...(Array.isArray(s.path) ? s.path : []), ...(s.spots ?? []), ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(centres.some(c => Math.hypot(p.x - c.x, p.z - c.z) < R), `${k} ${JSON.stringify(p)}`);
   }
 });
@@ -75,7 +74,7 @@ test('satellites reset to the opening state (review focus 4)', async () => {
   let s = engine.createState(spec);
   for (const id of stats(enumerate(spec), spec).full[0].order) { const r = engine.place(s, id, spec); s = r.state; for (const e of r.events) stage.apply(e); }
   for (let i = 0; i < spec.CLOSING_TURNS; i++) { const r = engine.advance(s, spec); s = r.state; for (const e of r.events) stage.apply(e); }
-  assert.ok(stage.partKeys().includes('sat.forest.stage1'));
+  assert.ok(stage.partKeys().includes('sat.forest.stage2'));
   stage.reset();
   assert.deepEqual(stage.partKeys().filter(k => k.startsWith('sat.')).sort(), ['sat.boats', 'sat.chest', 'sat.windmill']);
 });
@@ -87,7 +86,7 @@ import { cellAt } from '../src/scene/hex.js';
 import { createNav } from '../src/show/nav.js';
 test('satellite rosters live off the main island: no entry declared, nothing for the entry check', () => {
   const nav = createNav();
-  for (const extra of [{ token: 8, milk: 3 }, { token: 6, milk: 5, boba: 5 }, allMax]) {
+  for (const extra of [{ token: 8, milk: 3 }, { bulb: 7 }, allMax]) {   // trim §A：小森林的珍奶觀光客拿掉了，改驗燈塔島的守塔人
     const v = sat.view(lv(extra), {}), rosters = Object.entries(v).filter(([, d]) => d.kind === 'roster');
     assert.ok(rosters.length, JSON.stringify(extra));
     for (const [k, d] of rosters) {
@@ -169,7 +168,7 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
   // 落在燈泡 7 以後的跳級只有 6 → 8（晶片 ≥4）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決 2026-10-29），電工照樣搭車去開風電、燈塔亮
   assert.deepEqual(Object.keys(spec.ITEMS.bulb.jump ?? {}).filter(n => +n >= 7), ['8'], 'the only jump past bulb 6 is 6 → 8');
   assert.equal((await import('../src/actors/bulb.js')).script.grow[7].key, true, 'bulb 7 is a key level: the merged 6 → 8 plays it');
-  for (let b = 0; b <= 6; b++) { const v = sat.view(lv({ boba: b }), {}); assert.equal(!!v['sat.forest'] && !!v['sat.forest.stage1'], b >= 5, `boba ${b}`); }
+  for (let b = 0; b <= 6; b++) { const v = sat.view(lv({ boba: b }), {}); assert.ok(!v['sat.forest'] && !v['sat.forest.stage1'], `boba ${b}: nothing of boba on the forest islet (trim §A)`); }
   for (const [r, branch, ring] of [[3, 'alien', false], [4, 'alien', true], [4, 'cyber', false], [4, undefined, false]]) assert.equal(!!sat.view(lv({ rat: r }), { ratBranch: branch })['sat.rocksRing'], ring, `rat ${r} ${branch}`);
 });
 
@@ -200,9 +199,10 @@ test('epilogue alien: sat.rocksRing becomes the landing pad (brighter ring + 3 l
 // 石堆島的第二段就是外星的綠光圈（現有 sat.rocksRing），賽博沒有第二段
 const stageOn = (v, isl, n) => !!v[`sat.${isl}.stage${n}`];
 const stagePartOf = (v, isl, n) => v[`sat.${isl}.stage${n}`];
+// 修正批次 trim §A：燈塔島第二段（珍奶棧橋）、小森林第一段（珍奶茶屋桌椅）拿掉——null 的段任何等級都不出現
 const STAGES = {
-  lighthouse: [['bulb', 7], ['boba', 5]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3], null],
-  pyramid: [['chip', 3], ['chip', 9]], playground: [['token', 8], ['milk', 10]], forest: [['boba', 5], ['bulb', 9]], chest: [['baseball', 6], 'allMax'],
+  lighthouse: [['bulb', 7], null], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3], null],
+  pyramid: [['chip', 3], ['chip', 9]], playground: [['token', 8], ['milk', 10]], forest: [null, ['bulb', 9]], chest: [['baseball', 6], 'allMax'],
 };
 test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 levels, independently (stage 2 alone when its trigger comes first), none before', () => {
   for (const [isl, stages] of Object.entries(STAGES)) stages.forEach((trig, i) => {
@@ -217,8 +217,8 @@ test('each islet: stage-1 and stage-2 parts appear exactly at the design §7 lev
     }
   });
   // 兩段各自獨立：只滿足第二段的觸發時只有第二段
-  for (const [isl, extra] of [['lighthouse', { boba: 5 }], ['windmill', { chip: 6 }], ['pyramid', { chip: 9 }], ['playground', { milk: 10 }], ['forest', { bulb: 9 }]]) {
-    const v = sat.view(lv(extra), {}), [[i1, n1]] = STAGES[isl];
+  for (const [isl, extra] of [['windmill', { chip: 6 }], ['pyramid', { chip: 9 }], ['playground', { milk: 10 }], ['forest', { bulb: 9 }]]) {
+    const v = sat.view(lv(extra), {}), [i1, n1] = STAGES[isl][0] ?? [null, Infinity];
     if ((extra[i1] ?? 0) >= n1) { assert.ok(stageOn(v, isl, 1)); continue; }   // 同一個物品（階梯丘）：第二段必然在第一段之後
     assert.ok(stageOn(v, isl, 2) && !stageOn(v, isl, 1), `${isl}: stage 2 alone at ${JSON.stringify(extra)}`);
   }
@@ -255,11 +255,8 @@ test('islet stages that move: the swing swings, the carousel turns, the second t
   assert.ok(Math.hypot(w.at.x + w.twin[0] - (sat.island('windmill').x + top.pos[0]), w.at.z + w.twin[2] - (sat.island('windmill').z + top.pos[2] + 0.1)) < 1e-9 && Math.abs(w.at.y + w.twin[1] - (sat.island('windmill').y + 1.2)) < 1e-9, 'twin hub on the stage-1 tower');
 });
 
-// 位置：每段零件在自己的島上（離島心 ≤ ISLET_R；棧橋伸到岸外一點、仍在 R 以內），離守塔人的圈、觀光客、小孩、老鼠、電工的站位都 ≥ 0.3；
-// draw call（指 sat.* 零件，不含 boba.flagship 等珍奶自己的零件）：每座島上衛星零件（compound 數材質、builders 實際建出來數 mesh；名冊不算、老鼠一隻 1）≤ 6
-import { TOURIST_SPOTS, DOCK, FERRY_PATH, FERRY_H } from '../src/actors/boba.js';
-import { readFileSync } from 'node:fs';
-import { TOP } from '../src/scene/hex.js';
+// 位置：每段零件在自己的島上（離島心 ≤ ISLET_R），離守塔人的圈、小孩、老鼠、電工的站位都 ≥ 0.3；
+// draw call：每座島上衛星零件（compound 數材質、builders 實際建出來數 mesh；名冊不算、老鼠一隻 1）≤ 6
 import { ISLAND_HOME, ISLAND_R } from '../src/actors/bulb.js';
 // 六角半徑（pointy-top：|x| 換算成外接半徑、|z| + |x|/√3 取大）：島緣的步道環從 RING_R − 0.14 = 2.11 起
 const hexR = (dx, dz) => Math.max(Math.abs(dx) * 2 / Math.sqrt(3), Math.abs(dz) + Math.abs(dx) / Math.sqrt(3)), ISLET_R = 2.0;
@@ -273,7 +270,6 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
       if (d.home.kind === 'wander') for (const c of [].concat(d.home.at)) out.push({ ...c, r: d.home.r });
       for (const s of d.home.spots ?? []) out.push({ ...s, r: 0 });
     } else if (d.kind === 'rats') for (const s of d.spots) out.push({ ...s, r: 0 });
-    for (const s of TOURIST_SPOTS) out.push({ ...s, r: 0 });
     out.push({ ...ISLAND_HOME, r: ISLAND_R });
     return out;
   };
@@ -281,10 +277,10 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
     const spots = keep(v);
     for (const [k, d] of Object.entries(v)) {
       if (!/\.stage\d$/.test(k)) continue;
-      const c = centreOf(k), pier = k === 'sat.lighthouse.stage2';
+      const c = centreOf(k);
       for (const p of d.parts ?? [d]) {
-        const x = d.at.x + (p.pos?.[0] ?? 0), z = d.at.z + (p.pos?.[2] ?? 0), r = pier ? Math.hypot(x - c.x, z - c.z) : hexR(x - c.x, z - c.z);
-        assert.ok(r <= (pier ? R + 0.5 : ISLET_R), `${k} part at ${pier ? 'r' : 'hex r'} ${r.toFixed(2)}`);
+        const x = d.at.x + (p.pos?.[0] ?? 0), z = d.at.z + (p.pos?.[2] ?? 0), r = hexR(x - c.x, z - c.z);
+        assert.ok(r <= ISLET_R, `${k} part at hex r ${r.toFixed(2)}`);
         for (const s of spots) { const g = Math.abs(Math.hypot(x - s.x, z - s.z) - s.r); assert.ok(g >= 0.3, `${k} part (${x.toFixed(2)}, ${z.toFixed(2)}) ${g.toFixed(2)} from a spot (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) r ${s.r}`); }
       }
     }
@@ -329,39 +325,6 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
   assert.equal(durOf([{ key: 'sat.x.stage1', tagAlong: true }, { key: 'sat.y.stage1', tagAlong: true }]).d, durOf([{ key: 'a' }]).d, 'only stages: one blink');
 });
 
-// 棧橋（審查 fix round 1）：大部分伸在海上（六角島緣外）、板面頂在島面之上（蓋在路緣上）、遠端過了停好的小船船身中段、
-// 船側離板面 ≤ 0.2（靠在旁邊）；小船最後一段航線掃過的範圍不碰板面。船的尺寸照 Boat.glb 的 bounding box × FERRY_H 的縮放量
-test('the lighthouse pier reaches out over the sea beside the moored ferry, on top of the curb, clear of the ferry route', () => {
-  const pier = sat.view(lv({ boba: 5, bulb: 7 }), {})['sat.lighthouse.stage2'], c = sat.island('lighthouse'), { d, n, LAT } = sat.pierFrame(), [s0, s1] = sat.PIER_SPAN;
-  const deck = pier.parts[0], len = deck.scale[2], half = deck.scale[0] / 2;
-  assert.ok(Math.abs(Math.hypot(deck.pos[0], deck.pos[2]) - Math.hypot(...[d[0] * (s0 + s1) / 2 + n[0] * LAT, d[1] * (s0 + s1) / 2 + n[1] * LAT])) < 1e-9 && Math.abs(len - (s1 - s0)) < 1e-9, 'parts[0] is the deck');
-  assert.ok(pier.at.y + deck.pos[1] + deck.scale[1] / 2 >= TOP - 0.2 + 0.01, 'deck top above the island surface (on the curb)');
-  // 海岸：沿板面中心線取樣，落在六角形外（|x| > 內切半徑 或 |z| + |x|/√3 > R）的比例
-  const inside = (x, z) => { x = Math.abs(x); z = Math.abs(z); return x <= R * Math.sqrt(3) / 2 && z + x / Math.sqrt(3) <= R; };
-  const at = (s, lat = LAT) => [d[0] * s + n[0] * lat, d[1] * s + n[1] * lat];
-  const N = 40, out = Array.from({ length: N + 1 }, (_, i) => !inside(...at(s0 + (s1 - s0) * i / N))).filter(Boolean).length / (N + 1);
-  assert.ok(out >= 0.6, `${(out * 100).toFixed(0)}% of the deck over the sea`);
-  assert.ok(inside(...at(s0)), 'the near end rests on the island');
-  // 小船：Boat.glb 的 bounding box（節點轉 −90° 繞 x：檔案的 y 是船長、z 是高）
-  const b = readFileSync('assets/quat/ships/Boat.glb'), j = JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)));
-  const mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
-  for (const m of j.meshes) for (const p of m.primitives) { const a = j.accessors[p.attributes.POSITION]; a.min.forEach((v, i) => { mn[i] = Math.min(mn[i], v); }); a.max.forEach((v, i) => { mx[i] = Math.max(mx[i], v); }); }
-  const k = FERRY_H / (mx[2] - mn[2]), bw = (mx[0] - mn[0]) * k / 2, bl = (mx[1] - mn[1]) * k / 2;
-  const [A, Bp] = FERRY_PATH.slice(-2), ul = Math.hypot(Bp.x - A.x, Bp.z - A.z), u = [(Bp.x - A.x) / ul, (Bp.z - A.z) / ul], up = [-u[1], u[0]];
-  // 板面上的點（相對 DOCK）：沿航向 al、橫向 pp
-  const deckPts = []; for (let i = 0; i <= 20; i++) for (const w of [-half, 0, half]) { const [x, z] = at(s0 + (s1 - s0) * i / 20, LAT + w); deckPts.push([c.x + x - DOCK.x, c.z + z - DOCK.z]); }
-  const al = p => p[0] * u[0] + p[1] * u[1], pp = p => Math.abs(p[0] * up[0] + p[1] * up[1]);
-  // 航線：船從後面開過來停在 DOCK，船身掃過航向上 ≤ +bl（船頭）的那條帶子
-  const sweep = Math.min(...deckPts.filter(p => al(p) <= bl).map(pp));
-  assert.ok(sweep >= bw + 0.05, `ferry route clears the deck by ${(sweep - bw).toFixed(2)} (boat half width ${bw.toFixed(2)})`);
-  // 停好時：船身那段（|al| ≤ bl）的板面離船側 ≤ 0.2；板面遠端過了船身中段（DOCK 在板面上的投影之外）
-  const side = Math.min(...deckPts.filter(p => Math.abs(al(p)) <= bl).map(pp)) - bw;
-  assert.ok(side > 0 && side <= 0.2, `moored ferry ${side.toFixed(2)} from the pier`);
-  const dockS = (DOCK.x - c.x) * d[0] + (DOCK.z - c.z) * d[1];
-  assert.ok(s1 > dockS + 0.2, `far end s ${s1} past the boat's middle (s ${dockS.toFixed(2)})`);
-  // 觀光客在另一側
-  for (const t of TOURIST_SPOTS) for (const p of deckPts) assert.ok(Math.hypot(p[0] + DOCK.x - t.x, p[1] + DOCK.z - t.z) >= 0.5, 'tourists clear of the pier');
-});
 test('carousel stops in a blackout; coins shrink to nothing at the wrap (no pop)', () => {
   const f = builtFactory();
   const off = f.build(sat.view(lv({ milk: 10 }), { blackout: true })['sat.playground.stage2']), a = posesOf(off.object); off.update(0.5, 0.5);
@@ -376,14 +339,14 @@ test('carousel stops in a blackout; coins shrink to nothing at the wrap (no pop)
 // 同一級出現的基座（營區、分店）併在第一段；會動的段（鞦韆、旋轉木馬、金幣、兩支風機的轉子）各一個 draw call；手機照舊不畫點綴，基座照畫
 const meshesOf = (f, d) => { const p = f.build(d); let n = 0; p.object.traverse(o => { if (o.isMesh) n++; }); p.dispose(); return n; };
 const satCalls = (f, v, quality) => Object.entries(v).filter(([k, d]) => k !== 'sat.boats' && d.kind !== 'roster').reduce((a, [, d]) => a + (d.kind === 'rats' ? d.n : d.kind === 'glb' ? glbCalls(quality, d) : meshesOf(f, d)), 0);
-// 計畫 11 §設計 3：小森林分店從第一段的黏土裡拿出來，改成主島珍奶店的 glb＋杯子招牌（+2；第一段只剩桌椅，照舊一個黏土）→ 24 → 26；
-// 手機照舊（分店 glb 照畫、第一段整個不畫、杯子 low: false 不畫）
-const SAT_MAX = 26;
-test('islet draw calls: full MAX satellites ≤ 26 (24 before the plan-11 shop) on normal quality, unchanged on phones; animated stages one mesh each', () => {
+// 計畫 11 §設計 3：小森林分店改成主島珍奶店的 glb＋杯子招牌 → 26；修正批次 trim §A：分店 glb、杯子、茶屋桌椅（小森林第一段）、
+// 棧橋（燈塔島第二段）全砍 → 22；手機少了分店 glb（手機照畫的那一個）→ 賽博 5、外星 6
+const SAT_MAX = 22;
+test('islet draw calls: full MAX satellites ≤ 22 (26 before trim §A) on normal quality, 5 / 6 on phones; animated stages one mesh each', () => {
   for (const flags of [{ ratBranch: 'cyber', epilogue: 'cyber' }, { ratBranch: 'alien', epilogue: 'alien' }]) {
     const v = sat.view(allMax, flags);
     assert.ok(satCalls(builtFactory(), v) <= SAT_MAX, `${flags.ratBranch}: ${satCalls(builtFactory(), v)}`);
-    assert.equal(satCalls(builtFactory('low'), v, 'low'), flags.ratBranch === 'alien' ? 7 : 6, `${flags.ratBranch} phone`);
+    assert.equal(satCalls(builtFactory('low'), v, 'low'), flags.ratBranch === 'alien' ? 6 : 5, `${flags.ratBranch} phone`);
     for (const k of ['sat.windmill', 'sat.playground.stage1', 'sat.playground.stage2', 'sat.chest.stage2']) assert.equal(meshesOf(builtFactory(), v[k]), 1, k);
   }
   // 手機：基座照畫、點綴不畫（階梯丘第一段 = 只有營區那幾塊）
@@ -392,13 +355,20 @@ test('islet draw calls: full MAX satellites ≤ 26 (24 before the plan-11 shop) 
   assert.ok(campOnly.parts.length && campOnly.parts.length < camp.parts.length);
   assert.equal(geoOf(builtFactory('low'), camp), geoOf(builtFactory('low'), campOnly), 'phone: only the camp');
   assert.ok(geoOf(builtFactory(), camp) > geoOf(builtFactory(), campOnly), 'normal: camp + tent');
-  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 7, boba: 5 }), {})['sat.lighthouse.stage2']), 0, 'phone: no islet decoration');
+  assert.equal(meshesOf(builtFactory('low'), sat.view(lv({ bulb: 9 }), {})['sat.forest.stage2']), 0, 'phone: no islet decoration');
 });
 // 裁決 R7：下一段出現時已經站著的不重閃——每座島把另一段的觸發拉上去，這一段的零件 spec 一字不變（寶箱：海鷗飛來寶箱不變）
+// 修正批次 trim §A：燈塔島第二段（珍奶棧橋）、小森林第一段（珍奶茶屋桌椅）拿掉了——那兩座島只剩一段，沒有另一段可拉
 const STAGE_TRIGGERS = {
-  lighthouse: [{ bulb: 7 }, { boba: 5 }], windmill: [{ bulb: 7 }, { chip: 6 }], rocks: [{ rat: 3 }, { rat: 4 }],
-  pyramid: [{ chip: 3 }, { chip: 9 }], playground: [{ token: 8 }, { milk: 10 }], forest: [{ boba: 5 }, { bulb: 9 }],
+  windmill: [{ bulb: 7 }, { chip: 6 }], rocks: [{ rat: 3 }, { rat: 4 }],
+  pyramid: [{ chip: 3 }, { chip: 9 }], playground: [{ token: 8 }, { milk: 10 }],
 };
+test('trim §A: the lighthouse islet keeps only stage 1 (bulb 7), the forest islet only stage 2 (bulb 9 lanterns); boba triggers no islet stage', () => {
+  assert.deepEqual(sat.STAGE.lighthouse, [['bulb', 7]]); assert.deepEqual(sat.STAGE.forest, [null, ['bulb', 9]]);
+  assert.ok(Object.values(sat.STAGE).flat().every(t => !t || t[0] !== 'boba'), 'no boba trigger');
+  const full = sat.view(allMax, {});
+  assert.ok(full['sat.lighthouse.stage1'] && !full['sat.lighthouse.stage2'] && full['sat.forest.stage2'] && !full['sat.forest.stage1']);
+});
 test('raising one islet stage trigger leaves the other stage part (and the chest) spec untouched', () => {
   const raise = (a, b) => ({ ...a, ...Object.fromEntries(Object.entries(b).map(([k, n]) => [k, Math.max(n, a[k] ?? 0)])) });
   for (const [isl, [t1, t2]] of Object.entries(STAGE_TRIGGERS)) {
@@ -427,37 +397,14 @@ test('rigged islet parts move their own vertices: the swing seats swing, the fra
   const dark = f.build(sat.view(lv({}), {})['sat.windmill']), e0 = vertsOf(dark); dark.update(0.5, 0.5); assert.deepEqual(vertsOf(dark), e0, 'unpowered: still');
 });
 
-// 珍奶離島店體（計畫 11 §設計 3；使用者 2026-10-31：森林島分店、燈塔島旗艦店看起來只是三角屋）：兩座店都是主島珍奶店的 glb
-// （boba.MODELS.shop、同一套 tint、高 0.8）＋屋頂前緣一個杯子招牌（boba.MODELS.cup、高 0.26，手機不畫）；店是建築，會長出來（growsOn），
-// 杯子直接出現；小森林第一段只剩茶屋桌椅（點綴：tagAlong、手機不畫）
+// 修正批次 trim §A：珍奶離島店全砍——不管哪一級、哪個畫質，衛星島上都沒有珍奶店的 glb（主島店面那款）與杯子招牌
 import * as boba from '../src/actors/boba.js';
-import { growsOn } from '../src/actors/stage.js';
-test('boba islet shops: the forest branch and the lighthouse flagship are the main-island shop glb (h 0.8, same tint) with a cup sign (h 0.26) on the roof; the shops grow', () => {
-  const main = boba.view(lv({ boba: 3 }), {})['boba.main'], v = { ...sat.view(lv({ boba: 5 }), {}), ...boba.view(lv({ boba: 5 }), {}) };
-  for (const [shopKey, signKey, isl] of [['sat.forest.shop', 'sat.forest.sign', 'forest'], ['boba.flagship', 'boba.flagship.sign', 'lighthouse']]) {
-    const shop = v[shopKey], sign = v[signKey], c = sat.island(isl);
-    assert.ok(shop && sign, `${shopKey} / ${signKey} at boba 5`);
-    assert.deepEqual([shop.kind, shop.path, shop.h, shop.footprint], ['glb', boba.MODELS.shop.path, 0.8, false], shopKey);
-    assert.deepEqual(shop.tint, main.tint, `${shopKey}: same tint as the main-island shop`);
-    assert.ok(growsOn(shop), `${shopKey}: a building, grows`); assert.notEqual(shop.low, false, `${shopKey}: drawn on phones`);
-    assert.ok(Math.hypot(shop.at.x - c.x, shop.at.z - c.z) < R && Math.abs(shop.at.y - c.y) < 1e-9, `${shopKey} on the ${isl} island`);
-    assert.deepEqual([sign.kind, sign.path, sign.h, sign.footprint, sign.low], ['glb', boba.MODELS.cup.path, 0.26, false, false], signKey);
-    const w = boba.MODELS.shop.size[0] * shop.h / boba.MODELS.shop.size[1];
-    assert.ok(Math.abs(sign.at.y - (shop.at.y + shop.h)) < 1e-9, `${signKey} on the roof`);
-    assert.ok(Math.abs(sign.at.x - shop.at.x) < 1e-9 && sign.at.z > shop.at.z && sign.at.z < shop.at.z + w / 2, `${signKey} at the front edge of the roof`);
+test('trim §A: no boba shop glb or cup sign anywhere on the islets', () => {
+  for (let b = 0; b <= 6; b++) {
+    const v = { ...sat.view(lv({ boba: b, bulb: 9 }), {}), ...boba.view(lv({ boba: b }), {}) };
+    for (const [k, d] of Object.entries(v)) {
+      if (d.kind !== 'glb' || ![boba.MODELS.shop.path, boba.MODELS.cup.path].includes(d.path)) continue;
+      assert.ok(!SATELLITES.some(x => { const c = sat.island(x.kind); return Math.hypot(d.at.x - c.x, d.at.z - c.z) < R; }), `boba ${b}: ${k} on an islet`);
+    }
   }
-  // 小森林第一段：只剩桌椅（沒有屋頂、牆）、整段是點綴
-  const s1 = v['sat.forest.stage1'];
-  assert.ok(s1.parts.every(p => p.stage === 1 && p.kind === 'cylinder'), 'forest stage 1: tables and stools only');
-  assert.equal(s1.tagAlong, true); assert.equal(s1.low, false);
-  // 珍奶 Lv4 以下都沒有
-  const v4 = { ...sat.view(lv({ boba: 4 }), {}), ...boba.view(lv({ boba: 4 }), {}) };
-  for (const k of ['sat.forest.shop', 'sat.forest.sign', 'boba.flagship', 'boba.flagship.sign']) assert.equal(v4[k], undefined, k);
-  // 分店不壓到島上的樹（kit：(0.7, 0.4) 縮 0.8 那棵，樹冠半徑 ≈ 0.3）與觀光客的站位、也不出島緣步道（六角半徑 ≤ 2.11）
-  const f = v['sat.forest.shop'], c = sat.island('forest'), w = boba.MODELS.shop.size[0] * f.h / boba.MODELS.shop.size[1];
-  const box = { x0: f.at.x - c.x - w / 2, x1: f.at.x - c.x + w / 2, z0: f.at.z - c.z - w / 2, z1: f.at.z - c.z + w / 2 };
-  const gap = (x, z) => Math.hypot(Math.max(box.x0 - x, 0, x - box.x1), Math.max(box.z0 - z, 0, z - box.z1));
-  assert.ok(gap(0.7, 0.4) >= 0.3, `tree ${gap(0.7, 0.4).toFixed(2)}`);
-  for (const s of v['sat.forest'].home.spots) assert.ok(gap(s.x - c.x, s.z - c.z) >= 0.3, `tourist ${gap(s.x - c.x, s.z - c.z).toFixed(2)}`);
-  for (const [x, z] of [[box.x0, box.z0], [box.x1, box.z0], [box.x0, box.z1], [box.x1, box.z1]]) assert.ok(hexR(x, z) < 2.11, `corner hex r ${hexR(x, z).toFixed(2)}`);
 });

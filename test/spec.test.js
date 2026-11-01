@@ -88,7 +88,7 @@ test('every item has a placed story and a story per level', () => {
 // 設計 2026-10-31 §5.3 的故事句；拿掉的級數不留句子
 test('stories of the re-levelled items follow design 2026-10-31 §5.3, with no text for removed levels', () => {
   assert.deepEqual(STORIES.grow.typhoon, { 2: '暴風圈還在島上空', 3: '雨過天晴，彩虹出來了' });
-  assert.equal(STORIES.grow.boba[5], '分店開到森林島，燈塔島旗艦店開張'); assert.equal(STORIES.grow.boba[6], '世界珍奶節');
+  assert.equal(STORIES.grow.boba[5], '外送無人機上路'); assert.equal(STORIES.grow.boba[6], '世界珍奶節');
   assert.equal(STORIES.grow.rat[4], '老鼠的最終型態');
   for (const id of ORDER) assert.deepEqual(Object.keys(STORIES.grow[id]).map(Number), Array.from({ length: ITEMS[id].max - 1 }, (_, i) => i + 2), id);
 });

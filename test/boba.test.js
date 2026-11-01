@@ -7,7 +7,7 @@ import * as sat from '../src/actors/satellites.js';
 import * as bulb from '../src/actors/bulb.js';
 import * as token from '../src/actors/token.js';
 import * as baseball from '../src/actors/baseball.js';
-import { RING_R, SATELLITES, axialToWorld, worldToAxial, cellAt, MAIN_CELLS, R as HEX_R } from '../src/scene/hex.js';
+import { RING_R, axialToWorld, cellAt, MAIN_CELLS, R as HEX_R } from '../src/scene/hex.js';
 import { anchorWorld, cellOf } from '../src/actors/anchors.js';
 import { OVERVIEW_DIR } from '../src/scene/camera.js';
 import { C } from '../src/actors/palette.js';
@@ -15,9 +15,9 @@ import { diffParts } from '../src/actors/stage.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX, blinkLog } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX, turnSteps } from './helpers/show.js';
 import { lv, worldPoints, distToCell, focusTrail, entryProblems } from './helpers/actors.js';
-import { createNav, satelliteAt, radiusOf } from '../src/show/nav.js';
+import { createNav, radiusOf } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
@@ -27,31 +27,32 @@ const SUGAR = RESULTS.find(r => r.state.flags.bobaSugar).order;
 const AT = anchorWorld('boba'), CELL = cellOf('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
-const LIGHT_I = SATELLITES.findIndex(s => s.kind === 'lighthouse'), LIGHT = axialToWorld(SATELLITES[LIGHT_I].q, SATELLITES[LIGHT_I].r);
-const onLighthouse = p => !cellAt(p.x, p.z) && satelliteAt(p) === LIGHT_I;
 const views = Array.from({ length: 7 }, (_, n) => boba.view(lv({ boba: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => keys.includes(k)));
-// 珍奶看得見的東西：自己的零件＋小森林島分店、觀光船（衛星島）
-const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1', 'sat.forest', 'sat.boats']) });
+// 珍奶看得見的東西：自己的零件＋觀光船（衛星島的海面）。修正批次 trim §A（使用者 2026-11-01）：離島珍奶店全砍，衛星島上沒有珍奶的東西
+const whole = n => ({ ...views[n], ...pick(sat.view(lv({ boba: n }), {}), ['sat.boats']) });
 // 鏡頭方向（水平）：OVERVIEW_DIR 指向鏡頭
 const CAM = (() => { const n = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z); return { x: OVERVIEW_DIR.x / n, z: OVERVIEW_DIR.z / n }; })();
 
 test('boba has its single-path ladder (max 6)', () => { assert.equal(spec.ITEMS.boba.max, 6); });
 
-// ── view：每一級看得見的東西都不一樣（§4.7；唯一正解 §4.4：分店與旗艦店同一級）──
-test('boba has something new at every level 1–6: cart, queue, shop, fountain, islets (branch + flagship), festival', () => {
+// ── view：每一級看得見的東西都不一樣（§4.7；修正批次 trim §A：Lv5 改成主島的外送無人機，離島珍奶店全砍）──
+test('boba has something new at every level 1–6: cart, queue, shop, fountain, delivery drones, festival', () => {
   assert.deepEqual(Object.keys(views[1]), ['boba.main', 'boba.owner']);
   for (let n = 2; n <= 6; n++) assert.ok(diffParts(nonRoster(whole(n - 1)), nonRoster(whole(n))).add.length, `lv${n}: something new`);
   assert.equal(views[2]['boba.queue'].n, 3);
   assert.equal(views[3]['boba.main'].kind, 'glb'); assert.equal(views[2]['boba.main'].kind, 'compound');
   assert.ok(views[4]['boba.fountain'] && !views[3]['boba.fountain'], 'Lv4 fountain');
-  assert.ok(whole(5)['sat.forest.shop'] && whole(5)['sat.forest.stage1'] && !whole(4)['sat.forest.shop'] && !whole(4)['sat.forest.stage1'], 'Lv5 forest branch');
   assert.equal(whole(5)['sat.boats'].n, whole(4)['sat.boats'].n + 2, 'Lv5 two more tour boats');
-  // 同一級：森林島分店、燈塔島旗艦店、小船、觀光客、無人機、棧橋
-  assert.ok(views[5]['boba.flagship'] && !views[4]['boba.flagship'], 'Lv5 flagship');
-  assert.ok(views[5]['boba.ferry'] && views[5]['boba.tourists'] && boba.DRONE_KEYS.every(k => views[5][k]), 'Lv5 ferry, tourists, drones');
-  assert.ok(sat.view(lv({ boba: 5 }), {})['sat.lighthouse.stage2'] && !sat.view(lv({ boba: 4 }), {})['sat.lighthouse.stage2'], 'Lv5 lighthouse pier');
+  // Lv5：店屋頂兩台外送無人機（主島）；離島店、渡船、坐船的觀光客都沒有了
+  assert.ok(boba.DRONE_KEYS.every(k => views[5][k] && !views[4][k]), 'Lv5 drones');
+  for (let n = 0; n <= 6; n++) {
+    for (const k of ['boba.flagship', 'boba.flagship.sign', 'boba.ferry', 'boba.tourists']) assert.equal(views[n][k], undefined, `lv${n} ${k}`);
+    const sv = sat.view(lv({ boba: n }), {});
+    for (const k of ['sat.forest', 'sat.forest.shop', 'sat.forest.sign', 'sat.forest.stage1', 'sat.lighthouse.stage2']) assert.equal(sv[k], undefined, `lv${n} ${k}`);
+  }
+  for (const k of ['isletShop', 'FLAGSHIP', 'TOURIST_SPOTS', 'FERRY_PATH', 'DOCK', 'SAIL', 'seatAt', 'ISLET_SHOP_H']) assert.equal(k in boba, false, `boba.${k} is gone`);
   assert.ok(views[6]['boba.fleet'] && !views[5]['boba.fleet'] && views[6]['boba.yard'].parts.some(p => p.coast), 'Lv6 balloons and fleet');
   assert.ok(!views[5]['boba.yard'].parts.some(p => p.coast), 'no balloons before Lv6');
   assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7] && boba.script.fx);
@@ -108,7 +109,8 @@ test('Lv3 shop: Quaternius Sign_Mat building with the palette tint, a Kenney cup
   assert.ok(m.path.startsWith('quat/buildings/') && m.path.includes('_Sign_Mat'), m.path);
   for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `tint ${c.toString(16)}`);
   assert.equal(v['boba.sign'].path, 'kenney/food/cup-tea.glb'); assert.ok(v['boba.sign'].at.y >= m.at.y + m.h - 1e-9, 'cup on the roof');
-  for (const p of [m.path, v['boba.sign'].path, boba.MODELS.drone.path, boba.MODELS.boat.path]) assert.ok(existsSync(new URL(`../assets/${p}`, import.meta.url)), p);
+  assert.equal('boat' in boba.MODELS, false, 'no ferry model');
+  for (const p of [m.path, v['boba.sign'].path, boba.MODELS.drone.path]) assert.ok(existsSync(new URL(`../assets/${p}`, import.meta.url)), p);
   assert.ok(v['boba.yard'].parts.filter(p => p.rot?.[0] > 0.3).length >= 3, 'awning strips over the door');
   assert.ok(m.footprint.w > 0.7 && m.footprint.d > 0.7, 'the shop blocks walkers');
 });
@@ -133,33 +135,16 @@ test('the owner\'s spot is walkable at every boba level, every bulb level and ev
     for (const q of boba.view(L, {})['boba.queue']?.home.spots ?? []) assert.ok(nav.walkable(q.x, q.z), `boba ${n} bulb ${b} token ${t}: queue (${q.x.toFixed(2)}, ${q.z.toFixed(2)})`);
   }
 });
-// ◆ Lv5 旗艦店（衛星島 view）：燈塔島上的店、靠岸的小船、住在島上的兩個觀光客；兩台外送無人機（kind 'orbit'）繞店飛一小圈
-test('Lv5: flagship on the lighthouse island, the ferry moored off it, two tourists living there; two delivery drones orbit the shop', () => {
+// Lv5 外送無人機（修正批次 trim §A：不是 ◆、在主島）：兩台（kind 'orbit'）停在店屋頂、繞店飛一小圈
+test('Lv5: two delivery drones park on the shop roof and circle the shop (main island)', () => {
   const v = views[5];
-  assert.ok(onLighthouse(v['boba.flagship'].at), 'flagship on the lighthouse island');
-  assert.ok(Math.hypot(v['boba.flagship'].at.x - LIGHT.x, v['boba.flagship'].at.z - LIGHT.z) > 1.0, 'clear of the lighthouse and the keeper ring');
-  // 計畫 11 任務 3 審稿：店體（主島那款，size 乘 h / 高）對觀光客站位與守塔人環（繞燈塔 r 0.6）的間距——店不壓到人
-  { const S = boba.MODELS.shop.size, k = boba.ISLET_SHOP_H / S[1], hw = S[0] * k / 2, hd = S[2] * k / 2, F = boba.FLAGSHIP;
-    const box = p => Math.hypot(Math.max(0, Math.abs(p.x - F.x) - hw), Math.max(0, Math.abs(p.z - F.z) - hd));
-    for (const t of boba.TOURIST_SPOTS) assert.ok(box(t) >= 0.3, `tourist spot ${box(t).toFixed(2)} from the shop body`);
-    assert.ok(box(LIGHT) - 0.6 >= 0.3, `keeper ring (r 0.6) ${(box(LIGHT) - 0.6).toFixed(2)} from the shop body`); }
-  const f = v['boba.ferry']; assert.equal(f.path, boba.MODELS.boat.path); assert.equal(cellAt(f.at.x, f.at.z), null);
-  assert.ok(Math.hypot(f.at.x - LIGHT.x, f.at.z - LIGHT.z) < HEX_R + 0.3, 'moored at the lighthouse island');
-  const t = v['boba.tourists']; assert.deepEqual([t.kind, t.n, t.home.kind], ['roster', 2, 'stand']); assert.ok(t.home.spots.every(onLighthouse));
   for (const k of boba.DRONE_KEYS) {
     const d = v[k]; assert.equal(d.kind, 'orbit'); assert.equal(d.path, 'kenney/space/craft_miner.glb');
     assert.ok(near(d.at, boba.SHOP, 1e-9) && d.r <= 1.2, `${k} circles the shop (r ${d.r})`);
     assert.ok(near(d.park, boba.SHOP, 0.4) && d.park.y > boba.SHOP.y + 0.9, `${k} parks on the roof`);
+    assert.deepEqual(cellAt(d.park.x, d.park.z), CELL, `${k} parks in the boba cell`);
     for (const c of Object.values(d.tint)) assert.ok(PALETTE.has(c));
   }
-  // 小船的航線：碼頭（珍奶格東岸外的海上）→ 燈塔島；全程在海上（不切過主島、衛星島）、穿過環狀線時離橋墩 ≥ 0.8
-  const P = boba.FERRY_PATH; assert.equal(cellAt(P[0].x, P[0].z), null); assert.ok(distToCell(P[0], CELL) < RING_R + 0.6, 'pier off the boba cell');
-  for (let i = 1; i < P.length; i++) for (let u = 0; u <= 1; u += 0.02) {
-    const x = P[i - 1].x + (P[i].x - P[i - 1].x) * u, z = P[i - 1].z + (P[i].z - P[i - 1].z) * u;
-    assert.equal(cellAt(x, z), null, `leg ${i} on the water`);
-    if (Math.abs(Math.hypot(x, z) - token.TRACK.radius) < 0.2) for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2 + 0.13; assert.ok(Math.hypot(x - Math.cos(a) * token.TRACK.radius, z - Math.sin(a) * token.TRACK.radius) > 0.8, 'clear of the pylons'); }
-  }
-  assert.ok(boba.SAIL <= 5, 'boat ride ≤ 5 s (R10)');
 });
 // ◆ Lv6 世界珍奶節：靠海的每一條主島格邊一束氣球（全部一個零件 ≤ 3 個 draw call；2026-10-28 錄影修正：不用旗子）；
 // 船隊繞島，桅杆上掛圓燈籠（沒有任何矩形旗面）
@@ -237,7 +222,7 @@ test('every boba footprint corner and every main-island part stays inside the bo
       const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : [f.w / 2, f.d / 2];
       for (const [dx, dz] of [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]]) assert.deepEqual(cellAt(cx + dx, cz + dz), CELL, `lv${n} ${key} corner`);
     }
-    if (['boba.flagship', 'boba.flagship.sign', 'boba.ferry', 'boba.tourists', 'boba.fleet'].includes(key)) continue;
+    if (key === 'boba.fleet') continue;
     const pts = s.kind === 'compound' ? worldPoints(s).filter((p, i) => !s.parts[i]?.coast) : [s.at, ...(s.home?.spots ?? [])];
     for (const p of pts) assert.ok(distToCell(p, CELL) < RING_R, `lv${n} ${key} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
   }
@@ -252,7 +237,7 @@ test('view: the owner is an apron roster that fidgets, standing by the cart / sh
 });
 
 // ── 劇本 ──
-const KEYS = ['boba.owner', 'boba.queue', 'boba.tourists', 'sat.forest', 'landmarks.islanders'];
+const KEYS = ['boba.owner', 'boba.queue', 'landmarks.islanders'];
 const isBoba = to => e => e.kind === 'grow' && e.item === 'boba' && e.to === to;
 // 照 order（放完再長 CLOSING_TURNS 回合）瞬間演到 pred 命中的那個事件，單獨 live 演（whole：整回合 live）
 async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } = {}) {
@@ -269,9 +254,9 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
   }
   throw new Error('event not found');
 }
-// 物品 v2 §6：一級 3–4.5 s；◆ Lv5、Lv6 6–8 s（含鏡頭平移與回全景的整段，show.elapsed；唯一正解 §5.3）
-const KEY = [5, 6];
-test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv5, Lv6 6–8 s whole), ends with LEVEL UP on boba, everyone home', async () => {
+// 物品 v2 §6：一級 3–4.5 s；◆ Lv6 6–8 s（含鏡頭平移與回全景的整段，show.elapsed；唯一正解 §5.3）。修正批次 trim §A：Lv5 不再是 ◆
+const KEY = [6];
+test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s whole), ends with LEVEL UP on boba, everyone home', async () => {
   const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -329,19 +314,22 @@ test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: 
     assert.ok(done, `${order.join('>')} lv${to} reached`);
   }
 });
-test('◆ Lv5 and Lv6 are the key nodes; Lv6 puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
-  assert.deepEqual(Object.entries(boba.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [5, 6]);
+test('◆ Lv6 is the only key node (trim §A: Lv5 is not); Lv6 puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
+  assert.deepEqual(Object.entries(boba.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [6]);
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const beats = flat(boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, ctx));
   const label = beats.find(b => b.kind === 'levelUp' && b !== beats.at(-1)); assert.ok(label, '101 label');
   const homes = beats.map((b, i) => (b.kind === 'focus' && b.target === 'home' ? i : -1)).filter(i => i >= 0);
   assert.ok(homes.length && beats[homes.at(-1)].dur >= 1 && beats.at(-1).kind === 'levelUp', 'holds the overview, then LEVEL UP');
 });
-// 計畫 11 §設計 3：鏡頭對著小森林島時那一拍就長出分店與杯子招牌（不是留到回珍奶格的最後一拍才出現在畫面外）
-test('◆ Lv5: the forest shop and its cup sign appear in the beat right after the camera reaches the forest island', () => {
-  const ctx = { B, roster: { members: () => [] } }, beats = boba.script.grow[5]({ kind: 'grow', item: 'boba', to: 5 }, { lv: lv({ boba: 5 }), flags: {} }, ctx);
-  const i = beats.findIndex(b => b.kind === 'apply' && Array.isArray(b.only) && b.only.includes('sat.forest.stage1'));
-  assert.equal(beats[i - 1].kind, 'focus'); assert.ok(['sat.forest.shop', 'sat.forest.sign', 'sat.forest'].every(k => beats[i].only.includes(k)), String(beats[i].only));
+// 修正批次 trim §A：Lv5 是一級劇本——鏡頭不離開珍奶格（沒有 focus 到別格）、無人機出現並起飛、最後 LEVEL UP
+test('Lv5 beats: no camera move (stays on the boba cell), the drones appear and take off, then LEVEL UP', () => {
+  const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  const beats = flat(boba.script.grow[5]({ kind: 'grow', item: 'boba', to: 5 }, { lv: lv({ boba: 5 }), flags: {} }, ctx));
+  assert.deepEqual(beats.filter(b => b.kind === 'focus'), [], 'no focus: turn.js pans to the boba cell before it');
+  assert.ok(beats.some(b => b.kind === 'fly'), 'the drones take off');
+  assert.equal(beats.at(-1).kind, 'levelUp'); assert.equal(beats.at(-1).target, 'boba');
+  assert.ok(!JSON.stringify(beats.filter(b => b.only).map(b => b.only)).match(/sat\.|flagship|ferry|tourists/), 'nothing on the islets');
 });
 // 審稿（計畫 4 最後一輪）：「世界珍奶節」打在 101 頭頂上——鏡頭停在全景（裝得下 101 頭頂，§14.4）時打字；
 // 原本跟 focus('tower') 一起演，拉近 101 格把頭頂切掉、字在畫面外
@@ -361,41 +349,35 @@ test('Lv6 live: the balloons and the fleet appear, 101 reads 世界珍奶節, th
     assert.equal(focusTrail(h.rig.log, r).at(-1), 'home');
   }
 });
-// ◆ Lv5 live（分店＋旗艦店一段）：鏡頭先到小森林島（分店、茶屋、兩個觀光客閃白），再到燈塔島——小船從碼頭開到燈塔島（≤ 5 s），
-// 兩個觀光客坐在船上（每幀跟著船），跳上岸、住在島上；LEVEL UP 回珍奶格；無人機起飛
-test('Lv5 live: the forest branch appears, then the ferry carries two tourists from the pier to the lighthouse island; they hop ashore and stay; the drones take off', async () => {
+// Lv5 live（修正批次 trim §A）：鏡頭一直在珍奶格、兩台無人機閃白出現在屋頂、起飛（飛高 > 0.3）、LEVEL UP 打在珍奶頭上；
+// 正解裡 4 → 6 跳級（第 5 級不演），這裡單獨演 Lv5 自己的劇本
+test('Lv5 live: the camera stays on the boba cell, the drones appear on the roof and take off; LEVEL UP over boba', async () => {
   for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show } = h, update = show.update, frames = [];
+    const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, ys = [];
     let live = false;
     const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
-    show.update = (dt, t) => {
-      update(dt, t); if (!live) return;
-      const b = show.stage.partObject('boba.ferry'), ts = show.roster.members('boba.tourists');
-      frames.push({ boat: b && { x: b.position.x, z: b.position.z }, ts: ts.map(m => ({ ...m.pos })), drone: show.stage.partObject('boba.drones.0')?.children[0]?.position.y });
-    };
-    const log = blinkLog(show), mark = () => log.calls.length;
-    let from = 0; const run2 = h.run; h.run = (evs, o) => { if (!o?.instant) from = mark(); return run2(evs, o); };
-    const { r } = await liveAt(h, order, isBoba(5));
-    const what = order.join('>'), moving = frames.filter((f, i) => i && f.boat && frames[i - 1].boat && Math.hypot(f.boat.x - frames[i - 1].boat.x, f.boat.z - frames[i - 1].boat.z) > 1e-4);
-    assert.ok(moving.length / 30 >= 1.5 && moving.length / 30 <= 5, `${what}: sailed ${(moving.length / 30).toFixed(2)} s`);
-    assert.ok(near(moving[0].boat, boba.FERRY_PATH[0], 0.3), `${what}: leaves from the pier`);
-    for (const f of moving) for (const p of f.ts) assert.ok(near(p, f.boat, 0.4), `${what}: tourists ride in the boat`);
-    for (let i = 1; i < frames.length; i++) for (let k = 0; k < frames[i].ts.length; k++) {
-      const a = frames[i - 1].ts[k], b = frames[i].ts[k]; if (a && b) assert.ok(Math.hypot(a.x - b.x, a.z - b.z) < 0.3, `${what}: no teleport`);
-    }
-    const ts = show.roster.members('boba.tourists'); assert.equal(ts.length, 2);
-    for (const m of ts) { assert.ok(onLighthouse(m.pos), `${what}: lives on the lighthouse island`); assert.equal(m.mode, 'home'); }
-    const b = show.stage.partObject('boba.ferry'); assert.ok(near(b.position, boba.DOCK, 1e-6), 'moored');
-    const trail = focusTrail(h.rig.log, r).map(String), F = SATELLITES.find(x => x.kind === 'forest'), FC = axialToWorld(F.q, F.r);
-    assert.deepEqual(trail.slice(-4), [String(worldToAxial(FC.x, FC.z)), String(worldToAxial(LIGHT.x, LIGHT.z)), String(CELL), 'home'], `${what}: ${trail}`);
-    assert.equal(show.roster.members('sat.forest').length, 2); assert.ok(show.stage.partObject('sat.forest.stage1'), `${what}: forest branch`);
-    assert.ok(show.stage.partObject('sat.lighthouse.stage2') && show.stage.partObject('boba.flagship'), `${what}: pier and flagship`);
-    // 計畫 11 §設計 3：兩座離島店是建築——長出來（使用者 2026-10-31「閃一下」之後不亮）；屋頂的杯子招牌直接出現（不長、不亮）
-    assert.ok(show.stage.partObject('sat.forest.shop') && show.stage.partObject('sat.forest.sign') && show.stage.partObject('boba.flagship.sign'), `${what}: both shops have a cup sign`);
-    const grew = new Set(log.calls.slice(from).filter(c => c.fn === 'grow').map(c => c.key));
-    for (const k of ['sat.forest.shop', 'boba.flagship']) assert.ok(grew.has(k), `${what}: ${k} grows (${[...grew]})`);
-    for (const k of ['sat.forest.sign', 'boba.flagship.sign']) assert.ok(!log.calls.slice(from).some(c => c.key === k), `${what}: ${k} just appears`);
-    const ys = frames.map(f => f.drone).filter(y => y != null); assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
+    show.update = (dt, t) => { update(dt, t); if (live) { const y = show.stage.partObject('boba.drones.0')?.children[0]?.position.y; if (y != null) ys.push(y); } };
+    const { r, n, secs } = await liveAt(h, order, isBoba(5));
+    const what = order.join('>');
+    assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${what}: ${secs.toFixed(2)} s`);
+    assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
+    const trail = focusTrail(h.rig.log, r).map(String);
+    assert.deepEqual([...new Set(trail)].filter(t => t !== 'home'), [String(CELL)], `${what}: camera only on the boba cell (${trail})`);
+    const last = bubblesLog.slice(n).filter(b => b.text).at(-1), hd = show.stage.headOf('boba');
+    assert.equal(last?.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - hd.x, last.at.z - hd.z) < 0.3, `${what}: LEVEL UP over boba`);
+  }
+});
+// 修正批次 trim §A：正解最後一輪珍奶 4 → 6 跳級合成一段（演 ◆6 世界珍奶節），整輪珍奶只有一段 ◆、第 5 級只剩 skipped 的 mark
+test('the solution\'s closing round plays boba as one merged ◆ (4 → 6 festival), not two ◆ segments', async () => {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(), steps = turnSteps(order);
+    let s = engine.createState(spec);
+    for (const step of steps.slice(0, -1)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+    const r = steps.at(-1)(s), marks = [];
+    assert.deepEqual(r.events.filter(e => e.kind === 'grow' && e.item === 'boba').map(e => [e.from, e.to]), [[4, 5], [5, 6]], 'the closing round jumps boba 4 → 6');
+    await h.run([...r.events, { kind: 'settle' }], { instant: true, onMark: (e, info) => marks.push([e, info]) });
+    const bm = marks.filter(([e]) => e.item === 'boba' && e.kind === 'grow');
+    assert.deepEqual(bm.map(([e, i]) => [e.to, !!i.key, !!i.skipped]), [[5, false, true], [6, true, false]], `${order.join('>')}: ${JSON.stringify(bm.map(([e, i]) => [e.to, i]))}`);
   }
 });
 // 審查 I1／I3／M1：老闆照常速（1.6）從遠處推著攤車走來；每一幀攤車都在他面前 0.3–0.6；攤車在出發點出現（計畫 11 §設計 1：不亮，直接出現）、停在 SHOP
@@ -490,7 +472,7 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.equal(typeof boba.visitSpot, 'function');
   const { bad, seen } = await visitSpotsThroughSolutions(boba, SOLUTIONS, { cells: () => [[0, 1]] });
   assert.deepEqual(bad, []);
-  assert.deepEqual(seen, [1, 2, 3, 4, 6]);   // Lv5 在離島（null）；修正批次 2：Lv2 是 grow（颱風外送只給 ≥4）
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6]);   // 修正批次 trim §A：Lv5 回到主島（以前在離島 → null）；修正批次 2：Lv2 是 grow（颱風外送只給 ≥4）
 });
 
 // 轉動矩陣用 three.js 自己的 Euler／Matrix4 算（獨立對照，不跟原始碼同一份公式；修正輪 1 審稿 Minor）

@@ -16,6 +16,8 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, solo, turnSteps, SCRIPT_MAX, KEY_MAX, ALL } from './helpers/show.js';
+import * as boba from '../src/actors/boba.js';
+import { overviewRig, gameInvariants } from './helpers/show.js';
 // 唯一正解（賽博）從求解器取；外星分岔在單一正解下是壞結局「變異鼠稱王」：取列舉裡第一條老鼠 Lv4 分岔成外星的放法
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);
@@ -731,4 +733,60 @@ test('live: rats loitering at the lamp door (trouble = bulb) never step onto a b
     assert.equal(bridge.get(m) ?? 0, 0, `rat#${m.i} spent ${(bridge.get(m) ?? 0).toFixed(1)} s on a bridge`);
     assert.ok(still.get(m).max < 6, `rat#${m.i} froze for ${still.get(m).max.toFixed(1)} s`);
   }
+});
+
+// 計畫 14 Task 4：老鼠咬剛放下的珍奶／鮮奶（R30 的 fx：cause rat、flag bitten_<id>、item 是被咬的）——
+// 一隻老鼠（離它最近的那隻）跑到攤車／牛奶箱旁 → 聞一聞 → ！ → 換成被咬的樣子（攤車缺口＋地上的珍珠／牛奶箱側躺）→ 沒有 LEVEL DOWN；一級 3–4.5 s
+const isBite = id => e => e.kind === 'fx' && e.cause === 'rat' && e.flag?.name === `bitten_${id}`;
+test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, the cart turns bitten; no LEVEL DOWN; 3–4.5 s', async () => {
+  const beats = rat.script.fx({ kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: true } }, { lv: lv({ rat: 2, boba: 1 }), flags: { bitten_boba: true } }, { B });
+  assert.ok(Array.isArray(beats) && beats.length, 'a bite script');
+  assert.deepEqual(beats.map(b => b.kind).slice(0, 3), ['walk', 'gesture', 'bubble']);
+  assert.ok(!beats.some(b => b.kind === 'levelUp'), 'no LEVEL DOWN');
+  assert.deepEqual(rat.CART_BITE, boba.BITE_SPOT, 'the rat stands where boba.js put the bite');
+  const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
+  const { e, secs, n } = await liveAt(h, ['milk', 'baseball', 'rat', 'boba'], isBite('boba'));
+  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+  assert.equal(e.item, 'boba');
+  const P = boba.view(show.stage.lv, show.stage.flags)['boba.main'].parts;
+  assert.equal(P.length, boba.view(lv({ boba: 1 }), {})['boba.main'].parts.length + 3, 'the bitten cart (gap + pearls)');
+  const [m] = show.roster.members('rat.pack').sort((a, b) => Math.hypot(a.pos.x - boba.SHOP.x, a.pos.z - boba.SHOP.z) - Math.hypot(b.pos.x - boba.SHOP.x, b.pos.z - boba.SHOP.z));
+  assert.ok(near(m.pos, boba.SHOP, 1.0), `a rat by the cart (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+  assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'), 'the rat ！');
+  assert.ok(!bubblesLog.slice(n).some(b => b.text), 'no LEVEL UP / LEVEL DOWN');
+  for (const k of KEYS) for (const r of show.roster.members(k)) assert.equal(r.mode, 'home');
+  assert.deepEqual(walls.bad, []);
+});
+test('rat bites the fresh milk (placed after the rat): the rat runs to the crate, sniffs, ！, the crate lies tipped; no LEVEL DOWN; 3–4.5 s', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
+  const { e, secs, n } = await liveAt(h, ['rat', 'milk'], isBite('milk'));
+  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+  assert.equal(e.item, 'milk');
+  assert.ok(milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.crate'].parts.some(p => p.spill), 'the crate lies tipped');
+  assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'));
+  assert.ok(!bubblesLog.slice(n).some(b => b.text), 'no LEVEL DOWN');
+  const [m] = show.roster.members('rat.pack');
+  assert.ok(near(m.pos, milk.CRATE, 1.0), `the rat by the crate (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+  assert.deepEqual(walls.bad, []);
+});
+// 整局 live：老鼠先放、珍奶後放（被咬住，老鼠搭上捷運那回合才長）——每回合演完不丟錯、共用不變式乾淨；老鼠走了攤車恢復原樣
+test('live, a whole game with the boba bitten (rat before boba): no script error, invariants clean, the cart heals when the rat boards the metro', async () => {
+  const order = ['milk', 'baseball', 'rat', 'boba', 'token', 'bulb', 'chip', 'typhoon'];
+  const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
+  let s = engine.createState(spec), bitten = 0, healed = false;
+  for (const [i, step] of turnSteps(order).entries()) {
+    const r = step(s); s = r.state; inv.label(`turn ${i + 1}`);
+    await run([...r.events, { kind: 'settle' }]);
+    inv.turnEnd();
+    assert.equal(JSON.stringify(show.stage.lv), JSON.stringify(s.lv), `turn ${i + 1}: stage matches the engine`);
+    const n = boba.view(show.stage.lv, show.stage.flags)['boba.main']?.parts?.length ?? 0;
+    if (s.flags.bitten_boba && s.lv.rat <= 2) bitten++;
+    if (s.flags.bitten_boba && s.lv.rat >= 3 && s.lv.boba < 3) healed = n === boba.view(lv({ boba: s.lv.boba }), {})['boba.main'].parts.length;
+  }
+  assert.ok(bitten >= 1, 'the boba sat bitten at least one turn');
+  assert.ok(s.flags.bitten_boba && s.lv.rat >= 3, 'the rat boarded the metro');
+  assert.ok(healed || s.lv.boba >= 3, 'the cart looks normal again');
+  assert.deepEqual([...inv.walls].slice(0, 10), [], `${inv.walls.size} inside a building`);
+  assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} jumps`);
+  assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} pops`);
 });

@@ -671,3 +671,10 @@ test('R30 rat: placed after the rat reached Lv3 nothing is bitten; the old rat-p
     assert.ok(!t.r.events.some(e => e.cause === 'rat'), `${item} is not bitten`);
   }
 });
+// 計畫 14 Task 4：雨中放下、當場被吹走（鎖住）的攤車不會再被老鼠咬（攤車已經在海裡：老鼠不跑去海邊咬）
+test('R30 rat: a boba blown away by the rain the moment it is placed is not bitten as well', () => {
+  const { r, s } = turnEvents(['milk', 'rat', 'typhoon', 'boba']);
+  assert.ok(s.lv.rat >= 1 && s.lv.rat <= 2 && s.lv.typhoon >= 1, `precondition: rat ${s.lv.rat}, typhoon ${s.lv.typhoon}`);
+  assert.equal(s.locked.boba, true); assert.equal(s.flags.cartBlown, true);
+  assert.ok(!s.flags.bitten_boba && !r.events.some(e => e.flag?.name === 'bitten_boba'), 'no bite on a blown cart');
+});

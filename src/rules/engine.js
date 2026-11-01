@@ -206,7 +206,7 @@ function turn(state, id, spec, rules) {
     // （item 是被咬的那個，演出層鏡頭對著它；cause w）。被咬的在 w 的 bite.while 還成立期間不長（見 biterOf）
     for (const w of spec.ORDER) {
       const b = rules.items[w].bite;
-      if (w === id || !b?.targets.includes(id) || !b.while(s)) continue;
+      if (w === id || !b?.targets.includes(id) || !b.while(s) || s.locked[id]) continue;   // 雨中當場被吹走（鎖住）的不咬：攤車已經在海裡
       const name = `bitten_${id}`;
       s.flags[name] = true;
       events.push({ kind: 'fx', item: id, cause: w, flag: { name, value: true }, story: `${spec.ITEMS[w].name}咬了剛開的${spec.ITEMS[id].name}` });

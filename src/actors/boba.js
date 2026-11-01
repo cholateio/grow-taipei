@@ -200,6 +200,15 @@ const tipped = parts => parts.map(p => {
   return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: eulerXYZ(mul3(rotXYZ([0, 0, TIP]), rotXYZ(p.rot ?? [0, 0, 0]))) };
 });
 const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
+// 被老鼠咬（計畫 14 R30：老鼠 Lv1–2 時放下的珍奶，flags.bitten_boba；老鼠搭上捷運 Lv3 就恢復）：攤車正面（鏡頭那側）右半一個深色缺口、
+// 車前地上兩顆掉出來的珍珠。併在攤車同一個 compound（黏土、不發光：同一個 mesh，不多 draw call）；老鼠咬的劇本在 rat.js（跑到 BITE_SPOT 聞一聞）
+const BITE_PARTS = [
+  { kind: 'box', pos: [0.16, CART_BODY.y0 + 0.3, CART_BODY.d / 2 + 0.004], scale: [0.13, 0.11, 0.012], color: C.ink },
+  ...[[0.2, 0.34], [0.27, 0.3]].map(([x, z]) => ({ kind: 'sphere', pos: [x, 0.022, z], scale: 0.045, color: C.ink })),
+];
+// 老鼠咬攤車時站的地方（相對 SHOP：攤車前、缺口左下，珍珠在牠右手邊）
+export const BITE_SPOT = offset(SHOP, -0.05, 0.5);
+export const bitten = (lv, flags) => !!flags.bitten_boba && lv.rat > 0 && lv.rat <= 2;
 // 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.50）疊在一起
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
@@ -255,7 +264,7 @@ export function view(lv, flags = {}) {
   if (!n) return v;
   const fresh = lv.milk >= 4, storm = stormy(lv), blown = !!flags.cartBlown;
   if (n < 3) {
-    v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: cartParts() };
+    v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: bitten(lv, flags) ? [...cartParts(), ...BITE_PARTS] : cartParts() };
   } else {
     const [shop, sign] = n >= 6 ? storefront(SHOP, SHOP_H, BIG_CUP_H, BIG_CUP_INSET) : storefront(SHOP, SHOP_H, CUP_H);
     v['boba.main'] = { ...shop, labelY: SHOP_H + (n >= 6 ? 0.85 : 0.55), footprint: { w: SHOP_W, d: SHOP_W } };   // 標籤在大杯子頂上

@@ -387,3 +387,13 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 });
 
+
+// 計畫 14 Task 4：老鼠 Lv1–2 時放下的鮮奶被咬住（flags.bitten_milk）——同一個畫面：牛奶箱側躺、地上一灘牛奶；老鼠搭上捷運（Lv3）就扶正
+test('bitten milk (flags.bitten_milk while the rat is Lv1–2): the crate lies tipped with spilt milk, like meta.bitten; upright once the rat leaves', () => {
+  const L = r => ({ milk: 1, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: r, boba: 0, baseball: 0 });
+  const tipped = milk.view(L(1), {}, { bitten: true })['milk.crate'];
+  assert.deepEqual(milk.view(L(1), { bitten_milk: true })['milk.crate'], tipped, 'rat Lv1: the same tipped crate');
+  assert.deepEqual(milk.view(L(2), { bitten_milk: true })['milk.crate'], tipped, 'rat Lv2: still tipped');
+  assert.ok(tipped.parts.some(p => p.spill));
+  for (const r of [3, 4]) assert.ok(!milk.view(L(r), { bitten_milk: true })['milk.crate'].parts.some(p => p.spill), `rat ${r}: upright`);
+});

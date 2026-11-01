@@ -227,6 +227,20 @@ function bite(e, ctx) {
     B.apply(e), B.home(r), ...(down ? [B.levelUp('milk', { down: true })] : []),
   ];
 }
+// 咬剛放下的（計畫 14 R30：老鼠 Lv1–2 時放下的鮮奶／珍奶，fx 帶 flag bitten_<id>、item 是被咬的那個）：
+//   離它最近的那隻跑過去（DASH，同跑去出問題的那棟）→ 聞一聞 → ！ → 換成被咬的樣子（攤車缺口＋地上的珍珠／牛奶箱側躺）→ 回家。
+//   不是降級：沒有 LEVEL DOWN（被咬的長不上去，老鼠搭上捷運才放過它）
+// 攤車旁的站位 = boba.BITE_SPOT（錨點西 0.15、往鏡頭側 0.45；測試對過）。不 import boba.js：boba → satellites → rat 會繞回來，模組還沒初始化完
+export const CART_BITE = offset(anchorWorld('boba'), -0.15, 0.45);
+function nibble(e, ctx) {
+  const { B } = ctx, at = { milk: BITE_AT, boba: CART_BITE }[e.item], part = `${e.item}.${e.item === 'milk' ? 'crate' : 'main'}`;
+  if (!at) return null;
+  const r = once(c => c.roster.nearest(KEY, at));
+  return [
+    B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
+    B.apply(e, { only: [part] }), B.apply(e), B.home(r),
+  ];
+}
 export const script = {
   // 一隻老鼠從巨蛋格東南岸的海裡爬上來 → …… 喘口氣 → 聞一聞 → 轉頭看見巨蛋 ！ → 在巨蛋旁晃。
   // 老鼠當指標（§5.2）：上一回合結算出有出問題的那棟（meta.troubleAt；劇本在回合開頭建，這時的 meta 就是上一回合的結算）
@@ -332,10 +346,12 @@ export const script = {
       ];
     },
   },
-  // 放置反應（spec.js 老鼠 fx：鮮奶 ≤2 咬牛奶箱；撞翻珍奶攤車唯一正解 §5.2 拿掉了）；分岔（onLevel 4）已經在 grow 4 演完
+  // 放置反應（spec.js 老鼠 fx：鮮奶 ≤2 咬牛奶箱；撞翻珍奶攤車唯一正解 §5.2 拿掉了）；分岔（onLevel 4）已經在 grow 4 演完；
+  // 咬剛放下的鮮奶／珍奶（計畫 14 R30 bite）見 nibble
   fx(e, s, ctx) {
     if (e.flag?.name === BRANCH.flag) return [];
     if (e.delta?.target === 'milk') return bite(e, ctx);
+    if (e.flag?.name === `bitten_${e.item}`) return nibble(e, ctx);
     return null;
   },
 };

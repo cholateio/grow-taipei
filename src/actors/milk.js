@@ -124,7 +124,8 @@ export function view(lv, flags, meta = {}) {
   if (!n) return v;
   // 大停電：冰箱沒電，牛奶箱變灰（純點綴；鮮奶 −1 2026-11-01 拿掉了，R25）
   // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合閃白扶正）
-  const spoiled = !!flags.blackout, tipped = !!meta.bitten;
+  // 計畫 14 R30：老鼠 Lv1–2 時放下的鮮奶被咬住（flags.bitten_milk）也是這個畫面，老鼠搭上捷運（Lv3）才扶正
+  const spoiled = !!flags.blackout, tipped = !!meta.bitten || (!!flags.bitten_milk && lv.rat > 0 && lv.rat <= 2);
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [
     { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: spoiled ? SPOILED : C.cream },
     tipped ? { kind: 'box', pos: [-0.075, 0.225, 0], scale: [0.08, 0.47, 0.47], color: spoiled ? SPOILED_BAND : C.blue }

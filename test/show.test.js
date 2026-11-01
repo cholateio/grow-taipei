@@ -820,7 +820,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
         await run([...r.events, { kind: 'settle' }]);
         inv.turnEnd();
         const st = show.stage, mode = rat.ratMode(st.lv, st.flags);
-        log.push({ turn: i + 1, mode, trouble: st.meta.trouble, lv: { ...st.lv }, flags: { ...st.flags }, sniffs: [...sniffs] });
+        log.push({ turn: i + 1, mode, trouble: st.meta.trouble, troubleAt: st.meta.troubleAt, lv: { ...st.lv }, flags: { ...st.flags }, sniffs: [...sniffs] });
         if (mode !== 'one' && mode !== 'nest') continue;
         const goal = st.meta.troubleAt ?? NEST, r0 = st.meta.troubleAt ? rat.TROUBLE_R : 0.7;
         const rats = () => show.roster.members('rat.pack'), there = () => rats().every(m => m.mode === 'home' && gap(m.pos, goal) <= r0 + 0.35);
@@ -848,7 +848,10 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   for (let t = 2; t <= 9; t++) assert.equal(at('typhoon3rd', t).lv.baseball, 2, `turn ${t}: baseball locked at 2`);
   const t8 = at('typhoon3rd', 8), bb = ALL.find(m => m.id === 'baseball').visitSpot(2, { lv: t8.lv, flags: t8.flags }), dome = frontOf(bb, bb.r);
   assert.deepEqual([t8.mode, t8.trouble], ['nest', 'baseball']);
-  for (const p of t8.rats) assert.ok(gap(p, dome) <= rat.TROUBLE_R + 0.35, `turn 8: rat (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) at the dome front (${dome.x.toFixed(2)}, ${dome.z.toFixed(2)})`);
+  // 計畫 14：第 8 回合放下的珍奶被咬（咬的那隻從攤車跑回來），量到「一走進散步圈」就停——離散步中心（troubleAt，被 troubleSpot 拉回一點點）≤ r + 0.35；
+  // 散步中心就是巨蛋正面（差 < 0.1）
+  assert.ok(gap(t8.troubleAt, dome) < 0.1, `the loiter centre (${t8.troubleAt.x.toFixed(2)}, ${t8.troubleAt.z.toFixed(2)}) is the dome front`);
+  for (const p of t8.rats) assert.ok(gap(p, t8.troubleAt) <= rat.TROUBLE_R + 0.35, `turn 8: rat (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) at the dome front (${dome.x.toFixed(2)}, ${dome.z.toFixed(2)})`);
   const l6 = at('levels', 6), l7 = at('levels', 7), sp = ALL.find(m => m.id === 'token').visitSpot(l6.lv.token, { lv: l6.lv, flags: l6.flags }), front = frontOf(sp, sp.r);
   assert.equal(l6.trouble, 'token');
   assert.deepEqual([l7.mode, l7.trouble], ['nest', null], 'turn 7 clears: back to the nest');

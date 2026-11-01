@@ -149,7 +149,8 @@ test('MAX Lv8 draw calls: the deco adds one warm glow mesh at most (wide-end ≤
 });
 test('◆ Lv8: the giant ball, towers and pennants come in the same beat as the platform', () => {
   const beats = baseball.script.grow[8]({ kind: 'grow', item: 'baseball', to: 8 }, { lv: lv({ baseball: 8 }), flags: {} }, { B, roster: { members: () => [] } });
-  const first = beats.find(b => b.kind === 'apply' && Array.isArray(b.only));
+  const flat = bs => bs.flatMap(b => [b, ...flat(b.beats ?? []), ...flat(b.kind === 'trainStop' ? b.during : [])]);   // 修正輪 1：月台出現在列車進站那拍裡
+  const first = flat(beats).find(b => b.kind === 'apply' && Array.isArray(b.only));
   assert.ok(first.only.includes('baseball.platform') && first.only.includes('baseball.deco'), String(first.only));
 });
 // ── draw call：整格 ≤ 16 ──
@@ -476,4 +477,21 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   const { bad, seen } = await visitSpotsThroughSolutions(baseball, SOLUTIONS, { cells: () => [[-1, 1]] });
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8]);
+});
+
+// 修正輪 1 裁決 1：正解整局 live（前面的回合也照常演，同 pace）——第 8 回合 ◆ 棒球 8 的 live 秒數（含鏡頭平移，扣掉前面補的空拍）≤ KEY_MAX。
+// 計畫 14 換正解後量到 8.6 s：等列車進站（最多 2.0 s）排在平移、月台出現之後；改成列車在平移那幾拍就開始趕路
+test('◆ baseball 8 in the solution, whole game live: ≤ KEY_MAX live (the train already hurries during the pan)', async () => {
+  const { show, run } = await headlessShow();
+  const { turnSteps } = await import('./helpers/show.js');
+  let s = engine.createState(spec), live = null;
+  for (const step of turnSteps(SOLUTIONS[0])) {
+    const r = step(s); s = r.state;
+    const marks = [];
+    await run([...r.events, { kind: 'settle' }], { onMark: (e, info) => marks.push([e, show.elapsed, info?.gap ?? 0]) });
+    const k = marks.findIndex(([e]) => isBall(8)(e));
+    if (k >= 0) { live = marks[k + 1][1] - marks[k][1] - marks[k][2]; break; }
+  }
+  assert.ok(live !== null, 'baseball 8 in the solution');
+  assert.ok(live <= KEY_MAX, `◆ baseball 8 live ${live.toFixed(2)} s`);
 });

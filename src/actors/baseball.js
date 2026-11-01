@@ -317,11 +317,16 @@ export const script = {
     //   下車的兩個人在背景走到他們空出來的位置 → LEVEL UP
     8(e, s, ctx) {
       const { B } = ctx, sp = RIDE_OFF.map(p => B.spawn('baseball.riders', p));
+      // 修正輪 1 裁決 1（◆ ≤ 8 s）：列車在鏡頭平移那幾拍就開始趕路（平移時本來就看不到列車在趕）——
+      //   平移和列車一起開始；列車進站停住時月台才出現（月台出現的同一拍，巨蛋上的大棒球、燈塔、三角旗 baseball.deco 也出現，
+      //   MAX 要一眼看得出來，修正批次 max-skip §A），接著兩個觀眾下車。原本等平移、月台出現完才叫列車，最多再等 2.0 s
       return [
-        B.focus('baseball'),
-        // 月台出現的同一拍，巨蛋上的大棒球、燈塔、三角旗（baseball.deco）也出現（MAX 要一眼看得出來，修正批次 max-skip §A）
-        B.apply(e, { only: ['baseball.platform', 'baseball.deco', 'baseball.riders'], hold: ['baseball.riders'] }),
-        B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, back: STOP_BACK, stop: STOP_FOR, during: sp }),
+        B.together([
+          B.focus('baseball'),
+          B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, back: STOP_BACK, stop: STOP_FOR, during: [
+            B.apply(e, { only: ['baseball.platform', 'baseball.deco', 'baseball.riders'], hold: ['baseball.riders'] }), ...sp,
+          ] }),
+        ]),
         B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_WAIT[i], { delay: i * 0.2 }))),
         B.together([B.focus('home', { hold: 1.0 }), cheer(B, 1.0)]),
         B.apply(e), B.home(shown('baseball.riders')), B.levelUp('baseball'),

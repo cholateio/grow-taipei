@@ -211,6 +211,12 @@ test('placing the chip site live (milk, baseball, chip; seeds 1–20): nobody st
     for (const id of ['milk', 'baseball']) { const r = place(s, id); s = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
     // 放之前散步幾秒（種子不同，島民走到的地方不同）
     for (let i = 0; i < 30 * (seed % 5); i++) show.update(1 / 30, i / 30);
+    // 修正批次 max-skip §E 之後島民只剩 101 格一位（家在 101 西南邊），沒有人會散步到晶片格的工地裡：
+    // 每三個種子放一個站在工地裡的路人（測試自己的名冊、站位照種子錯開），量的是同一件事——圍籬立起來那一刻站在裡面的人被換到外面
+    if (seed % 3 === 0) {
+      const p = { x: AT.x + ((seed * 0.37) % 1.2) - 0.6, y: AT.y, z: AT.z + ((seed * 0.53) % 1.2) - 0.6, yaw: 0 };
+      show.roster.declare('test.loiterer', { kind: 'roster', at: p, n: 1, home: { kind: 'stand', spots: [p], rescue: true } }); show.roster.snap();
+    }
     const inv = gameInvariants(show), update = show.update, streak = new Map(), long = [];
     let fenced = false;
     show.update = (dt, t) => {

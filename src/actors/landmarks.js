@@ -6,10 +6,17 @@ import { mulberry32 } from '../scene/random.js';
 
 export const id = 'landmarks';
 
-// 島民（§14.3 人分散）：最多四個人一個名冊，一人住一格散步（第 i 人用 home.at[i]）——人數預算（裁決 R16）：
-// 最擠的球場格（球員、觀眾、草皮、搭車來的球迷）與珍奶格（人龍、站務員）不住島民；溫泉格住的是下面兩位溫泉客
+// 島民（§14.3 人分散）：一個名冊，一人住一格散步（第 i 人用 home.at[i]）——人數預算（裁決 R16）：
+// 最擠的球場格（球員、觀眾、草皮、搭車來的球迷）與珍奶格（人龍、站務員）不住島民；溫泉格住的是下面兩位溫泉客。
+// 修正批次 max-skip §E（使用者 2026-11-01 開局截圖「開局時的左側上的人和右側的人可以移除，只留 101 區塊和泡溫泉的人」）：
+// 原本四格各一位（101、晶片、鮮奶、火山格），只留 101 格一位；他是離車站最近的島民，代幣 Lv2 轉成站長之後島上就沒有島民了。
+// 他的家不在格心、在 101 西南邊（鏡頭那側、往捷運站的橋那邊，格心往 (−0.5, 1.0)）、散步半徑 ISLANDER_R 1.0：
+// 101 工地蓋住格子中間一大塊，格心半徑 1.8 散步時會走到 101 北側，從那裡繞到站務崗位要 8.3 m（5.2 s），代幣 Lv2 的劇本超過 6 s 例外；
+// 西南這一塊到崗位最遠 5.6 m（3.5 s）、到月台 5.4 m（散步中心 (−0.5, 0.9) 時外星壞局第 8 回合兩隻老鼠擠過站著的偵防師 2 幀，
+// 同 roster.test 鼠群擦身那一類對軌跡敏感的老問題，(−0.5, 1.0) 量到 0 幀）
 export const HOME_R = 1.8;   // 散步半徑：格子中心常被建築蓋住，要夠大才挑得到走得到的點（鮮奶節的小孩同一個半徑，milk.js）
-export const HOMES = [[0, 0], [1, 0], [-1, 0], [0, -1]].map(cellCentre);
+export const ISLANDER_R = 1.0;
+export const HOMES = [offset(cellCentre([0, 0]), -0.5, 1.0)];
 // 溫泉池（底座半徑 0.7，加上池邊的石頭到 0.75）、小澡堂、木牌各自的 footprint——不再用整個包圍盒（會把池邊整圈都擋掉）。
 // 颱風登陸時池子不能躲（door: false），小澡堂可以（door: true，比一般的門小）
 const POOL_R = 0.75;
@@ -24,9 +31,9 @@ const SPRING_FP = [{ r: POOL_R, door: false }, BATHHOUSE, { x: -0.85, z: 0.75, w
 const SOAK_R = 0.3, WATER_TOP = 0.13, SOAK = 0.15;
 const BATHERS = [0.93, 2.0].map(a => { const p = { x: Math.cos(a) * SOAK_R, z: Math.sin(a) * SOAK_R }; return { p, yaw: Math.atan2(-p.x, -p.z) }; });
 
-// 島民人數：四個人減掉轉成角色的（代幣 ≥2 的站長）。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減。
+// 島民人數：HOMES（一位）減掉轉成角色的（代幣 ≥2 的站長），最少 0。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減。
 // 鮮奶不再借島民（計畫 13 §設計 1：兩個小學生都從校門外走進來）
-export const islanderCount = (lv = {}) => HOMES.length - (lv.token >= 2 ? 1 : 0);
+export const islanderCount = (lv = {}) => Math.max(0, HOMES.length - (lv.token >= 2 ? 1 : 0));
 
 const ROCK = 0xb8a892, CLIFF = 0xd2b48c, WALL = 0xf1e7da, YELLOW = 0xfcea8b, WATER = 0xa4d4da;
 
@@ -115,7 +122,7 @@ export function view(lv = {}) {
     },
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
     // 被轉走的島民不補（裁決 R23）：代幣 ≥2 一個變站長（token.staff，from 這裡 pick 'nearest'）；鮮奶不再借島民（計畫 13）
-    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: islanderCount(lv), accessory: ['none', 'cap'], home: { kind: 'wander', at: HOMES, r: HOME_R } },
+    'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: islanderCount(lv), accessory: 'none', home: { kind: 'wander', at: HOMES, r: ISLANDER_R } },
     // 溫泉客：泡在池裡偶爾看一下（fidget look）；站位在池子 footprint 裡、不帶 rescue（計畫 13 §設計 3）
     'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: BATHERS.map(({ p, yaw }) => ({ ...offset(s, p.x, p.z, WATER_TOP - SOAK), yaw })), fidget: 'look' } },
   };

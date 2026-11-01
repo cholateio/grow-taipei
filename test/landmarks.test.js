@@ -16,14 +16,19 @@ import { MAIN_CELLS, cellAt } from '../src/scene/hex.js';
 import { landmarkWorld } from '../src/actors/anchors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 const SPRING = landmarkWorld('spring');
-// 人數預算（裁決 R16）：島民 4 人、一人一格；最擠的球場格（-1,1）與珍奶格（0,1）不住島民，溫泉格（1,-1）是溫泉客的
-test('islanders: n 4, one wander home per cell on the four main cells that are not baseball/boba/spring; two bathers soak in the pool (radius 0.3, chest-deep, facing the centre, no rescue) with fidget look', () => {
+// 人數預算（裁決 R16）：最擠的球場格（-1,1）與珍奶格（0,1）不住島民，溫泉格（1,-1）是溫泉客的；
+// 修正批次 max-skip §E（使用者 2026-11-01 開局截圖「開局時的左側上的人和右側的人可以移除，只留 101 區塊和泡溫泉的人」）：島民只剩 101 格一位
+test('islanders: one, wandering the 101 cell; two bathers soak in the pool (radius 0.3, chest-deep, facing the centre, no rescue) with fidget look', () => {
   const v = landmarks.view(zero, {}), r = v['landmarks.islanders'];
-  assert.equal(r.kind, 'roster'); assert.equal(r.n, 4); assert.deepEqual(r.accessory, ['none', 'cap']);
-  assert.equal(r.home.kind, 'wander'); assert.equal(r.home.r, 1.8); assert.equal(r.home.at.length, r.n);
+  assert.equal(r.kind, 'roster'); assert.equal(r.n, 1); assert.equal(r.accessory, 'none');
+  assert.equal(r.home.kind, 'wander'); assert.equal(r.home.r, landmarks.ISLANDER_R); assert.equal(r.home.at.length, r.n);
   const cells = r.home.at.map(p => String(cellAt(p.x, p.z)));
-  assert.deepEqual([...cells].sort(), MAIN_CELLS.filter(c => !['1,-1', '-1,1', '0,1'].includes(String(c))).map(String).sort(), 'not the spring, baseball or boba cell');
-  r.home.at.forEach((p, i) => { const c = axialToWorld(...cellAt(p.x, p.z)); assert.deepEqual(p, { x: c.x, y: cellTop(cellAt(p.x, p.z)), z: c.z }, `home ${i} is the cell centre`); });
+  assert.deepEqual(cells, ['0,0'], 'the 101 cell only');
+  assert.deepEqual(landmarks.HOMES.map(p => String(cellAt(p.x, p.z))), ['0,0']);
+  // 家在 101 西南邊（鏡頭那側、往捷運站那邊）：散步圈整個在 101 格裡
+  const [h] = r.home.at, c = axialToWorld(0, 0);
+  assert.ok(h.x < c.x && h.z > c.z && Math.abs(h.y - cellTop([0, 0])) < 1e-9, 'south-west of the cell centre');
+  for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2; assert.deepEqual(cellAt(h.x + Math.cos(a) * r.home.r, h.z + Math.sin(a) * r.home.r), [0, 0], 'the walk stays in the 101 cell'); }
   const b = v['landmarks.bathers'];
   assert.deepEqual([b.kind, b.n, b.home.kind, b.home.fidget, !!b.home.rescue, b.home.spots.length], ['roster', 2, 'stand', 'look', false, 2]);
   const fp = [].concat(v['landmarks.spring'].footprint), nav = createNav();
@@ -81,9 +86,10 @@ test('with the mutant rat at the spring (rat ≥ 4, alien) the bathers stay put 
   for (const [lv, flags] of [[{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 5 }, { ratBranch: 'alien' }], [{ rat: 4 }, { ratBranch: 'cyber' }], [{ rat: 3 }, {}]]) assert.deepEqual(spots(lv, flags), spots({}, {}), `${JSON.stringify(lv)} ${JSON.stringify(flags)}: unchanged`);
   const [a, b] = spots({}, {}); assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.25, 'the two bathers apart');
 });
-// 計畫 13 §設計 1：島民只被站長轉走一個（代幣 ≥2）；鮮奶不再借島民
-test('islanderCount: HOMES.length minus one for the station master only (milk never takes an islander, plan 13)', () => {
+// 計畫 13 §設計 1：島民只被站長轉走一個（代幣 ≥2）；鮮奶不再借島民。§E 之後只有一位：代幣 ≥2 之後島上沒有島民（最小 0）
+test('islanderCount: 1 minus one for the station master only (milk never takes an islander, plan 13), never below 0', () => {
   const all = landmarks.HOMES.length;
+  assert.equal(all, 1); assert.equal(landmarks.islanderCount({ token: 10 }), 0);
   assert.equal(landmarks.islanderCount({}), all);
   for (const milk of [0, 3, 10]) assert.equal(landmarks.islanderCount({ milk }), all, `milk ${milk}`);
   assert.equal(landmarks.islanderCount({ token: 1 }), all); assert.equal(landmarks.islanderCount({ token: 2 }), all - 1);
@@ -144,4 +150,13 @@ test('the volcano foot and rocks stay inside the volcano cell', () => {
   for (let k = 0; k < 24; k++) { const a = k / 24 * 2 * Math.PI, p = { x: spec.at.x + Math.cos(a) * 1.55, z: spec.at.z + Math.sin(a) * 1.55 }; assert.ok(cellAt(p.x, p.z)?.join() === '0,-1', `foot ${k}`); }
   for (const r of spec.parts.filter(p => p.kind === 'ico')) assert.ok(cellAt(spec.at.x + r.pos[0], spec.at.z + r.pos[2])?.join() === '0,-1');
   assert.ok(edge(spec.at) > 1.55, 'room for the foot');
+});
+
+// §E 開局：主島露出來的人只有 101 格的島民一位＋兩位溫泉客
+test('opening: the only people on the main island are the 101-cell islander and the two bathers', async () => {
+  const { headlessShow } = await import('./helpers/show.js'), { show } = await headlessShow();
+  for (let i = 0; i < 60; i++) show.update(1 / 30, i / 30);
+  const shown = show.roster.keys().flatMap(k => show.roster.members(k).filter(m => m.walker && !m.hidden && cellAt(m.pos.x, m.pos.z)).map(m => [k, String(cellAt(m.pos.x, m.pos.z))]));
+  assert.deepEqual(shown.map(([k]) => k).sort(), ['landmarks.bathers', 'landmarks.bathers', 'landmarks.islanders']);
+  assert.equal(shown.find(([k]) => k === 'landmarks.islanders')[1], '0,0', 'the islander is on the 101 cell');
 });

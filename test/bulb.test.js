@@ -204,12 +204,14 @@ test('grow 2 live: the stops light up one at a time in road order (cyclic from w
   }
 });
 // 排隊的那一刻（兩個 ♥ 冒出來時）兩人都在夜市旁；演完回日常後會走開（回合最後回全景那 1 秒也在走）
-test('Lv4: the two nearest people (islanders or the station staff) queue at the market', async () => {
+// 修正批次 max-skip §E：島民只剩一位、代幣 Lv2 轉成站長之後一位都沒有——唯一正解到燈泡 Lv4 時只有站務員一個人去排（nearestPair 不夠兩位就一位）
+test('Lv4: the two nearest people (islanders or the station staff) queue at the market — one when only the station staff is left', async () => {
   const h = await headlessShow(), m = landmarkWorld('market');
   const { e, n } = await liveAt(h, SOLUTIONS[0], isBulb(4));
   assert.equal(e.to, 4);
   const hearts = h.bubblesLog.slice(n).filter(b => b.kind === '♥');
-  assert.equal(hearts.length, 2);
+  const avail = ['landmarks.islanders', 'token.staff'].flatMap(k => h.show.roster.members(k)).length;
+  assert.equal(hearts.length, Math.min(2, avail)); assert.ok(hearts.length >= 1, 'someone queues');
   assert.ok(hearts.every(b => Math.hypot(b.at.x - m.x, b.at.z - m.z) < 1.6), `islanders by the market: ${hearts.map(b => Math.hypot(b.at.x - m.x, b.at.z - m.z).toFixed(2))}`);
 });
 // 自動 footprint 是包圍盒 ×0.9（斜放的零件會鼓出去），所以每個 footprint 先內縮 0.25（一個小人的寬）再比

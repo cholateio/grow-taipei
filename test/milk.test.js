@@ -95,7 +95,7 @@ test('milk kids count: 2 from Lv3, both walk in from the gate (no from / pick, p
   assert.equal(x.kind, 'roster'); assert.equal(x.home.kind, 'wander'); assert.equal(x.n, x.home.at.length);
   assert.equal(x.n, 3); assert.deepEqual(x.home.at, milk.FESTIVAL_HOMES);
   // 鮮奶格、晶片格照島民的散步半徑；溫泉格的圈小一點、避開變異鼠（Task 6a）
-  assert.deepEqual(x.home.r, [...Array(2).fill(landmarks.view()['landmarks.islanders'].home.r), 1.0], 'the islanders\' wander radius (spring cell 1.0)');
+  assert.deepEqual(x.home.r, [...Array(2).fill(landmarks.HOME_R), 1.0], 'the islanders\' old wander radius HOME_R 1.8 (spring cell 1.0; the one islander left wanders ISLANDER_R, §E)');
   assert.deepEqual(cells, ['-1,0', '1,0', '1,-1'], 'one kid each on the milk, chip and spring cells');
   // 鮮奶格、晶片格在格心；溫泉格往西北移 (−0.4, −1.0)，散步圈的邊離變異鼠的站位 ≥ 1.0（Task 6a）
   const { MUTANT } = await import('../src/actors/rat.js');

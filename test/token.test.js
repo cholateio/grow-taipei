@@ -590,12 +590,15 @@ test('Lv2: the station master is the nearest islander (from + pick nearest); the
 });
 test('live, the solution: after token 2 the station master is a former islander (same member) and the islanders are one fewer', async () => {
   const h = await headlessShow(), { show } = h;
-  // 審稿 Minor #2：declare 那一刻盯住來源名冊裡劇本手上的那位（走到崗位的人），搬過去的就是他、原地不動
+  // 審稿 Minor #2：盯住來源名冊裡劇本手上的那位（走到崗位的人），搬過去的就是他、原地不動。
+  // 修正批次 max-skip §E 之後島民只剩一位：同一次 sync 裡 landmarks 先 declare（人數 1 → 0，他變成待退、members 點不到），
+  // 所以在島民名冊 declare 之前先記下劇本手上的人
   const declare = show.roster.declare, swapped = [];
+  let by = null, at = null;
   show.roster.declare = (k, sp, opts) => {
-    const by = k === 'token.staff' && sp?.from ? show.roster.members('landmarks.islanders').filter(m => m.mode === 'script') : null, at = by?.map(m => ({ ...m.pos }));
+    if (k === 'landmarks.islanders') { by = show.roster.members(k).filter(m => m.mode === 'script'); at = by.map(m => ({ ...m.pos })); }
     const out = declare(k, sp, opts);
-    if (by?.length) swapped.push({ by, at, after: by.map(m => ({ ...m.pos })), now: show.roster.members('token.staff') });
+    if (k === 'token.staff' && sp?.from && by?.length) swapped.push({ by, at, after: by.map(m => ({ ...m.pos })), now: show.roster.members('token.staff') });
     return out;
   };
   let s = engine.createState(spec), checked = false;
@@ -611,7 +614,7 @@ test('live, the solution: after token 2 the station master is a former islander 
     assert.deepEqual(now, [by[0]]); assert.equal(st, by[0], 'the islander who walked to the post is the station master');
     assert.ok(Math.hypot(after[0].x - at[0].x, after[0].z - at[0].z) < 1e-6, 'swapped in place');
     assert.equal(st.walker.accessory, 'uniform');
-    assert.equal(show.roster.members('landmarks.islanders').length, 4 - 1, 'only the station master left (milk takes no islander since plan 13)');
+    assert.equal(show.roster.members('landmarks.islanders').length, 1 - 1, 'only the station master left (milk takes no islander since plan 13): no islander any more (§E)');
     checked = true; break;
   }
   assert.ok(checked, 'token 2 reached');

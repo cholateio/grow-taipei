@@ -449,7 +449,7 @@ test('Lv3: the owner builds, the shop appears, the queue and the owner move to t
 });
 // 物品 v2：糖分超標在珍奶 Lv4（唯一正解 Task 1 裁決：鮮奶 ≤4），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）。
 // 放法：求解器列舉裡第一條立了糖分超標的（SUGAR）
-test('Lv4 with low milk is the sugar rush: every islander ♥', async () => {
+test('Lv4 with low milk is the sugar rush: the people on the main island ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   let s = engine.createState(spec), e4 = null, rest = [];
   for (const step of [...SUGAR.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
@@ -460,8 +460,9 @@ test('Lv4 with low milk is the sugar rush: every islander ♥', async () => {
   }
   assert.ok(e4, 'boba reaches Lv4'); assert.equal(rest[0]?.flag?.name, 'bobaSugar', 'the sugar flag follows');
   const n = bubblesLog.length, secs = await run([e4, ...rest, { kind: 'settle' }]);
-  const islanders = show.roster.members('landmarks.islanders').length, hearts = bubblesLog.slice(n).filter(b => b.kind === '♥').length;
-  assert.ok(islanders > 0 && hearts >= islanders, `${hearts} ♥ for ${islanders} islanders`);
+  // 修正批次 max-skip §E：島民只剩一位（代幣 Lv2 起沒有），一起 ♥ 的是主島上在日常裡的人（最多 10 位；珍奶 Lv4 本身的 ♥ 是 2 個）
+  const hearts = bubblesLog.slice(n).filter(b => b.kind === '♥').length;
+  assert.ok(hearts >= 2 + 5, `${hearts} ♥: the sugar rush has a crowd`);
   assert.ok(secs <= 20, `${secs.toFixed(1)} s`);
   assert.equal(show.stage.flags.bobaSugar, true);
 });

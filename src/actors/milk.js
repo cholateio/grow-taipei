@@ -339,7 +339,8 @@ export const script = {
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
         // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.1–8.3 s → 7.0–7.4 s，◆ ≤ 8 s）→ 1.8（裁決 R23 小孩剩兩個，跑去、♥ 變快，整段掉到 6.0 s，◆ 軟下限 6 s）
-        B.focus('home', { hold: 1.8 }), B.levelUp('milk'), B.home(allKids),
+        //   → 2.0（修正批次 max-skip §E 島民只剩一位之後，唯一正解這一級整段量到 5.93 s，低於軟下限）
+        B.focus('home', { hold: 2.0 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
   },

@@ -82,9 +82,10 @@ function rulesOf(spec) {
     for (let n = 3; n <= it.max; n++) if (it.jump?.[n]) { jump[n] = compile(it.jump[n], ctx); jumpRaw[n] = it.jump[n]; }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const rain = it.rain ? compile(it.rain.while, ctx) : null;
+    const bite = it.bite ? { while: compile(it.bite.while, ctx), targets: it.bite.targets } : null;
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
-    r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), rain, onLevel, stall: (it.stall || []).map(cAct) };
+    r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), rain, bite, onLevel, stall: (it.stall || []).map(cAct) };
   }
   r.after = (spec.AFTER_TURN || []).map(cAct);
   compiled.set(spec, r);
@@ -201,7 +202,19 @@ function turn(state, id, spec, rules) {
       if (w === id || !hz.rain?.(s)) continue;
       for (const a of hz.fx) if (a.lock === id) applyAction(s, a, 'fx', w, rules, events);
     }
+    // 計畫 14 R30 咬：bite.while 成立的物品 w（老鼠 Lv1–2）咬剛放下的 id（在 bite.targets 裡）：立 bitten_<id>、發 fx 事件
+    // （item 是被咬的那個，演出層鏡頭對著它；cause w）。被咬的在 w 的 bite.while 還成立期間不長（見 biterOf）
+    for (const w of spec.ORDER) {
+      const b = rules.items[w].bite;
+      if (w === id || !b?.targets.includes(id) || !b.while(s)) continue;
+      const name = `bitten_${id}`;
+      s.flags[name] = true;
+      events.push({ kind: 'fx', item: id, cause: w, flag: { name, value: true }, story: `${spec.ITEMS[w].name}咬了剛開的${spec.ITEMS[id].name}` });
+    }
   }
+  // 被咬住的物品（R30）：bitten_<k> 立著、咬它的 w 的 bite.while 這一刻還成立 → 回 w（擋著）；否則 null。
+  // 每次都照這一刻的狀態算：同一回合 w 升出 bite.while（老鼠搭上捷運）之後，k 在同一輪或下一輪掃描就長
+  const biterOf = k => s.flags[`bitten_${k}`] ? spec.ORDER.find(w => rules.items[w].bite?.targets.includes(k) && rules.items[w].bite.while(s)) ?? null : null;
 
   // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5、選擇帶動升級 §3）：每回合每個物品只走一步——在 n−2 且 jump[n]
   // 成立就跳（+2；只有 spec 寫的 jump[n]，沒有預設跳級），否則 up 成立就 +1；連 delta 在內一回合最多比回合開始高 2 級。
@@ -217,7 +230,7 @@ function turn(state, id, spec, rules) {
     let changed = false;
     for (const k of spec.ORDER) {
       const it = rules.items[k], lv = s.lv[k];
-      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k)) continue;
+      if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || biterOf(k)) continue;
       const st = it.stall.find(r => r.test(s));
       if (st) {
         if (!stalled.has(k)) { stalled.add(k); const e = { kind: 'stall', item: k }; if (st.story !== undefined) e.story = st.story; events.push(e); }
@@ -249,7 +262,7 @@ function turn(state, id, spec, rules) {
   // 只差多等一回合的物品（+1 條件成立、delay[n] 擋著，颱風賴在巨蛋）：記一個 stall 事件（演出層演「……」）；不算在等誰
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k], n = lv + 1;
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k) || k === id) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k) || k === id || biterOf(k)) continue;
     if (delayed(k, n) && it.up[n](s)) { stalled.add(k); events.push({ kind: 'stall', item: k }); }
   }
 
@@ -258,7 +271,11 @@ function turn(state, id, spec, rules) {
   const waits = [];
   for (const k of spec.ORDER) {
     const it = rules.items[k], lv = s.lv[k];
-    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k) || k === id || it.up[lv + 1](s)) continue;
+    if (lv === 0 || lv >= it.max || s.locked[k] || grown.has(k) || knocked.has(k) || stalled.has(k)) continue;
+    // 被咬住的（R30）等的是咬它的那個（老鼠），連放下那回合也列——老鼠指標（stage.troubleOf）守在它門口
+    const biter = biterOf(k);
+    if (biter) { waits.push({ item: k, for: [biter] }); continue; }
+    if (k === id || it.up[lv + 1](s)) continue;
     const missing = missingHelpers(it.raw[lv + 1], s, k);
     if (missing.size) waits.push({ item: k, for: spec.ORDER.filter(id => missing.has(id)) });
   }

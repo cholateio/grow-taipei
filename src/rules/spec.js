@@ -87,6 +87,9 @@ export const ITEMS = {
     // → 分岔＝最終型態（園區實驗室：晶片 ≥3，或暴雨：颱風 ≥2；代幣 ≥4 且晶片 ≥3 直接 2 → 4）：晶片 ≥8 → 機器鼠，否則變異鼠
     up: { 2: or(min('milk', 2), min('boba', 2)), 3: min('token', 4), 4: or(min('chip', 3), min('typhoon', 2)) },
     jump: { 4: and(min('token', 4), min('chip', 3)) },
+    // 老鼠一直有效（計畫 14 R30，使用者 2026-11-01「我在老鼠後放牛奶和珍奶，怎麼老鼠沒去破壞讓他們不能升級？」）：
+    // 老鼠還在島上（Lv1–2，還沒搭捷運）時放下的鮮奶／珍奶被咬（旗標 bitten_<id>），老鼠搭上捷運（Lv3）之前長不上去
+    bite: { while: and(min('rat', 1), max('rat', 2)), targets: ['milk', 'boba'] },
     // 放下時鮮奶還是牛奶箱／早餐店（≤2）就咬一口；鮮奶蓋了學校就沒得咬
     fx: [
       { when: and(present('milk'), max('milk', 2)), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },

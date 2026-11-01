@@ -602,3 +602,65 @@ test('R29 rain is declared in the spec, not hard-coded: a mini spec with rain on
   const t = place(place(createState(w), 'w', w).state, 'y', w).state;   // w 3
   assert.ok(!place(t, 'x', w).state.locked.x, 'w Lv3: no rain');
 });
+
+// 計畫 14 R30 老鼠一直有效：老鼠 Lv1–2（還在島上）時放下的鮮奶／珍奶被咬——立 bitten_<id>、發 fx（cause rat），
+// 而且老鼠還是 Lv1–2 期間它長不上去（掃描跳過、列在 wait 裡 for ['rat']，連放下那回合也列：老鼠指標守在它門口）；
+// 老鼠升到 Lv3（搭捷運走了）那一刻起不再擋，旗標留著。原本的「放老鼠時鮮奶 ≤2 就 −1」照舊
+const waitOf = (r, item) => r.events.find(e => e.kind === 'wait')?.waits.find(w => w.item === item);
+test('R30 rat: boba placed while the rat is Lv2 is bitten (flag, fx event after placed, before growth), does not grow and waits for the rat', () => {
+  const { r, s } = turnEvents(['milk', 'baseball', 'rat', 'boba']);
+  assert.equal(r.state.lv.rat, 2, 'precondition: the rat is Lv2 (no token for the metro)');
+  const bite = r.events.find(e => e.kind === 'fx' && e.cause === 'rat');
+  assert.deepEqual(bite, { kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: true }, story: '老鼠咬了剛開的珍奶' });
+  assert.equal(r.events.indexOf(bite), 1, 'right after the placed event');
+  assert.equal(s.flags.bitten_boba, true);
+  assert.equal(s.lv.boba, 1, 'boba up[2] (milk ≥ 3) holds, but the rat blocks it');
+  assert.ok(!r.events.some(e => e.kind === 'grow' && e.item === 'boba'));
+  assert.deepEqual(waitOf(r, 'boba'), { item: 'boba', for: ['rat'] }, 'listed as waiting for the rat even in its placement turn');
+  const next = place(s, 'chip', real);
+  assert.equal(next.state.lv.boba, 1, 'still blocked while the rat is Lv2');
+  assert.deepEqual(waitOf(next, 'boba'), { item: 'boba', for: ['rat'] });
+  assert.ok(!next.events.some(e => e.cause === 'rat' && e.flag?.name === 'bitten_boba'), 'bitten once, at placement');
+});
+test('R30 rat: milk placed while the rat is Lv1 is bitten and stays Lv1 (and the rat, needing milk ≥ 2, stays Lv1 too)', () => {
+  const { r, s } = turnEvents(['rat', 'milk']);
+  assert.deepEqual(r.events.find(e => e.cause === 'rat'), { kind: 'fx', item: 'milk', cause: 'rat', flag: { name: 'bitten_milk', value: true }, story: '老鼠咬了剛開的鮮奶' });
+  assert.equal(s.lv.milk, 1); assert.equal(s.lv.rat, 1);
+  assert.deepEqual(waitOf(r, 'milk'), { item: 'milk', for: ['rat'] });
+  assert.equal(advance(s, real).state.lv.milk, 1, 'still bitten next turn');
+});
+test('R30 rat: the turn the rat reaches Lv3 the bitten boba grows too (the rat is scanned first; boba sits after it in ORDER)', () => {
+  const { r, s } = turnEvents(['milk', 'baseball', 'token', 'rat', 'boba']);
+  assert.equal(s.flags.bitten_boba, true, 'bitten at placement: the rat was Lv2 at the start of the turn');
+  const g = r.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`);
+  assert.ok(g.includes('rat3') && g.includes('boba2'), `rat 3 and boba 2 in the same turn: ${g}`);
+  assert.ok(g.indexOf('rat3') < g.indexOf('boba2'), 'the rat leaves first, then the boba grows');
+  assert.ok(!waitOf(r, 'boba'), 'not waiting any more');
+});
+test('R30 rat: a bitten item scanned before the rat still grows in the turn the rat leaves (the scan repeats)', () => {
+  const m = { ORDER: ['m', 'r', 't'], ITEMS: {
+    m: { name: '奶', max: 3, up: { 2: { always: true }, 3: { always: true } } },
+    r: { name: '鼠', max: 3, up: { 2: { always: true }, 3: { present: 't' } }, bite: { while: { and: [{ minLevel: ['r', 1] }, { maxLevel: ['r', 2] }] }, targets: ['m'] } },
+    t: { name: 'T', max: 1, up: {} } },
+    AFTER_TURN: [], STORIES: { placed: { m: '', r: '', t: '' }, grow: { m: { 2: 'm2', 3: 'm3' }, r: { 2: 'r2', 3: 'r3' }, t: {} } } };
+  let s = place(createState(m), 'r', m).state;      // r 2
+  const bitten = place(s, 'm', m); s = bitten.state;
+  assert.equal(s.lv.m, 1); assert.equal(bitten.events[1].story, '鼠咬了剛開的奶');
+  assert.deepEqual(waitOf(bitten, 'm'), { item: 'm', for: ['r'] });
+  const free = place(s, 't', m);
+  assert.deepEqual(free.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['r3', 'm2'], 'm is skipped in the first pass, grows in the second');
+  assert.equal(free.state.flags.bitten_m, true, 'the flag stays for the show');
+});
+test('R30 rat: placed after the rat reached Lv3 nothing is bitten; the old rat-placement bite (milk ≤ 2 → −1) is unchanged and sets no bitten flag', () => {
+  const { r, s } = turnEvents(['milk', 'baseball', 'token', 'rat', 'chip', 'boba']);
+  assert.ok(s.lv.rat >= 3);
+  assert.ok(!r.events.some(e => e.cause === 'rat' && e.flag?.name?.startsWith('bitten_')), 'no bite (the rat Lv4 branch is also a rat fx)'); assert.ok(!s.flags.bitten_boba);
+  assert.equal(s.lv.boba, 2, 'grows as usual');
+  const old = turnEvents(['milk', 'rat']);
+  assert.deepEqual(old.r.events.find(e => e.cause === 'rat').delta, { target: 'milk', from: 2, to: 1 });
+  assert.ok(!old.s.flags.bitten_milk, 'the milk was there first: no blocking bite');
+  for (const item of ['chip', 'bulb', 'token', 'baseball']) {
+    const t = turnEvents(['milk', 'rat', item]);
+    assert.ok(!t.r.events.some(e => e.cause === 'rat'), `${item} is not bitten`);
+  }
+});

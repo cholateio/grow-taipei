@@ -8,6 +8,7 @@
 // 老闆、觀光客是名冊（§8.7 的劇本讓同一批人走過來排隊）；颱風外送是颱風模組的劇本，不在這裡（老鼠撞翻攤車：唯一正解 §5.2 拿掉了）。
 // 劇本（§6）：一級 ≤ 4.5 秒；◆ Lv5、Lv6 ≤ 8 秒（Lv6 最後回全景定格）。
 import { anchorWorld } from './anchors.js';
+import { heldBy } from '../rules/engine.js';
 import { C, offset } from './palette.js';
 import { bunting } from './bunting.js';
 import { island } from './satellites.js';
@@ -208,7 +209,8 @@ const BITE_PARTS = [
 ];
 // 老鼠咬攤車時站的地方（相對 SHOP：攤車前、缺口左下，珍珠在牠右手邊）
 export const BITE_SPOT = offset(SHOP, -0.05, 0.5);
-export const bitten = (lv, flags) => !!flags.bitten_boba && lv.rat > 0 && lv.rat <= 2;
+// 擋不擋照規則算（engine.heldBy：咬它的那個的 bite.while），不在這裡寫死老鼠級數（修正輪 1）
+export const bitten = (lv, flags) => !!heldBy({ lv, flags }, 'boba');
 // 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.50）疊在一起
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });

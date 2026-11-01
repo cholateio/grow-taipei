@@ -652,7 +652,7 @@ test('fix3 A: the sign never seals off a pocket of the walking grid (every boba 
 // 老鼠搭上捷運（Lv3）就恢復原樣；被吹走的攤車照舊是海裡那台
 test('bitten cart (flags.bitten_boba while the rat is Lv1–2): a dark gap on the front face and two pearls on the ground, same compound, one mesh; back to normal once the rat leaves', async () => {
   const plain = boba.view(lv({ boba: 1, rat: 2 }), {})['boba.main'];
-  const bitten = boba.view(lv({ boba: 1, rat: 2 }), { bitten_boba: true })['boba.main'];
+  const bitten = boba.view(lv({ boba: 1, rat: 2 }), { bitten_boba: 'rat' })['boba.main'];
   assert.equal(bitten.kind, 'compound'); assert.deepEqual(bitten.footprint, plain.footprint); assert.deepEqual(bitten.at, plain.at);
   const extra = bitten.parts.filter(p => !plain.parts.some(q => JSON.stringify(q) === JSON.stringify(p)));
   assert.equal(extra.length, 3, `the gap and two pearls (${extra.length})`);
@@ -661,8 +661,8 @@ test('bitten cart (flags.bitten_boba while the rat is Lv1–2): a dark gap on th
   assert.equal(pearls.length, 2);
   for (const p of pearls) assert.ok(p.color === C.ink && p.pos[1] < 0.05 && p.pos[2] > 0.25, 'pearls lying on the ground in front of the cart');
   assert.equal(bitten.parts.length, plain.parts.length + 3);
-  for (const r of [0, 3, 4]) assert.deepEqual(boba.view(lv({ boba: 1, rat: r }), { bitten_boba: true })['boba.main'], plain, `rat ${r}: the cart looks normal`);
-  assert.deepEqual(boba.view(lv({ boba: 1, rat: 2 }), { bitten_boba: true, cartBlown: true })['boba.main'], boba.view(lv({ boba: 1, rat: 2 }), { cartBlown: true })['boba.main'], 'a blown cart stays the one in the sea');
+  for (const r of [0, 3, 4]) assert.deepEqual(boba.view(lv({ boba: 1, rat: r }), { bitten_boba: 'rat' })['boba.main'], plain, `rat ${r}: the cart looks normal`);
+  assert.deepEqual(boba.view(lv({ boba: 1, rat: 2 }), { bitten_boba: 'rat', cartBlown: true })['boba.main'], boba.view(lv({ boba: 1, rat: 2 }), { cartBlown: true })['boba.main'], 'a blown cart stays the one in the sea');
   const { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
   assert.equal(f.build(bitten).object.children.length, 1, 'one mesh: no extra draw call');

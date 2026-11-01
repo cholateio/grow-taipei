@@ -392,8 +392,8 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
 test('bitten milk (flags.bitten_milk while the rat is Lv1–2): the crate lies tipped with spilt milk, like meta.bitten; upright once the rat leaves', () => {
   const L = r => ({ milk: 1, chip: 0, bulb: 0, token: 0, typhoon: 0, rat: r, boba: 0, baseball: 0 });
   const tipped = milk.view(L(1), {}, { bitten: true })['milk.crate'];
-  assert.deepEqual(milk.view(L(1), { bitten_milk: true })['milk.crate'], tipped, 'rat Lv1: the same tipped crate');
-  assert.deepEqual(milk.view(L(2), { bitten_milk: true })['milk.crate'], tipped, 'rat Lv2: still tipped');
+  assert.deepEqual(milk.view(L(1), { bitten_milk: 'rat' })['milk.crate'], tipped, 'rat Lv1: the same tipped crate');
+  assert.deepEqual(milk.view(L(2), { bitten_milk: 'rat' })['milk.crate'], tipped, 'rat Lv2: still tipped');
   assert.ok(tipped.parts.some(p => p.spill));
-  for (const r of [3, 4]) assert.ok(!milk.view(L(r), { bitten_milk: true })['milk.crate'].parts.some(p => p.spill), `rat ${r}: upright`);
+  for (const r of [3, 4]) assert.ok(!milk.view(L(r), { bitten_milk: 'rat' })['milk.crate'].parts.some(p => p.spill), `rat ${r}: upright`);
 });

@@ -94,7 +94,8 @@ export const ITEMS = {
     jump: { 4: and(min('token', 4), min('chip', 3)) },
     // 老鼠一直有效（計畫 14 R30，使用者 2026-11-01「我在老鼠後放牛奶和珍奶，怎麼老鼠沒去破壞讓他們不能升級？」）：
     // 老鼠還在島上（Lv1–2，還沒搭捷運）時放下的鮮奶／珍奶被咬（旗標 bitten_<id>），老鼠搭上捷運（Lv3）之前長不上去
-    bite: { while: and(min('rat', 1), max('rat', 2)), targets: ['milk', 'boba'] },
+    // 修正輪 1：故事句放在這裡（引擎不寫死文字）；放下那一刻老鼠照當下狀態這回合就會搭上捷運的不咬（engine leavesNow）
+    bite: { while: and(min('rat', 1), max('rat', 2)), targets: ['milk', 'boba'], story: { milk: '老鼠咬了剛開的鮮奶', boba: '老鼠咬了剛開的珍奶' } },
     // 放下時鮮奶還是牛奶箱／早餐店（≤2）就咬一口；鮮奶蓋了學校就沒得咬
     fx: [
       { when: and(present('milk'), max('milk', 2)), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },

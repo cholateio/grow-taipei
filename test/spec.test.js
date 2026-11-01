@@ -138,6 +138,6 @@ test('typhoon rain lasts while it is Lv1..2', () => {
 });
 // 計畫 14 R30：老鼠還在島上（Lv1–2）時放下的鮮奶／珍奶被咬、老鼠走之前長不上去——規格宣告 bite，引擎通用處理
 test('rat bites milk and boba placed while it is Lv1..2', () => {
-  assert.deepEqual(ITEMS.rat.bite, { while: { and: [minL('rat', 1), maxL('rat', 2)] }, targets: ['milk', 'boba'] });
+  assert.deepEqual(ITEMS.rat.bite, { while: { and: [minL('rat', 1), maxL('rat', 2)] }, targets: ['milk', 'boba'], story: { milk: '老鼠咬了剛開的鮮奶', boba: '老鼠咬了剛開的珍奶' } });
   for (const id of ORDER) if (id !== 'rat') assert.ok(!('bite' in ITEMS[id]), `${id} has no bite`);
 });

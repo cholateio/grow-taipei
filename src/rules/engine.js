@@ -82,7 +82,7 @@ function rulesOf(spec) {
     for (let n = 3; n <= it.max; n++) if (it.jump?.[n]) { jump[n] = compile(it.jump[n], ctx); jumpRaw[n] = it.jump[n]; }
     for (const n in it.delay || {}) delay[n] = compile(it.delay[n], ctx);
     const rain = it.rain ? compile(it.rain.while, ctx) : null;
-    const bite = it.bite ? { while: compile(it.bite.while, ctx), targets: it.bite.targets } : null;
+    const bite = it.bite ? { while: compile(it.bite.while, ctx), targets: it.bite.targets, story: it.bite.story } : null;
     const onLevel = {};
     for (const n in it.onLevel || {}) onLevel[n] = it.onLevel[n].map(cAct);
     r.items[id] = { max: it.max, up, jump, jumpRaw, delay, raw: it.up, fx: (it.fx || []).map(cAct), rain, bite, onLevel, stall: (it.stall || []).map(cAct) };
@@ -124,6 +124,22 @@ export function lockFlags(spec = defaultSpec) {
     LOCK_FLAGS.set(spec, Object.fromEntries(acts.filter(a => a?.lock && a.flag?.name).map(a => [a.lock, a.flag.name])));
   }
   return LOCK_FLAGS.get(spec);
+}
+
+// 被咬住（計畫 14 R30）：bitten_<id> 記著咬它的那個 w，w 的 bite.while 這一刻還成立 → 回 w；否則 null。
+// 引擎的掃描、等待與演出層（boba.js 攤車缺口、milk.js 牛奶箱側躺）共用；state 只要有 lv、flags
+export function heldBy(state, id, spec = defaultSpec) {
+  const w = state.flags?.[`bitten_${id}`];
+  if (typeof w !== 'string') return null;
+  const b = rulesOf(spec).items[w]?.bite;
+  return b && b.while(state) ? w : null;
+}
+// w 照這一刻的狀態，這回合的那一步（spec 寫的 jump 先、否則 up；不超過 max）會不會升出自己的 bite.while（修正輪 1 裁決 4）
+function leavesNow(w, s, rules) {
+  const it = rules.items[w], lv = s.lv[w];
+  if (!(lv > 0) || s.locked[w]) return false;
+  const to = lv + 2 <= it.max && it.jump[lv + 2]?.(s) ? lv + 2 : lv + 1 <= it.max && it.up[lv + 1]?.(s) ? lv + 1 : lv;
+  return to !== lv && !it.bite.while({ ...s, lv: { ...s.lv, [w]: to } });
 }
 
 export const isPlaced = (state, id) => state.lv[id] > 0;
@@ -202,19 +218,24 @@ function turn(state, id, spec, rules) {
       if (w === id || !hz.rain?.(s)) continue;
       for (const a of hz.fx) if (a.lock === id) applyAction(s, a, 'fx', w, rules, events);
     }
-    // 計畫 14 R30 咬：bite.while 成立的物品 w（老鼠 Lv1–2）咬剛放下的 id（在 bite.targets 裡）：立 bitten_<id>、發 fx 事件
-    // （item 是被咬的那個，演出層鏡頭對著它；cause w）。被咬的在 w 的 bite.while 還成立期間不長（見 biterOf）
+    // 計畫 14 R30 咬：bite.while 成立的物品 w（老鼠 Lv1–2）咬剛放下的 id（在 bite.targets 裡）：立 bitten_<id> = w（記下是誰咬的）、
+    // 發 fx 事件（item 是被咬的那個，演出層鏡頭對著它；cause w；故事句在規格 bite.story）。被咬的在 w 的 bite.while 還成立期間不長（見 heldBy）。
+    // 不咬：雨中當場被吹走（鎖住）的（攤車已經在海裡）；照這一刻的狀態 w 這回合就會升出 bite.while 的（修正輪 1 裁決 4：
+    // 老鼠這回合就搭上捷運——不演「咬了當回合又放過」，同「降級當回合不升級」那一類可讀性）。一個物品只被咬一次（第一個咬的）
     for (const w of spec.ORDER) {
       const b = rules.items[w].bite;
-      if (w === id || !b?.targets.includes(id) || !b.while(s) || s.locked[id]) continue;   // 雨中當場被吹走（鎖住）的不咬：攤車已經在海裡
+      if (w === id || !b?.targets.includes(id) || !b.while(s) || s.locked[id] || leavesNow(w, s, rules)) continue;
       const name = `bitten_${id}`;
-      s.flags[name] = true;
-      events.push({ kind: 'fx', item: id, cause: w, flag: { name, value: true }, story: `${spec.ITEMS[w].name}咬了剛開的${spec.ITEMS[id].name}` });
+      s.flags[name] = w;
+      const ev = { kind: 'fx', item: id, cause: w, flag: { name, value: w } };
+      if (b.story?.[id] !== undefined) ev.story = b.story[id];
+      events.push(ev);
+      break;
     }
   }
-  // 被咬住的物品（R30）：bitten_<k> 立著、咬它的 w 的 bite.while 這一刻還成立 → 回 w（擋著）；否則 null。
+  // 被咬住的物品（R30）：咬它的那個（旗標值）的 bite.while 這一刻還成立 → 回它（擋著）；否則 null。
   // 每次都照這一刻的狀態算：同一回合 w 升出 bite.while（老鼠搭上捷運）之後，k 在同一輪或下一輪掃描就長
-  const biterOf = k => s.flags[`bitten_${k}`] ? spec.ORDER.find(w => rules.items[w].bite?.targets.includes(k) && rules.items[w].bite.while(s)) ?? null : null;
+  const biterOf = k => heldBy(s, k, spec);
 
   // GROW 的節奏（使用者 2026-10-25、物品 v2 §3、裁決 R2／R4／R5、選擇帶動升級 §3）：每回合每個物品只走一步——在 n−2 且 jump[n]
   // 成立就跳（+2；只有 spec 寫的 jump[n]，沒有預設跳級），否則 up 成立就 +1；連 delta 在內一回合最多比回合開始高 2 級。

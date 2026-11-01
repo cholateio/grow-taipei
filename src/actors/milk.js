@@ -5,6 +5,7 @@
 // 被老鼠咬那回合：小孩躲回校舍，窗戶亮燈（下一回合照常出來）。颱風放下時小孩跟大家一樣跑去門口躲一下又出來（颱風劇本）。
 // 劇本（§6）：一級 3–5 秒（走到位、一個動作、閃白、LEVEL UP）；◆ Lv7、Lv10 ≤ 10 秒、最後回全景定格。
 import { anchorWorld, cellCentre } from './anchors.js';
+import { heldBy } from '../rules/engine.js';
 import { HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
@@ -125,7 +126,7 @@ export function view(lv, flags, meta = {}) {
   // 大停電：冰箱沒電，牛奶箱變灰（純點綴；鮮奶 −1 2026-11-01 拿掉了，R25）
   // 被老鼠咬的那回合：箱子側躺（藍帶從頂上轉到側面）、地上一灘牛奶（下一回合閃白扶正）
   // 計畫 14 R30：老鼠 Lv1–2 時放下的鮮奶被咬住（flags.bitten_milk）也是這個畫面，老鼠搭上捷運（Lv3）才扶正
-  const spoiled = !!flags.blackout, tipped = !!meta.bitten || (!!flags.bitten_milk && lv.rat > 0 && lv.rat <= 2);
+  const spoiled = !!flags.blackout, tipped = !!meta.bitten || !!heldBy({ lv, flags }, 'milk');   // 擋不擋照規則算（engine.heldBy）
   v['milk.crate'] = { kind: 'compound', at: CRATE, labelY: 0.8, footprint: { r: 0.3 }, parts: [
     { kind: 'rbox', pos: [0, 0.225, 0], scale: 0.45, color: spoiled ? SPOILED : C.cream },
     tipped ? { kind: 'box', pos: [-0.075, 0.225, 0], scale: [0.08, 0.47, 0.47], color: spoiled ? SPOILED_BAND : C.blue }

@@ -739,7 +739,7 @@ test('live: rats loitering at the lamp door (trouble = bulb) never step onto a b
 // 一隻老鼠（離它最近的那隻）跑到攤車／牛奶箱旁 → 聞一聞 → ！ → 換成被咬的樣子（攤車缺口＋地上的珍珠／牛奶箱側躺）→ 沒有 LEVEL DOWN；一級 3–4.5 s
 const isBite = id => e => e.kind === 'fx' && e.cause === 'rat' && e.flag?.name === `bitten_${id}`;
 test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, the cart turns bitten; no LEVEL DOWN; 3–4.5 s', async () => {
-  const beats = rat.script.fx({ kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: true } }, { lv: lv({ rat: 2, boba: 1 }), flags: { bitten_boba: true } }, { B });
+  const beats = rat.script.fx({ kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: 'rat' } }, { lv: lv({ rat: 2, boba: 1 }), flags: { bitten_boba: 'rat' } }, { B });
   assert.ok(Array.isArray(beats) && beats.length, 'a bite script');
   assert.deepEqual(beats.map(b => b.kind).slice(0, 3), ['walk', 'gesture', 'bubble']);
   assert.ok(!beats.some(b => b.kind === 'levelUp'), 'no LEVEL DOWN');
@@ -773,19 +773,24 @@ test('rat bites the fresh milk (placed after the rat): the rat runs to the crate
 test('live, a whole game with the boba bitten (rat before boba): no script error, invariants clean, the cart heals when the rat boards the metro', async () => {
   const order = ['milk', 'baseball', 'rat', 'boba', 'token', 'bulb', 'chip', 'typhoon'];
   const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
-  let s = engine.createState(spec), bitten = 0, healed = false;
+  // 修正輪 1：看舞台上真的那個零件——被咬時 boba.main 是有缺口＋珍珠的那一份（頂點數），老鼠搭上捷運那回合換掉、回到沒缺口的那一份
+  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
+  const verts = o => o?.children[0]?.geometry?.attributes.position.count ?? -1;
+  const plainN = verts(f.build(boba.view(lv({ boba: 1, rat: 3 }), {})['boba.main']).object), bittenN = verts(f.build(boba.view(lv({ boba: 1, rat: 2 }), { bitten_boba: 'rat' })['boba.main']).object);
+  assert.ok(bittenN > plainN, 'the bitten cart has more geometry (gap + pearls)');
+  let s = engine.createState(spec), bitten = 0, healed = false, bittenObj = null;
   for (const [i, step] of turnSteps(order).entries()) {
     const r = step(s); s = r.state; inv.label(`turn ${i + 1}`);
     await run([...r.events, { kind: 'settle' }]);
     inv.turnEnd();
     assert.equal(JSON.stringify(show.stage.lv), JSON.stringify(s.lv), `turn ${i + 1}: stage matches the engine`);
-    const n = boba.view(show.stage.lv, show.stage.flags)['boba.main']?.parts?.length ?? 0;
-    if (s.flags.bitten_boba && s.lv.rat <= 2) bitten++;
-    if (s.flags.bitten_boba && s.lv.rat >= 3 && s.lv.boba < 3) healed = n === boba.view(lv({ boba: s.lv.boba }), {})['boba.main'].parts.length;
+    const obj = show.stage.partObject('boba.main');
+    if (s.flags.bitten_boba && s.lv.rat <= 2) { bitten++; bittenObj = obj; assert.equal(verts(obj), bittenN, `turn ${i + 1}: the bitten cart is on stage`); }
+    else if (bittenObj && !healed) { healed = true; assert.notEqual(obj, bittenObj, `turn ${i + 1}: the cart part was swapped`); assert.equal(verts(obj), plainN, `turn ${i + 1}: no gap, no pearls`); }
   }
   assert.ok(bitten >= 1, 'the boba sat bitten at least one turn');
   assert.ok(s.flags.bitten_boba && s.lv.rat >= 3, 'the rat boarded the metro');
-  assert.ok(healed || s.lv.boba >= 3, 'the cart looks normal again');
+  assert.ok(healed, 'the cart healed the turn the rat left (boba still a cart then)');
   assert.deepEqual([...inv.walls].slice(0, 10), [], `${inv.walls.size} inside a building`);
   assert.deepEqual([...inv.jumps].slice(0, 10), [], `${inv.jumps.size} jumps`);
   assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} pops`);

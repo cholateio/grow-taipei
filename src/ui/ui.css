@@ -1,6 +1,6 @@
 /* 介面：政策島的奶油卡片 + GROW 的下方物品列 */
 :root { --ink: #211d1d; --cream: #fff8f4; --coral: #db6a41; --yellow: #fcea8b; --line: #e9ded2; --shadow: 0 2px 8px #4a2a1414, 0 8px 24px #4a2a1410;
-  /* 物品列的高度：一排 = 上 10 + 格 72 + 下 16；手機兩排見下面 ≤ 640 */
+  /* 物品列的高度：一排 = 上 10 + 格 72 + 下 16；手機兩排見下面 ≤ 660 */
   --slots-h: 98px; }
 #ui { position: fixed; inset: 0; pointer-events: none; }
 #ui > * { pointer-events: auto; }
@@ -20,7 +20,7 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 @keyframes reset-glow { 0%, 70%, 100% { transform: scale(1); } 35% { transform: scale(1.06); } }
 @media (prefers-reduced-motion: reduce) { .tools button.glow { animation: none; } }
 
-.slots { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; grid-template-columns: repeat(8, 64px) 44px; gap: 8px;
+.slots { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: grid; grid-template-columns: repeat(8, 64px) 44px; gap: 6px; row-gap: 8px;
   background: #fff8f4e0; backdrop-filter: blur(10px); padding: 10px 12px 16px; border-radius: 18px; box-shadow: var(--shadow); }
 .slot { position: relative; width: 64px; height: 72px; padding: 6px 4px 4px; background: #fff; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--line);
   display: flex; flex-direction: column; align-items: center; gap: 2px; }
@@ -34,20 +34,22 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .slot.placed .lv { opacity: 1; }
 .slots.busy .slot:not(.placed) { opacity: .8; }
 /* 跳過鍵（修正批次 max-skip §C）：物品列最後一格窄格，只有 Skip 圖示；一直在、不跳版面。沒有演出時停用（淡），
-   演出中啟用：珊瑚底白圖示（正好跟演出中停用的物品格相反） */
+   演出中啟用：珊瑚底白圖示（正好跟演出中停用的物品格相反）。
+   寬度（修正輪 1）：桌機 8 × 64 + 44 + 8 × 6 + 24 = 628，手機斷點 660 = 628 + 左右各 16（間距 8 時 644 寬、斷點 640，641–643 寬溢出） */
 .skip { width: 44px; height: 72px; padding: 0; background: #fff; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--line);
   display: flex; align-items: center; justify-content: center; }
 .skip svg { width: 28px; height: 28px; }
 .skip:disabled { opacity: .45; cursor: default; }
 .skip:not(:disabled) { background: var(--coral); box-shadow: none; }
 .skip:not(:disabled) svg { stroke: #fff; fill: #fff; }
-@media (max-width: 640px) {
-  :root { --slots-h: 178px; }   /* 兩排：10 + 72 + 8 + 72 + 16 */
+@media (max-width: 660px) {
+  :root { --slots-h: 178px; }   /* 兩排：10 + 72 + 8 + 72 + 16（列距照舊 8：.slots 的 gap 6 只是欄距、row-gap 8） */
   .slots { grid-template-columns: repeat(4, 64px) 44px; }
   .skip { grid-column: 5; grid-row: 1 / span 2; height: auto; }   /* 第 5 欄跨兩排 */
   .brand b { font-size: 20px; }
 }
-/* 窄手機：物品格 58、跳過欄 36——360 寬時整條 4 × 58 + 36 + 4 × 8 + 24 = 324 ≤ 328（左右各 16 px 邊距） */
+/* 窄手機：物品格 58、跳過欄 36——360 寬時整條 4 × 58 + 36 + 4 × 6 + 24 = 316 ≤ 328（左右各 16 px 邊距）；
+   381 寬起是 4 × 64 + 44 + 4 × 6 + 24 = 348，邊距 ≥ 16.5 */
 @media (max-width: 380px) {
   .slots { grid-template-columns: repeat(4, 58px) 36px; }
   .slot { width: 58px; }

@@ -88,27 +88,32 @@ test('the skip icon: two right-pointing triangles and a bar, in the shared svg s
   assert.equal((SKIP_ICON.match(/<path d="M[\d ]+L[\d ]+L[\d ]+Z"/g) ?? []).length, 2, 'two triangles');
   assert.match(SKIP_ICON, /<path d="M\d+ \d+ V\d+"/, 'one vertical bar');
 });
-// 樣式：物品列高度不變（--slots-h 98／178）；桌機一排、跳過鍵是第 9 欄窄格（寬 44、高 72）；手機兩排（≤ 640）跳過鍵第 5 欄跨兩排；
-// 窄螢幕（≤ 380）物品格 58、跳過欄 36（360 寬時整條 4×58 + 36 + 4×8 + 24 = 324 ≤ 328）；停用淡、啟用珊瑚底白圖示；浮動膠囊拿掉了
+// 樣式：物品列高度不變（--slots-h 98／178）；桌機一排、跳過鍵是第 9 欄窄格（寬 44、高 72），間距 6（8×64 + 44 + 8×6 + 24 = 628）；
+// 手機兩排（≤ 660 = 628 + 左右各 16：修正輪 1，間距 8 時桌機 644 寬、斷點 640，641–643 寬會溢出）跳過鍵第 5 欄跨兩排；
+// 窄螢幕（≤ 380）物品格 58、跳過欄 36（360 寬時整條 4×58 + 36 + 4×6 + 24 = 316 ≤ 328）；停用淡、啟用珊瑚底白圖示；浮動膠囊拿掉了
 const cssText = async () => (await import('node:fs')).readFileSync('src/ui/ui.css', 'utf8');
 const ruleOf = (css, sel) => new RegExp(`(^|\\n)\\s*${sel.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[2] ?? '';
 const mediaOf = (css, q) => new RegExp(`@media \\(${q.replace(/[()]/g, '\\$&')}\\)\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css)?.[1] ?? '';
 test('ui.css: the skip cell sits in the item bar — a narrow 9th column on desktop, column 5 spanning both rows on phones, 58 / 36 px on narrow phones', async () => {
   const css = await cssText();
   assert.match(/:root\s*\{([^}]*)\}/.exec(css)[1], /--slots-h:\s*98px/);
-  assert.match(ruleOf(css, '.slots'), /grid-template-columns:\s*repeat\(8, 64px\) 44px/);
+  assert.match(ruleOf(css, '.slots'), /grid-template-columns:\s*repeat\(8, 64px\) 44px/); assert.match(ruleOf(css, '.slots'), /(^|[^-])gap:\s*6px/); assert.match(ruleOf(css, '.slots'), /row-gap:\s*8px/, 'rows stay 8 apart (--slots-h 178)');
+  const W = (n, cell, skip, gap = 6) => n * cell + skip + n * gap + 24;   // n 欄物品＋跳過欄：n 個間距、左右內距 12 + 12
+  assert.equal(W(8, 64, 44), 628); assert.ok(W(8, 64, 44) + 32 <= 661, 'desktop bar fits from 661 px with 16 px gutters');
+  assert.ok(W(4, 64, 44) + 32 <= 381, 'phone bar fits from 381 px with 16 px gutters');
+  assert.doesNotMatch(css, /max-width: 640px/, 'the old 640 breakpoint is gone');
   const skip = ruleOf(css, '.skip');
   assert.match(skip, /width:\s*44px/); assert.match(skip, /height:\s*72px/); assert.doesNotMatch(skip, /position:\s*fixed/);
   assert.match(ruleOf(css, '.skip:disabled'), /opacity:\s*\.\d/);
   assert.match(ruleOf(css, '.skip:not(:disabled)'), /background:\s*var\(--coral\)/);
   assert.match(ruleOf(css, '.skip:not(:disabled) svg'), /stroke:\s*#fff/);
-  const phone = mediaOf(css, 'max-width: 640px');
+  const phone = mediaOf(css, 'max-width: 660px');
   assert.match(phone, /--slots-h:\s*178px/); assert.match(ruleOf(phone, '.slots'), /grid-template-columns:\s*repeat\(4, 64px\) 44px/);
   assert.match(ruleOf(phone, '.skip'), /grid-column:\s*5/); assert.match(ruleOf(phone, '.skip'), /grid-row:\s*1 \/ span 2/); assert.match(ruleOf(phone, '.skip'), /height:\s*auto/);
   const narrow = mediaOf(css, 'max-width: 380px');
   assert.match(ruleOf(narrow, '.slots'), /grid-template-columns:\s*repeat\(4, 58px\) 36px/);
   assert.match(ruleOf(narrow, '.slot'), /width:\s*58px/); assert.match(ruleOf(narrow, '.skip'), /width:\s*36px/);
-  assert.ok(4 * 58 + 36 + 4 * 8 + 24 <= 360 - 32, '360 wide: the bar fits with 16 px gutters');
+  assert.ok(W(4, 58, 36) <= 360 - 32, '360 wide: the bar fits with 16 px gutters');
   assert.doesNotMatch(css, /\.skip\[hidden\]|var\(--slots-h\) \+ 8px/, 'the floating pill is gone');
 });
 test('ui.css: every :hover rule sits inside @media (hover: hover)', async () => {

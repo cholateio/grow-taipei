@@ -1,4 +1,4 @@
-// 卡片：怎麼玩、右上角的工具列、物品列上方的跳過鍵（啟動失敗的訊息由 main.js 寫在載入畫面上）。
+// 卡片：怎麼玩、右上角的工具列（啟動失敗的訊息由 main.js 寫在載入畫面上）。跳過鍵在物品列的最後一格（slots.js，修正批次 max-skip §C）。
 
 function card(root, cls, html) {
   root.querySelector(`.card.${cls}`)?.remove();
@@ -28,19 +28,5 @@ export function createTopBar(root, { onReset, onHowTo }) {
     el,
     // 遊戲結束：RESET 變醒目（純樣式、沒有文字）——玩家看物品列自己發現沒全 MAX，直接再玩；RESET 之後拿掉
     setFinished(flag) { reset.classList.toggle('glow', !!flag); },
-  };
-}
-
-// 跳過鍵：物品列正上方置中的浮動膠囊（修正輪 1：放頂欄時 360 寬手機一出現就擠破、每回合抖一下；
-// 放這裡拇指搆得到、演出時物品列本來就 busy、所有寬度一樣）。只在演出能跳過時顯示（app.js 每幀 setSkippable）
-export function createSkipButton(root, { onSkip }) {
-  const el = document.createElement('button');
-  el.type = 'button'; el.className = 'skip'; el.textContent = '跳過'; el.hidden = true;
-  el.addEventListener('click', () => onSkip?.());
-  root.append(el);
-  return {
-    el,
-    // 每幀呼叫：只有變了才碰 DOM；顯示與隱藏不做動畫
-    setSkippable(flag) { if (el.hidden === !!flag) el.hidden = !flag; },
   };
 }

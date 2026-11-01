@@ -15,9 +15,9 @@ test('storage helpers never throw', () => {
 });
 import { installFakeDom } from './helpers/fakedom.js';
 // 結局卡 2026-11-01 拿掉了（使用者：直接用畫面呈現就好，不用文字描述）：cards.js 只剩怎麼玩與頂欄；重玩按頂欄 RESET
-test('there is no end card any more: cards.js exports only the how-to card, the top bar and the skip button', async () => {
+test('there is no end card any more and the floating skip pill is gone: cards.js exports only the how-to card and the top bar', async () => {
   installFakeDom(); const cards = await import('../src/ui/cards.js');
-  assert.deepEqual(Object.keys(cards).sort(), ['createSkipButton', 'createTopBar', 'showHowTo']);
+  assert.deepEqual(Object.keys(cards).sort(), ['createTopBar', 'showHowTo']);
 });
 
 // 物品列只在回合結束靜靜寫 Lv.n（§9）：沒有飛入、跳動
@@ -54,35 +54,62 @@ test('the top bar holds only the how-to and RESET buttons (no skip button in it)
   assert.equal(bar.setSkippable, undefined);
   btn('reset').listeners.click(); btn('howto').listeners.click(); assert.deepEqual(calls, ['reset', 'howto']);
 });
-// 跳過鍵（修正輪 1）：物品列正上方置中的浮動膠囊，所有寬度一樣；預設藏著，setSkippable 顯示／隱藏、連續同值不寫 DOM，按下呼叫 onSkip
-test('the skip button is its own floating pill: hidden by default, setSkippable toggles it without rewriting the same value, a press calls onSkip', async () => {
-  installFakeDom(); const { createSkipButton, createTopBar } = await import('../src/ui/cards.js');
+// 跳過鍵（修正批次 max-skip §C，使用者 2026-11-01「建議跳過按鈕放到下方物品欄裡面，用 Skip icon」）：物品列最後一格，只有 Skip 圖示（沒有文字），
+// aria-label／title「跳過」；一直在、不跳版面——沒有演出時停用，演出中（show.skippable）啟用；setSkippable 連續同值不寫 DOM；按下呼叫 onSkip
+const slotsWithSkip = async () => {
+  installFakeDom(); const { createSlots } = await import('../src/ui/slots.js');
   const root = document.createElement('div'), calls = [];
-  createTopBar(root, {});
-  const skip = createSkipButton(root, { onSkip: () => calls.push('skip') }), el = skip.el;
-  assert.equal(el.tagName, 'button'); assert.equal(el.className, 'skip'); assert.equal(el.textContent, '跳過');
-  assert.equal(el.parent, root, 'directly under the UI root, not inside the top bar');
-  assert.equal(el.hidden, true, 'hidden by default');
-  const writes = () => el.hiddenWrites ?? 0, w0 = writes();
-  skip.setSkippable(false); skip.setSkippable(false); assert.equal(writes(), w0, 'same value: no DOM write');
-  skip.setSkippable(true); skip.setSkippable(true); skip.setSkippable(true);
-  assert.equal(el.hidden, false); assert.equal(writes(), w0 + 1, 'shown once');
-  el.listeners.click(); assert.deepEqual(calls, ['skip']);
-  skip.setSkippable(false); assert.equal(el.hidden, true); assert.equal(writes(), w0 + 2);
+  const slots = createSlots(root, { items: slotItems(), onPick: id => calls.push(id), onSkip: () => calls.push('skip') });
+  return { root, slots, calls, nav: root.querySelector('.slots'), skip: root.querySelector('.slots').children.at(-1) };
+};
+test('the skip button is the last cell of the item bar: an icon-only button labelled 跳過, disabled until the show is skippable', async () => {
+  const { nav, skip, calls } = await slotsWithSkip();
+  assert.equal(nav.children.length, 9, 'eight items + skip');
+  assert.equal(skip.tagName, 'button'); assert.equal(skip.className, 'skip'); assert.equal(skip.type, 'button');
+  assert.equal(skip.getAttribute('aria-label'), '跳過'); assert.equal(skip.getAttribute('title'), '跳過');
+  assert.match(skip._html, /^<svg[\s\S]*viewBox="0 0 64 64"/); assert.equal(skip.textContent.trim(), '', 'no text');
+  assert.equal(skip.disabled, true, 'disabled by default');
+  skip.listeners.click(); assert.deepEqual(calls, [], 'a disabled press does nothing');
 });
-// 樣式：fixed、置中、底邊在物品列上方 8 px（--slots-h：桌機一排、手機兩排），高 44；hover 樣式只給滑鼠（觸控點過不黏黃底）
+test('setSkippable enables / disables the skip cell without rewriting the same value; a press calls onSkip; busy and reset leave it alone', async () => {
+  const { slots, skip, calls } = await slotsWithSkip();
+  const w = () => skip.disabledWrites ?? 0, w0 = w();
+  slots.setSkippable(false); slots.setSkippable(false); assert.equal(w(), w0, 'same value: no DOM write');
+  slots.setSkippable(true); slots.setSkippable(true); slots.setSkippable(true);
+  assert.equal(skip.disabled, false); assert.equal(w(), w0 + 1, 'enabled once');
+  slots.setBusy(true); assert.equal(skip.disabled, false, 'busy items do not disable the skip cell');
+  skip.listeners.click(); assert.deepEqual(calls, ['skip']);
+  slots.setSkippable(false); assert.equal(skip.disabled, true); assert.equal(w(), w0 + 2);
+  slots.setSkippable(true); slots.reset(); assert.equal(skip.disabled, false, 'reset does not touch it (the frame loop does)');
+});
+test('the skip icon: two right-pointing triangles and a bar, in the shared svg style', async () => {
+  const { SKIP_ICON } = await import('../src/ui/icons.js');
+  assert.match(SKIP_ICON, /^<svg/); assert.match(SKIP_ICON, /viewBox="0 0 64 64"/); assert.match(SKIP_ICON, /stroke="#211d1d"/);
+  assert.equal((SKIP_ICON.match(/<path d="M[\d ]+L[\d ]+L[\d ]+Z"/g) ?? []).length, 2, 'two triangles');
+  assert.match(SKIP_ICON, /<path d="M\d+ \d+ V\d+"/, 'one vertical bar');
+});
+// 樣式：物品列高度不變（--slots-h 98／178）；桌機一排、跳過鍵是第 9 欄窄格（寬 44、高 72）；手機兩排（≤ 640）跳過鍵第 5 欄跨兩排；
+// 窄螢幕（≤ 380）物品格 58、跳過欄 36（360 寬時整條 4×58 + 36 + 4×8 + 24 = 324 ≤ 328）；停用淡、啟用珊瑚底白圖示；浮動膠囊拿掉了
 const cssText = async () => (await import('node:fs')).readFileSync('src/ui/ui.css', 'utf8');
-const ruleOf = (css, sel) => new RegExp(`(^|\\n)${sel.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[2] ?? '';
-test('ui.css: the skip pill floats centred 8 px above the item bar on every width', async () => {
-  const css = await cssText(), rule = ruleOf(css, '.skip');
-  assert.match(rule, /position:\s*fixed/); assert.match(rule, /left:\s*50%/); assert.match(rule, /transform:\s*translateX\(-50%\)/);
-  assert.match(rule, /bottom:\s*calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ var\(--slots-h\) \+ 8px\)/);
-  assert.match(rule, /min-height:\s*44px/);
-  assert.match(ruleOf(css, '.skip[hidden]'), /display:\s*none/);
-  // 物品列高度：一排 10 + 72 + 16 = 98；兩排（≤ 640）10 + 72 + 8 + 72 + 16 = 178
+const ruleOf = (css, sel) => new RegExp(`(^|\\n)\\s*${sel.replace(/[.[\]()]/g, '\\$&')}\\s*\\{([^}]*)\\}`).exec(css)?.[2] ?? '';
+const mediaOf = (css, q) => new RegExp(`@media \\(${q.replace(/[()]/g, '\\$&')}\\)\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css)?.[1] ?? '';
+test('ui.css: the skip cell sits in the item bar — a narrow 9th column on desktop, column 5 spanning both rows on phones, 58 / 36 px on narrow phones', async () => {
+  const css = await cssText();
   assert.match(/:root\s*\{([^}]*)\}/.exec(css)[1], /--slots-h:\s*98px/);
-  assert.match(/@media \(max-width: 640px\)\s*\{([\s\S]*?)\n\}/.exec(css)[1], /--slots-h:\s*178px/);
-  assert.doesNotMatch(css, /\.tools button\[data-act=skip\]|\.tools button\[hidden\]/);
+  assert.match(ruleOf(css, '.slots'), /grid-template-columns:\s*repeat\(8, 64px\) 44px/);
+  const skip = ruleOf(css, '.skip');
+  assert.match(skip, /width:\s*44px/); assert.match(skip, /height:\s*72px/); assert.doesNotMatch(skip, /position:\s*fixed/);
+  assert.match(ruleOf(css, '.skip:disabled'), /opacity:\s*\.\d/);
+  assert.match(ruleOf(css, '.skip:not(:disabled)'), /background:\s*var\(--coral\)/);
+  assert.match(ruleOf(css, '.skip:not(:disabled) svg'), /stroke:\s*#fff/);
+  const phone = mediaOf(css, 'max-width: 640px');
+  assert.match(phone, /--slots-h:\s*178px/); assert.match(ruleOf(phone, '.slots'), /grid-template-columns:\s*repeat\(4, 64px\) 44px/);
+  assert.match(ruleOf(phone, '.skip'), /grid-column:\s*5/); assert.match(ruleOf(phone, '.skip'), /grid-row:\s*1 \/ span 2/); assert.match(ruleOf(phone, '.skip'), /height:\s*auto/);
+  const narrow = mediaOf(css, 'max-width: 380px');
+  assert.match(ruleOf(narrow, '.slots'), /grid-template-columns:\s*repeat\(4, 58px\) 36px/);
+  assert.match(ruleOf(narrow, '.slot'), /width:\s*58px/); assert.match(ruleOf(narrow, '.skip'), /width:\s*36px/);
+  assert.ok(4 * 58 + 36 + 4 * 8 + 24 <= 360 - 32, '360 wide: the bar fits with 16 px gutters');
+  assert.doesNotMatch(css, /\.skip\[hidden\]|var\(--slots-h\) \+ 8px/, 'the floating pill is gone');
 });
 test('ui.css: every :hover rule sits inside @media (hover: hover)', async () => {
   let css = await cssText();

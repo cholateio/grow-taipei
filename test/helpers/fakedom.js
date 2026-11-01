@@ -5,7 +5,10 @@ export class El {
   get ownerDocument() { return { defaultView: { Element: El } }; }
   // hidden：記下寫了幾次（setSkippable 連續同值不該碰 DOM）
   get hidden() { return this._hidden ?? false; } set hidden(v) { this._hidden = v; this.hiddenWrites = (this.hiddenWrites ?? 0) + 1; }
-  setAttribute() {} addEventListener(type, fn) { (this.listeners ??= {})[type] = fn; }
+  // disabled：同 hidden 記下寫了幾次（物品列的跳過鍵 setSkippable 連續同值不該碰 DOM）
+  get disabled() { return this._disabled ?? false; } set disabled(v) { this._disabled = v; this.disabledWrites = (this.disabledWrites ?? 0) + 1; }
+  setAttribute(k, v) { (this.attributes ??= {})[k] = String(v); } getAttribute(k) { return this.attributes?.[k] ?? null; }
+  addEventListener(type, fn) { (this.listeners ??= {})[type] = fn; }
   append(...cs) { for (const c of cs) { c.parent = this; this.children.push(c); } }
   remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; }
   set textContent(v) { this._text = v; this.children = []; } get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }

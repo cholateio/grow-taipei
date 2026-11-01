@@ -21,3 +21,6 @@ export const BUBBLE_ICONS = {
   train: svg('<rect x="16" y="10" width="32" height="38" rx="8"/><rect x="21" y="16" width="22" height="12" rx="2"/><circle cx="24" cy="38" r="3" fill="#211d1d"/><circle cx="40" cy="38" r="3" fill="#211d1d"/><path d="M22 48 L16 56 M42 48 L48 56 M12 56 H52" fill="none"/>'),
   lamp: svg('<path d="M32 56 V22" fill="none"/><path d="M22 56 H42"/><path d="M24 22 L28 12 H36 L40 22 Z"/><path d="M26 22 H38"/><path d="M32 8 V4 M20 14 L16 12 M44 14 L48 12" fill="none"/>'),
 };
+
+// 跳過鍵（物品列最後一格，修正批次 max-skip §C）：⏭ 兩個往右的三角形＋一條直線，同一套白底墨線（啟用時 CSS 改成白色，ui.css .skip）
+export const SKIP_ICON = svg('<path d="M12 18 L30 32 L12 46 Z"/><path d="M30 18 L48 32 L30 46 Z"/><path d="M53 18 V46" fill="none"/>');

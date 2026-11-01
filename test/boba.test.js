@@ -665,3 +665,27 @@ test('bitten cart (flags.bitten_boba while the rat is Lv1–2): a dark gap on th
   const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: {} });
   assert.equal(f.build(bitten).object.children.length, 1, 'one mesh: no extra draw call');
 });
+
+// 修正輪 1 Minor：老鼠守珍奶（trouble = 珍奶 3：珍奶店、人龍在店門口）——守的點在人龍尾巴西邊（QUEUE_SIDE），
+// 散步的老鼠從不鑽進排隊的人兩人半徑之內（第 7 回合結算出 trouble 珍奶 3，第 8 回合整回合 live 再過 10 s 日常）
+test('rats guarding boba 3 (the shop, the queue at its door) never come within two radii of a queue member', async () => {
+  const order = ['milk', 'chip', 'bulb', 'boba', 'baseball', 'rat', 'token', 'typhoon'];
+  const h = await headlessShow(), { show, run } = h, { turnSteps } = await import('./helpers/show.js'), update = show.update, bad = [];
+  let on = false, frames = 0, s = engine.createState(spec);
+  show.update = (dt, t) => {
+    update(dt, t); if (!on) return;
+    const rats = show.roster.members('rat.pack').filter(m => m.mode === 'home' && !m.hidden), queue = show.roster.members('boba.queue').filter(m => !m.hidden && !m.walking);
+    for (const r of rats) for (const q of queue) { frames++; const d = Math.hypot(r.pos.x - q.pos.x, r.pos.z - q.pos.z); if (d < radiusOf(r) + radiusOf(q)) bad.push(`rat#${r.i} ${d.toFixed(2)} from queue#${q.i} at (${r.pos.x.toFixed(2)}, ${r.pos.z.toFixed(2)})`); }
+  };
+  for (const [i, step] of turnSteps(order).entries()) {
+    const r = step(s); s = r.state;
+    if (i < 7) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+    assert.equal(show.stage.meta.trouble, 'boba'); assert.equal(show.stage.lv.boba, 3); assert.ok(show.stage.lv.rat <= 2, 'the rats guard the boba shop');
+    on = true; await run([...r.events, { kind: 'settle' }]);
+    for (let f = 0; f < 300; f++) show.update(1 / 30, 1000 + f / 30);
+    break;
+  }
+  show.update = update;
+  assert.ok(frames > 300, `${frames} rat–queue frames`);
+  assert.deepEqual(bad.slice(0, 10), [], `${bad.length} frames too close`);
+});

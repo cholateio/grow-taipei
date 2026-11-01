@@ -460,7 +460,7 @@ script.grow[5].key = script.grow[6].key = true;
 
 // 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1–4 攤車／店／噴泉廣場（錨點）；Lv5 離島（森林島分店、燈塔島旗艦店）→ null；
 // Lv6 珍奶節 → 主島的店。
-// 計畫 14：有人龍（Lv2 起）時換到人龍尾巴西邊（錨點西 1.2，往鏡頭側 0.9）——錨點正面被 stage.troubleSpot 拉回格心 1.3 之內，
+// 計畫 14：有人龍（Lv2 起）時換到人龍尾巴西邊（錨點西 1.4，往鏡頭側 0.9）——錨點正面被 stage.troubleSpot 拉回格心 1.3 之內，
 // 剛好落在人龍那一排上（正解第 8 回合珍奶 4 在等颱風放晴、老鼠守在這裡，在排隊的人中間鑽來鑽去）。Lv1 攤車沒有人龍，照舊在攤車前
-export const QUEUE_SIDE = offset(AT, -1.2, 0);
+export const QUEUE_SIDE = offset(AT, -1.4, 0);   // 修正輪 1：再往西 0.2（珍奶 3 被守那局量到老鼠擦過人龍尾巴）
 export const visitSpot = n => (n === 1 ? { ...AT, r: 0.9 } : (n >= 2 && n <= 4) || n === 6 ? { ...QUEUE_SIDE, r: 0.9 } : null);

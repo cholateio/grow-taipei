@@ -1,7 +1,8 @@
 // 棒球（物品 v2 §4.8，max 8）：沙地 → 木看台（Kenney Racing Kit grandStand ×2）與兩個傳接球的球員
 //   → ◆ 大巨蛋（Kenney Space Kit hangar_roundA，要趕在捷運通車到離島前）→ 比賽開打（頂縫透光、觀眾 3 人）
 //   → 演唱會（藍色應援棒、圓頂飾條發光、觀眾 4 人＋草皮 1 人）→ 跨年煙火（珍奶的觀光客 2 人來看）
-//   → 大巨蛋擴建（hangar_roundB 更高的圓頂、外牆 LED 帶、觀眾 5 人）→ ◆ 巨蛋捷運站直通（環狀線上一座月台接到巨蛋門口，兩個觀眾從列車下來）。
+//   → 大巨蛋擴建（hangar_roundB 更高的圓頂、外牆 LED 帶、觀眾 5 人）→ ◆ 巨蛋捷運站直通（環狀線上一座月台接到巨蛋門口，兩個觀眾從列車下來；
+//   MAX 巨蛋本身也變：圓頂上一顆大棒球、四座球場燈塔、外牆一圈三角旗）。
 // 人數預算（使用者 2026-10-26；裁決 R13 一格 ≤ 8 人：球員 2＋草皮 1＋觀眾 ≤ 5，老鼠與鼠災工作人員不算）：觀眾 Lv4 3、Lv5 4、Lv7 5；
 // 跨年來看煙火的觀光客 ≤ 2。
 // 大巨蛋鼠災：兩個戴安全帽的工作人員追著老鼠跑。
@@ -12,6 +13,7 @@ import { anchorWorld, frontOf } from './anchors.js';
 import { cellAt } from '../scene/hex.js';
 import { TRACK, POOL } from './token.js';
 import { C, offset } from './palette.js';
+import { pennant, eulerYawPitch, PENNANT_COLORS } from './bunting.js';
 
 export const id = 'baseball';
 export const labelY = 1.3;
@@ -108,6 +110,36 @@ function platformParts() {
   ] };
 }
 
+// ── MAX（Lv8，修正批次 max-skip §A；使用者 2026-11-01「棒球和珍奶店的 level max 不夠明顯」）：Lv7 → Lv8 原本巨蛋一模一樣、只多環狀線上的月台，
+// 巨蛋本身要一眼看得出變了——全部併進 baseball.deco（相對 at；黏土併進同一個 mesh，燈板多一個暖白發光 mesh：wide-end +1 draw call、手機不多）：
+//   圓頂最高點一顆巨大的棒球（白球直徑 0.45、略陷進頂 0.03；兩條紅縫線是兩個貼著球面的小圓，軸朝左前、右前——從鏡頭看是「( )」）；
+//   四座球場燈塔：細高的柱（高 1.1）＋頂上一塊深藍燈架、一排三顆暖白燈（面向巨蛋、往下俯 0.35）。站在外擴後的巨蛋外、應援棒之間；
+//     每根柱自己一個小圓 footprint（r 0.06），離門口弧線的觀眾與下車的人、球員、草皮散步圈、入口都夠遠（前兩座在巨蛋左右前方、後兩座在後方偏中間：
+//     東北邊是草皮散步圈與往中心格的橋頭）；
+//   外牆一圈三角旗：圓頂下緣（高 0.42、橢圓 1.16 × 1.01，貼著 hangar_roundB 的牆、LED 帶下方）一條奶油色細繩、24 面六色輪流（寬 0.15、垂 0.17），門口上方空著
+export const TOWERS = [[-1.2, 0.6], [1.2, 0.6], [-0.6, -1.1], [0.6, -1.1]];
+const TOWER_H = 1.1, TOWER_FP = 0.06, BALL_D = 0.45, RING = { rx: 1.16, rz: 1.01, y: 0.42, n: 24 };
+function maxParts(h) {
+  const y = h + BALL_D / 2 - 0.03, a = 55 * Math.PI / 180, rho = BALL_D / 2 * Math.sin(a), d = BALL_D / 2 * Math.cos(a), tilt = Math.PI / 2 - 0.6;
+  const parts = [
+    { kind: 'sphere', pos: [0, y, 0], scale: BALL_D, color: C.white, bigBall: true },
+    ...[1, -1].map(s => ({ kind: 'torus', pos: [s * d * Math.sin(tilt), y, d * Math.cos(tilt)], scale: 2 * rho, rot: [0, s * tilt, 0], color: C.red, seam: true })),
+  ];
+  for (const [x, z] of TOWERS) {
+    const yaw = Math.atan2(-x, -z), rot = eulerYawPitch(yaw, -0.35), n = [Math.sin(yaw), Math.cos(yaw)], side = [Math.cos(yaw), -Math.sin(yaw)], top = TOWER_H + 0.08;
+    parts.push({ kind: 'cylinder', pos: [x, TOWER_H / 2, z], scale: [0.05, TOWER_H, 0.05], color: C.curb, tower: true });
+    parts.push({ kind: 'box', pos: [x, top, z], scale: [0.36, 0.18, 0.04], rot, color: C.navy });
+    for (const k of [-1, 0, 1]) parts.push({ kind: 'box', pos: [x + n[0] * 0.025 + side[0] * k * 0.11, top, z + n[1] * 0.025 + side[1] * k * 0.11], scale: [0.09, 0.11, 0.02], rot, color: C.white, glow: C.warm, lamp: true });
+  }
+  parts.push({ kind: 'rail', pos: [0, RING.y, 0], scale: [RING.rx * 2, RING.rz * 2, 1], rot: [Math.PI / 2, 0, 0], color: C.cream });
+  for (let i = 0, k = 0; i < RING.n; i++) {
+    const f = i / RING.n * Math.PI * 2, x = Math.cos(f) * RING.rx, z = Math.sin(f) * RING.rz;
+    if (z > 0 && Math.abs(x) < 0.24) continue;   // 門口上方
+    parts.push(pennant([x, RING.y, z], Math.atan2(Math.cos(f), Math.sin(f)), PENNANT_COLORS[k++ % PENNANT_COLORS.length], 0.15, 0.17));
+  }
+  return parts;
+}
+
 export function view(lv, flags = {}) {
   const n = lv.baseball, at = AT, v = {}, flood = !!flags.domeFlood;
   if (!n) return v;
@@ -134,7 +166,11 @@ export function view(lv, flags = {}) {
     if (n >= 4) deco.push({ kind: 'box', pos: [0, h - 0.01, 0], scale: [1.2, 0.03, 0.1], ...(n >= 5 ? neon : { color: C.yellow, glow: C.yellow }) });
     if (n >= 5) for (const [x, z] of STICKS) deco.push({ kind: 'box', pos: [x, 0.2, z], scale: [0.06, 0.3, 0.06], ...neon });
     if (big) deco.push({ kind: 'rail', pos: [0, h * 0.42, 0], scale: [2.2, 1.9, 2.2], rot: [Math.PI / 2, 0, 0], ...neon, led: true });
-    v['baseball.deco'] = { kind: 'compound', at, footprint: false, parts: deco };
+    // MAX：大棒球、燈塔、三角旗（maxParts）；燈柱的小 footprint 擋人，deco 照舊直接出現（grow false，同珍奶的院子）
+    if (n >= 8) deco.push(...maxParts(h));
+    v['baseball.deco'] = n >= 8
+      ? { kind: 'compound', at, footprint: TOWERS.map(([x, z]) => ({ x, z, r: TOWER_FP })), grow: false, parts: deco }
+      : { kind: 'compound', at, footprint: false, parts: deco };
   }
   // 大巨蛋淹水：球場（沙地、巨蛋底座外一圈）整片泳池，沒有 footprint（同捷運站淹水，人站在水裡）；巨蛋底座也泡在水裡（deco 換水色）
   if (flood) v['baseball.field'] = { kind: 'compound', at, footprint: false, parts: [
@@ -281,7 +317,8 @@ export const script = {
       const { B } = ctx, sp = RIDE_OFF.map(p => B.spawn('baseball.riders', p));
       return [
         B.focus('baseball'),
-        B.apply(e, { only: ['baseball.platform', 'baseball.riders'], hold: ['baseball.riders'] }),
+        // 月台出現的同一拍，巨蛋上的大棒球、燈塔、三角旗（baseball.deco）也出現（MAX 要一眼看得出來，修正批次 max-skip §A）
+        B.apply(e, { only: ['baseball.platform', 'baseball.deco', 'baseball.riders'], hold: ['baseball.riders'] }),
         B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, back: STOP_BACK, stop: STOP_FOR, during: sp }),
         B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_WAIT[i], { delay: i * 0.2 }))),
         B.together([B.focus('home', { hold: 1.0 }), cheer(B, 1.0)]),

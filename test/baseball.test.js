@@ -94,6 +94,57 @@ test('Lv8 platform: from the ring line at the dome stop to the cell edge, a pave
   for (let k = 0; k < 12; k++) { const pa = k / 12 * Math.PI * 2 + 0.13; assert.ok(Math.hypot(Math.cos(pa) - Math.cos(baseball.DOME_STOP), Math.sin(pa) - Math.sin(baseball.DOME_STOP)) * TRACK.radius > 0.8, 'clear of the track pylons'); }
   for (const q of baseball.RIDE_OFF) { assert.equal(cellAt(q.x, q.z), null); assert.ok(r(q) > TRACK.radius - 0.6 && r(q) < TRACK.radius - 0.2, 'beside the track'); }
 });
+// ── MAX（修正批次 max-skip §A，使用者 2026-11-01「棒球和珍奶店的 level max 不夠明顯」）：Lv8 巨蛋本身要變——
+// 圓頂最高點坐一顆巨大的棒球（白球、兩條紅縫線）、四周四座球場燈塔（細高的柱＋頂上一排暖白燈板）、外牆一圈彩色三角旗；全部在巨蛋那個 deco compound 裡 ──
+test('MAX Lv8: a giant baseball on the roof, four stadium light towers with warm lamp panels, a ring of pennants — all in baseball.deco; none at Lv7', () => {
+  const d8 = views[8]['baseball.deco'], d7 = views[7]['baseball.deco'], P = d8.parts;
+  for (const tag of ['bigBall', 'seam', 'tower', 'lamp', 'pennant']) assert.ok(!d7.parts.some(p => p[tag]), `Lv7 has no ${tag}`);
+  const ball = P.filter(p => p.bigBall);
+  assert.equal(ball.length, 1); assert.equal(ball[0].kind, 'sphere'); assert.equal(ball[0].color, C.white);
+  const D = [].concat(ball[0].scale)[0];
+  assert.ok(D >= 0.4 && D <= 0.5, `diameter ${D}`);
+  assert.ok(Math.hypot(ball[0].pos[0], ball[0].pos[2]) < 1e-9 && ball[0].pos[1] - D / 2 >= baseball.DOME_H.b - 0.06 && ball[0].pos[1] - D / 2 <= baseball.DOME_H.b + 0.02, 'sits on the top of the dome');
+  const seams = P.filter(p => p.seam);
+  assert.equal(seams.length, 2); assert.ok(seams.every(p => p.kind === 'torus' && p.color === C.red), 'two red seams');
+  for (const s of seams) assert.ok(Math.abs(Math.hypot(s.pos[0], s.pos[1] - ball[0].pos[1], s.pos[2]) - D / 4) < D / 4, 'on the ball');
+  const poles = P.filter(p => p.tower), lamps = P.filter(p => p.lamp);
+  assert.equal(poles.length, 4); assert.ok(poles.every(p => p.kind === 'cylinder' && p.scale[1] >= 1.0 && p.scale[1] <= 1.3 && p.scale[0] <= 0.07), 'thin tall poles');
+  assert.ok(lamps.length >= 4 && lamps.every(p => p.glow === C.warm && p.pos[1] >= 1.0), 'warm lamp panels up top');
+  for (const q of poles) assert.ok(lamps.some(l => Math.hypot(l.pos[0] - q.pos[0], l.pos[2] - q.pos[2]) < 0.15), 'a lamp on every pole');
+  const flags = P.filter(p => p.pennant);
+  assert.ok(flags.length >= 20 && new Set(flags.map(p => p.color)).size >= 5, `${flags.length} pennants`);
+  for (const f of flags) assert.ok((f.pos[0] / 1.09) ** 2 + (f.pos[2] / 0.945) ** 2 > 1 && (f.pos[0] / 1.25) ** 2 + (f.pos[2] / 1.1) ** 2 < 1, 'hung around the dome wall');
+  assert.ok(flags.every(f => f.pos[1] > 0.25 && f.pos[1] < 0.6), 'along the lower edge of the dome');
+});
+test('MAX Lv8 towers: outside the padded dome, each pole its own small footprint, clear of every roster spot, the lawn walk, entries and the concert sticks', async () => {
+  const { PAD } = await import('../src/show/nav.js'), { growsOn } = await import('../src/actors/stage.js'), d8 = views[8]['baseball.deco'];
+  const fp = [].concat(d8.footprint);
+  assert.equal(fp.length, 4); assert.ok(fp.every(f => f.r > 0 && f.r <= 0.08), 'small round footprints');
+  assert.equal(growsOn(d8), false, 'the deco still just appears');
+  const poles = d8.parts.filter(p => p.tower);
+  for (const q of poles) assert.ok(fp.some(f => Math.hypot(f.x - q.pos[0], f.z - q.pos[2]) < 1e-9), 'footprint on the pole');
+  const v = views[8], R0 = 0.08 + PAD + 0.125;   // 外擴後的燈柱＋一個人的半徑
+  const spots = [...views[7]['baseball.crowd'].home.spots, ...v['baseball.crowd'].home.spots, ...v['baseball.riders'].home.spots, ...v['baseball.players'].home.spots, ...baseball.RIDER_WAIT, GATE];
+  for (const f of fp) {
+    const x = AT.x + f.x, z = AT.z + f.z;
+    assert.ok((f.x / (1.15 + PAD)) ** 2 + (f.z / (0.95 + PAD)) ** 2 > 1, 'outside the padded dome');
+    assert.deepEqual(cellAt(x, z), CELL);
+    for (const s of spots) assert.ok(Math.hypot(s.x - x, s.z - z) >= R0, `spot (${s.x.toFixed(2)}, ${s.z.toFixed(2)}) clear of the tower`);
+    assert.ok(Math.hypot(baseball.LAWN.x - x, baseball.LAWN.z - z) >= baseball.LAWN_R + 0.18, 'outside the lawn walk');
+    for (const e of [...baseball.PLAYER_ENTRY, ...baseball.BRIDGE_IN]) assert.ok(Math.hypot(e.x - x, e.z - z) >= 0.3, 'off the entries');
+    for (const [sx, sz] of baseball.STICKS) assert.ok(Math.hypot(sx - f.x, sz - f.z) >= 0.2, 'between the concert sticks');
+  }
+});
+test('MAX Lv8 draw calls: the deco adds one warm glow mesh at most (wide-end ≤ 250); the cup / ball / pennants are clay', () => {
+  const colours = s => new Set(s.parts.map(p => p.glow ?? 'clay')).size;
+  assert.ok(colours(views[8]['baseball.deco']) <= colours(views[7]['baseball.deco']) + 1);
+  assert.ok(views[8]['baseball.deco'].parts.filter(p => p.glow).every(p => p.lamp || p.glow === C.neonBlue), 'only the lamps add a glow colour');
+});
+test('◆ Lv8: the giant ball, towers and pennants come in the same beat as the platform', () => {
+  const beats = baseball.script.grow[8]({ kind: 'grow', item: 'baseball', to: 8 }, { lv: lv({ baseball: 8 }), flags: {} }, { B, roster: { members: () => [] } });
+  const first = beats.find(b => b.kind === 'apply' && Array.isArray(b.only));
+  assert.ok(first.only.includes('baseball.platform') && first.only.includes('baseball.deco'), String(first.only));
+});
 // ── draw call：整格 ≤ 16 ──
 function drawCalls(v) {
   const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size;

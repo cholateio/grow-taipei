@@ -417,3 +417,88 @@ test('a blackout that cannot lower milk (Lv1, delta 1 → 1) pans to the locked 
   assert.deepEqual(seg.map(b => b.kind), ['focus', 'apply', 'hold', 'apply']);
   assert.deepEqual(seg[0].target, cellOf('bulb'), 'pans to the locked bulb, not the milk cell');
 });
+
+// ── 計畫 15 A：剛放下的物品連著演（groupPlaced）──
+// 引擎的成長掃描照 ORDER 走，剛放下的物品常常最後才升 Lv2；建拍前把它的成長段搬到放下段正後面——
+// 只有用回合開始的 view 折完放下段之後，那一級的條件（spec 的 up[to]，跳級看 jump[to]）已經成立才搬
+const { groupPlaced } = turnModule;
+const engine = await import('../src/rules/engine.js');
+const { turnSteps } = await import('./helpers/show.js');
+const g = (item, from, to, via = [], extra = {}) => ({ kind: 'grow', item, from, to, via, ...extra });
+const P = item => ({ kind: 'placed', item, to: 1 });
+const lvOf = o => ({ ...zero, ...o });
+const sum = lv => Object.values(lv).reduce((a, b) => a + b, 0);
+const SOLUTION = ['milk', 'baseball', 'token', 'bulb', 'chip', 'boba', 'typhoon', 'rat'];
+
+test('groupPlaced: the boba placement turn moves boba 1 → 2 right behind its placed event (milk is already 6, up[2] needs milk ≥ 3)', () => {
+  const events = [P('boba'), g('milk', 6, 7, ['bulb']), g('chip', 2, 3, ['milk']), g('chip', 3, 4, ['milk'], { jump: true }), g('bulb', 3, 4, ['token', 'baseball']),
+    g('bulb', 4, 5, ['token', 'baseball'], { jump: true }), g('token', 5, 6), g('boba', 1, 2, ['milk']), g('baseball', 5, 6, ['bulb'])];
+  const view = { lv: lvOf({ milk: 6, chip: 2, bulb: 3, token: 5, baseball: 5 }), flags: {} };
+  const copy = structuredClone(events);
+  const out = groupPlaced(events, spec, view);
+  assert.deepEqual(out.map(e => `${e.item}${e.kind === 'grow' ? e.to : ''}`), ['boba', 'boba2', 'milk7', 'chip3', 'chip4', 'bulb4', 'bulb5', 'token6', 'baseball6']);
+  assert.ok(out.every(e => events.includes(e)), 'same event objects, only reordered');
+  assert.deepEqual(events, copy, 'the input array is not touched');
+});
+
+test('groupPlaced: the typhoon placed fx stays in the head block; no typhoon grow follows → the original array', () => {
+  const events = [P('typhoon'), { kind: 'fx', item: 'typhoon', cause: 'typhoon' }, g('milk', 7, 8, ['chip']), g('chip', 4, 5, ['bulb', 'token'])];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 7, chip: 4, bulb: 5, token: 6 }), flags: {} }), events);
+});
+
+test('groupPlaced: a grow whose condition does not hold after the head block is not moved (rat placed while milk is 1, bitten milk stays 1)', () => {
+  // rat up[2] = or(min milk 2, min boba 2)：放下段折完鮮奶還是 1、珍奶 0 → 不成立，rat1>2 要等 milk1>2
+  const events = [P('rat'), { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 1, to: 1 } }, g('milk', 1, 2), g('rat', 1, 2, ['milk'])];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 1 }), flags: {} }), events);
+});
+
+test('groupPlaced: a growth block already right behind the head block (fx caused by the placed item included) → the original array', () => {
+  const events = [P('rat'), { kind: 'fx', item: 'milk', cause: 'rat', delta: { target: 'milk', from: 2, to: 1 } }, g('rat', 1, 2, []), g('milk', 1, 2)];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 2, boba: 2 }), flags: {} }), events);
+});
+
+test('groupPlaced: a condition that reads age (typhoon up[2]) is never moved, even if it would hold', () => {
+  const events = [P('typhoon'), g('milk', 7, 8), g('typhoon', 1, 2)];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 7 }), flags: {} }), events);
+});
+
+test('groupPlaced: no placed event (closing turn) or no spec → the original array', () => {
+  const events = [g('milk', 9, 10, ['boba']), g('bulb', 8, 9, ['token'])];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 9, bulb: 8 }), flags: {} }), events);
+  const placed = [P('boba'), g('milk', 6, 7), g('boba', 1, 2)];
+  assert.equal(groupPlaced(placed, {}, { lv: {}, flags: {} }), placed);
+});
+
+test('buildTurn plays the moved order: a boba Lv2 script sees milk 6 in s.prev and s (milk 6 → 7 plays after it)', () => {
+  let seen = null;
+  const boba = { id: 'boba', view() {}, script: { grow: { 2: (e, s) => { seen = s; return null; } } } };
+  const events = [P('boba'), g('milk', 6, 7, ['bulb']), g('boba', 1, 2, ['milk'])];
+  const ctx = fakeCtx(), marked = [];
+  const raw = buildTurn(events, { modules: [tower, boba], spec, lv: lvOf({ milk: 6 }), flags: {}, meta: { total: 6 } }, ctx);
+  for (const b of raw.filter(b => b.kind === 'mark')) b.start({ onMark: e => marked.push(e) });
+  assert.deepEqual(marked, [events[0], events[2], events[1]]);
+  assert.equal(seen.prev.lv.milk, 6); assert.equal(seen.lv.milk, 6); assert.equal(seen.prev.lv.boba, 1); assert.equal(seen.lv.boba, 2);
+});
+
+test('groupPlaced on the unique solution: token, bulb, chip, boba and rat move their Lv2 right behind the head block; baseball (milk 2 < 3) and the rest keep the original array', () => {
+  let st = engine.createState(spec);
+  const moved = [];
+  for (const step of turnSteps(SOLUTION)) {
+    const before = st, r = step(st); st = r.state;
+    const out = groupPlaced(r.events, spec, { lv: before.lv, flags: before.flags });
+    const p = r.events.find(e => e.kind === 'placed');
+    if (out !== r.events) moved.push(p.item);
+    // buildTurn 的 mark 順序就是搬過的順序
+    const marked = [];
+    const raw = buildTurn(r.events, { modules: [tower], spec, lv: before.lv, flags: before.flags, meta: { total: sum(before.lv) } }, fakeCtx());
+    for (const b of raw.filter(b => b.kind === 'mark')) b.start({ onMark: e => marked.push(e) });
+    assert.deepEqual(marked, out);
+    assert.equal(out.length, r.events.length);
+    if (!p || !moved.includes(p.item)) continue;
+    // 放下段（placed + 緊接的、item 或 cause 是它的）後面緊接著它的第一個 grow
+    const id = p.item, i = out.indexOf(p);
+    let h = i + 1; while (h < out.length && (out[h].item === id || out[h].cause === id) && out[h].kind !== 'grow') h++;
+    assert.deepEqual([out[h].kind, out[h].item, out[h].to], ['grow', id, 2], `${id}: Lv2 right behind the head block`);
+  }
+  assert.deepEqual(moved, ['token', 'bulb', 'chip', 'boba', 'rat']);
+});

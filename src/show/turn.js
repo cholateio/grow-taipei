@@ -23,9 +23,14 @@
 // 起因提示（幫手那棟亮一下／彈一下、鏡頭先平移過去）2026-10-31 拿掉了（唯一正解設計 R22，使用者：學校閃了好幾次、連彈一下都不要）：grow 的 via 只給引擎用，演出層不看。
 // 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空（計畫 6 設計 §5，走過去低頭嘆氣）2026-10-31 也拿掉了
 //   （唯一正解設計 R10，使用者：看不出意義——失敗的可讀性由颱風（修正批次 2：三級，放下那回合全部檢查、鎖住的反應演給玩家看）、連鎖、老鼠守門口負責）：wait 事件只剩 mark＋不閃白的 apply，不平移、不空拍。
+// 剛放下的物品連著演（計畫 15 A，使用者 2026-11-02 錄影回報）：引擎的成長掃描照 ORDER 走，剛放下的物品常常等別人全長完才升 Lv2。
+//   建拍前（跳級合成、逐事件折 view 之前）groupPlaced 把它的成長段搬到放下段正後面——只在回合開始的 view 折完放下段之後，
+//   那一級的條件（spec 的 up[to]／jump[to]）就已經成立時才搬（不看 via：via 列的是所有成立的幫手，證明不了這回合有沒有靠中間的升級）。
+//   搬了之後 s.prev、跳級合成、mark 都照新順序。唯一正解：代幣、燈泡、晶片、珍奶、老鼠的 Lv2 搬；棒球不搬（放下時鮮奶 2，要等鮮奶 3）。
 // 颱風放下（唯一正解 2026-10-31 修正輪 1 裁決）：舊的「颱風登陸之後同一回合只演 [apply, LEVEL UP]（indoors）」拿掉了——
 //   躲雨是颱風放下劇本裡的一小段（跑到門口躲一下、又走出來淋雨），同一回合後面的事件照一般事件演（人看得到、雨照下）。
 import { foldEvent, lockFlags } from '../rules/engine.js';
+import { compile } from '../rules/conditions.js';
 import { cellOf } from '../actors/anchors.js';
 import { worldEffects } from '../actors/world.js';
 import { B, together } from './beats.js';
@@ -105,6 +110,36 @@ function jumpPairs(events, isKey = () => false) {
 }
 
 
+// 剛放下的物品連著演（計畫 15 A，見檔頭）：放下段 = placed 加上緊接在後、item 或 cause 是它的事件；
+// 成長段 = 放下段之後它的第一個 grow，加上緊接在後、item 或 cause 是它的事件（跳級第二級、onLevel 的 fx）。
+// 從回合開始的 view 折完放下段，成長段每個 grow 的條件（spec 的 up[to]，跳級看 jump[to]）都成立才把成長段搬到放下段正後面。
+// 條件裡有 age／held／locked／ltPlus（演出層的 view 只有 lv 與 flags，算不準）、找不到條件、沒有 placed、沒有成長段、
+// 或成長段本來就緊接著放下段：原樣回傳（同一個陣列參照）。純函數，不改輸入
+const UNSAFE_KEYS = ['age', 'held', 'locked', 'ltPlus'];
+const readsHidden = c => !!c && typeof c === 'object' && (UNSAFE_KEYS.some(k => k in c) || Object.values(c).some(v => (Array.isArray(v) ? v.some(readsHidden) : readsHidden(v))));
+export function groupPlaced(events, spec, view) {
+  const p = events.findIndex(e => e.kind === 'placed');
+  if (p < 0 || !spec?.ITEMS || !spec?.ORDER) return events;
+  const id = events[p].item, mine = e => e.item === id || e.cause === id;
+  let h = p + 1;
+  while (h < events.length && mine(events[h]) && events[h].kind !== 'grow') h++;   // 放下段 = [p, h)
+  const g = events.findIndex((e, k) => k >= h && e.kind === 'grow' && e.item === id);
+  if (g < 0 || g === h) return events;
+  let end = g + 1;
+  while (end < events.length && mine(events[end])) end++;                           // 成長段 = [g, end)
+  let v = { lv: view?.lv ?? {}, flags: view?.flags ?? {} };
+  for (let k = 0; k < h; k++) v = foldEvent(v, events[k]);
+  const ctx = { max: Object.fromEntries(spec.ORDER.map(i => [i, spec.ITEMS[i].max])) };
+  const state = { lv: v.lv, flags: v.flags, age: {}, held: {}, locked: {} };
+  for (let k = g; k < end; k++) {
+    const e = events[k];
+    if (e.kind !== 'grow') continue;
+    const cond = (e.jump ? spec.ITEMS[e.item]?.jump : spec.ITEMS[e.item]?.up)?.[e.to];
+    if (!cond || readsHidden(cond) || !compile(cond, ctx)(state)) return events;
+  }
+  return [...events.slice(0, h), ...events.slice(g, end), ...events.slice(h, g), ...events.slice(end)];
+}
+
 // 扶正：零件當場轉回來、閃白 BLINK 秒；跳過時 end 照樣轉回來（閃白由 snap 收掉）
 function upright(key) {
   const fix = c => { const o = c.stage.partObject(key); if (o) o.rotation.z = 0; };
@@ -131,6 +166,7 @@ function scriptMembers(roster) {
 
 export function buildTurn(events, { modules, spec, lv, flags, meta, finale = false }, ctx) {
   const mod = id => modules.find(m => m.id === id);
+  events = groupPlaced(events, spec, { lv, flags });   // 剛放下的物品連著演（計畫 15 A）：跳級合成、逐事件折 view 都照搬過的順序
   ctx.speed = 1;
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）

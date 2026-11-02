@@ -59,7 +59,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 珍奶 | 2 | `boba.queue`、`boba.yard` | 程式名冊（人龍 4 人一排，人數預算）＋程式立牌（鮮奶 ≥4 白底藍字） | — | 現有 |
 | 珍奶 | 3 | `boba.main`、`boba.sign`、`boba.yard` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店，tint 牆奶油、磚與飾邊木色、招牌珊瑚）＋`kenney/food/cup-tea.glb`（屋頂招牌杯）＋程式遮雨棚、店前磚地 | CC0 | 換新 |
 | 珍奶 | 4 | `boba.fountain` | 程式（噴泉在店東側、往北退 0.3：不在店與鏡頭之間；水面不發光，整局截圖 draw call ≤ 150） | — | 換新（挪到店側邊） |
-| 珍奶 | 5 ★◆ | `sat.forest.shop`／`sat.forest.sign`（分店）、`sat.forest.stage1`（茶屋桌椅）、`sat.forest`、`sat.boats`、`boba.flagship`／`boba.flagship.sign`、`boba.ferry`、`boba.tourists`、`boba.drones.0/1` | 兩島同一級（2026-10-31 單一正解：原本的 Lv5 森林島分店＋Lv6 燈塔島旗艦店併成一級）。兩座離島店都是主島珍奶店那款 `quat/buildings/2Story_Sign_Mat.glb`（同店面 tint、高 0.8）＋屋頂 `kenney/food/cup-tea.glb`（高 0.26，手機不畫；計畫 11 §設計 3，原本分店是程式三角屋、旗艦店是 `1Story_Sign_Mat.glb`）；程式（觀光客 2；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`）；`quat/ships/Boat.glb`（小船，載兩個觀光客從碼頭開過去、停在島西南岸）；無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`）；觀光客 = 程式名冊 | CC0 | 換新 |
+| 珍奶 | 5 | `boba.drones.0/1`、`sat.boats` +2 | 外送無人機 = `kenney/space/craft_miner.glb` ×2（零件 kind `orbit`，停在店屋頂、起飛繞店一圈）；觀光船 +2 = `quat/ships/BoatWSail.glb`／`Boat.glb`。修正批次 trim §A（2026-11-01，設計 R31）：離島珍奶店（小森林分店、燈塔島旗艦店）、茶屋桌椅、棧橋、渡船、坐船觀光客全砍，這一級不再是 ◆ | CC0 | 換新 |
 | 珍奶 | 6 ◆ | `boba.yard`（氣球）、`boba.fleet` | 程式（主島 17 條靠海格邊各一束氣球——細繩＋三顆小球，併在院子零件裡；五艘小船桅杆頂掛圓燈籠，一個零件繞島轉；101「世界珍奶節」是劇本字卡；2026-10-28 拿掉所有旗子） | — | 換新 |
 | 棒球 | 1 | `baseball.main`、`baseball.lines.*`、`baseball.players` | 程式（沙地球場；第一個球員放置時從看台後方進場跑壘，裁決 R16：球場格不住島民） | — | 現有 |
 | 棒球 | 2 | `baseball.stands`、`baseball.players` | `kenney/racing/grandStand.glb` ×2（木看台，tint 座椅珊瑚、骨架木色；零件 kind `stands`）；球員 = 程式名冊 | CC0 | 換新 |
@@ -69,24 +69,24 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 棒球 | 6 | `baseball.fireworks` | 程式（跨年煙火） | — | 現有 |
 | 棒球 | 7 | `baseball.main`、`baseball.deco`、`baseball.crowd` | `kenney/space/hangar_roundB.glb`（擴建：同一個底、高 1.2）＋程式 LED 帶（`rail` 一圈霓虹藍）、觀眾 5（裁決 R13） | CC0 | 換新 |
 | 棒球 | 8 ◆ | `baseball.platform`、`baseball.riders` | 程式（環狀線邊的高架月台、雨棚、站名牌、接到巨蛋門口的磚道；`Platform_4x1_Empty.glb` 沒用：月台要沿徑向斜放、一端接軌道一端上岸，程式畫比較好對齊）；坐新線來的觀眾 2（門口留 3，合計 5，裁決 R13）= 程式名冊 | — | 換新 |
-| 結局／最終章 | 賽博尾聲 | `finale.car` | `kenney/space/craft_speederA.glb`（第四台飛天車，同代幣 Lv10 的款式；tint 紅 `0xe8322e`，`metalRed` 塗紅；零件 kind `orbit`：從海上飛進來繞 101 一圈、停上黑塔屋頂前緣，沒有 rest；?quality=low 照 orbit 的規矩不畫）。最終章其他東西（紅光、飛彈、水花、UFO、外星生物、母艦、黑塔螢幕）全是程式幾何 | CC0 | 新增（計畫 5） |
+| 結局／最終章 | 賽博尾聲 | `finale.car` | `kenney/space/craft_speederA.glb`（第四台飛天車，同代幣 Lv10 的款式；tint 紅 `0xe8322e`，`metalRed` 塗紅；零件 kind `orbit`：從海上飛進來繞 101 一圈、停上黑塔屋頂前緣，沒有 rest；?quality=low 照 orbit 的規矩不畫）。最終章其他東西（光點、隕石（trim §C 從紅光、飛彈換掉）、水花、UFO、外星生物、母艦、黑塔螢幕）全是程式幾何 | CC0 | 新增（計畫 5） |
 | 共用 | — | 蓋房子動作的工具 | 程式畫的鐵鎚（計畫 11 把 3.9 的鋤頭換成鐵鎚；沒有要換 glb，所以 Quaternius `Shovel.glb` 不收） | — | 現有 |
 
 ## 離島三段（計畫 6 §7，全是程式零件）
 
 每座離島 = 空島（`src/scene/island.js` 的 kit）→ 第一段 → 第二段；觸發固定、兩段各自獨立（`src/actors/satellites.js` 的 `STAGE`）。
 零件：一段一個零件 `sat.<島>.stage1／stage2`（裁決 R7：下一段出現時已經站著的不重閃）。同一級一起出現的基座併進第一段：階梯丘的營區（原 `sat.camp`）在 `sat.pyramid.stage1`、
-小森林的分店（原 `sat.forestShop`）在 `sat.forest.stage1`——基座手機照畫、那一級的主角（不 tagAlong）；點綴零件標 `stage: 1／2` 與 `low: false`。鞦韆（架子＋座位）、兩支風機的轉子用 `rig` 各一個 mesh。
+點綴零件標 `stage: 1／2` 與 `low: false`。鞦韆（架子＋座位）、兩支風機的轉子用 `rig` 各一個 mesh。（小森林的分店與第一段茶屋桌椅 trim §A 拿掉了）
 全 MAX 一般畫質 draw call：wide-end 249 → 245（≤ 246）。全部 `footprint: false`；沒有基座的段 `tagAlong: true`（跟同一拍第一個閃的零件一起閃、不多佔 stagger，劇本時間不變）、`low: false`（?quality=low 不畫，手機 draw call ≤ 150）。
 
 （清單不用表格：上面那張表一級一列，assets.test 數列數）
 
-- **燈塔島**——第一段：燈泡 Lv7 `sat.lighthouse.stage1`：守塔人小屋（白牆、紅四坡頂、門、煙囪；島東北）；第二段：珍奶 Lv5 `sat.lighthouse.stage2`：棧橋碼頭（板面＋橫板＋四根柱子，從西南岸朝 `boba.DOCK` 伸出去、側讓 0.5；珍奶 Lv5 小船開過去時閃白）
+- **燈塔島**——第一段：燈泡 Lv7 `sat.lighthouse.stage1`：守塔人小屋（白牆、紅四坡頂、門、煙囪；島東北）（只有這一段：第二段珍奶 Lv5 棧橋碼頭 trim §A 拿掉了）
 - **風車島**——第一段：燈泡 Lv7 `sat.windmill.stage1`：第二支風機塔身＋電池屋（通電時綠燈條發光）；葉片是 `sat.windmill` 的 `twin` 轉子（同速轉、颱風同樣搖，第一段不跟著重建）；第二段：晶片 Lv6 `sat.windmill.stage2`：變電小站（水泥墊、變壓箱、兩個霓虹藍礙子）
 - **石堆島**——第一段：老鼠 Lv3 `sat.rocks.stage1`：鼠洞（最大石頭鏡頭側）＋曬太陽的石板；第二段：老鼠 Lv4 外星：綠光圈（現有 `sat.rocksRing`）；賽博沒有
 - **階梯丘**——第一段：晶片 Lv3 `sat.pyramid.stage1`（跟營區同一個零件）：第二頂帳篷（第四層梯田）；第二段：晶片 Lv9 `sat.pyramid.stage2`：觀測站（圓頂淡淡發光＋望遠鏡）
 - **遊樂場島**——第一段：代幣 Lv8 `sat.playground.stage1`：鞦韆（kind `swing`，座位會盪；架子和座位一個 mesh）；第二段：鮮奶 Lv10 `sat.playground.stage2`：旋轉木馬（kind `carousel`，8 秒一圈）
-- **小森林**——第一段：珍奶 Lv5 `sat.forest.stage1`（跟分店同一個零件）：茶屋兩張圓桌、四張凳；第二段：燈泡 Lv9 `sat.forest.stage2`：燈籠串（兩棵樹之間 6 顆暖黃燈籠；大停電時暗）
+- **小森林**——（第一段珍奶 Lv5 茶屋桌椅 trim §A 拿掉了）第二段：燈泡 Lv9 `sat.forest.stage2`：燈籠串（兩棵樹之間 6 顆暖黃燈籠；大停電時暗）
 - **寶箱島**——第一段：棒球 Lv6 `sat.chest.stage1`：一隻海鷗停在箱蓋上（開箱後站到箱旁）；第二段：全 MAX `sat.chest.stage2`：金幣噴泉（kind `coins`，6 枚金幣一個 InstancedMesh，2.4 秒一輪）
 
 沒收的候選（單檔 ≥ 300 KB 或壓縮格式，`tools/fetch-assets.mjs` 會拒收）：Quaternius `Bell_Tower.glb`（728 KB）、`6Story_Stack_Mat.glb`（396 KB）、`Pancake.glb`（3.5 MB）、`GeodesicDome-transformed.glb`（Draco）。

@@ -1,6 +1,6 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級（物品 v2 共 61 級）0–6 工地（吊車會動）、7–28 半成品、29–50 完工、51+ 點燈（選擇帶動升級重取）。
 // 晶片（物品 v2 §4.3）Lv7 塔頂長出矽盾天線（Cyberpunk Kit 天線 glb＋環）、Lv8 矽盾測試（罩子閃三下又收起）、
-// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋飛彈）；燈泡 Lv5 做燈光秀。
+// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋隕石）；燈泡 Lv5 做燈光秀。
 // 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
 // （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
@@ -43,11 +43,11 @@ export const STAGE_NAMES = { site: '101 工地', half: null, full: '101 完工',
 // 四個階段各在不同回合跨過、散在整局：第 3 回合（5 → 9）蓋一半、第 6 回合（23／24 → 34／35）完工、第 8 回合（45 → 56／57，倒數第二回合）點燈。
 // 唯一正解（2026-10-31）之後亂放的局終局常常停在蓋一半：命中局的總等級最少 20，蓋一半 19973／完工 10174／點燈 91 局（body 的 bent 照各階段彎）
 export function stageOf(total) { return total >= 51 ? 'lit' : total >= 29 ? 'full' : total >= 7 ? 'half' : 'site'; }
-// view 的階段：照 meta.total（舞台只在回合最後的 settle 更新，101 才不會搭著別人的事件跳階，計畫 3.6）；沒給才自己加總。finale.js 的飛彈也用它
+// view 的階段：照 meta.total（舞台只在回合最後的 settle 更新，101 才不會搭著別人的事件跳階，計畫 3.6）；沒給才自己加總。finale.js 的隕石也用它
 export const stageOfView = (lv, meta = {}) => stageOf(meta.total ?? Object.values(lv).reduce((a, b) => a + b, 0));
 
 // 塔身：底座 + n 節（上寬下窄的方錐台，每節上緣一圈白邊）+ 完工後的頂帽與尖塔。回傳零件與塔頂高度。
-// bent（最終章 §6，飛彈命中）：在這一階段自己的高度（bendY(stage)）彎——彎角以上的零件繞 z 轉 π/2 往 +x 倒，像吸管折成 L。
+// bent（最終章 §6，隕石命中）：在這一階段自己的高度（bendY(stage)）彎——彎角以上的零件繞 z 轉 π/2 往 +x 倒，像吸管折成 L。
 //   完工／點燈：八節的一半（上面四節、它們的白邊、頂帽、尖塔倒下）；蓋一半：四節的一半（第 2 節頂，上面兩節與白邊倒下）；
 //   工地：沒有塔身可彎，照原樣（吊車由 view 拿掉）。回傳的 top 是彎過的形狀的頂（倒下那段的頂面；工地是底座頂）——view 的頭頂照它
 // dark（最終章 §7 賽博）：玻璃、底座都是 DARK，白邊發霓虹藍；八節之上不放頂帽尖塔，改成平屋頂（'deck'）＋後緣的桅杆。
@@ -121,7 +121,7 @@ export function screenAt() {
   return { x: b.mast.x, y: b.top + SCREEN_UP + SCREEN[1] / 2, z: b.mast.z };
 }
 // 彎角（相對 101 的 at）：底座＋座身（0.3 + 1.1）再加這一階段塔節的一半——完工／點燈 8 節的 4 節、蓋一半 4 節的 2 節；
-// 工地不彎，這個高度只給飛彈當撞點（工地座身 0.5 的中段）。倒下那段是方錐台寬 1.16 的一半高
+// 工地不彎，這個高度只給隕石當撞點（工地座身 0.5 的中段）。倒下那段是方錐台寬 1.16 的一半高
 const bendY = stage => (stage === 'site' ? 0.3 + 0.5 / 2 : 0.3 + 1.1 + (stage === 'half' ? 2 : 4) * TIER_H), BENT_HALF = 0.6;
 // 繞 (0, by) 轉 −π/2（往 +x 倒）：(x, y − by) → (y − by, −x)。
 // 零件的 rot（Euler XYZ）只有 [0, 0, 0] 或 [π, 0, 0]（倒放的方錐台）：Rz(−π/2)·Rx(rx) = Rx(rx)·Rz(∓π/2)，rx = π 時 z 角變號
@@ -129,7 +129,7 @@ const bendPart = (p, by) => {
   const [x, y, z] = p.pos, [rx, ry, rz] = p.rot ?? [0, 0, 0];
   return { ...p, pos: [y - by, by - x, z], rot: [rx, ry, rz + (Math.cos(rx) > 0 ? -1 : 1) * Math.PI / 2] };
 };
-// 彎角的世界座標（飛彈命中的點，finale.js 用）：照這一階段的彎角（工地是底座中段）
+// 彎角的世界座標（隕石命中的點，finale.js 用）：照這一階段的彎角（工地是底座中段）
 export const bendPoint = stage => ({ x: AT.x, y: AT.y + bendY(stage), z: AT.z });
 
 // meta.total：舞台只在回合最後（settle）更新，101 才不會搭著別人的事件跳階（計畫 3.6；stageOfView）

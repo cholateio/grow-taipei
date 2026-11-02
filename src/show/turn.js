@@ -8,9 +8,9 @@
 //   劇本第一拍自己就是 focus（或 together 裡有 focus）的不補（101 大升級自己先 focus 101、中途回全景）；回合最後 focus('home', { final: true }) 回全景
 //   （拖過也照回；先照舞台上 101 的頭頂更新天際線，§14.4）、名冊全部恢復日常。
 // 最終章（選擇帶動升級 2026-10-28 §4，取代計畫 5 的倒數蒙太奇）：最後一輪是一般回合，跟放置回合一模一樣演（1 倍速、不過濾、沒有趕工）。
-//   遊戲層合成的事件——飛彈警告 warning（終局回合最前面，紅光＋全島抬頭）、飛彈 missile、尾聲 epilogue——劇本查 finale 模組的
+//   遊戲層合成的事件——隕石警告 warning（終局回合最前面，光點＋全島抬頭）、隕石 missile、尾聲 epilogue——劇本查 finale 模組的
 //   script[e.kind]，沒有就 [apply]。這三種的劇本自己管鏡頭：不補 focus、不空拍、不算「上一個物品」。
-//   終局回合（finale: true，警告＋飛彈＋尾聲）：不扶正零件、整回合不補 focus／GAP；收尾照舊（回日常、全島效果、回全景）。
+//   終局回合（finale: true，警告＋隕石＋尾聲）：不扶正零件、整回合不補 focus／GAP；收尾照舊（回日常、全島效果、回全景）。
 //   ctx.speed 恆為 1（時間軸、beats.js 讀它的換算都保留，預設 1 就是不換算）。
 // 跳級 = 一個事件（回到 GROW 設計 §4.2）：引擎照舊記兩個 grow（第二個 jump: true，中間可能夾著跨過那一級的 onLevel fx）。
 //   第一級（同物品後面有 jump: true、from 接著它的 to、中間沒有同物品別的 grow 的那個）只推 mark(e, { gap: 0, key: false, skipped: true })：
@@ -156,7 +156,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 彈兩次、它的 apply 一次套兩級
     if (jumpFirst.has(i)) { out.push(mark(e, { gap: 0, key: false, skipped: true })); return; }
     const twice = jumpSecond.has(i), twiced = beats => (twice ? withTwice(beats) : beats);
-    // 合成事件（警告、飛彈、尾聲）：finale 劇本整串照演，鏡頭由劇本自己管（不補平移、不空拍、不算上一個物品）
+    // 合成事件（警告、隕石、尾聲）：finale 劇本整串照演，鏡頭由劇本自己管（不補平移、不空拍、不算上一個物品）
     if (FINALE_KINDS.has(e.kind)) {
       const beats = mod('finale')?.script?.[e.kind]?.(e, s, ctx) ?? [B.apply(e)];
       if (some(beats, b => b.kind === 'focus')) lastCell = null;

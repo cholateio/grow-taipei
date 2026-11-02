@@ -8,7 +8,12 @@ import * as spec from '../src/rules/spec.js';
 const full = (over = {}, flags = {}) => ({ lv: Object.fromEntries(ORDER.map(id => [id, ITEMS[id].max])), age: {}, locked: {}, flags, order: ORDER, turn: 8, ...over });
 const lv = (o) => ({ ...Object.fromEntries(ORDER.map(id => [id, 1])), ...o });
 
-// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：矽盾 MAX → 擋下；否則颱風還沒放晴（0 < lv < max：1–2）→ 吹歪；否則命中
+// 修正批次 trim §C（2026-11-01，協調者裁決：飛彈從海的那一頭打 101 容易被讀成兩岸軍事威脅）：結局的標題、故事句不再有「飛彈」，改說「隕石」
+test('ending titles and lines say 隕石 (meteor), never 飛彈 (missile)', () => {
+  for (const [id, e] of Object.entries(ENDINGS)) assert.ok(!/飛彈/.test(e.title + e.line), `${id}: ${e.title}／${e.line}`);
+  assert.equal(ENDINGS.typhoonDeflect.title, '颱風吹偏隕石'); assert.ok(/隕石/.test(ENDINGS.typhoonDeflect.line) && /隕石/.test(ENDINGS.cyber.line));
+});
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：矽盾 MAX → 擋下；否則颱風還沒放晴（0 < lv < max：1–2）→ 吹偏；否則命中
 test('missile: shield when chip max, deflect while the typhoon has not cleared (1–2), else hit', () => {
   assert.equal(missile(full(), spec), 'shield');
   for (const typhoon of [1, 2]) assert.equal(missile(full({ lv: lv({ chip: 4, typhoon }) }), spec), 'deflect', `typhoon ${typhoon}`);
@@ -73,7 +78,7 @@ test('ENDINGS has twelve entries with Chinese titles; cyber is the only true end
   assert.deepEqual(Object.values(ENDINGS).filter(e => e.kind === 'true').map(e => e.id), ['cyber']);
   assert.deepEqual(ENDINGS.domeFlood, { id: 'domeFlood', title: '大巨蛋淹水', kind: 'bad', line: '球場變游泳池，球員坐在屋頂釣魚' });
 });
-// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：第 8 個放的颱風當回合 Lv1，最後一輪到 Lv2——暴風圈還在、還沒放晴，飛彈被吹歪
+// 颱風三級（設計 2026-10-31 §4.3，修正批次 2）：第 8 個放的颱風當回合 Lv1，最後一輪到 Lv2——暴風圈還在、還沒放晴，隕石被吹偏
 test('typhoon placed 8th is still storming after the closing turn: the missile is deflected; the solution clears it to Lv3', async () => {
   const { advance } = await import('../src/rules/engine.js');
   const playTo = order => { let s = createState(spec); for (const id of order) s = place(s, id, spec).state; return s; };
@@ -118,8 +123,8 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
 });
 
-// 最終章（計畫 5 任務 8；選擇帶動升級、因果與離島 2026-10-28 重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹歪的順序；
-// 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋飛彈（壞結局沒有尾聲）
+// 最終章（計畫 5 任務 8；選擇帶動升級、因果與離島 2026-10-28 重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹偏的順序；
+// 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋隕石（壞結局沒有尾聲）
 test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned literals)', async () => {
   const { enumerate } = await import('../src/solver/run.js'), { advance } = await import('../src/rules/engine.js');
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js'), { finaleEvents } = await import('../src/game.js');

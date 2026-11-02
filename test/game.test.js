@@ -99,7 +99,7 @@ test('after the 8th placement: one plain closing turn (no montage option, no cou
   assert.ok(t[8].events.every(e => !['countdown', 'warning', 'missile', 'epilogue'].includes(e.kind)));
   assert.equal(t[8].events.at(-1).kind, 'settle');
   assert.ok(!t.some(x => x.opts?.montage), 'no turn is a montage');
-  // 終局回合：警告 → 飛彈 → 尾聲（真結局）
+  // 終局回合：警告 → 隕石 → 尾聲（真結局）
   assert.equal(t[9].opts.finale, true);
   assert.deepEqual(WARNING, { kind: 'warning', flag: { name: 'alarm', value: 1 } });
   assert.deepEqual(t[9].events, finaleEvents(endings.resolve(g.state, spec)));

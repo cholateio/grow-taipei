@@ -11,7 +11,7 @@ export const stormy = lv => lv.typhoon >= 1 && lv.typhoon <= 2;
 export function worldEffects(lv, flags) {
   const time = flags.blackout || lv.bulb >= 5 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
   const storm = stormy(lv) ? 1 : 0;
-  // 全島心情（最終章 §6、§8）：飛彈命中全島躺平比讚，外星尾聲全島長第三隻眼；app 交給 people.setMood
+  // 全島心情（最終章 §6、§8）：隕石命中全島躺平比讚，外星尾聲全島長第三隻眼；app 交給 people.setMood
   const mood = flags.missile === 'hit' ? 'lie' : flags.epilogue === 'alien' ? 'alien' : 'normal';
   return { time, peopleVisible: true, glowScale: flags.blackout ? 0 : lv.bulb >= 9 ? NEON_BOOST : 1, storm, rain: storm, mood };
 }

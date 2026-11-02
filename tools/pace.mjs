@@ -8,7 +8,7 @@
 // ◆ 關鍵劇本（info.key）與 101 跳階（settle）不受 4.5 s 限，只印出來
 // 拜訪（計畫 6 設計 §4）2026-10-29 回到 GROW 時拿掉了（設計 §4.2）、撲空（計畫 6 設計 §5）2026-10-31 也拿掉了（唯一正解設計 R10）：沒有這兩種段可量
 // 最終章（選擇帶動升級 2026-10-28 §6，取代計畫 5 的倒數三回合）：最後一輪是一般回合，門檻跟放置回合一樣（4 s 起，60 + 8 × max(0, ◆ − 1)），
-//   列名「最後一輪」；之後演終局回合（警告＋飛彈＋真結局尾聲，finale: true）一列「終局 x/22 s」，
+//   列名「最後一輪」；之後演終局回合（警告＋隕石＋真結局尾聲，finale: true）一列「終局 x/22 s」，
 //   再印「最後一輪＋終局 x s」（給使用者對照計畫 5 的最終章：外星 70.9、賽博 67.0，不設門檻）；合計含終局。
 //   主迴圈之後另跑兩局固定的壞結局（test/helpers/endings.js 的 EXAMPLE.hit／deflect）：計畫 6 起放置與最後一輪也 live（同樣的回合門檻——
 //   設計 §6：60 秒上限在唯一正解與 EXAMPLE 上驗），最後一列「終局 x/12 s」。超過 22／12 都算失敗。
@@ -22,7 +22,7 @@ import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了、起因提示 2026-10-31 拿掉了，上限留著當餘裕）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
 // 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
 const MIN = 4, MAX = 60, KEY_EXTRA = 8, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
-// 終局回合（選擇帶動升級 §6）：真結局（警告＋飛彈＋尾聲）≤ 22 s、壞結局（警告＋飛彈）≤ 12 s（多了警告約 2.5 s）；
+// 終局回合（選擇帶動升級 §6）：真結局（警告＋隕石＋尾聲）≤ 22 s、壞結局（警告＋隕石）≤ 12 s（多了警告約 2.5 s）；
 // FINAL_BEFORE：計畫 5 的最終章（倒數三回合＋終局，外星／賽博），對照用
 const FINALE_MAX = 22, BAD_FINALE_MAX = 12, FINAL_BEFORE = { alien: 70.9, cyber: 67.0 };
 const args = new Set(process.argv.slice(2));
@@ -78,7 +78,7 @@ async function playOrder(order, head0, finaleMax) {
       details.push(`  ${head}：${parts.join('、')}`);
     }
   }
-  // 終局回合（game.js：最後一輪演完 → show.turn(finaleEvents(resolve(state)), { finale: true })：警告、飛彈、尾聲）
+  // 終局回合（game.js：最後一輪演完 → show.turn(finaleEvents(resolve(state)), { finale: true })：警告、隕石、尾聲）
   const fin = await finale(state);
   total += fin.secs; closing += fin.secs;
   cells.push(`終局 ${s1(fin.secs)}/${finaleMax} s`);
@@ -93,13 +93,13 @@ for (const { order, ending } of stats(enumerate(spec), spec).full) {
   for (const d of details) console.log(d);
 }
 
-// 兩局固定的壞結局（亂放的局，計畫 6 設計 §6、§8）：放置與最後一輪 live（同樣的回合門檻），終局（警告＋飛彈）≤ 12 s
-for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹歪']]) {
+// 兩局固定的壞結局（亂放的局，計畫 6 設計 §6、§8）：放置與最後一輪 live（同樣的回合門檻），終局（警告＋隕石）≤ 12 s
+for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹偏']]) {
   const order = EXAMPLE[outcome], head = `${title}（${order.map(name).join('、')}）`;
   const { cells, details, total, fin } = await playOrder(order, title, BAD_FINALE_MAX);
   console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
   for (const d of details) console.log(d);
-  if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的飛彈是 ${fin.ending.missile}`);
+  if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的隕石是 ${fin.ending.missile}`);
 }
 
 // 老鼠跑遠處的 trouble（唯一正解 §5.2、2026-10-31 Task 5）：放下的老鼠爬上岸直接跑去上一回合出問題的那棟門口聞一聞。

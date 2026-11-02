@@ -21,7 +21,7 @@ const CHAIN = [['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], 
 // 一條正解 live 演完：每回合記下演完後的等級、零件鍵、風車轉不轉、電纜亮不亮、罩子露不露出來，和這回合罩子閃了幾下；
 // 每個事件演完（下一個事件的 mark 拍、或回合結束）再記一次零件鍵與電纜亮不亮（events：{ e: 'bulb8' 之類, keys, cableLit }）——
 // 同一回合裡先後發生的兩節（例如燈泡 Lv8 鋪電纜、晶片 Lv6 通電）也分得出是哪個事件帶出來的。
-// 最後一輪照一般回合演（選擇帶動升級 §4：沒有倒數字）；演完再演終局回合（警告＋飛彈＋尾聲，finale: true），
+// 最後一輪照一般回合演（選擇帶動升級 §4：沒有倒數字）；演完再演終局回合（警告＋隕石＋尾聲，finale: true），
 // 終局回合演到一半玩家拖了一下鏡頭（cam.rig.cancel()，review focus 5：收尾照樣回全景）；不變式一路查到終局回合演完。
 // finale：{ ending, events（終局回合的合成事件）, secs（終局回合的真實秒數）, kinds（整局演到的事件種類）, flags, keys, script（演完還在劇本手上的人數）}
 // 每回合記下每個 mark（info、開演那一刻的秒數）：回合秒數與 ◆ 個數給回合上限查（拜訪 2026-10-29、撲空 2026-10-31 拿掉了，查沒有 info.visit／info.miss）
@@ -169,7 +169,7 @@ test('the solution live through the finale: one plain closing turn, finale turn 
     assert.deepEqual(finale.events.map(e => e.kind), ['warning', 'missile', 'epilogue'], `${name}: warning, missile, epilogue`);
     assert.equal(finale.flags.missile, 'shield'); assert.equal(finale.flags.epilogue, finale.ending.id);
     assert.ok(finale.keys.has(finale.ending.id === 'cyber' ? 'finale.car' : 'finale.ufos'), `${name}: the ${finale.ending.id} epilogue parts`);
-    assert.ok(!finale.keys.has('finale.flare'), `${name}: the flare is out`);
+    assert.ok(!finale.keys.has('finale.star') && !finale.keys.has('finale.flare'), `${name}: the star is out (no sea flare at all, trim §C)`);
     assert.ok(finale.secs > 8 && finale.secs <= 22, `${name}: the finale turn played live (${finale.secs.toFixed(1)} s)`);
     assert.equal(finale.busy, false); assert.equal(finale.script, 0, `${name}: everyone back to daily life`);
     assert.deepEqual(inv.camera.filter(c => c.includes('finale')), [], `${name}: the finale ends on the overview`);

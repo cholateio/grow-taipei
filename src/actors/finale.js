@@ -1,12 +1,15 @@
-// 最終章（計畫 5，設計 §3、§9；選擇帶動升級 2026-10-28 §4 改版）：飛彈警告、飛彈、真結局尾聲——都不是物品，是遊戲層合成的事件。
+// 最終章（計畫 5，設計 §3、§9；選擇帶動升級 2026-10-28 §4 改版）：隕石警告、隕石、真結局尾聲——都不是物品，是遊戲層合成的事件。
+// 修正批次 trim §C（2026-11-01，協調者裁決）：原本是「海的那一頭亮紅光、射一枚飛彈打 101」，容易被讀成兩岸軍事威脅（政治風險），
+// 換成天外隕石——從天上掉下來、沒有方向、沒有國家；三種結果的意思不變。程式識別字沿用 missile（事件、旗標、零件 finale.missile），畫面上看得到的全換掉。
 // 遊戲層（game.js）在第 8 個放完、最後一輪（一般回合）演完之後演一個終局回合：最前面 warning 事件（game.js WARNING，flag alarm = 1），
 // 接 missile 事件（flag missile = shield／deflect／hit），真結局再接 epilogue（flag epilogue = 結局 id）。
 // 旗標只折進舞台（stage.flags，foldEvent 照 e.flag 折），引擎狀態不碰。turn.js 把這三種事件的劇本交給這個模組（script[e.kind]）。
-// 警告（選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）——終局回合一開頭，鏡頭對面遠方的海平面亮起紅光（finale.flare），
-// 全島抬頭看、冒「！」；紅光以固定 FLARE_HZ 脈動，飛彈發射時熄掉（flags.missile 一設就不畫）。
-// 任務 5：飛彈（設計 §6）——紅光熄掉、飛彈從紅光的位置沿拋物線飛向 101（零件自己演：userData.launch），三種結果：
-//   shield 罩子全亮、飛彈碎成一發煙火、全島跳＋♥；deflect 飛到 101 旁被風吹歪、邊轉邊掉、機頭朝下插進北投溫泉、水花、全島？再♪；
-//   hit 撞進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
+// 警告（選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）——終局回合一開頭，101 正上方偏北的高空亮起一顆越來越亮的橘紅光點（finale.star，
+// 發光球＋往外拖長的淡光尾）；鏡頭先抬頭看天（全景只框到 101 頭頂上一點、天空整片出畫），再退到 WIDE（島＋101＋上方天空），全島抬頭看、冒「！」、蹲下；
+// 光點以固定 FLARE_HZ 脈動，隕石落下時熄掉（flags.missile 一設就不畫）。
+// 任務 5：隕石（設計 §6）——光點熄掉、隕石從光點的位置由上往下斜斜落向 101（零件自己演：userData.launch；鏡頭在 WIDE），三種結果：
+//   shield 罩子全亮、隕石撞上罩子碎成一發煙火、全島跳＋♥；deflect 落到 101 旁被風吹偏、邊滾邊掉進北投溫泉、水花、全島？再♪；
+//   hit 砸進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑、霓虹（燈泡 Lv9 早就開到 NEON_BOOST）→ 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
 //   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
 // 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
@@ -28,48 +31,55 @@ import { roadsterParts } from './token.js';
 
 export const id = 'finale';
 
-// 警告：全島抬頭看紅光 1.2 秒、頭上「！」0.8 秒、再一起蹲下護頭 DUCK 秒（真實秒數；終局回合 1 倍速）；鏡頭先拉到 101 的 zoom
-export const LOOK = 1.2, SHOUT = 0.8, DUCK = 0.8, TOWER_ZOOM = 0.9;   // DUCK 1.0 → 0.8（修正輪 1：吹歪的終局只剩 0.7 s）
+const TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
+// 警告：全島抬頭看光點 1.2 秒、頭上「！」0.8 秒、再一起蹲下護頭 DUCK 秒（真實秒數；終局回合 1 倍速）
+export const LOOK = 1.2, SHOUT = 0.8, DUCK = 0.8;   // DUCK 1.0 → 0.8（修正輪 1：吹歪的終局只剩 0.7 s）
 
-// 紅光的位置：鏡頭對面（全景沿 −z 看過去）主島西北方、背景環山山腳前的海面上。
-// 設計 §4 寫「背景山之外」，但環山（terrain.js 半徑 25–50 隆起、遠側不壓低）山脊以外的點在 16:9 全景一律投影到 NDC y > 1（出畫），
-// 所以退到山腳前的海面（地形 y −0.6）、往 −x 偏開 101（16:9 全景裡 101 就在畫面正中，紅光放 x −6 會被塔身擋住）。
-// 實測（點燈天際線 7.75）：16:9 NDC (−0.24, 0.61)、390×844 (−0.60, 0.39)；工地天際線 ≤ 3：16:9 (−0.27, 0.87)、390×844 (−0.70, 0.58)；
-// 沿視線到鏡頭都不被地形擋（帶 app.js 的雜訊取樣）
-export const FLARE_AT = { x: -12, y: 2.5, z: -23 };
-export const FLARE_COLOR = 0xff5a3c, FLARE_R = 0.9, COLUMN_H = 6;
+// 天上的光點（trim §C，取代海平面的紅光柱 finale.flare）：101 正上方偏北 3.7、高 14。全景（16:9）只框到 101 頭頂上一點、天空整片出畫，
+// 所以警告先抬頭：鏡頭對 101 頭頂與光點的中點（SKY_ZOOM），停 SKY_HOLD，再退到 WIDE。
+// 發光球（半徑 STAR_R）＋一條從球往外（離開 101 那頭）拖 STAR_TAIL 長的淡光尾；建好後 STAR_RAMP 秒內越來越亮，之後照 FLARE_HZ 脈動
+export const STAR_AT = { x: TOWER.x, y: 14, z: TOWER.z - 3.7 };
+export const STAR_COLOR = 0xff5020, STAR_R = 0.4, STAR_TAIL = 3.2, STAR_RAMP = 2.0;
 // 脈動頻率（選擇帶動升級 §4：固定 2 Hz；以前倒數 3／2／1 越閃越快）
 export const FLARE_HZ = 2;
+export const SKY_ZOOM = 1.3, SKY_HOLD = 0.4;
+// WIDE：隕石落下時的鏡頭（注視點在島心上方 5、全景距離 × 1.5）——16:9 主島四角都在畫面裡、光點到罩面那段落下的路線約八成在畫面裡（直式整條）
+export const WIDE = { x: 0.3, y: 5, z: -1 }, WIDE_ZOOM = 1.5;
 // 101 頂上的警示燈（計畫 13 §設計 5，使用者 2026-11-01「飛彈發射過來前的警告請優化呈現方式」）：塔尖上 BEACON_UP 一顆紅球（半徑 BEACON_R）
-// ＋一道從球心往外 BEAM_L 長的扁平紅光束，繞 y 軸每秒 BEACON_REV 圈；亮度跟紅光同一個 FLARE_HZ 脈動。
+// ＋一道從球心往外 BEAM_L 長的扁平紅光束，繞 y 軸每秒 BEACON_REV 圈；亮度跟光點同一個 FLARE_HZ 脈動。
 // 計畫寫「headOf('tower') 之上 0.15」：headOf 是泡泡的位置、比塔尖高 0.6（LABEL_UP），燈會飄在半空——改放塔尖（這一階段塔身的 top）之上 0.15
 export const BEACON_UP = 0.15, BEACON_R = 0.12, BEAM_L = 3, BEACON_REV = 1;
 const BEACON_RED = C.red;
 
-// ── 飛彈（設計 §6）──
-// 真實秒數：拋物線飛 FLIGHT 秒；deflect 的第二段（被風吹歪、邊轉邊掉進溫泉）DEFLECT 秒；結果演完回全景停 HOLD_END 秒
+// ── 隕石（設計 §6；trim §C 取代飛彈）──
+// 真實秒數：落下 FLIGHT 秒；deflect 的第二段（被風吹偏、邊滾邊掉進溫泉）DEFLECT 秒；結果演完回全景停 HOLD_END 秒
 export const FLIGHT = 2.5, DEFLECT = 1.2, HOLD_END = 1.0;
-// 拋物線 p(k) = lerp(from, to, k) + up · LOB · sin(πk)，k = t / FLIGHT
-export const LOB = 2;
-// 機身：紅白紅三節圓柱（半徑 0.18、長 1.2，沿 +z）＋圓頭（機頭尖在中心前 NOSE_TIP）
-export const NOSE_TIP = 0.78;
-const MISSILE_R = 0.18, HALF = 0.6, RED = 0xe8322e;
-const TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring');
-// 矽盾罩面上的撞點：從 101 底座中心朝紅光（xz）方向、仰角 55°
-const DOME_EL = 55 * Math.PI / 180;
-const toFlare = (() => { const dx = FLARE_AT.x - TOWER.x, dz = FLARE_AT.z - TOWER.z, L = Math.hypot(dx, dz); return { x: dx / L, z: dz / L }; })();
-const DOME_HIT = { x: TOWER.x + toFlare.x * SHIELD_R * Math.cos(DOME_EL), y: TOWER.y + SHIELD_R * Math.sin(DOME_EL), z: TOWER.z + toFlare.z * SHIELD_R * Math.cos(DOME_EL) };
+// 岩石：三顆 ico 低多邊形（一顆壓扁轉過的大石＋兩個凸起的小塊）併成一個黏土 mesh，深灰褐；主石半徑 ROCK_R（沿 +z 是前進方向）。
+// 外殼：半徑 ROCK_R × 1.15 的半透明發光橘色 ico；拖尾：TRAIL 四顆發光球沿 −z（來向）排開，越後面越小、越淡
+export const ROCK_R = 0.32, ROCK_COLOR = 0x5a4a42, SHELL_COLOR = 0xff7a3a, SHELL_OPACITY = 0.55;
+export const ROCK_PARTS = [
+  { kind: 'ico', pos: [0, 0, 0], scale: [ROCK_R * 2, ROCK_R * 1.76, ROCK_R * 1.9], rot: [0.4, 0.7, 0.2], color: ROCK_COLOR },
+  { kind: 'ico', pos: [0.17, 0.12, -0.05], scale: 0.3, rot: [0.9, 0.2, 0], color: ROCK_COLOR },
+  { kind: 'ico', pos: [-0.14, -0.1, 0.08], scale: 0.26, rot: [0.3, 1.1, 0.5], color: ROCK_COLOR },
+];
+// [往後多遠, 半徑, 不透明度]
+const TRAIL = [[0.55, 0.26, 0.5], [0.95, 0.2, 0.36], [1.3, 0.14, 0.24], [1.6, 0.09, 0.14]];
+// 落下時沿前進方向滾一圈（2π 的整數倍：落地的終態不用轉回來）
+const TUMBLE = 2 * Math.PI;
+// 矽盾罩面上的撞點：101 底座中心往光點那條線、罩子半徑處（從天上直直落下，撞在罩頂偏北）
+const toStar = (() => { const dx = STAR_AT.x - TOWER.x, dy = STAR_AT.y - TOWER.y, dz = STAR_AT.z - TOWER.z, L = Math.hypot(dx, dy, dz), H = Math.hypot(dx, dz); return { x: dx / L, y: dy / L, z: dz / L, hx: dx / H, hz: dz / H }; })();
+const DOME_HIT = { x: TOWER.x + toStar.x * SHIELD_R, y: TOWER.y + toStar.y * SHIELD_R, z: TOWER.z + toStar.z * SHIELD_R };
 // 溫泉池中心、池面上 0.1（池水 cylinder 頂在 landmark 上 0.13）
 const POOL = { x: SPRING.x, y: SPRING.y + 0.1, z: SPRING.z };
-// deflect 被吹歪的點：101 塔頂旁、朝紅光那側 1.5
+// deflect 被吹偏的點：101 塔頂旁、朝光點那側（水平）1.5
 const SIDESTEP = 1.5;
-// 命中：機頭尖插進塔面（方錐台半寬 0.58）BURY_TOWER；吹歪：機頭朝下斜 TILT 插進池裡 BURY_POOL，尾巴露在外面
-const TOWER_HALF = 0.58, BURY_TOWER = 0.3, BURY_POOL = 0.35, TILT = 30 * Math.PI / 180;
+// 命中：岩石前緣咬進塔面（方錐台半寬 0.58）BURY_TOWER；吹偏：斜 TILT 掉進池裡、前緣在池面下 BURY_POOL（大半露在水面上）
+const TOWER_HALF = 0.58, BURY_TOWER = 0.3, BURY_POOL = 0.2, TILT = 30 * Math.PI / 180;
 // 煙火：霓虹粉、霓虹藍、黃、珊瑚
 const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 
 // ── 賽博尾聲（設計 §7）──
-// 紅色飛天跑車：代幣 Lv10 那三台 Tesla Roadster 的同一個模型（token.js roadsterParts，車身 C.red；parts.js orbit；?quality=low 不畫，裁決照舊）。
+// 紅色飛天跑車：代幣 Lv10 那台 Tesla Roadster 的同一個模型（token.js roadsterParts，車身 C.red；parts.js orbit；?quality=low 不畫，裁決照舊）。
 // 從鏡頭右前方的海上（CAR_FROM）飛進來，在 101 頂上（點燈的塔頂 + 0.6）半徑 1.4 繞一圈，進出圈都在鏡頭那側（phase π/2，+z），
 // 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是兩排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）。
 // 車長 0.54：停好時車頭朝 −x（park.yaw −π/2，就是離圈那一刻的切線方向，下降時不用轉）、側身對鏡頭——順著 z 停的話車尾會伸出屋頂前緣；
@@ -116,9 +126,9 @@ const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
 
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
-  // 飛彈一發射紅光就熄（設計 §4、§6）；alarm 只會是 1（警告）。脈動頻率固定 FLARE_HZ（builders.flare）
+  // 隕石一落下光點就熄（設計 §4、§6）；alarm 只會是 1（警告）。脈動頻率固定 FLARE_HZ（builders.star）
   if (flags.alarm && !flags.missile) {
-    v['finale.flare'] = { kind: 'flare', at: FLARE_AT, shadow: false, footprint: false };
+    v['finale.star'] = { kind: 'star', at: STAR_AT, shadow: false, footprint: false };
     // 警示燈：101 的階段照 tower.js 的算法（stageOfView），站在這一階段的塔尖上
     v['finale.beacon'] = { kind: 'beacon', at: { x: TOWER.x, y: TOWER.y + towerBody(stageOfView(lv, meta)).top + BEACON_UP, z: TOWER.z }, shadow: false, footprint: false };
   }
@@ -128,9 +138,9 @@ export function view(lv, flags = {}, meta = {}) {
     // hit 的彎角照這一階段（tower.js bendPoint：蓋一半彎得低、工地打在底座）
     const stage = stageOfView(lv, meta);
     const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint(stage) : POOL;
-    v['finale.missile'] = { kind: 'missile', at, from: FLARE_AT, outcome: o, footprint: false, shadow: false };
+    v['finale.missile'] = { kind: 'missile', at, from: STAR_AT, outcome: o, footprint: false, shadow: false };
     if (o === 'deflect') {
-      v['finale.missile'].via = { x: TOWER.x + toFlare.x * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toFlare.z * SIDESTEP };
+      v['finale.missile'].via = { x: TOWER.x + toStar.hx * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toStar.hz * SIDESTEP };
       // 池邊冒一下水花：白煙 4 團、短（smoke 會一直循環，留到標題卡也無妨）
       v['finale.splash'] = { kind: 'smoke', at: POOL, n: 4, color: 0xffffff, size: 0.3, rise: 0.6, footprint: false };
     }
@@ -143,12 +153,12 @@ export function view(lv, flags = {}, meta = {}) {
   return v;
 }
 
-// 飛彈的軌跡（純函式）：missilePath(spec) → t => { x, y, z（機身中心，世界座標）, d（機頭方向，單位向量）, spin（繞機身軸轉幾弧度）, visible }。
-// 第一段（0 ≤ t < FLIGHT）：拋物線從 from 到 to1，機頭朝速度方向（dp/dk = to1 − from + up · LOB · π · cos(πk)）。
+// 隕石的軌跡（純函式）：missilePath(spec) → t => { x, y, z（岩石中心，世界座標）, d（前進方向，單位向量）, spin（繞前進方向滾幾弧度）, visible }。
+// 第一段（0 ≤ t < FLIGHT）：從 from（光點）直線等速落到 to1，前進方向固定、邊落邊滾一圈（TUMBLE）。
 //   shield：to1 = 罩面撞點；之後藏起來（煙火由零件放）。
-//   hit：to1 = 讓機頭尖插進塔面 BURY_TOWER 的機身中心（方向用飛到 at 的末速度估）；之後停在那裡（終態）。
-//   deflect：to1 = via（塔頂旁）；第二段 DEFLECT 秒：水平等速、高度先被風抬一下再加速往下掉到池裡，機頭從末速度轉到朝下斜 30°、
-//   邊掉邊繞機身轉兩圈；終態機頭朝下插進池裡 BURY_POOL、尾巴往 via 那側翹出水面。t = Infinity 就是終態（建好即飛完）
+//   hit：to1 = 讓岩石前緣咬進塔面 BURY_TOWER 的中心（從彎角往光點那側水平退 TOWER_HALF − BURY_TOWER、再沿來向退 ROCK_R）；之後停在那裡（終態）。
+//   deflect：to1 = via（塔頂旁）；第二段 DEFLECT 秒：水平等速、高度先被風抬一下再加速往下掉到池裡，方向從落下方向轉到朝下斜 30°、
+//   邊掉邊再滾兩圈；終態前緣在池面下 BURY_POOL。t = Infinity 就是終態（建好即落完）
 const v3 = (x, y, z) => ({ x, y, z });
 const plus = (a, b, k = 1) => v3(a.x + b.x * k, a.y + b.y * k, a.z + b.z * k);
 const minus = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -157,20 +167,19 @@ const mix = (a, b, k) => v3(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + 
 const smooth = k => k * k * (3 - 2 * k);
 export function missilePath(spec) {
   const { from, at, outcome } = spec;
-  const lobAt = (to, k) => plus(mix(from, to, k), v3(0, LOB * Math.sin(Math.PI * k), 0));
-  const lobDir = (to, k) => unit(plus(minus(to, from), v3(0, LOB * Math.PI * Math.cos(Math.PI * k), 0)));
+  const dirTo = to => unit(minus(to, from));
   let to1 = at;
   if (outcome === 'hit') {
-    const d0 = lobDir(at, 1), h = unit(v3(d0.x, 0, d0.z));
-    to1 = plus(plus(at, h, -(TOWER_HALF - BURY_TOWER)), d0, -NOSE_TIP);
+    const d0 = dirTo(at), h = unit(v3(d0.x, 0, d0.z));
+    to1 = plus(plus(at, h, -(TOWER_HALF - BURY_TOWER)), d0, -ROCK_R);
   } else if (outcome === 'deflect') to1 = spec.via;
-  const end1 = lobDir(to1, 1), fly = k => ({ ...lobAt(to1, k), d: lobDir(to1, k), spin: 0, visible: true });
-  // deflect 的終態：機頭方向 down（水平分量朝 via → 池的方向、跟垂直夾 TILT），機頭尖在池面下 BURY_POOL
+  const end1 = dirTo(to1), fly = k => ({ ...mix(from, to1, k), d: end1, spin: TUMBLE * k, visible: true });
+  // deflect 的終態：方向 down（水平分量朝 via → 池的方向、跟垂直夾 TILT），前緣在池面下 BURY_POOL
   let down = null, rest = null;
   if (outcome === 'deflect') {
     const h = unit(v3(at.x - to1.x, 0, at.z - to1.z));
     down = unit(v3(h.x * Math.sin(TILT), -Math.cos(TILT), h.z * Math.sin(TILT)));
-    rest = plus(plus(at, down, BURY_POOL), down, -NOSE_TIP);
+    rest = plus(plus(at, down, BURY_POOL), down, -ROCK_R);
   }
   return t => {
     if (t < FLIGHT) return fly(Math.max(0, t) / FLIGHT);
@@ -179,26 +188,9 @@ export function missilePath(spec) {
     const u = t - FLIGHT;
     if (u >= DEFLECT) return { ...rest, d: down, spin: 0, visible: true };
     const k = u / DEFLECT, p = mix(to1, rest, k);
-    return { x: p.x, y: to1.y + (rest.y - to1.y) * k * k + 0.8 * Math.sin(Math.PI * k), z: p.z, d: unit(mix(end1, down, smooth(k))), spin: 4 * Math.PI * k, visible: true };
+    return { x: p.x, y: to1.y + (rest.y - to1.y) * k * k + 0.8 * Math.sin(Math.PI * k), z: p.z, d: unit(mix(end1, down, smooth(k))), spin: TUMBLE + 4 * Math.PI * k, visible: true };
   };
 }
-
-// 機身零件（沿 +z、中心在原點）：紅白紅三節、紅色圓頭、三片白尾翼、圓頭上兩顆白眼睛＋墨色瞳孔、眼睛上方一條皺成 V 的墨色眉毛（兩截）。
-// 全部是黏土色、不發光：compound 併成一個 mesh（手機畫質也一樣，一個 draw call）
-const D = 2 * MISSILE_R, ALONG_Z = [Math.PI / 2, 0, 0];
-const MISSILE_PARTS = [
-  { kind: 'cylinder', pos: [0, 0, -0.4], scale: [D, 0.4, D], rot: ALONG_Z, color: RED },
-  { kind: 'cylinder', pos: [0, 0, 0], scale: [D, 0.4, D], rot: ALONG_Z, color: C.white },
-  { kind: 'cylinder', pos: [0, 0, 0.4], scale: [D, 0.4, D], rot: ALONG_Z, color: RED },
-  { kind: 'sphere', pos: [0, 0, HALF], scale: D, color: RED },
-  // 尾翼：一片朝上、兩片朝左右下（120° 間隔），薄板沿機身
-  ...[0, 2 * Math.PI / 3, -2 * Math.PI / 3].map(a => ({ kind: 'box', pos: [Math.sin(a) * 0.29, Math.cos(a) * 0.29, -0.48], scale: [0.03, 0.22, 0.26], rot: [0, 0, -a], color: C.white })),
-  ...[-1, 1].flatMap(s => [
-    { kind: 'sphere', pos: [s * 0.065, 0.06, 0.72], scale: 0.11, color: C.white },
-    { kind: 'sphere', pos: [s * 0.062, 0.056, 0.772], scale: 0.055, color: C.ink },
-    { kind: 'box', pos: [s * 0.048, 0.128, 0.735], scale: [0.075, 0.02, 0.03], rot: [0, 0, s * 0.45], color: C.ink },   // 內側低、外側高：皺眉
-  ]),
-];
 
 export const builders = {
   // 外星生物：三個一個 compound（不投影），整群面向主島、一起上下漂 ±BOB（每 π 秒一個來回）
@@ -207,32 +199,33 @@ export const builders = {
     object.add(part.object); object.rotation.y = spec.yaw ?? 0;
     return { object, materials: part.materials, update(dt, t) { part.object.position.y = BOB * Math.sin(t * 2); }, dispose: part.dispose };
   },
-  // 紅光：發光的球（r 0.9）＋一道從海面往上的淡淡光柱（高 6、半透明、不寫深度）。不投影、不收影（遠方的光，不是實體）。
-  // 自己建材質（不走 compound 的 glow 分組）：手機畫質（quality low）compound 會把發光併進 clay，紅光就不亮了。
-  // 強度照 tower.js 矽盾天線的作法：底強度 1.2 不跟夜晚歸零（白天也看得到）＋ ctx.glow.intensity，再乘脈動。
-  // 光柱：從海面（球心下 FLARE_AT.y + 0.18 ≈ 2.7）往上，總高 COLUMN_H
-  flare(THREE, spec, ctx) {
+  // 光點（trim §C）：發光的球（'orb'，r STAR_R）＋一條從球往外（離開 101 那頭）拖長的淡光尾（'tail'：圓錐殼，靠球那端粗、遠端尖，半透明、不寫深度）。
+  // 不投影、不收影（天上的光，不是實體）。自己建材質（不走 compound 的 glow 分組）：手機畫質（quality low）compound 會把發光併進 clay，光點就不亮了。
+  // 強度照 tower.js 矽盾天線的作法：底強度不跟夜晚歸零（白天也看得到）＋ ctx.glow.intensity，乘「越來越亮」（建好後 STAR_RAMP 秒從 45% 爬到 100%）
+  // 再乘 FLARE_HZ 脈動（相位跟著零件自己的時鐘）
+  star(THREE, spec, ctx) {
     const object = new THREE.Group();
-    const orbMat = new THREE.MeshStandardMaterial({ color: FLARE_COLOR, emissive: FLARE_COLOR, roughness: 0.6, metalness: 0 });
-    const beamMat = new THREE.MeshBasicMaterial({ color: FLARE_COLOR, transparent: true, opacity: 0.35, depthWrite: false });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(FLARE_R, 20, 14), orbMat);
-    const bottom = -(spec.at.y + 0.18), beam = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, COLUMN_H, 14, 1, true), beamMat);
-    beam.position.y = bottom + COLUMN_H / 2;
-    orb.name = 'orb'; beam.name = 'beam';
-    for (const m of [orb, beam]) { m.castShadow = m.receiveShadow = false; object.add(m); }
-    const pose = t => {
-      const k = (1 + Math.sin(t * Math.PI * 2 * FLARE_HZ)) / 2;
-      orbMat.emissiveIntensity = (1.2 + ctx.glow.intensity) * (0.35 + 0.65 * k);
-      beamMat.opacity = 0.15 + 0.3 * k;
+    const orbMat = new THREE.MeshStandardMaterial({ color: STAR_COLOR, emissive: STAR_COLOR, roughness: 0.6, metalness: 0 });
+    const tailMat = new THREE.MeshBasicMaterial({ color: STAR_COLOR, transparent: true, opacity: 0.3, depthWrite: false });
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(STAR_R, 20, 14), orbMat);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, STAR_R * 0.8, STAR_TAIL, 14, 1, true).translate(0, STAR_TAIL / 2, 0), tailMat);
+    tail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(toStar.x, toStar.y, toStar.z));
+    orb.name = 'orb'; tail.name = 'tail';
+    for (const m of [orb, tail]) { m.castShadow = m.receiveShadow = false; object.add(m); }
+    let age = 0;
+    const pose = () => {
+      const k = (1 + Math.sin(age * Math.PI * 2 * FLARE_HZ)) / 2, ramp = Math.min(1, 0.45 + 0.55 * age / STAR_RAMP);
+      orbMat.emissiveIntensity = (0.7 + 0.6 * ctx.glow.intensity) * (0.35 + 0.65 * k) * ramp;   // 底 0.7（1.2 會被色調映射洗成淡黃，截圖量的）
+      tailMat.opacity = (0.12 + 0.22 * k) * ramp;
     };
-    pose(0);
+    pose();
     return {
-      object, materials: [orbMat], update(dt, t) { pose(t); },
-      dispose() { orb.geometry.dispose(); beam.geometry.dispose(); orbMat.dispose(); beamMat.dispose(); },
+      object, materials: [orbMat], update(dt) { age += dt; pose(); },
+      dispose() { orb.geometry.dispose(); tail.geometry.dispose(); orbMat.dispose(); tailMat.dispose(); },
     };
   },
   // 警示燈：紅球（'lamp'）＋扁平光束（'beam'：圓錐殼從球心往 +x 張開到半徑 0.35、再壓扁成 0.25 倍高，雙面、半透明、不寫深度），
-  // 光束繞 y 每秒 BEACON_REV 圈。跟紅光一樣自己建材質、底強度 1.2 不跟夜晚歸零（白天也看得到、手機畫質照亮），再乘 FLARE_HZ 脈動；不投影
+  // 光束繞 y 每秒 BEACON_REV 圈。跟光點一樣自己建材質、底強度 1.2 不跟夜晚歸零（白天也看得到、手機畫質照亮），再乘 FLARE_HZ 脈動；不投影
   beacon(THREE, spec, ctx) {
     const object = new THREE.Group();
     const lampMat = new THREE.MeshStandardMaterial({ color: BEACON_RED, emissive: BEACON_RED, roughness: 0.5, metalness: 0 });
@@ -253,23 +246,33 @@ export const builders = {
       dispose() { lamp.geometry.dispose(); beam.geometry.dispose(); lampMat.dispose(); beamMat.dispose(); },
     };
   },
-  // 飛彈：Group 在 at（撞點），機身 compound（'body'）照 missilePath 擺；shield 多帶一發煙火（parts.js fireworks once，'fireworks'），
-  // 飛完（t ≥ FLIGHT）那一刻放。建好即終態（t = Infinity：shield 藏起來、煙火放完；hit 卡在彎角；deflect 插在池裡）——
-  // 跳過、reduced-motion、截圖、舞台重建零件都直接看到結果。
-  // object.userData.launch({ speed })：時鐘歸零、從紅光重飛（劇本的 replay 拍叫；speed 演出倍速）；finish()：跳到終態（跳過）
+  // 隕石（trim §C，取代飛彈機身）：Group 在 at（撞點），'body'（照 missilePath 擺、+z 朝前進方向）裡有岩石 compound（'rock'，一個黏土 mesh）、
+  // 發光外殼（'shell'）、拖尾（'trail'，落地後熄掉）；shield 多帶一發煙火（parts.js fireworks once，'fireworks'），落完（t ≥ FLIGHT）那一刻放。
+  // 建好即終態（t = Infinity：shield 藏起來、煙火放完；hit 卡在彎角；deflect 落在池裡）——跳過、reduced-motion、截圖、舞台重建零件都直接看到結果。
+  // object.userData.launch({ speed })：時鐘歸零、從光點重落（劇本的 replay 拍叫；speed 演出倍速）；finish()：跳到終態（跳過）
   missile(THREE, spec, ctx) {
     const object = new THREE.Group(), at = spec.at, path = missilePath(spec), origin = { x: 0, y: 0, z: 0 };
-    const body = ctx.build({ kind: 'compound', at: origin, parts: MISSILE_PARTS, shadow: false });
-    body.object.name = 'body'; object.add(body.object);
+    const body = new THREE.Group(); body.name = 'body'; object.add(body);
+    const rock = ctx.build({ kind: 'compound', at: origin, parts: ROCK_PARTS, shadow: false });
+    rock.object.name = 'rock'; body.add(rock.object);
+    // 疊加混色（AdditiveBlending）：白天蓋在深色岩石上也是亮橘色、拖尾越淡越透
+    const glowMat = opacity => new THREE.MeshBasicMaterial({ color: SHELL_COLOR, transparent: true, opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+    const shellMat = glowMat(SHELL_OPACITY), shell = new THREE.Mesh(new THREE.IcosahedronGeometry(ROCK_R * 1.15, 1), shellMat);
+    shell.name = 'shell'; body.add(shell);
+    const trail = new THREE.Group(), ballGeo = new THREE.SphereGeometry(1, 12, 8);
+    trail.name = 'trail'; body.add(trail);
+    const trailMats = TRAIL.map(([back, r, opacity]) => { const m = glowMat(opacity), b = new THREE.Mesh(ballGeo, m); b.position.z = -back; b.scale.setScalar(r); trail.add(b); return m; });
+    for (const m of [shell, ...trail.children]) m.castShadow = m.receiveShadow = false;
     const fw = spec.outcome === 'shield' ? ctx.build({ kind: 'fireworks', at: origin, once: true, colors: FIREWORKS }) : null;
     if (fw) { fw.object.name = 'fireworks'; object.add(fw.object); }
     const Z = new THREE.Vector3(0, 0, 1), dir = new THREE.Vector3(), roll = new THREE.Quaternion();
     let t = Infinity, rate = 1, popped = true;
     const end = FLIGHT + (spec.outcome === 'deflect' ? DEFLECT : 0);   // 軌跡演完（之後 path 回的都是終態）
     const put = () => {
-      const p = path(t), o = body.object;
-      o.visible = p.visible; o.position.set(p.x - at.x, p.y - at.y, p.z - at.z);
-      o.quaternion.setFromUnitVectors(Z, dir.set(p.d.x, p.d.y, p.d.z)).multiply(roll.setFromAxisAngle(Z, p.spin));
+      const p = path(t);
+      body.visible = p.visible; body.position.set(p.x - at.x, p.y - at.y, p.z - at.z);
+      body.quaternion.setFromUnitVectors(Z, dir.set(p.d.x, p.d.y, p.d.z)).multiply(roll.setFromAxisAngle(Z, p.spin));
+      trail.visible = t < end;   // 落地（終態）就熄掉
       if (fw && !popped && t >= FLIGHT) { popped = true; fw.object.userData.burst(); }
     };
     object.userData.launch = ({ speed = 1 } = {}) => { t = 0; rate = speed; popped = false; fw?.object.userData.finish(); put(); };
@@ -278,13 +281,13 @@ export const builders = {
     return {
       object,
       // 演完最後擺一次終態就停（t 設回 Infinity，跟建好、finish 一樣）：不再每幀重擺
-      update(dt, now) { if (t !== Infinity) { t += dt * rate; put(); if (t >= end) t = Infinity; } fw?.update(dt * rate, now); },
-      dispose() { body.dispose(); fw?.dispose(); },
+      update(dt, now) { if (t !== Infinity) { t += dt * rate; if (t >= end) t = Infinity; put(); } fw?.update(dt * rate, now); },
+      dispose() { rock.dispose(); shell.geometry.dispose(); ballGeo.dispose(); for (const m of [shellMat, ...trailMats]) m.dispose(); fw?.dispose(); },
     };
   },
 };
 
-// delay 秒後才開演 beat（together 裡用：飛彈飛到一半才冒「！」）；dur 是 beat 自己的秒數（together 在 start 就要知道總長）。
+// delay 秒後才開演 beat（together 裡用：隕石落到一半才冒「！」）；dur 是 beat 自己的秒數（together 在 start 就要知道總長）。
 // 跳過時還沒開演的 beat 照樣 start → end
 const later = (delay, dur, beat) => {
   let on = false, shown = false;
@@ -300,31 +303,28 @@ const later = (delay, dur, beat) => {
     end(c) { if (!on) open(c); if (shown) beat.end?.(c); },
   };
 };
-// 飛彈各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹歪的「？」1.0 再「♪」0.8
+// 隕石各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹偏的「？」1.0 再「♪」0.8
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
 
-// 101 的半腰：塔腳（錨點）到頭頂（stage.headOf）的中點，警告時鏡頭對這裡（塔頂的警示燈與島都在畫面裡）
-export const towerWaist = c => { const h = c.stage.headOf('tower'); return { x: h.x, y: (TOWER.y + h.y) / 2, z: h.z }; };
+// 抬頭看天：101 頭頂（stage.headOf）與光點的中點，警告時鏡頭先對這裡（光點、警示燈、塔頂都在畫面裡；全景看不到天空）
+export const skyShot = c => { const h = c.stage.headOf('tower'); return { x: (h.x + STAR_AT.x) / 2, y: (h.y + STAR_AT.y) / 2, z: (h.z + STAR_AT.z) / 2 }; };
 export const script = {
-  // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）：紅光與 101 頂上的警示燈一起出現 →
-  // 鏡頭先飛到 101（FOCUS_BEAT 0.8 s，計畫 13）、馬上飛回全景 → 全島（最多 24 人）轉頭看紅光 1.2 s（鏡頭在這段飛回全景）→
-  // 同一批人頭上一起冒「！」、蹲下護頭（duck）0.8 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 2.8 s）。
-  // 計畫寫「！」跟抬頭一起、回全景交給飛彈那段：鏡頭停在 101 時島的兩側與前緣出畫，24 個「！」有 11 個整段在畫面外
-  // （chain.test 的字在畫面裡不變式）——改成鏡頭先回全景、「！」跟蹲下一起冒（鏡頭已經到全景）
+  // 警告（終局回合第一個事件，選擇帶動升級 §4；原本倒數 3 的宣告去掉數字；trim §C 光點搬到天上）：光點與 101 頂上的警示燈一起出現，
+  // 同時鏡頭抬頭看天（skyShot，FOCUS_BEAT 0.8 s）→ 停 SKY_HOLD → 鏡頭退到 WIDE、全島（最多 24 人）轉頭看光點 1.2 s（鏡頭在這段飛過去）→
+  // 同一批人頭上一起冒「！」、蹲下護頭（duck）0.8 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 3.2 s）。
+  // 「！」等鏡頭到 WIDE 才冒（chain.test 的字在畫面裡不變式：天空鏡頭裡島整座出畫）
   warning(e, s, ctx) {
-    const { B } = ctx, up = lookUp(B, FLARE_AT, LOOK);
+    const { B } = ctx, up = lookUp(B, STAR_AT, LOOK);
     return [
-      // 鏡頭對 101 的半腰（地面到頭頂 stage.headOf 的中點）：對那一格的地面（focus('tower')）全景距離 × 0.9 會把塔頂、警示燈切出畫面，
-      // 對頭頂又整座島掉出畫面下緣、只剩背景的山（截圖量的）
-      // 紅光、警示燈在鏡頭飛過去的途中出現（同一拍，修正輪 1：省下 apply 的 0.3 s）
-      B.together([B.apply(e, { only: ['finale.flare', 'finale.beacon'] }), B.focus(towerWaist, { zoom: TOWER_ZOOM })]), B.focus('home'),
-      B.together(up.look), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
+      B.together([B.apply(e, { only: ['finale.star', 'finale.beacon'] }), B.focus(skyShot, { zoom: SKY_ZOOM })]), B.wait(SKY_HOLD),
+      B.together([B.focus(WIDE, { zoom: WIDE_ZOOM }), ...up.look]), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
     ];
   },
-  // 飛彈（設計 §6，真實秒數，終局回合 1 倍速）：回全景停 0.8 → 紅光熄掉 → 飛彈從紅光的位置發射（replay：套用零件、launch 重飛），
-  //   飛到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→ 結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END。
-  //   shield：罩子切 full（閃白就是那一下亮），飛彈自己碎成煙火；全島原地跳＋♥。
-  //   deflect：第二段 DEFLECT 秒掉進溫泉（同一個 replay 拍裡）→ 水花 → 全島「？」再「♪」。
+  // 隕石（設計 §6，真實秒數，終局回合 1 倍速）：鏡頭在 WIDE（警告已經停在那裡，這拍 0.8 s 當停頓）→ 光點熄掉 →
+  //   隕石從光點的位置由上往下落（replay：套用零件、launch 重落），落到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→
+  //   結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END。
+  //   shield：罩子切 full（閃白就是那一下亮），隕石撞上罩子碎成煙火；全島原地跳＋♥。
+  //   deflect：第二段 DEFLECT 秒被風吹偏、掉進溫泉（同一個 replay 拍裡）→ 水花 → 全島「？」再「♪」。
   //   hit：101 換成彎 L 的塔身、天線／燈光秀／罩子拿掉（閃白）→ 全島躺平（world 拍只帶 mood，app 合進目前的全島效果；
   //   回合收尾的 world 拍照舞台旗標再算一次，一樣是 lie）。
   //   replay 的 finish 只在跳過（ctx.instant）時跳到終態：live 時拍演完零件自己還在演（煙火撞上罩子才放、放 1.2 秒）
@@ -337,7 +337,7 @@ export const script = {
       begin: (m, c) => { if (!m.userData.launch) return false; m.userData.launch({ speed: c.speed ?? 1 }); return true; },
       finish: (m, c) => { if (c?.instant) m.userData.finish(); },
     });
-    const lead = [B.focus('home', { hold: 0.8 }), B.apply(e, { only: ['finale.flare'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)]))])];
+    const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)]))])];
     const tail = [B.apply(e), B.home(() => list ?? []), B.focus('home', { hold: HOLD_END })];
     if (o === 'shield') return [...lead, B.apply(e, { only: ['tower.shield'] }), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];

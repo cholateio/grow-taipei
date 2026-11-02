@@ -93,7 +93,7 @@ export function orbitPose(spec, t, start = 'from') {
 }
 
 // ── 矽盾罩（晶片 Lv8／9、結局 §8）：狀態 test 閃三下（不透明度脈衝）再縮回地面藏起來；standby 淡淡常駐、跟 101 每 3 秒一起亮一下；
-// full 全亮（結局擋飛彈）。shieldPose 是純函式：t 秒時的 { opacity, scale, visible }
+// full 全亮（結局擋隕石）。shieldPose 是純函式：t 秒時的 { opacity, scale, visible }
 export const SHIELD = { color: 0xa8e6ff, flashes: 3, period: 0.8, retract: 0.6, test: 0.55, standby: [0.08, 0.2], full: 0.55, pulse: 3 };
 export const SHIELD_TEST_DUR = SHIELD.flashes * SHIELD.period + SHIELD.retract;
 export function shieldPose(state, t) {
@@ -285,8 +285,8 @@ export function createPartFactory(THREE, ctx) {
   }
 
   // 煙火：60 顆小球一發，從中心炸開、重力下落、淡出，每 1.2 秒一發；不投影
-  // once（最終章 §6：飛彈撞上矽盾碎成一發煙火）：只放一發——用自己的時鐘（累加 dt，不看全域 t），1.2 秒後整個藏起來、一直藏著；
-  //   建好即終態（藏著、不自己放）：object.userData.burst() 從頭放一發（飛彈撞上罩子那一刻），finish() 直接藏好（跳過）
+  // once（最終章 §6：隕石撞上矽盾碎成一發煙火）：只放一發——用自己的時鐘（累加 dt，不看全域 t），1.2 秒後整個藏起來、一直藏著；
+  //   建好即終態（藏著、不自己放）：object.userData.burst() 從頭放一發（隕石撞上罩子那一刻），finish() 直接藏好（跳過）
   function fireworks(spec) {
     const N = 60, BURST = 1.2, object = new THREE.Group(), colors = spec.colors ?? [0xff3fa0];
     const mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.05, 6, 4), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }), N);

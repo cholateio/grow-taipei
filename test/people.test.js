@@ -241,7 +241,7 @@ test('low quality keeps eye3 in alien mood (the normal eyes stay skipped)', () =
   assert.equal(partMesh(people, 'eye3').visible, true);
   assert.equal(partMesh(people, 'eyeL').visible, false); assert.equal(partMesh(people, 'eyeR').visible, false);
 });
-// 計畫 13 §設計 5：蹲下護頭（duck，飛彈警告）——整個人下蹲 0.05（修正輪 1：0.08＋腿前轉 1.2 像坐在地上、腳尖插地）、腿往前彎 0.6 rad 並收短
+// 計畫 13 §設計 5：蹲下護頭（duck，隕石警告）——整個人下蹲 0.05（修正輪 1：0.08＋腿前轉 1.2 像坐在地上、腳尖插地）、腿往前彎 0.6 rad 並收短
 // （腳底留在站著時的高度）、兩手往前上抬到 −2.6 rad 護住頭；前 15 % 蹲下去、中間 70 % 停住、最後 15 % 站回來
 test("gesture 'duck': crouch 0.05 with legs bent 0.6 rad (feet stay on the ground), both arms up to −2.6 rad over the head; 15 % in, 70 % hold, 15 % out", () => {
   assert.deepEqual(duckPose(0), { drop: 0, arm: 0, knee: 0 });

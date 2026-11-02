@@ -21,7 +21,7 @@ export function hammerPose(k) {
   return { arm: ARM_UP + (ARM_HIT - ARM_UP) * e, lean: -LEAN_BACK + (LEAN_HIT + LEAN_BACK) * e };
 }
 
-// 蹲下護頭（duck，計畫 13 §設計 5 飛彈警告）：整個人下蹲 DUCK_DROP、兩腿往前彎 DUCK_KNEE 並收短（腳底留在站著時的高度，不插進地面）、
+// 蹲下護頭（duck，計畫 13 §設計 5 隕石警告）：整個人下蹲 DUCK_DROP、兩腿往前彎 DUCK_KNEE 並收短（腳底留在站著時的高度，不插進地面）、
 // 兩手往前上抬到 DUCK_ARM 護住頭。修正輪 1：0.08＋1.2 rad 像坐在地上、腳尖插地 0.02，改成蹲。
 // 前 DUCK_IN（15 %）蹲下去、中間停住、最後 15 % 站回來（smoothstep）
 export const DUCK_IN = 0.15, DUCK_DROP = 0.05, DUCK_ARM = -2.6, DUCK_KNEE = -0.6;
@@ -79,7 +79,7 @@ export function createPeople(THREE, { max = 48, seed = 21, low = false } = {}) {
   const walkers = [];
   let nextId = 1;
   // 全島心情（最終章 §6、§8，由 worldEffects.mood 經 app 的 showWorld 設）：一個全島狀態，不是一個個 gesture。
-  // lie：飛彈命中，全島躺平、右手比讚、不走路（姿勢持續到標題卡）；alien：外星尾聲，額頭長第三隻眼，走路與動作照舊。
+  // lie：隕石命中，全島躺平、右手比讚、不走路（姿勢持續到標題卡）；alien：外星尾聲，額頭長第三隻眼，走路與動作照舊。
   let mood = 'normal';
   const color = new THREE.Color(), hidden = new THREE.Matrix4().makeScale(0, 0, 0);
 

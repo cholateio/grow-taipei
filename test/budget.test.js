@@ -1,7 +1,7 @@
 // test/budget.test.js：人數預算（使用者要求，計畫 4 任務 12、裁決 R16）——唯一正解整局 live 演完，每回合演完那一刻、再放 5 秒日常之後，
 // 露出來的名冊成員（所有名冊；老鼠不算，牠們很小）全島 ≤ 30、任何一格主島格 ≤ 8。
 // 最終章（計畫 5 任務 8；選擇帶動升級改版）：最後一輪照一般回合演，之後演終局回合
-// （finaleStep：警告——全島抬頭看紅光——＋飛彈＋尾聲）多一個點——賽博尾聲的十隻機器鼠站在黑塔屋頂上（rat.pack，本來就不算人）。
+// （finaleStep：警告——全島抬頭看天上的光點——＋隕石＋尾聲）多一個點——賽博尾聲的十隻機器鼠站在黑塔屋頂上（rat.pack，本來就不算人）。
 // 「全島」＝主島七格（計畫的「全島同時可見」；離島——風車、燈塔、遊樂場、森林——上的人另外印出來，不算進 30）
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ test('people budget: every turn end of the solution, the finale turn included (a
   for (const order of SOLUTIONS) {
     const { show, run } = await headlessShow(), inv = gameInvariants(show);   // 同一趟也查換位置一定閃白（裁決 R3）
     let s = createState(spec), t = 1000;
-    // 每一回合：放置、最後一輪、最後的終局回合（finale：警告＋飛彈＋尾聲）
+    // 每一回合：放置、最後一輪、最後的終局回合（finale：警告＋隕石＋尾聲）
     const turns = [...turnSteps(order).map((step, i) => async () => {
       const r = step(s); s = r.state;
       await run([...r.events, { kind: 'settle' }]);   // 最後一輪照一般回合演（同 game.js）

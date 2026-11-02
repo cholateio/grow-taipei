@@ -1,4 +1,5 @@
-// test/finale.test.js：最終章（計畫 5；選擇帶動升級改版）——飛彈警告、飛彈、尾聲
+// test/finale.test.js：最終章（計畫 5；選擇帶動升級改版）——隕石警告、隕石（程式識別字沿用 missile）、尾聲。
+// 修正批次 trim §C（2026-11-01，協調者裁決）：飛彈從海的那一頭飛來打 101 容易被讀成兩岸軍事威脅（政治風險），換成天外隕石——從天上掉下來、沒有方向、沒有國家
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as spec from '../src/rules/spec.js';
@@ -15,7 +16,7 @@ import { islanders } from '../src/show/crowd.js';
 import * as beatsMod from '../src/show/beats.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
-// ── 飛彈警告（選擇帶動升級 §4；原本倒數 3 的宣告）──
+// ── 隕石警告（選擇帶動升級 §4；原本倒數 3 的宣告）──
 const finale = ALL.find(m => m.id === 'finale');
 const tower = ALL.find(m => m.id === 'tower');
 const everyone = show => show.roster.keys().flatMap(k => show.roster.members(k));
@@ -32,37 +33,49 @@ async function placedShow() {
   return h;
 }
 
-test('view: alarm draws finale.flare pulsing at FLARE_HZ 2; missile puts it out', () => {
-  const lv = {};
-  const f = finale.view(lv, { alarm: 1 })['finale.flare'];
-  assert.ok(f, 'alarm 1 (WARNING) draws the flare');
-  assert.equal(f.kind, 'flare'); assert.deepEqual(f.at, finale.FLARE_AT);
+const TOWER0 = anchorWorld('tower');
+// 隕石警告（trim §C）：天上一顆越來越亮的橘紅光點（finale.star）——高空 y ≈ 14、101 正上方偏北；發光球＋一條往外（離開 101 那頭）拖長的淡光尾；
+// 脈動照舊 FLARE_HZ；海平面的紅光柱（finale.flare、FLARE_AT）拿掉了
+test('view: alarm draws finale.star high above 101 (slightly north), a glowing orb with a long faint tail pointing away from 101, brightening and pulsing at FLARE_HZ 2; the meteor puts it out; no sea flare', () => {
+  const lv = {}, v = finale.view(lv, { alarm: 1 }), f = v['finale.star'], S = finale.STAR_AT;
+  assert.ok(f, 'alarm 1 (WARNING) draws the star'); assert.equal(v['finale.flare'], undefined, 'no sea flare');
+  assert.equal('FLARE_AT' in finale, false); assert.equal(f.kind, 'star'); assert.deepEqual(f.at, S);
   assert.equal(f.shadow, false); assert.equal(f.footprint, false);
+  assert.ok(S.y >= 13 && S.y <= 15, `high in the sky (y ${S.y})`);
+  assert.ok(Math.abs(S.x - TOWER0.x) < 1e-9 && TOWER0.z - S.z >= 2 && TOWER0.z - S.z <= 6, `above 101, a little north (${(TOWER0.z - S.z).toFixed(2)})`);
   assert.deepEqual(finale.view(lv, {}), {});
-  for (const missile of ['shield', 'deflect', 'hit']) assert.ok(!finale.view(lv, { alarm: 1, missile })['finale.flare'], `missile ${missile} puts the flare out`);
+  for (const missile of ['shield', 'deflect', 'hit']) assert.ok(!finale.view(lv, { alarm: 1, missile })['finale.star'], `meteor ${missile} puts the star out`);
   assert.equal('flareHz' in finale, false, 'no per-countdown frequency any more');
-  // 零件：紅橘發光球 r 0.9＋半透明光柱高 6，都不投影；固定 FLARE_HZ 脈動（週期 1/hz 回到同一個強度）
   assert.equal(finale.FLARE_HZ, 2);
   const glow = createGlowRegistry();
   const pf = createPartFactory(THREE, { glow, people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders });
   const part = pf.build(f);
-  const orb = part.object.getObjectByName('orb'), beam = part.object.getObjectByName('beam');
-  orb.geometry.computeBoundingSphere(); assert.ok(Math.abs(orb.geometry.boundingSphere.radius - 0.9) < 0.02, 'orb r 0.9');
-  assert.equal(orb.material.color.getHex(), 0xff5a3c); assert.equal(orb.material.emissive.getHex(), 0xff5a3c);
-  beam.geometry.computeBoundingBox(); const bb = beam.geometry.boundingBox; assert.ok(Math.abs(bb.max.y - bb.min.y - 6) < 1e-6, 'column 6 high');
-  assert.ok(beam.material.transparent && beam.material.opacity < 1 && !beam.material.depthWrite);
+  const orb = part.object.getObjectByName('orb'), tail = part.object.getObjectByName('tail');
+  assert.ok(orb && tail, 'orb and tail');
+  const c = new THREE.Color(finale.STAR_COLOR); assert.ok(c.r > c.g && c.g > c.b && c.r > 0.9, 'orange-red');
+  assert.equal(orb.material.color.getHex(), finale.STAR_COLOR); assert.equal(orb.material.emissive.getHex(), finale.STAR_COLOR);
+  assert.ok(tail.material.transparent && tail.material.opacity < 1 && !tail.material.depthWrite, 'faint tail');
+  part.object.position.set(S.x, S.y, S.z); part.object.updateMatrixWorld(true);
+  tail.geometry.computeBoundingBox(); const bb = tail.geometry.boundingBox.clone().applyMatrix4(tail.matrixWorld), mid = bb.getCenter(new THREE.Vector3());
+  const away = new THREE.Vector3(S.x - TOWER0.x, S.y - TOWER0.y, S.z - TOWER0.z).normalize(), toMid = mid.clone().sub(new THREE.Vector3(S.x, S.y, S.z));
+  assert.ok(toMid.length() >= 1 && toMid.normalize().dot(away) > 0.95, `the tail trails away from 101 (dot ${toMid.normalize().dot(away).toFixed(3)})`);
+  assert.ok(bb.getSize(new THREE.Vector3()).length() >= 2.5, 'a long tail');
   part.object.traverse(o => { if (o.isMesh) assert.ok(!o.castShadow, 'no shadow'); });
-  const m = part.materials[0], at = t => { part.update(0.1, t); return m.emissiveIntensity; }, hz = finale.FLARE_HZ;
-  const a = at(0.1 / hz), b = at(0.6 / hz), c = at(1.1 / hz);
-  assert.ok(Math.abs(a - b) > 0.3, `pulses at ${hz} Hz`); assert.ok(Math.abs(a - c) < 1e-9, `period 1/${hz} s`);
-  assert.ok(Math.min(a, b) > 0, 'glows in daylight');
+  // 越來越亮：建好後 STAR_RAMP 秒內亮度往上爬，之後固定 FLARE_HZ 脈動（週期 1/hz 回到同一個強度）
+  const m = part.materials[0], hz = finale.FLARE_HZ, at = dt => { part.update(dt, 0); return m.emissiveIntensity; };
+  const early = at(0.25 / hz);   // 脈動的波峰
+  at(finale.STAR_RAMP + 1 / hz);   // 走到 ramp 之後的同一個相位（波峰）
+  const peak = m.emissiveIntensity;
+  assert.ok(peak > early * 1.3, `brightens (${early.toFixed(2)} → ${peak.toFixed(2)})`);
+  const a = at(0.5 / hz), b = at(0.5 / hz);
+  assert.ok(Math.abs(a - peak) > 0.3, `pulses at ${hz} Hz`); assert.ok(Math.abs(b - peak) < 1e-9, `period 1/${hz} s`);
+  assert.ok(Math.min(early, a) > 0, 'glows in daylight');
   part.dispose();
 });
-
 // 計畫 13 §設計 5（使用者 2026-11-01「飛彈發射過來前的警告請優化呈現方式」）：101 頂上一顆紅色警示燈（finale.beacon）＋一道扁平紅光束繞 y 轉、
-// 每秒一圈，亮度跟紅光同一個 FLARE_HZ 脈動；alarm 時才有、飛彈一發射就熄（同 finale.flare）。站在這一階段的塔尖上 0.15
+// 每秒一圈，亮度跟光點同一個 FLARE_HZ 脈動；alarm 時才有、隕石一落下就熄（同 finale.star）。站在這一階段的塔尖上 0.15
 // （計畫寫 headOf + 0.15：headOf 是泡泡的位置、比塔尖高 0.6，燈會飄在半空）
-test('view: alarm puts finale.beacon on the 101 spire (a red lamp + a flat red beam sweeping 1 rev/s, pulsing at FLARE_HZ, lit by day); missile puts it out', async () => {
+test('view: alarm puts finale.beacon on the 101 spire (a red lamp + a flat red beam sweeping 1 rev/s, pulsing at FLARE_HZ, lit by day); the meteor puts it out', async () => {
   const { body, stageOfView } = await import('../src/actors/tower.js'), { anchorWorld: aw } = await import('../src/actors/anchors.js');
   const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chip: 9, bulb: 9 }, LIT_META = { total: 59 }, TOWER_AT = aw('tower');
   for (const [lv, meta] of [[LIT, LIT_META], [{ milk: 3, chip: 2 }, {}]]) {
@@ -91,30 +104,30 @@ test('view: alarm puts finale.beacon on the 101 spire (a red lamp + a flat red b
   assert.ok(Math.min(li(0.1 / hz), li(0.6 / hz)) > 0, 'lamp lit in daylight');
   part.dispose();
 });
-// 警告（計畫 13 §設計 5）：紅光＋警示燈 → 鏡頭先到 101（zoom 0.9，FOCUS_BEAT）、再回全景 → 全島抬頭看紅光 1.2 s →
-// 同一批人喊「！」、蹲下護頭（duck）0.8 s → 放人（「！」等鏡頭回到全景才冒：停在 101 時島的邊緣出畫）
-test('warning beats: apply flare + beacon, focus 101 (its waist, zoom 0.9) then home, look, ！ + duck 0.8 s, release', () => {
+// 警告（計畫 13 §設計 5；trim §C 改天上的光點）：光點＋警示燈 → 鏡頭抬頭看天（101 頭頂與光點的中點，zoom SKY_ZOOM，FOCUS_BEAT）、停 SKY_HOLD →
+// 鏡頭退到 WIDE（島＋101＋上方天空，隕石落下時看得到）同時全島抬頭看光點 1.2 s → 同一批人喊「！」、蹲下護頭（duck）0.8 s → 放人
+test('warning beats: apply star + beacon while the camera looks up at the sky over 101, hold, then the wide framing while everyone looks up, ！ + duck 0.8 s, release', () => {
   const { B, GESTURE_DUR } = beatsMod, ctx = { B, roster: { members: () => [], keys: () => [] } };
   const beats = finale.script.warning(WARNING, { lv: {}, flags: {} }, ctx);
-  // 修正輪 1（審稿 Minor，吹歪的終局只剩 0.7 s）：紅光、警示燈在鏡頭飛過去的途中出現（同一拍），蹲下 1.0 → 0.8
-  assert.deepEqual(beats.map(b => b.kind), ['together', 'focus', 'together', 'together', 'home']);
-  const [lit, toTower] = beats[0].beats;
-  assert.equal(lit.kind, 'apply'); assert.deepEqual(lit.only, ['finale.flare', 'finale.beacon']);
-  assert.equal(beats[1].target, 'home');
-  const head = { x: 1, y: 9, z: 2 }, foot = anchorWorld('tower').y;
-  assert.equal(toTower.kind, 'focus'); assert.deepEqual(toTower.target({ stage: { headOf: id => (id === 'tower' ? head : null) } }), { x: 1, y: (foot + 9) / 2, z: 2 }, 'aims at the waist of 101 (half way to headOf), not the cell floor'); assert.equal(toTower.dur, 0.8);
-  assert.ok(beats[2].beats.length === 24 && beats[2].beats.every(b => b.kind === 'gesture' && b.dur === 1.2), 'look 1.2 s');
+  assert.deepEqual(beats.map(b => b.kind), ['together', 'wait', 'together', 'together', 'home']);
+  const [lit, toSky] = beats[0].beats;
+  assert.equal(lit.kind, 'apply'); assert.deepEqual(lit.only, ['finale.star', 'finale.beacon']);
+  const head = { x: 0.6, y: 8.35, z: -0.3 }, S = finale.STAR_AT;
+  assert.equal(toSky.kind, 'focus'); assert.deepEqual(toSky.target({ stage: { headOf: id => (id === 'tower' ? head : null) } }), { x: (head.x + S.x) / 2, y: (head.y + S.y) / 2, z: (head.z + S.z) / 2 }, 'aims half way between the 101 head and the star');
+  assert.equal(toSky.dur, 0.8); assert.equal(beats[1].dur, finale.SKY_HOLD); assert.ok(finale.SKY_HOLD >= 0.3 && finale.SKY_HOLD <= 0.6);
+  const wide = beats[2].beats.find(b => b.kind === 'focus'); assert.deepEqual(wide.target, finale.WIDE);
+  const looks = beats[2].beats.filter(b => b.kind === 'gesture');
+  assert.ok(looks.length === 24 && looks.every(b => b.dur === 1.2), 'look 1.2 s');
   const duck = beats[3].beats.filter(b => b.kind === 'gesture'), shout = beats[3].beats.filter(b => b.kind === 'bubble');
   assert.equal(duck.length, 24); assert.ok(duck.every(b => b.dur === 0.8), 'duck 0.8 s each'); assert.equal(finale.DUCK, 0.8);
   assert.equal(shout.length, 24); assert.ok(shout.every(b => b.dur === 0.8), '！ 0.8 s each');
   assert.equal(GESTURE_DUR.duck, 1.0);
 });
-// 計畫 13：鏡頭先到 101（看警示燈）、抬頭之後全島蹲下護頭 1.0 s（同一批人），整段 ≤ 4.5 s（以前 ≤ 3 s）
-test('warning live: the flare and the beacon blink in, the camera goes to 101 first, visible islanders look at FLARE_AT and say ！, then duck 0.8 s, everyone released; ≤ 4.5 s', async () => {
+test('warning live: the star and the beacon blink in, the camera looks up at the sky over 101 first, visible islanders look at STAR_AT and say ！, then duck 0.8 s, everyone released; ≤ 4.5 s', async () => {
   const { show, run, bubblesLog, rig } = await placedShow();
-  const at = finale.FLARE_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, islanders({ roster: show.roster }).length), r0 = rig.log.length;
+  const at = finale.STAR_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, islanders({ roster: show.roster }).length), r0 = rig.log.length;
   assert.ok(crowdSize >= 6, `islanders on the island (${crowdSize})`);
-  let lookers = 0, flareAt = null, lookFrom = null, lookTo = null, duckers = new Set(), duckFrom = null, duckTo = null, lookedFirst = true;
+  let lookers = 0, starAt = null, lookFrom = null, lookTo = null, duckers = new Set(), duckFrom = null, duckTo = null, lookedFirst = true;
   const lookedAt = new Set();
   const durs = [], showBubble = show.bubbles.show;
   show.bubbles.show = (head, kind, dur) => { durs.push([kind, dur]); return showBubble(head, kind, dur); };
@@ -123,29 +136,30 @@ test('warning live: the flare and the beacon blink in, the camera goes to 101 fi
     update(dt, t);
     const look = looking(show);
     if (look.length) { lookFrom ??= show.elapsed - dt; lookTo = show.elapsed; }
-    for (const m of look) assert.ok(Math.abs(m.walker.gesture.yaw - Math.atan2(at.x - m.pos.x, at.z - m.pos.z)) < 1e-9, 'faces the flare');
+    for (const m of look) assert.ok(Math.abs(m.walker.gesture.yaw - Math.atan2(at.x - m.pos.x, at.z - m.pos.z)) < 1e-9, 'faces the star');
     lookers = Math.max(lookers, look.length); for (const m of look) lookedAt.add(m);
     const duck = everyone(show).filter(m => m.mode === 'script' && m.walker?.gesture?.kind === 'duck');
     if (duck.length) { duckFrom ??= show.elapsed - dt; duckTo = show.elapsed; }
     for (const m of duck) { duckers.add(m); if (!lookedAt.has(m)) lookedFirst = false; }
-    if (flareAt === null && show.stage.partKeys().includes('finale.flare')) flareAt = show.elapsed;
+    if (starAt === null && show.stage.partKeys().includes('finale.star')) starAt = show.elapsed;
   };
   await run([WARNING], { finale: true });
   show.update = update;
-  assert.ok(flareAt !== null, 'the flare appears'); assert.ok(show.stage.partKeys().includes('finale.flare'), 'and stays');
+  assert.ok(starAt !== null, 'the star appears'); assert.ok(show.stage.partKeys().includes('finale.star'), 'and stays');
+  assert.ok(!show.stage.partKeys().includes('finale.flare'), 'no sea flare');
   assert.ok(show.stage.partKeys().includes('finale.beacon'), 'the beacon on 101');
-  const focus = rig.log.slice(r0).find(x => x[0] === 'focus'), tw = show.stage.headOf('tower'), foot = anchorWorld('tower').y;
-  assert.ok(focus && Math.hypot(focus[1].x - tw.x, focus[1].z - tw.z) < 1e-6 && Math.abs(focus[1].y - (foot + tw.y) / 2) < 1e-6 && focus[2].zoom === 0.9, `the camera goes to 101 (${JSON.stringify(focus?.[1])})`);
+  const focus = rig.log.slice(r0).filter(x => x[0] === 'focus'), tw = show.stage.headOf('tower');
+  const mid = { x: (tw.x + at.x) / 2, y: (tw.y + at.y) / 2, z: (tw.z + at.z) / 2 };
+  assert.ok(focus[0] && Math.hypot(focus[0][1].x - mid.x, focus[0][1].y - mid.y, focus[0][1].z - mid.z) < 1e-6 && focus[0][2].zoom === finale.SKY_ZOOM, `the camera looks up first (${JSON.stringify(focus[0]?.[1])})`);
+  assert.ok(focus[1] && focus[1][1] === finale.WIDE && focus[1][2].zoom === finale.WIDE_ZOOM, 'then the wide framing');
   assert.equal(duckers.size, crowdSize, 'everyone who looked ducks'); assert.ok(lookedFirst, 'the same people: look first, then duck');
   assert.ok(Math.abs(duckTo - duckFrom - 0.8) <= 2 / 30, `duck 0.8 s (${(duckTo - duckFrom).toFixed(2)})`);
   assert.ok(lookTo <= duckFrom + 1e-9, 'duck after the look');
-  assert.ok(rig.log.slice(r0).findIndex(x => x[0] === 'home') > rig.log.slice(r0).findIndex(x => x[0] === 'focus'), 'then back to the overview');
   assert.equal(show.stage.flags.alarm, 1);
-  assert.equal(lookers, crowdSize, 'everyone (≤ 24) looks at the flare');
+  assert.equal(lookers, crowdSize, 'everyone (≤ 24) looks at the star');
   const said = bubblesLog.slice(n0);
   assert.equal(said.filter(b => b.kind === '！').length, crowdSize, 'each looker says ！');
   assert.deepEqual(said.filter(b => /^\d$/.test(b.kind)), [], 'no countdown digit');
-  // 看與「！」各自的真實秒數：抬頭 LOOK 1.2 s（被點名看紅光到放回日常）、「！」SHOUT 0.8 s
   assert.ok(Math.abs(lookTo - lookFrom - finale.LOOK) <= 2 / 30, `the look lasts ${finale.LOOK} s real (${(lookTo - lookFrom).toFixed(2)})`);
   const shouts = durs.filter(([k]) => k === '！');
   assert.equal(shouts.length, crowdSize);
@@ -154,35 +168,43 @@ test('warning live: the flare and the beacon blink in, the camera goes to 101 fi
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
   assert.ok(show.elapsed <= 4.5, `≤ 4.5 s real (${show.elapsed.toFixed(2)})`);
 });
-// 跳過（instant，reduced motion／玩家按跳過）：警告照樣把旗標、紅光套上，沒有人留在劇本手上
-test('warning skipped (instant): alarm 1, the flare is there, nobody left in script mode', async () => {
+// 跳過（instant，reduced motion／玩家按跳過）：警告照樣把旗標、光點套上，沒有人留在劇本手上
+test('warning skipped (instant): alarm 1, the star is there, nobody left in script mode', async () => {
   const { show, run } = await placedShow();
   await run([WARNING], { finale: true, instant: true });
   assert.equal(show.stage.flags.alarm, 1);
-  assert.ok(show.stage.partKeys().includes('finale.flare'), 'the flare is there');
+  assert.ok(show.stage.partKeys().includes('finale.star'), 'the star is there');
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'nobody in script mode');
 });
 
-test('FLARE_AT projects inside NDC ±0.9 on the 16:9 overview and on the 390×844 portrait overview (lit-stage skyline)', () => {
+// 全景（16:9）只框到 101 頭頂上一點點、天空整片出畫——光點要等鏡頭抬頭（天空鏡頭）才看得到；隕石落下時鏡頭在 WIDE：
+// 島（主島格的四角）、101 全在畫面裡，光點到罩面那條落下的路線大半在畫面裡（直式整條都在）
+const framed = (aspect, sky, target, zoom) => {
+  const camera = new THREE.PerspectiveCamera(32, aspect, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
+  const rig = createCameraRig({ THREE, camera, controls }); rig.fit(aspect); rig.setSkyline(sky); rig.update(5);
+  if (target) { rig.focus(target, { zoom, ms: 1 }); for (let i = 0; i < 10; i++) rig.update(0.5); }
+  camera.lookAt(controls.target); camera.updateMatrixWorld();
+  return p => new THREE.Vector3(p.x, p.y, p.z).project(camera);
+};
+test('STAR_AT shows inside NDC ±0.9 in the warning sky shot (16:9 and 390×844; lit and site skylines) with the 101 head; the WIDE framing keeps the island in frame and most of the fall', async () => {
+  const { MAIN_CELLS, axialToWorld } = await import('../src/scene/hex.js'), S = finale.STAR_AT;
   const lv = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chip: 9, bulb: 9 };
-  const main = tower.view(lv, {}, { total: 59 })['tower.main'], skyline = main.at.y + main.labelY;
-  assert.ok(skyline > 7, `lit skyline (${skyline})`);
-  const portrait = () => {
-    const camera = new THREE.PerspectiveCamera(32, 390 / 844, 0.3, 320), controls = { target: new THREE.Vector3(), update() { camera.lookAt(controls.target); } };
-    const rig = createCameraRig({ THREE, camera, controls }); rig.fit(390 / 844);
-    return { rig, camera, controls };
-  };
-  // 點燈天際線（必要）＋天際線最低（工地，全景不抬）也要在畫面裡
-  for (const sky of [skyline, 3]) for (const [name, r] of [['16:9', overviewRig()], ['390×844', portrait()]]) {
-    r.rig.setSkyline(sky); r.rig.update(1.1); r.camera.lookAt(r.controls.target); r.camera.updateMatrixWorld();
-    const p = new THREE.Vector3(finale.FLARE_AT.x, finale.FLARE_AT.y, finale.FLARE_AT.z).project(r.camera);
-    assert.ok(Math.abs(p.x) <= 0.9 && Math.abs(p.y) <= 0.9 && p.z < 1, `${name} skyline ${sky}: NDC (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`);
+  const main = tower.view(lv, {}, { total: 59 })['tower.main'], lit = main.at.y + main.labelY;
+  for (const head of [lit, 3]) for (const [name, a] of [['16:9', 16 / 9], ['390×844', 390 / 844]]) {
+    const h = { x: TOWER0.x, y: head, z: TOWER0.z }, mid = { x: (h.x + S.x) / 2, y: (h.y + S.y) / 2, z: (h.z + S.z) / 2 };
+    const pr = framed(a, head, mid, finale.SKY_ZOOM);
+    for (const [what, p] of [['star', S], ['101 head', h]]) { const n = pr(p); assert.ok(Math.abs(n.x) <= 0.9 && Math.abs(n.y) <= 0.9 && n.z < 1, `${name} skyline ${head.toFixed(1)}: ${what} NDC (${n.x.toFixed(2)}, ${n.y.toFixed(2)})`); }
   }
-  // 鏡頭對面：在島的 −z 那側、離島心夠遠（背景環山那一圈）
-  assert.ok(finale.FLARE_AT.z < -20 && Math.hypot(finale.FLARE_AT.x, finale.FLARE_AT.z) > 25);
+  const corners = MAIN_CELLS.flatMap(c => { const p = axialToWorld(...c); return [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([u, w]) => ({ x: p.x + u * 1.3, y: 1.3, z: p.z + w * 1.3 })); });
+  const dome = finale.view(lv, { missile: 'shield' }, { total: 59 })['finale.missile'].at;
+  for (const [name, a, part] of [['16:9', 16 / 9, 0.7], ['390×844', 390 / 844, 1]]) {
+    const pr = framed(a, lit, finale.WIDE, finale.WIDE_ZOOM);
+    for (const p of corners) { const n = pr(p); assert.ok(Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1, `${name} WIDE: island corner (${p.x.toFixed(1)}, ${p.z.toFixed(1)}) NDC (${n.x.toFixed(2)}, ${n.y.toFixed(2)})`); }
+    let inside = 0; for (let i = 0; i <= 50; i++) { const k = i / 50, n = pr({ x: S.x + (dome.x - S.x) * k, y: S.y + (dome.y - S.y) * k, z: S.z + (dome.z - S.z) * k }); if (Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1) inside++; }
+    assert.ok(inside / 51 >= part, `${name} WIDE: ${(inside / 51 * 100).toFixed(0)}% of the fall in frame`);
+  }
 });
-
-// ── 飛彈（設計 §6，任務 5）──
+// ── 隕石（設計 §6，任務 5；trim §C 從飛彈換成隕石，識別字沿用 missile）──
 import { finaleEvents } from '../src/game.js';
 import { resolve, missile as missileOf } from '../src/rules/endings.js';
 import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
@@ -194,22 +216,22 @@ const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chi
 const TOWER_AT = anchorWorld('tower');
 const dist3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 
-test('view: missile flag draws finale.missile with outcome and target (shield → dome surface toward FLARE_AT; hit → tower bend point; deflect → spring pool) and no flare; deflect adds finale.splash', () => {
-  const F = finale.FLARE_AT;
+test('view: missile flag draws finale.missile (the meteor) with outcome and target (shield → dome surface on the line to STAR_AT; hit → tower bend point; deflect → spring pool) and no star; deflect adds finale.splash', () => {
+  const F = finale.STAR_AT;
   for (const outcome of ['shield', 'deflect', 'hit']) {
     const v = finale.view(LIT, { alarm: 1, missile: outcome }, LIT_META), m = v['finale.missile'];
-    assert.ok(m, outcome); assert.equal(v['finale.flare'], undefined, `${outcome}: the flare is out`);
+    assert.ok(m, outcome); assert.equal(v['finale.star'], undefined, `${outcome}: the star is out`);
     assert.equal(m.kind, 'missile'); assert.equal(m.outcome, outcome); assert.deepEqual(m.from, F);
     assert.equal(m.footprint, false); assert.equal(m.shadow, false);
     assert.equal(!!v['finale.splash'], outcome === 'deflect');
   }
-  // shield：罩面上、朝紅光那一側（xz 同方向）、仰角約 55°
+  // shield：罩面上、在 101 底座中心到光點那條線上（隕石從天上直直落向 101，撞在罩頂偏北；仰角 > 60°）
   const s = finale.view(LIT, { missile: 'shield' }, LIT_META)['finale.missile'].at;
   assert.ok(Math.abs(dist3(s, TOWER_AT) - tower.SHIELD_R) < 1e-6, 'on the dome');
   const el = Math.asin((s.y - TOWER_AT.y) / tower.SHIELD_R) * 180 / Math.PI;
-  assert.ok(Math.abs(el - 55) < 1, `elevation ${el.toFixed(1)}°`);
-  const da = Math.atan2(s.z - TOWER_AT.z, s.x - TOWER_AT.x), df = Math.atan2(F.z - TOWER_AT.z, F.x - TOWER_AT.x);
-  assert.ok(Math.abs(da - df) < 1e-6, 'toward the flare');
+  assert.ok(el > 60, `elevation ${el.toFixed(1)}° (from above, not from the horizon)`);
+  const u = { x: (F.x - TOWER_AT.x) / dist3(F, TOWER_AT), y: (F.y - TOWER_AT.y) / dist3(F, TOWER_AT), z: (F.z - TOWER_AT.z) / dist3(F, TOWER_AT) };
+  assert.ok(dist3(s, { x: TOWER_AT.x + u.x * tower.SHIELD_R, y: TOWER_AT.y + u.y * tower.SHIELD_R, z: TOWER_AT.z + u.z * tower.SHIELD_R }) < 1e-6, 'on the line to the star');
   // hit：101 在自己這一階段的彎角（工地不彎，打在底座）
   assert.deepEqual(finale.view(LIT, { missile: 'hit' }, LIT_META)['finale.missile'].at, tower.bendPoint('lit'));
   assert.deepEqual(finale.view({}, { missile: 'hit' })['finale.missile'].at, tower.bendPoint('site'));
@@ -224,52 +246,75 @@ test('view: missile flag draws finale.missile with outcome and target (shield �
   assert.equal(finale.view(LIT, {}, LIT_META)['finale.missile'], undefined);
 });
 
-// 零件：建好即終態；launch() 從紅光重飛；機頭朝前進方向；三種結果的終態
+// 零件（trim §C 隕石）：不規則岩石（ico 低多邊形併成一個黏土 mesh，深灰褐 ROCK_COLOR）＋外面一層半透明發光的橘色外殼（比岩石大 15%）＋
+// 拖尾（3–4 顆漸小、漸淡的發光球沿來向排開）；建好即終態；launch() 從光點重飛、由上往下斜斜落下；三種結果的終態
 const missileFactory = (quality = 'high') => createPartFactory(THREE, { glow: createGlowRegistry(), people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders, quality });
 const worldOf = (part, local) => { part.object.updateMatrixWorld(true); return part.object.getObjectByName('body').localToWorld(new THREE.Vector3(...local)); };
 const noseDir = part => worldOf(part, [0, 0, 1]).sub(worldOf(part, [0, 0, 0])).normalize();
 const bodyWorld = part => worldOf(part, [0, 0, 0]);
 const step = (part, secs) => { for (let i = 0; i < Math.round(secs * 60); i++) part.update(1 / 60, 0); };
+const meshCount = o => { let n = 0; o.traverse(x => { if (x.isMesh) n++; }); return n; };
 
-test('missile part: built finished (final pose); launch() restarts from FLARE_AT; nose points along the velocity; shield → hidden after FLIGHT with one firework; deflect → nose-down in the pool after FLIGHT + DEFLECT; hit → at the bend point', () => {
-  const f = missileFactory(), F = finale.FLARE_AT;
-  const bodyOf = p => p.object.getObjectByName('body');
+test('meteor look: an irregular dark rock (ico parts, one clay mesh) inside a translucent glowing orange shell 15% larger, and a trail of 3–4 shrinking, fading glow balls behind it; no missile body (no fins, no eyes, no red-white stripes)', () => {
+  assert.ok(finale.ROCK_PARTS.length >= 2 && finale.ROCK_PARTS.every(p => p.kind === 'ico' && p.color === finale.ROCK_COLOR && !p.glow), 'ico lumps, rock colour, clay');
+  assert.equal(finale.ROCK_COLOR, 0x5a4a42); assert.equal(finale.SHELL_COLOR, 0xff7a3a);
+  assert.equal('NOSE_TIP' in finale, false, 'no missile nose');
+  const p = missileFactory().build(finale.view(LIT, { missile: 'hit' }, LIT_META)['finale.missile']), body = p.object.getObjectByName('body');
+  const rock = body.getObjectByName('rock'), shell = body.getObjectByName('shell'), trail = body.getObjectByName('trail');
+  assert.ok(rock && shell && trail, 'rock, shell, trail');
+  assert.equal(meshCount(rock), 1, 'the rock is one mesh');
+  rock.traverse(o => { if (o.isMesh) assert.equal(o.castShadow, false); });
+  assert.equal(shell.material.color.getHex(), finale.SHELL_COLOR); assert.ok(shell.material.transparent && shell.material.opacity < 1 && !shell.material.depthWrite, 'translucent glowing shell');
+  shell.geometry.computeBoundingSphere(); assert.ok(Math.abs(shell.geometry.boundingSphere.radius / finale.ROCK_R - 1.15) < 0.02, `shell ${(shell.geometry.boundingSphere.radius / finale.ROCK_R).toFixed(3)} × the rock`);
+  const balls = trail.children.filter(o => o.isMesh);
+  assert.ok(balls.length >= 3 && balls.length <= 4, `${balls.length} trail balls`);
+  for (let k = 0; k < balls.length; k++) {
+    const b = balls[k]; assert.ok(b.position.z < -finale.ROCK_R + 1e-9, 'behind the rock (local −z: where it came from)');
+    assert.ok(b.material.transparent && !b.material.depthWrite && b.material.color.getHex() === finale.SHELL_COLOR, 'glowing orange');
+    if (k) { const a = balls[k - 1]; assert.ok(b.position.z < a.position.z && b.scale.x < a.scale.x && b.material.opacity < a.material.opacity, `ball ${k}: further back, smaller, fainter`); }
+  }
+  assert.ok(meshCount(body) <= 6, `${meshCount(body)} draw calls in flight`);
+  const low = missileFactory('low').build(finale.view(LIT, { missile: 'hit' }, LIT_META)['finale.missile']);
+  assert.equal(meshCount(low.object.getObjectByName('rock')), 1, 'low quality: the rock is one mesh too');
+  p.dispose(); low.dispose();
+});
+
+test('meteor part: built finished (final pose); launch() restarts at STAR_AT and falls steeply (height always dropping), leading with the rock, trail lit; shield → hidden after FLIGHT with one firework; deflect → in the pool after FLIGHT + DEFLECT; hit → lodged at the bend; the trail goes out once it lands', () => {
+  const f = missileFactory(), F = finale.STAR_AT, R = finale.ROCK_R;
+  const bodyOf = p => p.object.getObjectByName('body'), trailOf = p => bodyOf(p).getObjectByName('trail');
   const finalOf = outcome => { const p = f.build(finale.view(LIT, { missile: outcome }, LIT_META)['finale.missile']); p.object.updateMatrixWorld(true); return p; };
   const sameMatrix = (a, b) => { a.object.updateMatrixWorld(true); b.object.updateMatrixWorld(true); return bodyOf(a).matrixWorld.elements.every((x, i) => Math.abs(x - bodyOf(b).matrixWorld.elements[i]) < 1e-6); };
   for (const outcome of ['shield', 'deflect', 'hit']) {
     const spec = finale.view(LIT, { missile: outcome }, LIT_META)['finale.missile'], p = f.build(spec), body = bodyOf(p), T = spec.at;
-    let meshes = 0; body.traverse(o => { if (o.isMesh) { meshes++; assert.equal(o.castShadow, false); } });
-    assert.equal(meshes, 1, `${outcome}: the body is one mesh (no glow)`);
-    const box = new THREE.Box3().setFromObject(body), size = box.getSize(new THREE.Vector3());
     // 終態
     if (outcome === 'shield') {
       assert.equal(body.visible, false, 'shield: gone');
       const fw = p.object.getObjectByName('fireworks'); assert.ok(fw, 'carries a firework'); assert.equal(fw.children[0].visible, false, 'already burst');
     } else {
-      assert.ok(body.visible);
-      const tip = worldOf(p, [0, 0, finale.NOSE_TIP]), dir = noseDir(p);
+      assert.ok(body.visible); assert.equal(trailOf(p).visible, false, `${outcome}: landed, the trail is out`);
+      const front = worldOf(p, [0, 0, R]), c = bodyWorld(p);
       if (outcome === 'hit') {
-        assert.ok(Math.hypot(tip.x - T.x, tip.z - T.z) < 0.58, 'hit: nose inside the tower at the bend');
-        assert.ok(Math.abs(tip.y - T.y) < 0.4, `hit: at the bend height (${(tip.y - T.y).toFixed(2)})`);
-        const c = bodyWorld(p); assert.ok(Math.hypot(c.x - T.x, c.z - T.z) > 0.7, 'hit: the tail sticks out');
-        assert.ok(dir.x * (T.x - c.x) + dir.z * (T.z - c.z) > 0, 'hit: pointing into the tower');
+        assert.ok(Math.hypot(front.x - T.x, front.z - T.z) < 0.58, 'hit: the rock bites into the tower at the bend');
+        assert.ok(Math.abs(front.y - T.y) < 0.5, `hit: at the bend height (${(front.y - T.y).toFixed(2)})`);
+        assert.ok(Math.hypot(c.x - T.x, c.z - T.z) < 1.0 && c.y > T.y - 0.1, 'hit: lodged right there, not buried below');
       } else {
-        assert.ok(dist3(tip, T) < 0.5, `deflect: nose in the pool (${dist3(tip, T).toFixed(2)})`);
-        assert.ok(Math.abs(Math.acos(-dir.y) * 180 / Math.PI - 30) < 2, `deflect: nose-down tilted 30° (${(Math.acos(-dir.y) * 180 / Math.PI).toFixed(1)})`);
-        assert.ok(bodyWorld(p).y > T.y + 0.3, 'deflect: the tail is out of the water');
+        assert.ok(dist3(front, T) < 0.5, `deflect: in the pool (${dist3(front, T).toFixed(2)})`);
+        assert.ok(c.y > T.y - 0.25, 'deflect: half out of the water');
       }
     }
-    // launch：從紅光出發，機頭朝前進方向
+    // launch：從光點出發，一路往下掉（每一步都比上一步低）、很陡；岩石在前、拖尾亮著
     p.object.userData.launch({ speed: 1 }); p.update(1e-4, 0);
-    assert.ok(body.visible); assert.ok(dist3(bodyWorld(p), F) < 0.05, `${outcome}: starts at FLARE_AT`);
-    let prev = bodyWorld(p), top = -Infinity;
+    assert.ok(body.visible); assert.ok(dist3(bodyWorld(p), F) < 0.05, `${outcome}: starts at STAR_AT`);
+    assert.equal(trailOf(p).visible, true, 'the trail glows in flight');
+    let prev = bodyWorld(p);
     for (let t = 0.1; t < FLIGHT - 0.05; t += 0.1) {
       step(p, 0.1);
-      const cur = bodyWorld(p), v = cur.clone().sub(prev).normalize();
-      assert.ok(noseDir(p).dot(v) > 0.97, `${outcome} t ${t.toFixed(1)}: nose along the velocity (${noseDir(p).dot(v).toFixed(3)})`);
-      top = Math.max(top, cur.y); prev = cur;
+      const cur = bodyWorld(p), v = cur.clone().sub(prev), n = v.clone().normalize();
+      assert.ok(v.y < 0, `${outcome} t ${t.toFixed(1)}: falling`);
+      assert.ok(n.y < -0.8, `${outcome} t ${t.toFixed(1)}: steep, from above (${n.y.toFixed(2)})`);
+      assert.ok(noseDir(p).dot(n) > 0.97, `${outcome} t ${t.toFixed(1)}: leading with the rock (${noseDir(p).dot(n).toFixed(3)})`);
+      prev = cur;
     }
-    assert.ok(top > (F.y + T.y) / 2 + 1.5, `a lob, not a straight line (top ${top.toFixed(2)})`);
     if (outcome === 'shield') {
       step(p, 0.1); assert.equal(body.visible, false, 'shield: gone at impact');
       const fw = p.object.getObjectByName('fireworks').children[0]; assert.ok(fw.visible, 'one firework');
@@ -277,18 +322,15 @@ test('missile part: built finished (final pose); launch() restarts from FLARE_AT
       step(p, 1.3); assert.equal(fw.visible, false, 'one burst only'); step(p, 3); assert.equal(fw.visible, false);
     } else if (outcome === 'deflect') {
       step(p, 0.1); assert.ok(!sameMatrix(p, finalOf('deflect')), 'deflect: still falling after FLIGHT');
-      step(p, DEFLECT); assert.ok(sameMatrix(p, finalOf('deflect')), 'deflect: in the pool after FLIGHT + DEFLECT');
+      step(p, DEFLECT); assert.ok(sameMatrix(p, finalOf('deflect')), 'deflect: in the pool after FLIGHT + DEFLECT'); assert.equal(trailOf(p).visible, false);
     } else {
-      step(p, 0.1); assert.ok(sameMatrix(p, finalOf('hit')), 'hit: stuck at the bend after FLIGHT');
+      step(p, 0.1); assert.ok(sameMatrix(p, finalOf('hit')), 'hit: stuck at the bend after FLIGHT'); assert.equal(trailOf(p).visible, false);
     }
     // 2 倍速
     p.object.userData.launch({ speed: 2 }); step(p, FLIGHT / 2 + 0.05);
-    if (outcome === 'hit') assert.ok(sameMatrix(p, finalOf('hit')), 'speed 2 flies twice as fast');
+    if (outcome === 'hit') assert.ok(sameMatrix(p, finalOf('hit')), 'speed 2 falls twice as fast');
     p.dispose();
   }
-  // 手機畫質：同樣一個 mesh
-  const low = missileFactory('low').build(finale.view(LIT, { missile: 'hit' }, LIT_META)['finale.missile']);
-  let n = 0; low.object.getObjectByName('body').traverse(o => { if (o.isMesh) n++; }); assert.equal(n, 1, 'low quality: one mesh');
 });
 
 // 三種結果的局：正解（矽盾）、固定的壞結局局（test/helpers/endings.js 的 EXAMPLE.hit／deflect）
@@ -301,14 +343,14 @@ async function missileShow(outcome) {
     await h.run([...r.events, { kind: 'settle' }], { instant: true });
   }
   assert.equal(missileOf(s, spec), outcome, `${order.join('>')} → ${outcome}`);
-  // 終局回合照 game.js：警告（紅光亮起）先瞬間演完，再單獨演飛彈
+  // 終局回合照 game.js：警告（光點亮起）先瞬間演完，再單獨演隕石
   const [warn, e] = finaleEvents(resolve(s, spec));
   assert.equal(warn.kind, 'warning');
   await h.run([warn], { finale: true, instant: true });
   return { ...h, e };
 }
 
-test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-flight, then ♥+jump (shield) / ？ then ♪ (deflect) / mood lie (hit); camera on the overview at the end', async () => {
+test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fall, then ♥+jump (shield) / ？ then ♪ (deflect) / mood lie (hit); the camera watches from the WIDE framing, back on the overview at the end', async () => {
   for (const outcome of ['shield', 'deflect', 'hit']) {
     const { show, run, bubblesLog, worldLog, rig, e, people } = await missileShow(outcome);
     const crowdSize = Math.min(24, islanders({ roster: show.roster }).length);
@@ -332,8 +374,8 @@ test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-f
     show.update = update;
     const secs = show.elapsed, of = k => said.filter(b => b.kind === k);
     assert.ok(secs <= 10, `${outcome}: ≤ 10 s real (${secs.toFixed(2)})`);
-    assert.ok(launchAt !== null && launchAt >= 0.8 - 1e-6, `${outcome}: launched after the 0.8 s overview hold`);
-    assert.ok(!show.stage.partKeys().includes('finale.flare'), 'the flare is out');
+    assert.ok(launchAt !== null && launchAt >= 0.8 - 1e-6, `${outcome}: falls after the 0.8 s WIDE framing beat`);
+    assert.ok(!show.stage.partKeys().includes('finale.star'), 'the star is out');
     const bang = of('！');
     assert.ok(named >= crowdSize - 2, `${outcome}: about everyone is still on the island (${named}/${crowdSize})`);
     assert.equal(bang.length, named, `${outcome}: everyone (≤ 24) says ！`);
@@ -349,7 +391,7 @@ test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-f
       assert.ok(show.stage.partKeys().includes('finale.splash'), 'splash');
       const q = of('？'), note = of('♪');
       assert.equal(q.length, named); assert.equal(note.length, named);
-      assert.ok(q[0].t >= impact, '？ after the missile lands'); assert.ok(note[0].t >= q.at(-1).t + 0.9, '♪ after ？');
+      assert.ok(q[0].t >= impact, '？ after the meteor lands'); assert.ok(note[0].t >= q.at(-1).t + 0.9, '♪ after ？');
     } else {
       assert.ok(bendAt !== null && bendAt >= launchAt + FLIGHT - 0.05, '101 bends at impact');
       assert.ok(lieAt !== null && lieAt - bendAt < 1, `everyone lies down right after the bend (${(lieAt - bendAt).toFixed(2)} s)`);
@@ -359,7 +401,8 @@ test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-f
     }
     assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${outcome}: everyone released`);
     const cam = rig.log.slice(r0);
-    assert.ok(cam.length && cam.every(([k]) => k === 'home'), `${outcome}: the camera stays on the overview (${cam.map(c => c[0]).join(' ')})`);
+    assert.ok(cam[0][0] === 'focus' && cam[0][1] === finale.WIDE && cam[0][2].zoom === finale.WIDE_ZOOM, `${outcome}: the fall is watched from WIDE`);
+    assert.ok(cam.slice(1).length && cam.slice(1).every(([k]) => k === 'home'), `${outcome}: then the overview (${cam.map(c => c[0]).join(' ')})`);
     if (outcome === 'hit') {
       // 「姿勢持續到標題卡」（設計 §6，最終審稿）：無頭的 world 跟 app 的 showWorld 一樣把 mood 交給 people.setMood；
       // 演完再走 3 秒（標題卡前的 hold、標題卡底下），日常的人一個都不在島上滑
@@ -372,7 +415,7 @@ test('missile script live, each outcome: ≤ 10 s real, ！ from the crowd mid-f
   }
 });
 
-test('missile script instant (skip): the final state matches the live one for all three outcomes (review focus 2)', async () => {
+test('meteor script instant (skip): the final state matches the live one for all three outcomes (review focus 2)', async () => {
   const r4 = x => Math.round(x * 1e4) / 1e4 + 0;
   const snap = ({ show, worldLog }) => {
     const o = show.stage.partObject('finale.missile'), body = o.getObjectByName('body'), fw = o.getObjectByName('fireworks');

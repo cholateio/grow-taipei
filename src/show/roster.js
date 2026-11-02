@@ -704,7 +704,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
       }
       for (const m of exits) if (m.trip) replan(m);
     }
-    // 躺平（最終章 §6：飛彈命中全島躺平比讚，「姿勢持續到標題卡」；最終審稿）：people.mood 是 'lie' 時日常走動的 people 小人
+    // 躺平（最終章 §6：隕石命中全島躺平比讚，「姿勢持續到標題卡」；最終審稿）：people.mood 是 'lie' 時日常走動的 people 小人
     // （home 模式、不是 ride、還有正要走回入口的人）整個停在原地——不散步、不走趟、不被推、不被錯開；名冊每個 people 成員都是
     // controlled（位置由這裡 setPose），people.js 自己不推路徑也擋不住，所以在這裡停。ride（跟著車走）、模型、藏起來的照舊；
     // 劇本手上的照拍演（命中劇本的群眾拍在換心情之前就演完了）。這裡每幀讀 people.mood、不存狀態：

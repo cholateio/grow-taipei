@@ -74,7 +74,7 @@ test('the shield is a hemisphere centred on the 101 base that covers every corne
   assert.ok(s.r >= 7 && s.r <= 8, `r ${s.r}`);
   for (const cell of MAIN_CELLS) { const c = axialToWorld(...cell); for (const p of hexCorners(c.x, c.z, R)) assert.ok(Math.hypot(p.x - a.x, p.z - a.z) < s.r, `corner of ${cell} (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`); }
 });
-// 最終章 §6：飛彈命中 → 101 在自己這一階段的高度像吸管一樣彎成 L（彎角以上的零件繞 z 轉 π/2、往 +x 倒），天線、燈光秀、罩子、吊車拿掉。
+// 最終章 §6：隕石命中 → 101 在自己這一階段的高度像吸管一樣彎成 L（彎角以上的零件繞 z 轉 π/2、往 +x 倒），天線、燈光秀、罩子、吊車拿掉。
 // 2026-10-31 唯一正解最終修正：命中局的 101 66% 停在蓋一半（命中局最少總等級 20）——蓋一半照自己的四節彎（彎角在第 2 節頂），
 // 工地不彎（底座留著、吊車拿掉），完工／點燈照舊在八節的一半彎。頭頂（labelY）＝彎過的形狀的頂＋LABEL_UP。站位不變：footprint 照底座
 const near = (a, b, e = 1e-9) => Math.abs(a - b) < e;
@@ -114,7 +114,7 @@ test('view with missile hit: half / full / lit bend at their own height — the 
   }
   assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');
 });
-// 工地被命中不彎（沒有塔身可彎）：底座與三角錐留著、吊車拿掉；頭頂照工地；飛彈打在底座中段
+// 工地被命中不彎（沒有塔身可彎）：底座與三角錐留著、吊車拿掉；頭頂照工地；隕石打在底座中段
 test('view with missile hit at site: nothing bends, the crane is removed, the head stays the site head', () => {
   const lv = lvOf(0, { chip: 7 }), plain = tower.view(lv, {}, { total: 0 }), v = tower.view(lv, { missile: 'hit' }, { total: 0 });
   assert.ok(plain['tower.crane']);

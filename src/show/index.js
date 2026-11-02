@@ -14,8 +14,10 @@ import { createStage } from '../actors/stage.js';
 import { worldEffects } from '../actors/world.js';
 
 // rnd：走路格散步點、名冊停頓用的亂數（測試與 tools/pace.mjs 傳固定種子，秒數每次一樣）
+// 回合預熱（計畫 15 C）：turn 一開始 stage.prepare(events) 把這回合的零件先建好藏著；ctx.compile（可省，app 給 renderer.compile）
+//   在它們的模型都載好之後收到還在舞台上的那些物件，先把 shader 編好——不等它，拍照常開始
 export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world, reducedMotion = false, rnd = Math.random }) {
-  const { people, assets, glow, weather, rail, quality } = parts;   // quality：'low' 時零件與名冊省 draw call（裁決 R18）
+  const { people, assets, glow, weather, rail, quality, compile = null } = parts;   // quality：'low' 時零件與名冊省 draw call（裁決 R18）
   const nav = createNav({ rnd });
   const labels = new THREE.Group(); labels.name = 'show:labels'; scene.add(labels);
   const blink = createBlink(THREE, { people }), bubbles = createBubbles(THREE, { group: labels });
@@ -49,7 +51,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
   refresh(); roster.snap(); blink.clear(); skyline();
   // 立刻到最終狀態（跳過、reduced-motion 回合結束、中止）
   function snap({ home = true } = {}) {
-    stage.commitAll(); roster.showAll(); roster.snap(); roster.setFocus(null); blink.clear(); bubbles.clear();
+    stage.commitAll(); stage.dropPrepared(); roster.showAll(); roster.snap(); roster.setFocus(null); blink.clear(); bubbles.clear();
     skyline(); if (home) camRig.home(0);   // 跳過也更新天際線（review focus 5）
     refresh();
     world(worldEffects(stage.lv, stage.flags, stage.meta), true);
@@ -61,7 +63,12 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
     roster.showAll({ walk: true });   // 萬一還有躲在門裡的人（颱風放下的劇本自己會放大家出來），從門口出來、走回家（不閃）
     refresh();
-    const beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, finale }, ctx);
+    const prep = stage.prepare(events);
+    // 回合已經結束、被丟掉的（parent 是 null）不編
+    if (compile) prep.ready.then(() => { const objs = prep.parts.filter(o => o.parent); if (objs.length) compile(objs); }).catch(err => console.warn('預熱編譯失敗', err));
+    let beats;
+    try { beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, finale }, ctx); }
+    catch (err) { stage.dropPrepared(); throw err; }
     const me = playing = {};
     const done = timeline.play(beats, ctx);
     const end = () => {
@@ -69,7 +76,7 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
       playing = null;
       if (ctx.instant) { snap({ home: panned }); return; }   // reduced-motion：瞬間演完；鏡頭只在拍移動過時才拉回
       // 照常演完：把還沒 commit 的換上、hold 住的名冊套用、走路格跟著新零件；名冊全部恢復日常（某一拍丟錯沒演到 focus('home') 也一樣）
-      stage.commitAll({ shrinking: true }); roster.syncAll(); roster.setFocus(null); refresh();   // 縮到一半的零件縮完自己走
+      stage.commitAll({ shrinking: true }); stage.dropPrepared(); roster.syncAll(); roster.setFocus(null); refresh();   // 縮到一半的零件縮完自己走
     };
     return done.then(end, err => { end(); throw err; });
   }

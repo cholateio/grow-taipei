@@ -22,9 +22,9 @@ const fakeMilk = {
     return v;
   },
 };
-const setup = (modules = [fakeMilk], roster = null, { blink: withBlink = true } = {}) => {
+const setup = (modules = [fakeMilk], roster = null, { blink: withBlink = true, assets = { spawn: async () => new THREE.Group() } } = {}) => {
   const scene = new THREE.Scene(), glow = createGlowRegistry(), people = createPeople(THREE, { max: 16 });
-  const assets = { spawn: async () => new THREE.Group() }, blink = withBlink ? createBlink(THREE, { people }) : null;
+  const blink = withBlink ? createBlink(THREE, { people }) : null;
   const stage = createStage(THREE, { scene, spec, modules, ctx: { people, assets, glow }, roster, blink });
   const parts = () => scene.getObjectByName('stage:parts').children;
   return { scene, glow, people, stage, parts, blink };
@@ -407,4 +407,116 @@ test('headOfEvent uses the box measured when the part was made, not its current 
   const g = setup([model]);
   g.stage.apply(placed);
   assert.ok(near3(g.stage.headOfEvent(placed, 'milk'), g.stage.headOf('milk')), 'nothing measured yet → headOf');
+});
+
+// 計畫 15 C：回合預熱（stage.prepare）。假模組的零件走自己的 builder（counted）：每建一次記一筆 tag，dispose 也記；
+// Lv1 main1；Lv2 起 main 換成 main2、多一間棚子（shed）；Lv3 多名冊的人（不進工廠，不預熱）；每個零件都帶 footprint 與會動的障礙
+const builds = [], disposed = [];
+const lotPart = (tag, x, extra = {}) => ({ kind: 'counted', tag, at: { x, y: 0.65, z: 0 }, footprint: { r: 0.3 }, ...extra });
+const fakeLot = {
+  id: 'milk', labelY: 1,
+  builders: {
+    counted(THREE, s, ctx) {
+      builds.push(s.tag);
+      const inner = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [box04] });
+      return { object: inner.object, obstacle: () => ({ x: s.at.x, z: 0, r: 0.2 }), dispose() { disposed.push(s.tag); inner.dispose(); } };
+    },
+  },
+  view(lv) {
+    const v = {}, n = lv.milk;
+    if (n >= 1) v['milk.main'] = lotPart(n >= 2 ? 'main2' : 'main1', 0);
+    if (n >= 2) v['milk.shed'] = lotPart('shed', 1.5);
+    if (n >= 3) v['milk.kids'] = { kind: 'roster', at, n: 1 };
+    return v;
+  },
+};
+const lotSetup = opts => { builds.length = 0; disposed.length = 0; return setup([fakeLot], null, opts); };
+test('prepare builds every new or changed part of the turn hidden, once, outside partKeys / footprints / obstacles; the stage state is untouched', () => {
+  const { stage, parts } = lotSetup();
+  const events = [placed, grow(2), grow(3)];
+  const before = { lv: stage.lv, flags: stage.flags, meta: stage.meta, head: stage.headOf('milk') };
+  const prep = stage.prepare(events);
+  assert.deepEqual(builds, ['main1', 'main2', 'shed'], 'one build per new key + spec; the roster key is not built');
+  assert.equal(prep.parts.length, 3); assert.ok(prep.ready instanceof Promise);
+  assert.ok(prep.parts.every(o => parts().includes(o)), 'in the parts group'); assert.ok(prep.parts.every(o => o.visible === false), 'hidden (no draw calls)');
+  assert.deepEqual(stage.partKeys(), [], 'not live'); assert.deepEqual(stage.footprints(), [], 'no footprints'); assert.deepEqual(stage.obstacles(), [], 'no obstacles');
+  assert.deepEqual(stage.pendingKeys(), []);
+  assert.equal(stage.lv, before.lv); assert.equal(stage.flags, before.flags); assert.equal(stage.meta, before.meta);
+  assert.deepEqual(stage.headOf('milk'), before.head, 'views untouched');
+  assert.deepEqual(stage.headOfEvent(placed, 'milk'), stage.headOf('milk'), 'nothing touched yet');
+});
+test('after prepare, applying the turn builds nothing: each part is the prepared object, shown (deferred ones on commit)', () => {
+  const { stage } = lotSetup();
+  const g2 = grow(2), prep = stage.prepare([placed, g2, grow(3)]), [main1, main2, shed] = prep.parts;
+  stage.apply(placed);
+  assert.equal(stage.partObject('milk.main'), main1, 'the prepared main1'); assert.equal(main1.visible, true, 'shown by the non-deferred apply');
+  assert.equal(stage.footprints().length, 1); assert.equal(stage.obstacles().length, 1);
+  stage.apply(g2, { deferred: true });
+  assert.equal(stage.partObject('milk.main'), main2); assert.equal(stage.partObject('milk.shed'), shed);
+  assert.equal(main2.visible, false, 'deferred: still hidden'); assert.equal(stage.obstacles().length, 0, 'the pending fresh parts are hidden: no obstacles until commit');
+  stage.commit('milk.main'); assert.equal(main2.visible, true);
+  stage.commitAll(); assert.equal(shed.visible, true); assert.equal(stage.obstacles().length, 2);
+  assert.deepEqual(disposed, ['main1'], 'main1 swapped out');
+  stage.apply(grow(3));
+  assert.deepEqual(builds, ['main1', 'main2', 'shed'], 'no build while the turn plays');
+  assert.ok(stage.headOfEvent(g2, 'milk').x > 0, 'touched is recorded for prepared parts (main + shed)');
+  stage.dropPrepared(); assert.deepEqual(disposed, ['main1'], 'all prepared parts were used: nothing to drop');
+});
+test('prepare builds a key + spec once even when it comes back in the same turn; a part prepared again after it was used is built again', () => {
+  const { stage } = lotSetup();
+  const down = { kind: 'grow', item: 'milk', from: 2, to: 1 };
+  const prep = stage.prepare([placed, grow(2), down, grow(2)]);
+  assert.deepEqual(builds, ['main1', 'main2', 'shed'], 'main1 → main2 → main1 → main2 and the shed twice: three builds');
+  assert.equal(prep.parts.length, 3);
+  stage.apply(placed); stage.apply(grow(2)); stage.apply(down);
+  assert.deepEqual(builds, ['main1', 'main2', 'shed', 'main1'], 'main1 again: the prepared one is already used, so it is built when it comes back');
+});
+test('dropPrepared disposes the prepared parts nobody used; reset clears them too', () => {
+  const { stage, parts } = lotSetup();
+  const prep = stage.prepare([placed, grow(2)]);
+  stage.apply(placed);
+  stage.dropPrepared();
+  assert.deepEqual(disposed.sort(), ['main2', 'shed'], 'the unused ones are disposed');
+  assert.ok(!parts().includes(prep.parts[1]) && !parts().includes(prep.parts[2]), 'and leave the parts group');
+  assert.ok(parts().includes(prep.parts[0]), 'the used one stays');
+  stage.apply(grow(2));
+  assert.deepEqual(builds, ['main1', 'main2', 'shed', 'main2', 'shed'], 'after the drop they are built on apply');
+  const again = stage.prepare([grow(3), { kind: 'grow', item: 'milk', from: 3, to: 1 }]);
+  assert.equal(again.parts.length, 1, 'only main1 (lv1 after the drop) is new');
+  stage.reset();
+  assert.ok(!parts().includes(again.parts[0]), 'reset drops the prepared part'); assert.ok(disposed.includes('main1'));
+  assert.ok(parts().every(o => o.visible), 'nothing hidden is left');
+});
+test('glb parts expose ready: it resolves only after the model spawn resolves (also on failure); prepare.ready waits for every model', async () => {
+  const gates = [];
+  const assets = { spawn: path => new Promise((res, rej) => gates.push({ path, res, rej })), release() {} };
+  const model = { id: 'milk', labelY: 1, view: lv => (lv.milk ? { 'milk.main': { kind: 'glb', at, path: 'a.glb', h: 1 }, 'milk.box': { kind: 'compound', at, parts: [box04] } } : {}) };
+  const { stage } = setup([model], null, { assets });
+  const prep = stage.prepare([placed]);
+  assert.equal(prep.parts.length, 2); assert.equal(gates.length, 1);
+  let done = false; prep.ready.then(() => { done = true; });
+  await new Promise(r => setTimeout(r, 0)); assert.equal(done, false, 'waits for the model');
+  const g = new THREE.Group(); gates[0].res(g);
+  await new Promise(r => setTimeout(r, 0)); assert.equal(done, true, 'ready once the model is in');
+  assert.equal(g.parent, prep.parts[0], 'the model is in the prepared part');
+  // 直接用工廠：載入失敗也 resolve
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const p = stage.build({ kind: 'glb', at, path: 'b.glb', h: 1 });
+    assert.ok(p.ready instanceof Promise);
+    let ok = false; p.ready.then(() => { ok = true; });
+    gates[1].rej(new Error('404')); await new Promise(r => setTimeout(r, 0));
+    assert.equal(ok, true, 'a failed load still resolves ready');
+  } finally { console.warn = warn; }
+  assert.equal(stage.build({ kind: 'compound', at, parts: [box04] }).ready, undefined, 'other kinds have no ready');
+});
+test('campus parts are ready when every model is in', async () => {
+  const gates = [];
+  const assets = { spawn: () => new Promise(res => gates.push(res)), release() {} };
+  const milk = await import('../src/actors/milk.js');
+  const { stage } = setup([{ id: 'milk', view: () => ({}), builders: milk.builders }], null, { assets });
+  const p = stage.build({ kind: 'campus', at, models: [{ path: 'a.glb', pos: [0, 0, 0], h: 1 }, { path: 'b.glb', pos: [1, 0, 0], h: 1 }] });
+  let ok = false; p.ready.then(() => { ok = true; });
+  gates[0](new THREE.Group()); await new Promise(r => setTimeout(r, 0)); assert.equal(ok, false, 'one of two');
+  gates[1](new THREE.Group()); await new Promise(r => setTimeout(r, 0)); assert.equal(ok, true, 'both in');
 });

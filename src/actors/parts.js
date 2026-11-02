@@ -197,19 +197,21 @@ export function createPartFactory(THREE, ctx) {
     const cursor = spec.loop ? createPathCursor(spec.loop.path, { loop: spec.loop.loop ?? true }) : null;
     if (cursor && spec.loop.phase) cursor.advance(spec.loop.phase * cursor.total);
     // ?quality=low：不分發光材質（合併後一個模型一個 mesh，裁決 R18）
-    ctx.assets.spawn(spec.path, { h: spec.h, anim: spec.anim, speed: spec.animSpeed, tint: spec.tint, glow: ctx.quality === 'low' ? null : spec.glow, ry: spec.ry ?? 0 }).then(m => {
+    // ready：模型加進 group 的那一刻 resolve（載入失敗、或已經丟掉也 resolve）——回合預熱等它才編 shader（計畫 15 C）
+    const ready = ctx.assets.spawn(spec.path, { h: spec.h, anim: spec.anim, speed: spec.animSpeed, tint: spec.tint, glow: ctx.quality === 'low' ? null : spec.glow, ry: spec.ry ?? 0 }).then(m => {
       if (disposed) { ctx.assets.release?.(m); return; }
       model = m; object.add(m);
       m.traverse(o => { if (o.isMesh) for (const mt of [].concat(o.material)) if (mt.emissiveIntensity > 0 && mt.emissive?.getHex()) { ctx.glow.add(mt); mats.push(mt); } });
       place();
     }).catch(err => console.warn('模型載入失敗', spec.path, err));
+    loads?.push(ready);
     const place = () => {
       if (!model || !cursor) return;
       const p = cursor.locate(), at = spec.at;
       model.position.set(p.x - at.x, p.y - at.y, p.z - at.z); model.rotation.y = p.yaw;
     };
     return {
-      object,
+      object, ready,
       update(dt) { if (cursor) { cursor.advance(dt * spec.loop.speed); place(); } },
       dispose() { disposed = true; for (const m of mats) ctx.glow.remove(m); if (model) ctx.assets.release?.(model); },
     };
@@ -363,14 +365,21 @@ export function createPartFactory(THREE, ctx) {
   const builderCtx = { ...ctx, build: s => build(s) };
 
   // low: false 的零件（燈光秀、堤防、煙火、船隊這類點綴）在 ?quality=low 不畫：給一個空的 Group（footprint 照宣告的算，劇本照樣找得到零件）
+  // ready（計畫 15 C）：最外層這次 build 底下所有 glb 的 ready 收在 loads——自己的 kind 沒給 ready、底下又有模型的零件
+  //   （101 頂樓、路燈、球場、列車、老鼠……用 ctx.build 拼 glb 的）也拿到一個「全部模型都載好」的 ready；底下沒有模型就沒有 ready（當作已就緒）
+  let loads = null;
   function build(spec) {
     if (ctx.quality === 'low' && spec.low === false) { const object = new THREE.Group(), { x = 0, y = 0, z = 0 } = spec.at ?? {}; object.position.set(x, y, z); return { object, dispose() {} }; }
     const make = ctx.builders?.[spec.kind] ? s => ctx.builders[spec.kind](THREE, s, builderCtx) : KINDS[spec.kind];
     if (!make) throw new Error(`unknown part kind ${spec.kind}`);
-    const part = make(spec);
-    const { x = 0, y = 0, z = 0 } = spec.at ?? {};
-    part.object.position.set(x, y, z);
-    return part;
+    const outer = !loads; if (outer) loads = [];
+    try {
+      const part = make(spec);
+      const { x = 0, y = 0, z = 0 } = spec.at ?? {};
+      part.object.position.set(x, y, z);
+      if (outer && loads.length && !part.ready) part.ready = Promise.all(loads).then(() => {});
+      return part;
+    } finally { if (outer) loads = null; }
   }
 
   return { clay, build };

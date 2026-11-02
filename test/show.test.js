@@ -10,6 +10,7 @@ import * as B from '../src/show/beats.js';
 import * as THREE from '../vendor/three/three.module.js';
 import { createCameraRig, overviewDistance } from '../src/scene/camera.js';
 import { cellCentre } from '../src/actors/anchors.js';
+import { finaleStep, EXAMPLE } from './helpers/endings.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
@@ -857,4 +858,59 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   assert.deepEqual([l7.mode, l7.trouble], ['nest', null], 'turn 7 clears: back to the nest');
   assert.equal(l7.sniffs.length, 1, 'the landing rat sniffs once (at the station)');
   assert.ok(gap(l7.sniffs[0], front) <= 0.5, `sniffed in front of the station (${l7.sniffs[0].x.toFixed(2)}, ${l7.sniffs[0].z.toFixed(2)})`);
+});
+
+// 計畫 15 C：回合預熱——show.turn 一開始 stage.prepare(events)，模型都載好後把預熱的物件交給 ctx.compile（app 的 renderer.compileAsync）；
+// 回合結束（照常演完、跳過、中止、RESET）沒用到的預熱零件都丟掉
+test('the turn prepares its parts before the beats and hands them to compile once their models are in (not before)', async () => {
+  const calls = [], { show, run } = await headlessShow({ compile: objs => calls.push(objs) });
+  const prepared = [], prepare = show.stage.prepare;
+  show.stage.prepare = ev => { const r = prepare(ev); prepared.push(r); return r; };
+  const r = place(engine.createState(spec), 'milk');
+  const p = run([...r.events, { kind: 'settle' }]);
+  assert.equal(prepared.length, 1, 'prepared at turn start'); assert.equal(calls.length, 0, 'compile waits for the models');
+  assert.ok(prepared[0].parts.length > 0);
+  await p;
+  assert.equal(calls.length, 1, 'compile called once');
+  assert.deepEqual(calls[0], prepared[0].parts, 'with the prepared objects');
+  assert.ok(calls[0].includes(show.stage.partObject('milk.main')), 'the school is one of them');
+});
+test('prepared parts the turn did not use are dropped when it ends: normal end, skip, abort, reset', async () => {
+  const { show, run, scene } = await headlessShow();
+  const group = scene.getObjectByName('stage:parts'), stray = () => show.stage.prepare([{ kind: 'placed', item: 'chip', to: 1 }]).parts;
+  const s0 = engine.createState(spec), milk = place(s0, 'milk'), baseball = place(milk.state, 'baseball'), chip = place(baseball.state, 'chip');
+  let extra = stray(); assert.ok(extra.length && extra.every(o => o.parent === group));
+  await run([...milk.events, { kind: 'settle' }]);
+  assert.ok(extra.every(o => !o.parent), 'normal end');
+  extra = stray();
+  const p1 = show.turn([...baseball.events, { kind: 'settle' }]);
+  for (let i = 0; i < 20; i++) show.update(1 / 30, i / 30);
+  show.skip(); await p1;
+  assert.ok(extra.every(o => !o.parent), 'skip');
+  const p2 = show.turn([...chip.events, { kind: 'settle' }]);
+  for (let i = 0; i < 20; i++) show.update(1 / 30, i / 30);
+  show.abort(); await p2;
+  assert.ok(!group.children.some(o => !o.visible && !show.stage.partKeys().some(k => show.stage.partObject(k) === o)), 'abort: no hidden prepared part left');
+  extra = stray(); show.reset();
+  assert.ok(extra.every(o => !o.parent), 'reset');
+});
+// 預熱到位：整局（唯一正解 live，兩條壞結局瞬間演到終局）演出途中舞台一個零件都不建——每次加進零件群組都在 prepare 裡
+test('with the turn prepared, nothing is built while the beats play: the solution live and EXAMPLE.hit / deflect through the finale; invariants clean', async () => {
+  for (const [name, order, live] of [['solution', SOLUTIONS[0], true], ['hit', EXAMPLE.hit, false], ['deflect', EXAMPLE.deflect, false]]) {
+    const { show, run, scene } = await headlessShow(), inv = gameInvariants(show), group = scene.getObjectByName('stage:parts');
+    let inPrepare = false; const late = [], add = group.add.bind(group), prepare = show.stage.prepare;
+    show.stage.prepare = ev => { inPrepare = true; try { return prepare(ev); } finally { inPrepare = false; } };
+    group.add = (...os) => { if (!inPrepare) late.push(os.map(o => o.name || o.type).join()); return add(...os); };
+    let s = engine.createState(spec);
+    for (const [i, step] of turnSteps(order).entries()) {
+      const r = step(s); s = r.state; inv.label(`${name} turn ${i + 1}`);
+      await run([...r.events, { kind: 'settle' }], { instant: !live });
+      assert.equal(late.length, 0, `${name} turn ${i + 1}: ${late.length} parts built mid-turn`);
+    }
+    inv.label(`${name} finale`);
+    await run(finaleStep(s).events, { finale: true, instant: !live });
+    assert.equal(late.length, 0, `${name} finale: ${late.length} parts built mid-turn`);
+    assert.ok(group.children.every(o => o.visible || show.stage.partKeys().some(k => show.stage.partObject(k) === o)), `${name}: no hidden prepared part left`);
+    for (const k of ['walls', 'jumps', 'pops']) assert.deepEqual([...inv[k]].slice(0, 10), [], `${name} ${k}`);
+  }
 });

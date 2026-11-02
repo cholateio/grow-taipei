@@ -194,7 +194,8 @@ export const builders = {
       const p = ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint, glow: m.glow });
       object.add(p.object); return p;
     });
-    return { object, dispose() { for (const s of subs) s.dispose(); } };
+    // ready：每棟的模型都載好（計畫 15 C：回合預熱等它才編 shader）
+    return { object, ready: Promise.all(subs.map(s => s.ready)).then(() => {}), dispose() { for (const s of subs) s.dispose(); } };
   },
 };
 

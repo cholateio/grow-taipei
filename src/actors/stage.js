@@ -5,6 +5,8 @@
 //   commitAll（跳過、回合收尾）不亮，縮到一半要拿掉的也立刻拿掉；commitAll({ shrinking: true })（拍照常演完）讓縮到一半的縮完自己走。
 // blink：show/blink.js 的亮一下／長出來／縮下去；沒給（單元測試）就不長，移除的立刻拿掉。
 // kind 'roster' 的零件（小人）不進工廠，交給名冊 declare / retire。
+// 回合預熱（計畫 15 C）：prepare(events) 在回合開始把這回合會用到的零件先建好、藏著（不佔 draw call），套用時直接拿來用——
+//   不在動畫中途建 mesh；模型都載好之後演出層把它們交給 renderer 先編好 shader（show/index.js 的 compile）。
 import { createPartFactory } from './parts.js';
 import { anchorWorld, frontOf } from './anchors.js';
 import { foldEvent, lockFlags } from '../rules/engine.js';
@@ -133,7 +135,16 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     box.getSize(size); box.getCenter(centre);
     return Math.max(size.x, size.z) > WIDE ? [] : [{ x: centre.x, z: centre.z, w: size.x, d: size.z }];
   }
-  function make(s) {
+  // 預熱好的零件：鍵 + '\n' + JSON.stringify(spec) → { spec, part, fp, bounds }（藏著、已經在 partsGroup 裡；同一個鍵同一個 spec 只建一次，用掉就拿走）
+  const prebuilt = new Map();
+  const prebuiltId = (key, s) => key + '\n' + JSON.stringify(s);
+  // 套用時要一個零件：先拿預熱好的（同鍵同 spec）；沒有才當場建
+  function make(s, key) {
+    const id = prebuiltId(key, s), hit = prebuilt.get(id);
+    if (hit) { prebuilt.delete(id); hit.spec = s; return hit; }
+    return construct(s);
+  }
+  function construct(s) {
     const part = factory.build(s);
     partsGroup.add(part.object);
     // 頭的高度（headOfEvent）：建好這一刻量（零件已經放在 at、還沒長，就是原尺寸的世界座標）；glb／campus 模型非同步載入，這時還是空的 → null
@@ -168,12 +179,15 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     if (next?.kind === 'roster') roster?.declare(key, next, { hold: hold.includes(key) });
     commit(key, false);
     const old = live.get(key) ?? null; live.delete(key);
-    const fresh = next && next.kind !== 'roster' ? make(next) : null;
+    const fresh = next && next.kind !== 'roster' ? make(next, key) : null;
     if (fresh) live.set(key, fresh);
     if (deferred && (old || fresh)) {
       if (fresh) fresh.part.object.visible = false;
       pending.set(key, { old, fresh });
-    } else if (old) drop(old);
+    } else {
+      if (fresh) fresh.part.object.visible = true;   // 預熱的零件是藏著的
+      if (old) drop(old);
+    }
   }
 
   // 套用目前的 view：only 只套這些鍵，其餘留著舊 view（下次 diff 還會出現）並回報在 rest
@@ -195,7 +209,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     return { changed, rest };
   }
 
-  function fold(e) {
+  // 折一個事件：state = { lv, flags, meta, waits, stale } → 新的 state（純函數，不碰閉包；apply 寫回、prepare 拿副本往前推）
+  function foldStage(st, e) {
+    let { lv, flags, meta, waits, stale } = st;
     if (stale) { meta = { ...meta, ...stale }; stale = null; }
     ({ lv, flags } = foldEvent({ lv, flags }, e));
     if (bitesMilk(e)) meta = { ...meta, bitten: true };
@@ -206,14 +222,42 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       meta = { ...meta, total: Object.values(lv).reduce((a, b) => a + b, 0), trouble, troubleAt: troubleSpot(trouble, lv, flags, modules) };
       waits = null;
     }
+    return { lv, flags, meta, waits, stale };
   }
+
+  // 回合預熱（計畫 15 C）：從現在的 state 逐事件往前折，每一步每個模組的 view 跟上一步比（起點是現在的 views），
+  //   新出現／換掉的零件先建好、藏著（object.visible = false，不佔 draw call；不進 live，所以不在 partKeys／footprints／obstacles 裡）。
+  //   名冊的人不進工廠；kind 'people' 的零件（舊的小人零件，現在只有單元測試用）建的時候就把人放上島，也不預熱。
+  //   不動 views、live、pending、touched 與 lv／flags／meta。回 { parts：這次新建的物件, ready：它們的 glb 模型都載好（失敗也算）}
+  function prepare(events) {
+    let st = { lv, flags, meta, waits, stale };
+    const prev = { ...views }, parts = [], loads = [], folded = new Set();
+    for (const e of events) {
+      if (seen.has(e) || folded.has(e)) continue;   // 同 apply：一個事件只折一次
+      folded.add(e); st = foldStage(st, e);
+      for (const mod of modules) {
+        const next = mod.view(st.lv, st.flags, st.meta);
+        for (const key of diffParts(prev[mod.id], next).add) {
+          const s = next[key], id = prebuiltId(key, s);
+          if (s.kind === 'roster' || s.kind === 'people' || prebuilt.has(id)) continue;
+          const entry = construct(s); entry.part.object.visible = false;
+          prebuilt.set(id, entry); parts.push(entry.part.object);
+          if (entry.part.ready) loads.push(entry.part.ready);
+        }
+        prev[mod.id] = next;
+      }
+    }
+    return { parts, ready: Promise.all(loads).then(() => {}) };
+  }
+  // 預熱了沒用到的全部丟掉（回合結束：照常演完、跳過、中止；RESET）
+  function dropPrepared() { for (const entry of prebuilt.values()) drop(entry); prebuilt.clear(); }
 
   sync();
 
   return {
     // 同步、瞬間：回 { changed: [{ key, at, kind }], rest: [key] }；順便把這次變了的鍵記進 touched（名冊的人不進 live，也就不算）
     apply(e, opts) {
-      if (!seen.has(e)) { seen.add(e); fold(e); }
+      if (!seen.has(e)) { seen.add(e); ({ lv, flags, meta, waits, stale } = foldStage({ lv, flags, meta, waits, stale }, e)); }
       const r = sync(opts);
       for (const c of r.changed) {
         if (c.kind === 'remove' || c.tagAlong || !live.has(c.key) || live.get(c.key).spec.label === false) continue;
@@ -223,6 +267,8 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       return r;
     },
     commit,
+    prepare,
+    dropPrepared,
     // shrinking：拍照常演完（beats.apply 的 end、回合照常結束）時傳 true——縮到一半的零件縮完自己走（不在拍尾截成半截再消失）；
     // 跳過、中止、RESET（show/index.js snap）不傳：立刻拿掉
     commitAll({ shrinking = false } = {}) { for (const key of [...pending.keys()]) commit(key, false); if (!shrinking) dropDying(); },
@@ -237,6 +283,7 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       for (const d of dying) d.part.update?.(dt, t);
     },
     reset() {
+      dropPrepared();
       for (const e of live.values()) drop(e);
       for (const p of pending.values()) if (p.old) drop(p.old);
       dropDying();

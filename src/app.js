@@ -122,7 +122,13 @@ export async function start({ params, loading }) {
   const aimWorld = (w, instant) => { worldTarget = w; if (instant || motion.matches || instantAuto()) { world = w; showWorld(w); } };
   const show = createShow(THREE, {
     scene: view.scene, spec, modules: [landmarks, tower, milk, baseball, chip, rat, bulb, token, boba, typhoon, satellites, finale],
-    ctx: { people, assets, glow: view.glow, weather, rail, quality }, rig,
+    // compile：回合預熱的零件模型載好後先把 shader 編好（計畫 15 C；three r170 compile(物件, 鏡頭, 場景)：物件整棵 traverse、藏著的也編，
+    //   燈光與霧從場景拿）。用同步的 compile 不用 compileAsync：compileAsync 只是 compile 之後每 10 ms 輪詢材質的 program 好了沒，
+    //   輪詢期間零件被換掉、材質 dispose 了，three 讀不到 currentProgram 就在 setTimeout 裡丟 TypeError（npm run shot 實測，接不到）；
+    //   我們本來就不等它，送出編譯（有 KHR_parallel_shader_compile 時驅動在背景編）就夠。編失敗不往外丟（只是預熱）
+    ctx: { people, assets, glow: view.glow, weather, rail, quality, compile: objects => {
+      for (const o of objects) { try { view.renderer.compile(o, view.camera, view.scene); } catch { /* 預熱失敗不影響演出 */ } }
+    } }, rig,
     world: (effects, instant) => aimWorld({ ...worldTarget, ...effects }, instant),
     reducedMotion: motion.matches || instantAuto(),
     rnd: live ? mulberry32(21) : Math.random,   // ?live 截圖：散步點、停頓用固定種子，同一個 warp 每次拍到同一刻

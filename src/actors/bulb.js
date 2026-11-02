@@ -312,7 +312,7 @@ const toIsland = who => ({
   start(c) { const m = who(c); if (!m || m.hidden) return false; c.roster.claim(m); c.roster.relocate(m, { ...ISLAND_HOME, yaw: SWITCH_FRONT.yaw }); },
 });
 // 套用的估計長度照真的閃幾個零件算（trainStop 的 during 用估計長度排時間；估短了 LEVEL UP 會被截掉）
-const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK + 0.15 * (n - 1) });
+const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK });
 
 export const script = {
   // 電工從 101 工地走到路邊 → 敲 → 閃白第一盞路燈 → ♪ → 沿主路巡

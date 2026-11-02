@@ -60,8 +60,12 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
   // scriptElapsed()：這回合到目前為止的劇本秒數（onMark 裡量某一段用）
   let cam = 0;   // 這回合花在 focus 拍的秒數：每幀的 dt 算給這一幀開頭正在演的拍（回合第一幀算給剛拉進來的那拍）
   const scriptElapsed = () => show.elapsed - cam;
+  // eventHead(id)：最近一次 run 裡最後一個 id 的事件（item 或 delta.target）變了的零件頭上——LEVEL UP 該冒的地方（計畫 15 D，stage.headOfEvent）；
+  // 那次 run 沒有 id 的事件就是 headOf(id)
+  let played = [];
+  const eventHead = id => { const e = played.findLast(x => x.item === id || x.delta?.target === id); return e ? show.stage.headOfEvent(e, id) : show.stage.headOf(id); };
   async function run(events, { finale = false, instant = false, onMark } = {}) {
-    cam = 0;
+    cam = 0; played = events;
     if (instant) {
       show.setReducedMotion(true);
       try { await show.turn(events, { finale, onMark }); } finally { show.setReducedMotion(false); }
@@ -81,7 +85,7 @@ export async function headlessShow({ modules = ALL, reducedMotion = false, seed 
     return scriptElapsed();
   }
 
-  return { show, people, assets, rig, worldLog, bubblesLog, run, scriptElapsed, scene, rail };
+  return { show, people, assets, rig, worldLog, bubblesLog, run, scriptElapsed, scene, rail, eventHead };
 }
 
 // 單獨演一級的劇本：拿掉 jump。turn.js 只看 e.jump 就把跳級的第二級演成 apply + LEVEL UP（任務 10），

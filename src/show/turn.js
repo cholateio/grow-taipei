@@ -83,7 +83,7 @@ function defaults(e) {
 }
 
 // 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換；
-// 別的字（101 頭上的「世界珍奶節」這種標題字，不是升級）也不換——修正批次 trim §A：珍奶 4 → 6 合成演 ◆6 之後它才會落在跳級裡。
+// 別的字（101 的階段名這種）也不換；以前 101 頭上的「世界珍奶節」標題字計畫 15 D 拿掉了。
 // 列車進站拍（trainStop）的 during 也換：拍上的 during 就是它裡面依序演的那個陣列，就地換掉元素（燈泡 Lv7 的 LEVEL UP 在列車停靠的 during 裡）
 function withTwice(beats) {
   return beats.map(b => {
@@ -157,7 +157,8 @@ function upright(key) {
 // mark：0 秒拍，演到這裡告訴 ctx.onMark「這個事件開始了」（pace 工具用 elapsed 差值量每個事件的秒數，包含平移與空拍）；
 // 第二個參數 info = { gap, key }：gap 是劇本前面補的空拍（不同物品之間的 GAP）真實秒數——pace 用「不含 focus 拍的秒數」量劇本本身，
 // 再扣掉它；key 是不是 ◆ 關鍵劇本
-const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, start: c => { c.onMark?.(e, info); } });
+// 演到 mark 這一刻 ctx.event 換成這個事件（計畫 15 D：LEVEL UP 找這個事件變了的零件；buildTurn 建拍時也設，但建完停在最後一個事件）
+const mark = (e, info = { gap: 0, key: false }) => ({ kind: 'mark', dur: 0, start: c => { c.event = e; c.onMark?.(e, info); } });
 
 // 名冊裡所有被劇本拿去用（mode 'script'）的人：回合收尾讓他們回日常
 function scriptMembers(roster) {

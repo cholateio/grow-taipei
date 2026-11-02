@@ -76,11 +76,15 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
   let waits = null;   // 這回合 wait 事件的 waits（經過 apply 時記下，settle 結算 trouble 後清掉）
   let stale = null;   // 被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
-  const live = new Map();          // key → { spec, part, fp }（pending 的新零件也在這裡）
+  const live = new Map();          // key → { spec, part, fp, bounds }（pending 的新零件也在這裡；bounds：建零件時量的世界包圍盒，空的是 null）
   const pending = new Map();       // key → { old, fresh }：等 commit 才換的零件
   const dying = new Set();         // 已經 commit 的移除：閃白中，閃完才拿掉
   let views = Object.fromEntries(modules.map(m => [m.id, {}]));
   let seen = new WeakSet();        // 已經折進 lv / flags / meta 的事件（同一事件再 apply 只套剩下的零件）
+  // 每個事件真的變了的零件鍵（計畫 15 D：LEVEL UP 冒在這些零件上）：apply 套到的新增／換掉的鍵，tagAlong 點綴、名冊的人、移除的不算；
+  // 零件 spec 寫 label: false 的也不算（天上的煙火、會跑走的接駁車：建零件時量的位置不是字該冒的地方，劇本把鏡頭留在物品格）；
+  // 同一事件分幾次 only 套用會累加
+  let touched = new WeakMap();
   const tilted = new Set();        // 被劇本撞歪的零件鍵（beats.js 的 tilt 記下、turn.js 下一回合開頭閃白扶正）
 
   // 物品「頭上」的位置：主零件的 at + labelY；還沒有零件就用錨點
@@ -89,6 +93,26 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     const key = `${id}.main` in v ? `${id}.main` : Object.keys(v)[0];
     const p = key ? v[key].at : anchorWorld(id), y = key ? (v[key].labelY ?? mod?.labelY ?? 1) : 0.6;
     return { x: p.x, y: p.y + y, z: p.z };
+  }
+  // 事件 e 變了的、物品 id 的零件頭上（計畫 15 D；使用者 2026-11-02 錄影：燈泡 Lv6 變電所的 LEVEL UP 冒在隔壁學校頭上，以為學校升了兩次）：
+  //   每個鍵的頭 = spec 有 labelY 就 at + labelY，否則建零件時量的包圍盒頂上 0.3（不看現在的縮放：長出來是從 0.15 的矮樁開始，計畫 15 B）；
+  //   包圍盒是空的（glb 模型還在載）就跳過。全部鍵合起來 x、z 取平均、y 取最高。
+  //   沒有鍵、或合起來水平邊長超過 WIDE（整島的霓虹、整圈路燈）→ 退回 headOf
+  const span = new THREE.Box3(), spanSize = new THREE.Vector3(), mid = new THREE.Vector3(), point = new THREE.Vector3();
+  function headOfEvent(e, id) {
+    const heads = []; span.makeEmpty();
+    for (const key of touched.get(e) ?? []) {
+      const entry = key.startsWith(`${id}.`) ? live.get(key) : null; if (!entry) continue;
+      const { spec: s, bounds } = entry, at = s.at ?? { x: 0, y: 0, z: 0 };
+      if (bounds) span.union(bounds);
+      if (s.labelY !== undefined) {
+        const p = { x: at.x, y: (at.y ?? 0) + s.labelY, z: at.z }; heads.push(p); span.expandByPoint(point.set(p.x, p.y, p.z));
+      } else if (bounds) { bounds.getCenter(mid); heads.push({ x: mid.x, y: bounds.max.y + 0.3, z: mid.z }); }
+    }
+    if (!heads.length) return headOf(id);
+    span.getSize(spanSize); if (Math.max(spanSize.x, spanSize.z) > WIDE) return headOf(id);
+    const avg = k => heads.reduce((a, h) => a + h[k], 0) / heads.length;
+    return { x: avg('x'), y: Math.max(...heads.map(h => h.y)), z: avg('z') };
   }
 
   // footprint（§5.3）：宣告的圓 { r, x?, z? }、橢圓 { rx, rz, x?, z? } 或矩形 { w, d, x?, z? }（相對 at），或幾個這樣的形狀的陣列；false 不算；
@@ -112,7 +136,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   function make(s) {
     const part = factory.build(s);
     partsGroup.add(part.object);
-    return { spec: s, part, fp: footprintOf(s, part.object) };
+    // 頭的高度（headOfEvent）：建好這一刻量（零件已經放在 at、還沒長，就是原尺寸的世界座標）；glb／campus 模型非同步載入，這時還是空的 → null
+    const bounds = new THREE.Box3().setFromObject(part.object);
+    return { spec: s, part, fp: footprintOf(s, part.object), bounds: bounds.isEmpty() ? null : bounds };
   }
   // 亮一下／長出來／縮下去中的零件先換回原材質、原大小再拿掉（模型會放回池子、煙火會 dispose 自己的材質）
   function drop(entry) { blink?.stop(entry.part.object); entry.part.dispose?.(); partsGroup.remove(entry.part.object); }
@@ -185,10 +211,16 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   sync();
 
   return {
-    // 同步、瞬間：回 { changed: [{ key, at, kind }], rest: [key] }
+    // 同步、瞬間：回 { changed: [{ key, at, kind }], rest: [key] }；順便把這次變了的鍵記進 touched（名冊的人不進 live，也就不算）
     apply(e, opts) {
       if (!seen.has(e)) { seen.add(e); fold(e); }
-      return sync(opts);
+      const r = sync(opts);
+      for (const c of r.changed) {
+        if (c.kind === 'remove' || c.tagAlong || !live.has(c.key) || live.get(c.key).spec.label === false) continue;
+        if (!touched.has(e)) touched.set(e, new Set());
+        touched.get(e).add(c.key);
+      }
+      return r;
     },
     commit,
     // shrinking：拍照常演完（beats.apply 的 end、回合照常結束）時傳 true——縮到一半的零件縮完自己走（不在拍尾截成半截再消失）；
@@ -209,11 +241,12 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
       for (const p of pending.values()) if (p.old) drop(p.old);
       dropDying();
       live.clear(); pending.clear(); tilted.clear(); roster?.reset?.();
-      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; waits = null; seen = new WeakSet();
+      lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])); flags = {}; meta = META0; stale = null; waits = null; seen = new WeakSet(); touched = new WeakMap();
       views = Object.fromEntries(modules.map(m => [m.id, {}]));
       sync();
     },
     headOf,
+    headOfEvent,
     build: spec => factory.build(spec),   // 名冊用它做模型成員的天線／眼睛
     partObject: key => live.get(key)?.part.object ?? null,   // 試作用：直接操作零件（藏起來、換時機露出）
     levelOf: id => lv[id],

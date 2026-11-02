@@ -312,12 +312,12 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
 // 下限因 §13.2 降低：閃白 0.15 s（原白光 0.5）、spawn 不佔時間；入口走進場（計畫 3.8 後面的工作）會再拉長
 // 物品 v2 §6：一級 3–4.5 s；◆ Lv4 6–8 s（含鏡頭平移與回全景的整段，show.elapsed；唯一正解 §5.3）
 const KEY_LV = [4];
-function checkRat({ show, bubblesLog }, e, secs, n) {
+function checkRat({ show, bubblesLog, eventHead }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
   assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
   if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
-    const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('rat');
+    const last = bubblesLog.slice(n).at(-1), h = eventHead('rat');   // 這一級變了的零件頭上（計畫 15 D：◆ Lv4 是站頂的王冠鼠）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over rat`);
   }
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
@@ -543,7 +543,7 @@ test('a bite that costs milk a level: crate tips, kids ！ run to the school gat
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '！').length >= 3, 'rat ！ and both kids ！');
   assert.deepEqual(hidden, ['milk.kids', 'milk.kids'], 'kids hide at the gate');
   assert.equal(show.roster.members('milk.kids').length, 0);
-  const last = bubblesLog.at(-1), m = show.stage.headOf('milk');
+  const last = bubblesLog.at(-1), m = h.eventHead('milk');   // 被咬掉級變了的零件（箱子、校舍）頭上（計畫 15 D）
   assert.equal(last.text, 'LEVEL DOWN'); assert.ok(Math.hypot(last.at.x - m.x, last.at.z - m.z) < 0.3);
   for (const r of show.roster.members('rat.pack')) assert.equal(r.mode, 'home');
 });

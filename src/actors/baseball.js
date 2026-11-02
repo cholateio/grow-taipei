@@ -192,7 +192,8 @@ export function view(lv, flags = {}) {
     if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 1, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: LAWN_R, entry: CROWD_ENTRY } };
   }
   // 跨年煙火：巨蛋上空循環放
-  if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false, low: false };
+  // label false：LEVEL UP 不冒在煙火上（高 4，鏡頭拉近巨蛋格時在畫面外；計畫 15 D），照舊冒在巨蛋頭上
+  if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false, low: false, label: false };
   if (n >= 8) { const p = platformParts(); v['baseball.platform'] = { kind: 'compound', at: p.at, footprint: false, parts: p.parts }; }
   // 鼠災的工作人員：名冊，日常跟在最近的老鼠旁邊；颱風的劇本從巨蛋門口放他們出來
   if (flags.domeRats) v['baseball.staff'] = { kind: 'roster', at: offset(at, 0, 1.1), n: 2, accessory: 'helmet', home: { kind: 'follow', key: 'rat.pack', dist: 0.6 } };

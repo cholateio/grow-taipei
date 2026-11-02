@@ -193,7 +193,7 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
 }
 // 物品 v2 §6：一級 3–5 s；◆ Lv3、Lv8 6–10 s（含鏡頭平移與回全景的整段，show.elapsed）
 const KEY = [3, 8];
-function checkBall({ show, bubblesLog }, e, secs, n, timing) {
+function checkBall({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
   (timing[to] ??= []).push(+secs.toFixed(1));
   // 唯一正解：棒球 6（跨年煙火）在第 6 回合、珍奶第 7 回合才放——沒有珍奶觀光客來看，只剩煙火與 ♪（≥ 2 s）；有觀光客的那段由下面的 Lv6 測試驗
@@ -201,7 +201,7 @@ function checkBall({ show, bubblesLog }, e, secs, n, timing) {
   assert.ok(secs >= lo && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
   if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
-    const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('baseball');
+    const last = bubblesLog.slice(n).at(-1), h = eventHead('baseball');   // 這一級變了的零件頭上（計畫 15 D）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over baseball`);
   }
   for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);

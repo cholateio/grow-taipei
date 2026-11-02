@@ -145,13 +145,14 @@ test('world beats: Lv3 fades to dusk, Lv5 to night', () => {
 });
 
 // 照 order 把整局（放置 + 倒數三回合）瞬間演到 pred 命中的那個事件，那個事件單獨 live 演；回傳 { e, secs, n }（n = 演之前的泡泡數）
-async function liveAt({ run, bubblesLog }, order, pred) {
+// tail：跟這個事件同一回合接著演的事件（例如 settle），驗 LEVEL UP 找的是演到的那個事件、不是建拍時最後一個
+async function liveAt({ run, bubblesLog }, order, pred, tail = []) {
   let s = engine.createState(spec);
   const steps = [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
   for (const step of steps) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
-      if (pred(e)) { const n = bubblesLog.length; return { e, secs: await run([solo(e)]), n }; }
+      if (pred(e)) { const n = bubblesLog.length; return { e, secs: await run([solo(e), ...tail]), n }; }
       await run([e], { instant: true });
     }
     await run([{ kind: 'settle' }], { instant: true });
@@ -164,13 +165,13 @@ const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
 const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [3, KEY_MAX] : [3, SCRIPT_MAX]);
 const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
 const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
-function checkBulb({ show, bubblesLog }, e, secs, n, timing) {
+function checkBulb({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1, [lo, hi] = BUDGET(to);
   (timing[to] ??= []).push(+secs.toFixed(1));
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
   if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
   if (e.kind === 'grow') {
-    const last = bubblesLog.slice(n).at(-1), h = show.stage.headOf('bulb');
+    const last = bubblesLog.slice(n).at(-1), h = eventHead('bulb');   // 這一級變了的零件頭上（計畫 15 D）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);
   }
   const els = show.roster.members('bulb.electrician'); assert.equal(els.length, 1, what);
@@ -190,6 +191,25 @@ test('scripts: every bulb level in the solution plays within its budget (3–5 s
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9], `bulb events seen: ${seen}`);
     assert.equal(h.rail.trip ?? null, null, 'no trip left on the rail');
   }
+});
+// 計畫 15 D（使用者 2026-11-02 錄影：Lv6 變電所的 LEVEL UP 冒在第一盞路燈——隔壁學校前——頭上，以為學校升了兩次）：
+// Lv6 的 LEVEL UP 冒在變電所上方、不在第一盞路燈（headOf）；同一回合後面還有事件（settle）也一樣（ctx.event 是演到的那個事件）
+test('Lv6 live: LEVEL UP pops over the substation, not over the first lamp — also with another event after it in the turn', async () => {
+  for (const tail of [[], [{ kind: 'settle' }]]) {
+    const h = await headlessShow(), { n } = await liveAt(h, SOLUTIONS[0], isBulb(6), tail);
+    const label = h.bubblesLog.slice(n).find(b => b.text === 'LEVEL UP'), lamp = h.show.stage.headOf('bulb'), what = tail.length ? 'with settle' : 'alone';
+    assert.ok(label, what);
+    assert.ok(Math.hypot(label.at.x - bulb.SUBSTATION.x, label.at.z - bulb.SUBSTATION.z) < 0.5, `${what}: over the substation (${label.at.x.toFixed(2)}, ${label.at.z.toFixed(2)})`);
+    assert.ok(label.at.y > bulb.SUBSTATION.y + 0.3, `${what}: above its roof (${label.at.y.toFixed(2)})`);
+    assert.ok(Math.hypot(label.at.x - lamp.x, label.at.z - lamp.z) > 1.5, `${what}: not over the first lamp`);
+  }
+});
+// 跨島的：Lv9 霓虹（橋面燈條橫跨整島）變了的零件合起來比 WIDE 寬 → 退回 headOf（第一盞路燈頭上）
+test('Lv9 live: the island-wide neon spans more than WIDE, so the LEVEL UP falls back to headOf(bulb)', async () => {
+  const h = await headlessShow(), { n } = await liveAt(h, SOLUTIONS[0], isBulb(9));
+  assert.ok(h.show.stage.partKeys().includes('bulb.neon.bridges'), 'the bridge neon is up');
+  const label = h.bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').at(-1), hd = h.show.stage.headOf('bulb');
+  assert.ok(label && Math.hypot(label.at.x - hd.x, label.at.y - hd.y, label.at.z - hd.z) < 1e-6, `headOf (${JSON.stringify(label?.at)})`);
 });
 test('grow 2 live: the stops light up one at a time in road order (cyclic from where the electrician starts)', async () => {
   for (const order of SOLUTIONS) {

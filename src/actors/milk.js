@@ -35,7 +35,6 @@ export const KID_ENTRY = offset(AT, 1.65, 0.1);
 // 三個人疊在同一點生出來會被互推推進右柱的外擴角落，從那裡找路會繞到島北（Task 6a：鮮奶節小孩跑去牛奶車量到 7.1 s）。
 // 不往東排：校舍北邊那條東西向的走道太窄，格點連不起來，從橋頭那段出發也會繞到島北
 export const KID_ENTRIES = [KID_ENTRY, offset(AT, 1.65, 0.4), offset(AT, 1.65, 0.7)];
-const MILK = [-1, 0];   // 鏡頭對的格子：校舍
 // 少棒隊只在鐘塔那一級（Lv6）：升格大學後回校園
 const league = lv => lv.milk === 6 && lv.baseball >= 2;
 // 小孩日常的中心：少棒隊在巨蛋旁的空地練球（門口留給球員和觀眾），否則在操場
@@ -319,16 +318,16 @@ export const script = {
         B.levelUp('milk'), B.home(allKids),
       ];
     },
-    // 畢業典禮：小孩聚到操場中間 → 跳起來、學士帽從空中落下滿地 → 回全景、101 頭上打「恭喜畢業」→ 回鮮奶格 → 布條閃白 → LEVEL UP
+    // 畢業典禮：小孩聚到操場中間 → 跳起來、學士帽從空中落下滿地 → 布條閃白 → LEVEL UP。
+    // 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：回全景、101 頭上打「恭喜畢業」、回鮮奶格那三拍拿掉；
+    //   一級剩 2.2 s，布條長出來之後停 0.9 s 再 LEVEL UP（一級 ≥ 3 s，留 0.1 的浮點餘裕）
     9(e, s, ctx) {
       const { B } = ctx;
       return [
         gather(ctx, PLAY, 0.35),
         B.apply(e, { only: ['milk.hats', 'milk.kids'], blink: false }),
         B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'jump')), B.move('milk.hats', { from: { dy: 1.0 }, to: { dy: 0 }, dur: 0.8 })]),
-        // 鏡頭先回全景停一下才打字（全景裝得下 101 頭頂，§14.4；拉近 101 格會切掉頭頂，跟 focus 一起演字出來時鏡頭還在鮮奶格）
-        B.focus('home', { hold: 0.8 }), B.levelUp('tower', { text: '恭喜畢業' }), B.focus(MILK),
-        B.apply(e), B.levelUp('milk'), B.home(allKids),
+        B.apply(e), B.wait(0.9), B.levelUp('milk'), B.home(allKids),
       ];
     },
     // ◆ 鮮奶節：牛奶車閃白停在牛奶箱旁 → 小孩跑去、各 ♥ → 觀光船、全島的小孩出現（從各格的邊上走進來）、跳起來 → 回全景定格 → LEVEL UP

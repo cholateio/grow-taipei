@@ -289,7 +289,8 @@ export function view(lv, flags) {
     // 高鐵先把風車島那條支線鋪過去載電工（燈泡 Lv7 劇本裡長出來），遊樂場島的支線照舊等代幣 Lv7
     else if (lv.bulb >= 7) v['token.spur.windmill'] = spur('windmill');
     // 離島接駁車走遊樂場島的支線（at 在支線起點：從那裡閃白出現）
-    if (n >= 8) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 1.2, footprint: false }; }
+    // label false：接駁車一直在跑，建零件時量的是支線起點；LEVEL UP 照舊冒在站上（劇本先把鏡頭轉回代幣格，計畫 15 D）
+    if (n >= 8) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 1.2, footprint: false, label: false }; }
     const bullet = n >= 6;
     v['token.train'] = { kind: 'train', at: origin, models: trainModels(bullet ? 'bullet' : 'subway', trainCars(n)), h: CAR_H, tint: bullet ? BULLET_TINT : SUBWAY_TINT, speed: flags.flooded ? 0 : 0.35, footprint: false };
   }

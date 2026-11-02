@@ -187,6 +187,21 @@ test('levelUp resolves a member, an item id and a head object', () => {
   tl.update(1); assert.deepEqual(bubbles.levels[2].head(), { x: 9, y: 9, z: 9 }); assert.equal(bubbles.levels[2].opts.text, 'Lv.3');
   assert.equal(bubbles.levels.length, 3);
 });
+// 計畫 15 D：演的事件（ctx.event）就是這個物品的（item 或 delta.target）→ 頭用 stage.headOfEvent（這個事件變了的零件上）；
+// 別的物品、零件鍵、成員照舊；跳級兩個字樣同一個頭
+test('levelUp over an item id uses headOfEvent when ctx.event is that item\'s (item or delta.target), else headOf', () => {
+  const { ctx, tl, bubbles, stage } = fake();
+  stage.headOfEvent = (e, id) => ({ ev: e.kind, item: id, x: 7, y: 8, z: 9 });
+  const grow = { kind: 'grow', item: 'bulb', to: 6 }, fx = { kind: 'fx', cause: 'rat', delta: { target: 'milk', from: 3, to: 2 } };
+  ctx.event = grow; tl.play([B.levelUp('bulb'), B.levelUp('milk')], ctx); tl.update(0); tl.update(1); tl.update(1);
+  assert.deepEqual(bubbles.levels[0].head(), { ev: 'grow', item: 'bulb', x: 7, y: 8, z: 9 }, 'this event\'s item');
+  assert.deepEqual(bubbles.levels[1].head(), { item: 'milk', x: 1, y: 2, z: 3 }, 'another item → headOf');
+  ctx.event = fx; tl.play([B.levelUp('milk', { down: true })], ctx); tl.update(0); tl.update(1);
+  assert.deepEqual(bubbles.levels[2].head(), { ev: 'fx', item: 'milk', x: 7, y: 8, z: 9 }, 'delta.target');
+  ctx.event = grow; const twice = B.levelUp('bulb', { twice: true }); twice.start(ctx); twice.step(0.6, 0.6, ctx);
+  assert.equal(bubbles.levels.length, 5); assert.deepEqual(bubbles.levels[4].head(), bubbles.levels[3].head(), 'twice: both labels share the head');
+  assert.deepEqual(bubbles.levels[3].head(), { ev: 'grow', item: 'bulb', x: 7, y: 8, z: 9 });
+});
 test('bubble shows over the target and is cancelled when the beat ends; a dotted key resolves to the part', () => {
   const { ctx, tl, bubbles, objects } = fake({ parts: ['typhoon.main'] }); objects.get('typhoon.main').position.set(1, 2, 3);
   tl.play([B.bubble(partHead('typhoon.main', 3.9, ctx), '……'), B.bubble('typhoon.main', '！', 0.5)], ctx); tl.update(0);

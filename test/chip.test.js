@@ -233,7 +233,7 @@ test('scripts: every chip event in the solution plays 3–5 s (◆ Lv9 6–10 s 
       assert.ok(secs >= 3 && secs <= (to === 9 ? KEY_MAX : to === 7 ? TRAIN_ARRIVE + SPUR_BRAKE / 2 + 3 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
       if (to === 9) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
-        const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('chip');
+        const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('chip');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over chip`);
         if (WANT[to]) assert.deepEqual(focusTrail(h.rig.log, r).map(String), WANT[to], `${what} camera trail`);
       }

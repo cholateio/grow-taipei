@@ -199,7 +199,9 @@ export function apply(e, { blink = true, only, hold, stagger = 0 } = {}) {
 // LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：拍長 1.0 + TWICE_AFTER，第二個字樣在 TWICE_AFTER 秒後冒、多抬高 TWICE_DY——
 // 計畫 11 §設計 2：0.3／0.25 時第二個疊在第一個上（使用者 2026-10-31）；0.55 秒時第一個已升到一半淡掉，再抬高 0.35 就分得開。
 // 沒有「×2」、沒有別的字。target／text／down／twice 留在拍上（turn.js 把跳級劇本裡的 LEVEL UP 換成彈兩次的要讀）。
-// 跳過、reduced-motion（不 step）只冒第一個
+// 跳過、reduced-motion（不 step）只冒第一個。
+// 冒在哪（計畫 15 D）：target 是物品 id、而且正在演的事件（ctx.event，turn.js 每個事件的 mark 拍演到時設好）就是這個物品的
+// （item 或 delta.target）→ 這個事件變了的零件頭上（stage.headOfEvent）；不然照舊物品頭上（headOf）。跳級的兩個字樣同一個頭
 export const TWICE_AFTER = 0.55, TWICE_DY = 0.35;
 export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false } = {}) {
   let handles = [], head = null, t = 0;
@@ -207,7 +209,8 @@ export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false
   return {
     kind: 'levelUp', dur: twice ? 1.0 + TWICE_AFTER : 1.0, target, text, down, twice,
     start(ctx) {
-      const r = resolveTarget(target, ctx); if (!r) return false;
+      const ev = ctx.event, own = typeof target === 'string' && !isPartKey(target) && !!ev && (ev.item === target || ev.delta?.target === target);
+      const r = own ? { head: () => ctx.stage.headOfEvent(ev, target) } : resolveTarget(target, ctx); if (!r) return false;
       handles = []; head = r.head; t = 0; pop(ctx);
     },
     step(k, dt, ctx) {

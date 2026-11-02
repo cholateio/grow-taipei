@@ -256,7 +256,7 @@ test('view: kids are a roster declaration; crate and yard are separate parts; sc
   assert.ok(views[10]['milk.truck'].footprint, 'the truck blocks walkers');
 });
 test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 ≤ 10 s), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
-  const { show, run, bubblesLog } = await headlessShow();
+  const { show, run, bubblesLog, eventHead } = await headlessShow();
   const timing = {};
   for (const order of SOLUTIONS) {
     show.reset();
@@ -268,13 +268,33 @@ test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 �
       // ◆（§6「8–10 秒」= 上限 10、軟下限 6，控制者裁決）：含鏡頭平移與回全景定格的整段 6–10 s
       if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
-        const last = bubblesLog.at(-1), head = show.stage.headOf('milk');
+        const last = bubblesLog.at(-1), head = eventHead('milk');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - head.x, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
       }
       for (const k of ['milk.kids', 'milk.extraKids']) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home');
     });
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], `milk events seen: ${seen}`);
   }
+  // 計畫 15 D：標題字拿掉（使用者 2026-11-02「畫面上的字越少越好」）——Lv9 不再在 101 頭上打「恭喜畢業」
+  assert.deepEqual(bubblesLog.filter(b => b.text === '恭喜畢業').map(b => b.text), [], 'no title text');
+});
+// 計畫 15 D：Lv2 的 LEVEL UP 冒在早餐店上方——milk.main 有 labelY，頭是校舍零件的 at + labelY（店還是長出來的矮樁、glb 還沒載好也一樣高）；
+// 同一級變了的院子（兩張桌子）一起平均，水平落在店的佔地 0.3 以內
+test('Lv2 live: LEVEL UP pops above the breakfast shop, at milk.main labelY height', async () => {
+  const h = await headlessShow(), { show, bubblesLog } = h;
+  let checked = false, n = 0;
+  const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return h.run(evs, opts); };
+  await playItem(show, tracked, SOLUTIONS[0], 'milk', e => {
+    if (e.kind !== 'grow' || e.to !== 2) return;
+    const label = bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').at(-1), main = milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.main'];
+    const [shop] = main.footprint;   // 佔地相對零件的 at
+    assert.equal(main.models.length, 1); assert.equal(main.models[0].path, milk.MODELS.shop.path, 'Lv2 is the breakfast shop');
+    assert.ok(Math.abs(label.at.y - (main.at.y + main.labelY)) < 1e-6, `at the labelY height (${label.at.y.toFixed(2)})`);
+    const dx = Math.max(0, Math.abs(label.at.x - (main.at.x + shop.x)) - shop.w / 2), dz = Math.max(0, Math.abs(label.at.z - (main.at.z + shop.z)) - shop.d / 2);
+    assert.ok(Math.hypot(dx, dz) <= 0.3, `over the shop (${label.at.x.toFixed(2)}, ${label.at.z.toFixed(2)}; ${Math.hypot(dx, dz).toFixed(2)} outside)`);
+    checked = true;
+  });
+  assert.ok(checked, 'milk Lv2 played');
 });
 // 計畫 11 最終修正 #3（全分支審稿）：◆ Lv7 小孩從操場一起走到拱門前（R23 起兩個）——以前同時出發、走同一條路，兩個疊在一起走了 38 幀（0.000 m）。
 // 唯一正解整局 live 演到鮮奶 7：劇本裡任兩個小孩身體不相碰（≥ 0.64 × 兩人半徑相加）；站位彼此 ≥ 兩人半徑相加
@@ -306,13 +326,13 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
     assert.ok(i > 0 && beats[i].dur >= 1, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
   }
 });
-// 審稿（計畫 4 最後一輪）：「恭喜畢業」打在 101 頭頂上——鏡頭先回全景停一下（全景照天際線裝得下 101 頭頂，§14.4；拉近 101 格會把頭頂切掉），
-// 字才打出來；跟 focus 擺在同一個 together 裡，字出現時鏡頭還在鮮奶格
-test('Lv9: the camera reaches the overview first, then 恭喜畢業 over 101 (the label never shares a beat with a focus)', () => {
+// 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：Lv9 畢業典禮不再回全景、在 101 頭上打「恭喜畢業」——
+// 鏡頭留在鮮奶格（不 focus），唯一的字是鮮奶自己的 LEVEL UP
+test('Lv9: no 恭喜畢業 over 101 — the camera stays on the school and the only label is the milk LEVEL UP', () => {
   const beats = milk.script.grow[9]({ kind: 'grow', item: 'milk', to: 9 }, { lv: lv({ milk: 9 }), flags: {} }, fakeCtx);
-  const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
-  assert.ok(i >= 0 && beats[i].dur > 0 && beats[i + 1].kind === 'levelUp', `overview with a hold, then the label (${beats.map(b => b.kind)})`);
-  assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
+  const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
+  assert.deepEqual(flat(beats).filter(b => b.kind === 'levelUp').map(b => [b.target, b.text]), [['milk', 'LEVEL UP']]);
+  assert.ok(!flat(beats).some(b => b.kind === 'focus'), `no camera move (${beats.map(b => b.kind)})`);
 });
 test('lv10 live: the three festival kids walk in, the truck and boat appear, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {

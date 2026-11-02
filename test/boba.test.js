@@ -268,7 +268,7 @@ test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s
       assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
       if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
       if (e.kind === 'grow') {
-        const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('boba');
+        const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('boba');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over boba`);
       }
       for (const k of KEYS) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
@@ -278,6 +278,8 @@ test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s
     });
     // 修正批次 2：颱風外送只給噴泉廣場以上（≥4），正解的珍奶 Lv2 是自己長的 grow 事件（第 7 回合、鮮奶 ≥3）
     assert.deepEqual([...new Set(seen)].sort(), [1, 2, 3, 4, 5, 6], `boba events seen: ${seen}`);
+    // 計畫 15 D：標題字拿掉（使用者 2026-11-02「畫面上的字越少越好」）——◆6 不再在 101 頭上打「世界珍奶節」
+    assert.deepEqual(bubblesLog.filter(b => b.text === '世界珍奶節').map(b => b.text), [], `${order.join('>')}: no title text`);
   }
 });
 // Lv2 單獨演一次（照 order 演到上一級，改成 grow 事件單獨演）。修正批次 2 之前正解的 Lv2 是颱風外送（fx 的 delta）帶上去的；
@@ -314,11 +316,12 @@ test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: 
     assert.ok(done, `${order.join('>')} lv${to} reached`);
   }
 });
-test('◆ Lv6 is the only key node (trim §A: Lv5 is not); Lv6 puts 世界珍奶節 over 101 and ends on the overview before the LEVEL UP', () => {
+// 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：101 頭上不再打「世界珍奶節」——唯一的字是珍奶自己最後的 LEVEL UP
+test('◆ Lv6 is the only key node (trim §A: Lv5 is not); Lv6 has no 101 title, holds the overview, then its own LEVEL UP', () => {
   assert.deepEqual(Object.entries(boba.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [6]);
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const beats = flat(boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, ctx));
-  const label = beats.find(b => b.kind === 'levelUp' && b !== beats.at(-1)); assert.ok(label, '101 label');
+  assert.deepEqual(beats.filter(b => b.kind === 'levelUp').map(b => [b.target, b.text]), [['boba', 'LEVEL UP']], 'no 101 title');
   const homes = beats.map((b, i) => (b.kind === 'focus' && b.target === 'home' ? i : -1)).filter(i => i >= 0);
   assert.ok(homes.length && beats[homes.at(-1)].dur >= 1 && beats.at(-1).kind === 'levelUp', 'holds the overview, then LEVEL UP');
 });
@@ -331,20 +334,20 @@ test('Lv5 beats: no camera move (stays on the boba cell), the drones appear and 
   assert.equal(beats.at(-1).kind, 'levelUp'); assert.equal(beats.at(-1).target, 'boba');
   assert.ok(!JSON.stringify(beats.filter(b => b.only).map(b => b.only)).match(/sat\.|flagship|ferry|tourists/), 'nothing on the islets');
 });
-// 審稿（計畫 4 最後一輪）：「世界珍奶節」打在 101 頭頂上——鏡頭停在全景（裝得下 101 頭頂，§14.4）時打字；
-// 原本跟 focus('tower') 一起演，拉近 101 格把頭頂切掉、字在畫面外
-test('Lv6: 世界珍奶節 goes up over 101 while the camera holds the overview (the label never shares a beat with a focus)', () => {
+// 審稿（計畫 4 最後一輪）：字跟 focus 擺在同一拍的話，字出現時鏡頭還在半路、字在畫面外。計畫 15 D 拿掉「世界珍奶節」之後，
+// 剩下的 LEVEL UP 照樣在鏡頭停在全景之後才冒
+test('Lv6: the LEVEL UP goes up after the camera holds the overview (the label never shares a beat with a focus)', () => {
   const beats = boba.script.grow[6]({ kind: 'grow', item: 'boba', to: 6 }, { lv: lv({ boba: 6 }), flags: {} }, { B, roster: { members: () => [] } });
   const i = beats.findIndex(b => b.kind === 'levelUp'), flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const before = flat(beats.slice(0, i)).filter(b => b.kind === 'focus');
   assert.ok(i > 0 && before.length && before.at(-1).target === 'home' && before.at(-1).dur >= 1, `on the overview before the label (${beats.map(b => b.kind)})`);
   assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
 });
-test('Lv6 live: the balloons and the fleet appear, 101 reads 世界珍奶節, the camera ends on the overview', async () => {
+test('Lv6 live: the balloons and the fleet appear, no 世界珍奶節 over 101, the camera ends on the overview', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, bubblesLog } = h;
     const { n, r } = await liveAt(h, order, isBoba(6));
-    assert.ok(bubblesLog.slice(n).some(b => b.text === '世界珍奶節'), '101 label');
+    assert.deepEqual(bubblesLog.slice(n).filter(b => b.text).map(b => b.text), ['LEVEL UP'], 'only the boba LEVEL UP');
     assert.ok(show.stage.partObject('boba.fleet') && boba.view(show.stage.lv, show.stage.flags)['boba.yard'].parts.some(p => p.coast));
     assert.equal(focusTrail(h.rig.log, r).at(-1), 'home');
   }
@@ -363,7 +366,7 @@ test('Lv5 live: the camera stays on the boba cell, the drones appear on the roof
     assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
     const trail = focusTrail(h.rig.log, r).map(String);
     assert.deepEqual([...new Set(trail)].filter(t => t !== 'home'), [String(CELL)], `${what}: camera only on the boba cell (${trail})`);
-    const last = bubblesLog.slice(n).filter(b => b.text).at(-1), hd = show.stage.headOf('boba');
+    const last = bubblesLog.slice(n).filter(b => b.text).at(-1), hd = h.eventHead('boba');
     assert.equal(last?.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - hd.x, last.at.z - hd.z) < 0.3, `${what}: LEVEL UP over boba`);
   }
 });

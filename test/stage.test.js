@@ -345,3 +345,66 @@ test('troubleSpot keeps the rats\' wander centre ≤ TROUBLE_IN from the cell ce
   }
   assert.ok(pulled >= 3, `the lamp, the crate and the nest door are pulled in (${pulled})`);
 });
+
+// 計畫 15 D：LEVEL UP 冒在這個事件真的變了的零件上（使用者 2026-11-02 錄影：燈泡 Lv6 的字冒在隔壁學校頭上）。
+// 假模組：main 沒有 labelY（量建零件時的包圍盒：箱子頂 0.65 + 0.4 → 頭 1.35）；Lv2 多一間有 labelY 的棚子（x 1.5）、一間量包圍盒的小屋（x 0.5）、
+// 一面 tagAlong 的旗子（x −3，不算）；Lv3 拿掉棚子與小屋、多一條橫跨 5 的欄杆（太寬 → 退回 headOf）；Lv4 拿掉欄杆、只多名冊的人（沒有鍵 → 退回）；
+// Lv5 天上一團寫了 label: false 的火花（不算 → 退回）
+const box04 = { kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4 };
+const fakeYard = {
+  id: 'milk', labelY: 1,
+  view(lv) {
+    const v = {}, n = lv.milk;
+    if (n >= 1) v['milk.main'] = { kind: 'compound', at, parts: [box04] };
+    if (n === 2) {
+      v['milk.shed'] = { kind: 'compound', at: { x: 1.5, y: 0.65, z: 0 }, labelY: 0.5, parts: [box04] };
+      v['milk.hut'] = { kind: 'compound', at: { x: 0.5, y: 0.65, z: 0 }, parts: [box04] };
+      v['milk.flag'] = { kind: 'compound', at: { x: -3, y: 0.65, z: 0 }, tagAlong: true, parts: [box04] };
+    }
+    if (n === 3) v['milk.rail'] = { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: [5, 0.1, 0.1], color: 0xfff8f4 }] };
+    if (n === 4) v['milk.kids'] = { kind: 'roster', at, n: 1 };
+    if (n === 5) v['milk.sparks'] = { kind: 'compound', at: { x: 0, y: 4.65, z: 0 }, label: false, parts: [box04] };
+    return v;
+  },
+};
+const near3 = (p, q, eps = 1e-6) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < eps;
+test('headOfEvent: the head over the keys this event touched — labelY, else the make-time box top + 0.3; x/z averaged, y the highest', () => {
+  const { stage } = setup([fakeYard]);
+  stage.apply(placed);
+  const h1 = stage.headOfEvent(placed, 'milk');
+  assert.ok(near3(h1, { x: 0, y: 0.65 + 0.4 + 0.3, z: 0 }), `the box top + 0.3, not the module labelY: ${JSON.stringify(h1)}`);
+  assert.ok(near3(stage.headOf('milk'), { x: 0, y: 1.65, z: 0 }), 'headOf keeps the module labelY');
+  const g2 = grow(2);
+  stage.apply(g2, { only: ['milk.shed'] });
+  assert.ok(near3(stage.headOfEvent(g2, 'milk'), { x: 1.5, y: 0.65 + 0.5, z: 0 }), 'only the shed so far: its labelY');
+  stage.apply(g2);
+  const h2 = stage.headOfEvent(g2, 'milk');
+  assert.ok(near3(h2, { x: 1.0, y: 1.35, z: 0 }), `the shed and the hut add up (tagAlong flag left out): ${JSON.stringify(h2)}`);
+  assert.ok(near3(stage.headOfEvent(placed, 'milk'), h1), 'each event keeps its own keys');
+  assert.ok(near3(stage.headOfEvent(g2, 'tower'), stage.headOf('tower')), 'no keys of that item → headOf');
+  assert.ok(near3(stage.headOfEvent({ kind: 'grow', item: 'milk' }, 'milk'), stage.headOf('milk')), 'an event never applied → headOf');
+});
+test('headOfEvent: removed keys and roster keys do not count; keys spanning more than WIDE fall back to headOf', () => {
+  const { stage } = setup([fakeYard]);
+  stage.apply(placed); stage.apply(grow(2));
+  const g3 = grow(3); stage.apply(g3);
+  assert.ok(near3(stage.headOfEvent(g3, 'milk'), stage.headOf('milk')), 'the 5-wide rail → headOf');
+  const g4 = grow(4); stage.apply(g4);
+  assert.ok(near3(stage.headOfEvent(g4, 'milk'), stage.headOf('milk')), 'only a removal and a roster key → headOf');
+  const g5 = grow(5); stage.apply(g5);
+  assert.ok(stage.partKeys().includes('milk.sparks'));
+  assert.ok(near3(stage.headOfEvent(g5, 'milk'), stage.headOf('milk')), 'a label: false part (fireworks in the sky) does not count → headOf');
+});
+test('headOfEvent uses the box measured when the part was made, not its current (growing) scale; an empty box (glb still loading) is skipped', () => {
+  const { stage } = setup([fakeYard]);
+  stage.apply(placed, { deferred: true });
+  const before = stage.headOfEvent(placed, 'milk');
+  stage.commit('milk.main');   // 長出來：從 0.15 的矮樁開始
+  stage.partObject('milk.main').scale.setScalar(0.15);
+  assert.ok(near3(stage.headOfEvent(placed, 'milk'), before), 'same head while the part is a stub');
+  assert.ok(near3(before, { x: 0, y: 1.35, z: 0 }));
+  const model = { id: 'milk', labelY: 1, view: lv => (lv.milk ? { 'milk.main': { kind: 'glb', at, path: 'x.glb', h: 1 } } : {}) };
+  const g = setup([model]);
+  g.stage.apply(placed);
+  assert.ok(near3(g.stage.headOfEvent(placed, 'milk'), g.stage.headOf('milk')), 'nothing measured yet → headOf');
+});

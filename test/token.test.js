@@ -279,7 +279,7 @@ test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s 
       if (to === 7) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (to === 10) assert.ok(show.elapsed <= 5.5, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s (trim §B ≤ 5.5)`);
       if (e.kind === 'grow') {
-        const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');
+        const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('token');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over token`);
         assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to, order), `${what} camera trail`);
       }

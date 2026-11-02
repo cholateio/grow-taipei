@@ -188,7 +188,7 @@ export function place(state, id, spec = defaultSpec) {
   return turn(state, id, spec, rules);
 }
 
-// 沒有放置的回合（最後一輪成長：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合，才是飛彈警告）
+// 沒有放置的回合（最後一輪成長：第 8 個物品放完後全島再長 spec.CLOSING_TURNS 回合，才是隕石警告）
 export function advance(state, spec = defaultSpec) { return turn(state, null, spec, rulesOf(spec)); }
 
 // noBite：試跑用（修正輪 2）——這回合不咬、也不再試跑

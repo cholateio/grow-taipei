@@ -304,7 +304,7 @@ test('every actor view through the solution, the alien game and a blown-cart gam
   const { growsOn } = await import('../src/actors/stage.js'), { ALL } = await import('./helpers/show.js');
   const engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
   const all = enumerate(spec), orders = [stats(all, spec).full[0].order, all.find(r => r.ending.id === 'alien').order, ['milk', 'boba', 'baseball', 'typhoon', 'chip', 'bulb', 'token', 'rat']];
-  const growing = new Map(), still = new Set(), NEVER = k => k === 'typhoon.main' || k.split('.').slice(1).some(seg => /^(rain|levee|rainbow|neon|track|train|ufo|rocksRing|blown|cable|cables|scooter|fleet|ferry|shield)$/i.test(seg));
+  const growing = new Map(), still = new Set(), NEVER = k => k === 'typhoon.main' || k.split('.').slice(1).some(seg => /^(rain|levee|rainbow|neon|track|train|ufo|rocksRing|blown|cable|cables|scooter|fleet|shield)$/i.test(seg));
   for (const order of orders) {
     let s = engine.createState(spec), view = { lv: s.lv, flags: {} };
     for (const step of [...order.map(id => x => engine.place(x, id, spec)), x => engine.advance(x, spec)]) {

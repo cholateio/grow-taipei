@@ -14,7 +14,7 @@ export const id = 'satellites';
 const GOLD = 0xe8c547;
 // 函數宣告（不是 const）：別的模組可能在本檔的 const 初始化之前就叫到它（以前 boba.js 與本檔互相匯入；宣告會提升，誰先載入都叫得到）
 export function island(kind) { const s = SATELLITES.find(x => x.kind === kind), c = axialToWorld(s.q, s.r); return { x: c.x, y: satTop(), z: c.z }; }
-// 衛星島面高度 TOP_SAT 的唯一來源：也是函數宣告（island 在本檔的 const 初始化之前就可能被叫到，碰 TOP_SAT 會 TDZ）
+// 衛星島面高度的唯一來源：也是函數宣告（island 在本檔的 const 初始化之前就可能被叫到，宣告會提升，不碰 TDZ）
 function satTop() { return TOP - 0.2; }
 const at = (kind, dx = 0, dz = 0, dy = 0) => { const c = island(kind); return { x: c.x + dx, y: c.y + dy, z: c.z + dz }; };
 // 石堆島朝主島中心的方位角（xz 平面，atan2(z, x)）：降落場的三盞燈從這個方位起等分；finale.js 的外星生物站在這個方位、

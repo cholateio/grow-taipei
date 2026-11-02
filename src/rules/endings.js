@@ -19,7 +19,7 @@ export const ENDINGS = {
   tryAgain: { id: 'tryAgain', title: '再接再厲', kind: 'neutral', line: '台北還在長大中' },
 };
 
-// 隕石（trim §C：原本是飛彈，政治風險換掉；識別字 missile 沿用）：矽盾 MAX → 擋下；否則颱風放了還沒放晴（0 < lv < max：Lv1–2，暴風圈還在島上）→ 吹歪；否則命中（沒放的颱風沒有雲，不算吹歪）
+// 隕石（trim §C：原本是飛彈，政治風險換掉；識別字 missile 沿用）：矽盾 MAX → 擋下；否則颱風放了還沒放晴（0 < lv < max：Lv1–2，暴風圈還在島上）→ 吹偏；否則命中（沒放的颱風沒有雲，不算吹偏）
 export function missile(state, spec = defaultSpec) {
   if (state.lv.chip === spec.ITEMS.chip.max) return 'shield';
   const t = state.lv.typhoon;

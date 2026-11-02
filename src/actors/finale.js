@@ -73,8 +73,8 @@ const DOME_HIT = { x: TOWER.x + toStar.x * SHIELD_R, y: TOWER.y + toStar.y * SHI
 const POOL = { x: SPRING.x, y: SPRING.y + 0.1, z: SPRING.z };
 // deflect 被吹偏的點：101 塔頂旁、朝光點那側（水平）1.5
 const SIDESTEP = 1.5;
-// 命中：岩石前緣咬進塔面（方錐台半寬 0.58）BURY_TOWER；吹偏：斜 TILT 掉進池裡、前緣在池面下 BURY_POOL（大半露在水面上）
-const TOWER_HALF = 0.58, BURY_TOWER = 0.3, BURY_POOL = 0.2, TILT = 30 * Math.PI / 180;
+// 命中：岩石卡在塔面（方錐台半寬 0.58）外；吹偏：斜 TILT 掉進池裡、前緣在池面下 BURY_POOL（大半露在水面上）
+const TOWER_HALF = 0.58, BURY_POOL = 0.2, TILT = 30 * Math.PI / 180;
 // 煙火：霓虹粉、霓虹藍、黃、珊瑚
 const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 
@@ -156,7 +156,7 @@ export function view(lv, flags = {}, meta = {}) {
 // 隕石的軌跡（純函式）：missilePath(spec) → t => { x, y, z（岩石中心，世界座標）, d（前進方向，單位向量）, spin（繞前進方向滾幾弧度）, visible }。
 // 第一段（0 ≤ t < FLIGHT）：從 from（光點）直線等速落到 to1，前進方向固定、邊落邊滾一圈（TUMBLE）。
 //   shield：to1 = 罩面撞點；之後藏起來（煙火由零件放）。
-//   hit：to1 = 讓岩石前緣咬進塔面 BURY_TOWER 的中心（從彎角往光點那側水平退 TOWER_HALF − BURY_TOWER、再沿來向退 ROCK_R）；之後停在那裡（終態）。
+//   hit：to1 = 彎角高度、塔的西側面外 ROCK_R × 0.5（咬進塔面；修正輪 1，以前卡在北面被塔身擋住）；之後停在那裡（終態）。
 //   deflect：to1 = via（塔頂旁）；第二段 DEFLECT 秒：水平等速、高度先被風抬一下再加速往下掉到池裡，方向從落下方向轉到朝下斜 30°、
 //   邊掉邊再滾兩圈；終態前緣在池面下 BURY_POOL。t = Infinity 就是終態（建好即落完）
 const v3 = (x, y, z) => ({ x, y, z });
@@ -169,10 +169,10 @@ export function missilePath(spec) {
   const { from, at, outcome } = spec;
   const dirTo = to => unit(minus(to, from));
   let to1 = at;
-  if (outcome === 'hit') {
-    const d0 = dirTo(at), h = unit(v3(d0.x, 0, d0.z));
-    to1 = plus(plus(at, h, -(TOWER_HALF - BURY_TOWER)), d0, -ROCK_R);
-  } else if (outcome === 'deflect') to1 = spec.via;
+  // 修正輪 1（審稿 Important 2）：卡在塔的西側面——101 往 +x 倒、西側不會被蓋住；中心在西面外 ROCK_R × 0.5（咬進塔面半個半徑）、
+  // 往鏡頭那側 0.2，從鏡頭方向看過去岩石一半以上在塔身輪廓外（以前卡在北面，整顆被塔身擋住）。方向照舊從光點陡落
+  if (outcome === 'hit') to1 = plus(at, v3(-(TOWER_HALF + ROCK_R * 0.5), 0.1, 0.2));
+  else if (outcome === 'deflect') to1 = spec.via;
   const end1 = dirTo(to1), fly = k => ({ ...mix(from, to1, k), d: end1, spin: TUMBLE * k, visible: true });
   // deflect 的終態：方向 down（水平分量朝 via → 池的方向、跟垂直夾 TILT），前緣在池面下 BURY_POOL
   let down = null, rest = null;

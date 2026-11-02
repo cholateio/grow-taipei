@@ -8,7 +8,7 @@ import { enumerate, stats } from '../src/solver/run.js';
 import * as THREE from '../vendor/three/three.module.js';
 import { createPartFactory } from '../src/actors/parts.js';
 import { createGlowRegistry } from '../src/scene/glow.js';
-import { createCameraRig } from '../src/scene/camera.js';
+import { createCameraRig, OVERVIEW_DIR } from '../src/scene/camera.js';
 import { WARNING } from '../src/game.js';
 import { headlessShow, turnSteps, overviewRig, ALL } from './helpers/show.js';
 import { EXAMPLE } from './helpers/endings.js';
@@ -294,9 +294,15 @@ test('meteor part: built finished (final pose); launch() restarts at STAR_AT and
       assert.ok(body.visible); assert.equal(trailOf(p).visible, false, `${outcome}: landed, the trail is out`);
       const front = worldOf(p, [0, 0, R]), c = bodyWorld(p);
       if (outcome === 'hit') {
-        assert.ok(Math.hypot(front.x - T.x, front.z - T.z) < 0.58, 'hit: the rock bites into the tower at the bend');
-        assert.ok(Math.abs(front.y - T.y) < 0.5, `hit: at the bend height (${(front.y - T.y).toFixed(2)})`);
-        assert.ok(Math.hypot(c.x - T.x, c.z - T.z) < 1.0 && c.y > T.y - 0.1, 'hit: lodged right there, not buried below');
+        // 修正輪 1（審稿 Important 2）：岩石卡在塔的西側面（101 往 +x 倒，西側不會被蓋住）——中心在西面外、離塔面 < ROCK_R（咬進塔面），
+        // 從鏡頭方向（OVERVIEW_DIR 的水平分量）看過去，岩石至少一半在塔身輪廓（方錐台半寬 0.58 的正方形）外
+        const face = T.x - 0.58;
+        assert.ok(c.x < face && face - c.x < R, `hit: lodged against the west face (centre ${(face - c.x).toFixed(2)} out of it, radius ${R})`);
+        assert.ok(Math.abs(c.y - T.y) < 0.5, `hit: at the bend height (${(c.y - T.y).toFixed(2)})`);
+        const hz = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z), sx = OVERVIEW_DIR.z / hz, sz = -OVERVIEW_DIR.x / hz;   // 畫面上的左右方向
+        const half = 0.58 * (Math.abs(sx) + Math.abs(sz)), cs = (c.x - T.x) * sx + (c.z - T.z) * sz;
+        const out = Math.max(0, Math.min(cs + R, -half) - (cs - R)) + Math.max(0, (cs + R) - Math.max(cs - R, half));
+        assert.ok(out / (2 * R) >= 0.5, `hit: ${(out / (2 * R) * 100).toFixed(0)}% of the rock outside the tower silhouette from the camera`);
       } else {
         assert.ok(dist3(front, T) < 0.5, `deflect: in the pool (${dist3(front, T).toFixed(2)})`);
         assert.ok(c.y > T.y - 0.25, 'deflect: half out of the water');

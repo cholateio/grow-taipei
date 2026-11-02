@@ -457,6 +457,21 @@ test('groupPlaced: a growth block already right behind the head block (fx caused
   assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 2, boba: 2 }), flags: {} }), events);
 });
 
+test('groupPlaced: the growth block stops at an end-of-turn after event of the placed item (鮮奶過期 stays last, only the grow moves)', () => {
+  // AFTER_TURN 的事件是 { kind: 'after', item: 放下的物品, cause: 放下的物品 }：item／cause 對得上，但它是回合結束的反應，不屬於成長段
+  const expired = { kind: 'after', item: 'rat', cause: 'rat', flag: { name: 'milkExpired', value: true } };
+  const events = [P('rat'), g('milk', 5, 6), g('rat', 1, 2, ['milk']), expired];
+  const out = groupPlaced(events, spec, { lv: lvOf({ milk: 5 }), flags: {} });
+  assert.deepEqual(out, [events[0], events[2], events[1], expired]);
+  // 真引擎實例（審稿 Important 1）：milk,chip,token,baseball,bulb,typhoon,rat,boba 第 7 回合
+  let st = engine.createState(spec), r = null, before = null;
+  for (const step of turnSteps(['milk', 'chip', 'token', 'baseball', 'bulb', 'typhoon', 'rat', 'boba']).slice(0, 7)) { before = st; r = step(st); st = r.state; }
+  const real = groupPlaced(r.events, spec, { lv: before.lv, flags: before.flags });
+  assert.ok(r.events.some(e => e.kind === 'after'), 'turn 7 has an after event');
+  assert.equal(real.at(-1), r.events.at(-1), 'the after event is still last');
+  assert.deepEqual(real.filter(e => e.kind === 'after'), r.events.filter(e => e.kind === 'after'));
+});
+
 test('groupPlaced: a condition that reads age (typhoon up[2]) is never moved, even if it would hold', () => {
   const events = [P('typhoon'), g('milk', 7, 8), g('typhoon', 1, 2)];
   assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 7 }), flags: {} }), events);

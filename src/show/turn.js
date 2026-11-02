@@ -110,32 +110,32 @@ function jumpPairs(events, isKey = () => false) {
 }
 
 
-// 剛放下的物品連著演（計畫 15 A，見檔頭）：放下段 = placed 加上緊接在後、item 或 cause 是它的事件；
-// 成長段 = 放下段之後它的第一個 grow，加上緊接在後、item 或 cause 是它的事件（跳級第二級、onLevel 的 fx）。
+// 剛放下的物品連著演（計畫 15 A，見檔頭）：放下段 = placed 加上緊接在後、item 或 cause 是它的 fx（放下反應、雨中被鎖、被咬）；
+// 成長段 = 放下段之後它的第一個 grow，加上緊接在後、item 或 cause 是它的 grow／fx（跳級第二級、onLevel 的 fx）。
+// 只收 grow／fx：回合結束反應 after（鮮奶過期，item／cause 是放下的物品）、wait、stall、settle 不算，留在原位（修正輪 1 Important 1）。
 // 從回合開始的 view 折完放下段，成長段每個 grow 的條件（spec 的 up[to]，跳級看 jump[to]）都成立才把成長段搬到放下段正後面。
-// 條件裡有 age／held／locked／ltPlus（演出層的 view 只有 lv 與 flags，算不準）、找不到條件、沒有 placed、沒有成長段、
+// 條件裡有 age／locked（演出層的 view 只有 lv 與 flags，算不準）或 ltPlus（兩個物品的相對級數，保守起見一律不搬）、找不到條件、沒有 placed、沒有成長段、
 // 或成長段本來就緊接著放下段：原樣回傳（同一個陣列參照）。純函數，不改輸入
-const UNSAFE_KEYS = ['age', 'held', 'locked', 'ltPlus'];
+const UNSAFE_KEYS = ['age', 'locked', 'ltPlus'];   // 條件語言（conditions.js）裡讀 view 以外狀態的那幾種
 const readsHidden = c => !!c && typeof c === 'object' && (UNSAFE_KEYS.some(k => k in c) || Object.values(c).some(v => (Array.isArray(v) ? v.some(readsHidden) : readsHidden(v))));
 export function groupPlaced(events, spec, view) {
   const p = events.findIndex(e => e.kind === 'placed');
-  if (p < 0 || !spec?.ITEMS || !spec?.ORDER) return events;
-  const id = events[p].item, mine = e => e.item === id || e.cause === id;
+  if (p < 0 || !spec?.ITEMS) return events;
+  const id = events[p].item, mine = (e, kinds) => kinds.includes(e.kind) && (e.item === id || e.cause === id);
   let h = p + 1;
-  while (h < events.length && mine(events[h]) && events[h].kind !== 'grow') h++;   // 放下段 = [p, h)
+  while (h < events.length && mine(events[h], ['fx'])) h++;                          // 放下段 = [p, h)
   const g = events.findIndex((e, k) => k >= h && e.kind === 'grow' && e.item === id);
   if (g < 0 || g === h) return events;
   let end = g + 1;
-  while (end < events.length && mine(events[end])) end++;                           // 成長段 = [g, end)
+  while (end < events.length && mine(events[end], ['grow', 'fx'])) end++;           // 成長段 = [g, end)
   let v = { lv: view?.lv ?? {}, flags: view?.flags ?? {} };
   for (let k = 0; k < h; k++) v = foldEvent(v, events[k]);
-  const ctx = { max: Object.fromEntries(spec.ORDER.map(i => [i, spec.ITEMS[i].max])) };
   const state = { lv: v.lv, flags: v.flags, age: {}, held: {}, locked: {} };
   for (let k = g; k < end; k++) {
     const e = events[k];
     if (e.kind !== 'grow') continue;
     const cond = (e.jump ? spec.ITEMS[e.item]?.jump : spec.ITEMS[e.item]?.up)?.[e.to];
-    if (!cond || readsHidden(cond) || !compile(cond, ctx)(state)) return events;
+    if (!cond || readsHidden(cond) || !compile(cond, {})(state)) return events;
   }
   return [...events.slice(0, h), ...events.slice(g, end), ...events.slice(h, g), ...events.slice(end)];
 }

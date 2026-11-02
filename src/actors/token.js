@@ -184,13 +184,12 @@ const DECK_MODELS = [
 const DECK_RISE = 0.65;   // Lv9 劇本：懸浮月台從地面浮上來的高度
 
 // ── 飛天車（Lv10）：致敬 2026-10-16 在 SpaceX McGregor 發表的 Tesla Roadster（設計 §4.6）——kit 零件拼的低扁楔形車身、一整片玻璃座艙、
-// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡；零件見 roadsterParts）；紅、白、石墨灰三台的位置停在賽博站屋頂（左中右）、車頭朝 101（trim §B 之後只畫紅色那台、左邊）。
-// 起飛：每台車頭前一條坡道（token.ramp 的三條 LANES：長 RAMP_LEN、仰角 RAMP_ANGLE、朝 101），在屋頂上開過去、車鼻碰坡、前輪上坡、
+// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡；零件見 roadsterParts）；紅色一台停在賽博站屋頂左邊、車頭朝 101（修正批次 trim §B：以前紅、白、石墨灰三台左中右）。
+// 起飛：車頭前一條坡道（token.ramp，LANES[0]：長 RAMP_LEN、仰角 RAMP_ANGLE、朝 101），在屋頂上開過去、車鼻碰坡、前輪上坡、
 // 一路仰起來，前輪到坡頂離開坡道，車底噴白煙、拋物線拉高、繞 101 一圈、回屋頂四輪落地壓一下回彈（倒車入位：車頭一直朝 101）
-// （orbit 零件的 ramp／squash，parts.js orbitPose／rampRest）。停好之後每台各自隔 rest 秒再飛一趟（錯開，天上常常有一台在飛）。
-// 尺寸（§7 留給實作者）：車身 0.27 × 0.54（設計寫 0.3 × 0.6 的九成）——三台並排、各自車頭朝 101（彼此差約 4°），
-// 0.3 × 0.6 在 1.1 × 0.82 的屋頂上會碰在一起、壓到後緣的天線；九成時車與車之間留 3 公分、離天線 11 公分
-const ROADSTERS = [{ color: C.coral }, { color: C.white }, { color: C.ink }];
+// （orbit 零件的 ramp／squash，parts.js orbitPose／rampRest）。停好之後隔 rest 秒再飛一趟。
+// 尺寸（§7 留給實作者）：車身 0.27 × 0.54（設計寫 0.3 × 0.6 的九成；當初三台並排時定的），離天線 11 公分
+const ROADSTERS = [{ color: C.coral }];   // trim §B：只剩紅色那台（以前紅、白、石墨灰三台）
 // 車身尺寸（車頭朝 +z、原點在輪底＝地面）：RIDE_H 底盤離地、CHASSIS_* 底盤、DECK_H 後車廂厚、HOOD_* 引擎蓋（往前壓低 HOOD_PITCH）；
 // 輪子 r WHEEL_R、寬 WHEEL_W、前後在 ±WHEEL_Z、比車側凸出 WHEEL_OUT；輪轂 HUB_*；噴嘴高 NOZZLE_H、比底盤低 NOZZLE_DROP
 export const CAR_W = 0.27, CAR_L = 0.54, RIDE_H = 0.015, CHASSIS_W = 0.22, CHASSIS_H = 0.035, DECK_H = 0.045;
@@ -203,8 +202,7 @@ export const CAR_CONTACTS = [[-CAR_L / 2, RIDE_H], [-WHEEL_Z, 0], [WHEEL_Z, 0], 
 // Roadster 的零件（尾聲的紅色跑車 finale.car 也用這一份）——楔形：
 //   黑色底盤（全長、離地 RIDE_H）→ 車漆：後半是平的後車廂，前半是往下壓 8° 的引擎蓋（車鼻比後車廂低）→ 後緣一片薄擾流板；
 //   座艙是一顆壓扁的深藍玻璃橢球（往後擺）；四輪在四角，比車側凸出、比底盤低（全景看得到），淺色輪轂；
-//   車鼻兩顆白色小頭燈、車尾一條紅色燈條——不發光（計畫 11 §設計 3：計畫 10 R7 預留的第一刀，一台只剩黏土一個 draw call，
-//   三台省下的 3 個讓給珍奶離島店的杯子招牌）；
+//   車鼻兩顆白色小頭燈、車尾一條紅色燈條——不發光（計畫 11 §設計 3：計畫 10 R7 預留的第一刀，一台只剩黏土一個 draw call）；
 //   車底四個噴嘴（錐口朝下）夾在前後輪之間，比底盤低 NOZZLE_DROP
 export const roadsterParts = color => [
   { kind: 'box', pos: [0, RIDE_H + CHASSIS_H / 2, 0], scale: [CHASSIS_W, CHASSIS_H, CAR_L], color: C.ink },   // 底盤（暗色車底）
@@ -228,10 +226,10 @@ const ORBIT = { speed: 3.0, legs: [1.1, 0.8], squash: 0.03 }, FLY_STAGGER = 0.3;
 // 停在站頂的飛天車（修正批次 trim §B：三台 → 一台，紅色那台；停滿 rest 秒自己再飛一趟的日常照搬）
 const CAR_KEYS = ['token.cars.0'];
 export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（屋頂＋坡道＋拉高 1.1、一圈、下降＋落地 0.8）
-// 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給坡道）；各自車頭朝 101、繞圈的入口（phase）在
+// 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給坡道；trim §B 之後只用左邊 i = 0）；各自車頭朝 101、繞圈的入口（phase）在
 // 101 到停車點的那條線上——坡道、拉高、回程下降都是同一條直線
 const parkOf = i => { const p = offset(AT, (i - 1) * 0.33, 0.1, ROOF_Y); return { ...p, yaw: Math.atan2(TOWER.x - p.x, TOWER.z - p.z) }; };
-// 三條坡道（一台一條，世界座標）：坡腳在車鼻前 LANE_GAP、朝那台的車頭方向（101）、寬 LANE_W（比車身窄一點，前後輪都壓在坡面上）；
+// 坡道（一台一條，世界座標；三個位置都算，rampSpec 只取車數那麼多條）：坡腳在車鼻前 LANE_GAP、朝那台的車頭方向（101）、寬 LANE_W（比車身窄一點，前後輪都壓在坡面上）；
 // 右邊那條離天線（ANTENNA）要 ≥ ANTENNA.r + 0.02（test/token.test.js 量坡道離桅杆的距離）。坡道的表面（parts.js rampSurface）跟零件用同一份 LANES
 export const LANE_W = 0.26, LANE_T = 0.012, LANE_GAP = 0.02;
 export const LANES = [0, 1, 2].map(i => {
@@ -259,7 +257,8 @@ export const laneParts = lane => {
     ...[-1, 1].map(s => ({ kind: 'box', pos: [s * (lane.width / 2 - 0.03), sh / 2, STRUT_D], scale: [0.02, sh, 0.02], color: C.ink })),
   ];
 };
-const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LANES, footprint: false, low: false });
+// 一台車一條坡道（修正輪 1 審稿 Minor：trim §B 只剩一台，另外兩條空著很怪）；LANES 三條的位置照舊算（左中右）
+const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LANES.slice(0, CAR_KEYS.length), footprint: false, low: false });
 
 export function view(lv, flags) {
   const n = lv.token, at = AT, v = {};
@@ -294,7 +293,7 @@ export function view(lv, flags) {
     const bullet = n >= 6;
     v['token.train'] = { kind: 'train', at: origin, models: trainModels(bullet ? 'bullet' : 'subway', trainCars(n)), h: CAR_H, tint: bullet ? BULLET_TINT : SUBWAY_TINT, speed: flags.flooded ? 0 : 0.35, footprint: false };
   }
-  // 修正批次 trim §B（使用者 2026-11-01「飛天車砍部分」）：三台 → 一台（紅色 token.cars.0、左邊那條坡道）；坡道零件照舊三條
+  // 修正批次 trim §B（使用者 2026-11-01「飛天車砍部分」）：三台 → 一台（紅色 token.cars.0、左邊那條坡道；修正輪 1：坡道也只剩那一條）
   if (n >= 10) { CAR_KEYS.forEach((k, i) => { v[k] = roadster(i); }); v['token.ramp'] = rampSpec(); }
   return v;
 }

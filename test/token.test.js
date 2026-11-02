@@ -481,11 +481,11 @@ test('roadster take-off rides its lane: rolls flat on the roof, then while the n
     assert.ok(!(orbitPose(car, car.legs[0] + 0.5, 'park').pitch > 0), 'flat on the orbit');
   }
 });
-test('token.ramp: only at Lv10 — three lanes (0.35 at 20°, pointing at 101; lane 0 in front of the one car, trim §B keeps the ramp) in one mesh, clear of each other and of the antenna; no footprint, not on the phone', () => {
+test('token.ramp: only at Lv10 — one lane per car (trim §B: one car, one lane; 0.35 at 20°, pointing at 101, in front of the car) in one mesh, clear of the antenna; no footprint, not on the phone', () => {
   for (let n = 1; n <= 9; n++) assert.equal(views[n]['token.ramp'], undefined, `lv${n}`);
   const r = views[10]['token.ramp'];
   assert.equal(r.kind, 'ramp'); assert.equal(r.footprint, false); assert.equal(r.low, false, 'phone draws no cars, so no ramp either');
-  assert.ok(Math.abs(r.at.y - (AT.y + token.ROOF_Y)) < 1e-9, 'on the roof'); assert.equal(r.lanes, token.LANES); assert.equal(r.lanes.length, 3);
+  assert.ok(Math.abs(r.at.y - (AT.y + token.ROOF_Y)) < 1e-9, 'on the roof'); assert.deepEqual(r.lanes, token.LANES.slice(0, 1)); assert.equal(r.lanes.length, 1, 'one car, one lane (review Minor)');
   for (const [i, lane] of r.lanes.entries()) {
     assert.ok(angErr(lane.yaw, toTower(lane.foot)) < 0.05 && Math.abs(lane.foot.y - r.lanes[0].foot.y) < 1e-12, `lane ${i} points at 101, foot on the roof`);
     const car = views[10][`token.cars.${i}`]; if (!car) continue;
@@ -500,14 +500,8 @@ test('token.ramp: only at Lv10 — three lanes (0.35 at 20°, pointing at 101; l
   const topAt = s => deck.pos[1] + deck.scale[1] / 2 * Math.cos(RAMP_A) + (s - 0.5) * deck.scale[2] * Math.sin(RAMP_A);
   assert.ok(Math.abs(topAt(0)) < 1e-9 && Math.abs(topAt(1) - 0.35 * Math.sin(RAMP_A)) < 1e-9, 'deck top face is the lane surface');
   // 一個 mesh（一個 draw call）
-  let meshes = 0; const p = factory().build(r); p.object.traverse(x => { if (x.isMesh) meshes++; }); assert.equal(meshes, 1, 'three lanes, one mesh'); p.dispose();
-  // 水平投影的矩形：彼此不重疊、離天線 ≥ 2 公分
-  const rect = l => { const dx = Math.sin(l.yaw), dz = Math.cos(l.yaw), w = l.width / 2, top = laneTop(l); return [[0, -w], [top, -w], [top, w], [0, w]].map(([a, s]) => [l.foot.x + dx * a + dz * s, l.foot.z + dz * a - dx * s]); };
-  const gap = (A, Bq) => { let best = -Infinity; for (const P of [A, Bq]) for (let i = 0; i < 4; i++) {
-    const p1 = P[i], q = P[(i + 1) % 4], n = [q[1] - p1[1], p1[0] - q[0]], l = Math.hypot(...n), pa = A.map(v => (v[0] * n[0] + v[1] * n[1]) / l), pb = Bq.map(v => (v[0] * n[0] + v[1] * n[1]) / l);
-    best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb)); } return best; };
-  const R = r.lanes.map(rect);
-  for (const [i, j] of [[0, 1], [1, 2]]) assert.ok(gap(R[i], R[j]) >= 0, `lanes ${i}/${j} overlap (${gap(R[i], R[j]).toFixed(3)})`);
+  let meshes = 0; const p = factory().build(r); p.object.traverse(x => { if (x.isMesh) meshes++; }); assert.equal(meshes, 1, 'one mesh'); p.dispose();
+  // 離天線 ≥ 2 公分（trim §B 之後只有一條，不再量彼此重疊）
   const ant = { x: AT.x + token.ANTENNA.x, z: AT.z + token.ANTENNA.z };
   for (const [i, lane] of r.lanes.entries()) {
     const f = laneFrame(lane, ant), a = Math.max(0, Math.min(laneTop(lane), f.along)), d = Math.hypot(f.along - a, Math.max(0, Math.abs(f.side) - lane.width / 2));
@@ -519,11 +513,7 @@ test('the parked roadster stays on the roof (token.ROOF) and clears the roof ant
   // 車身 CAR_W；連凸出車側 0.01 的輪子算寬 CAR_W + 0.02（保守：當成整條車長都有輪子）
   const rect = (c, W = token.CAR_W) => { const { yaw } = orbitPose(c, Infinity), f = [Math.sin(yaw), Math.cos(yaw)], r = [f[1], -f[0]], p = c.park;
     return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [p.x + f[0] * a * Lc / 2 + r[0] * b * W / 2 - AT.x, p.z + f[1] * a * Lc / 2 + r[1] * b * W / 2 - AT.z]); };
-  const gap = (A, Bq) => { let best = -Infinity; for (const P of [A, Bq]) for (let i = 0; i < 4; i++) {
-    const p = P[i], q = P[(i + 1) % 4], n = [q[1] - p[1], p[0] - q[0]], l = Math.hypot(...n), pa = A.map(v => (v[0] * n[0] + v[1] * n[1]) / l), pb = Bq.map(v => (v[0] * n[0] + v[1] * n[1]) / l);
-    best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb)); } return best; };
-  const B = cars.map(c => rect(c)), R = cars.map(c => rect(c, token.CAR_W + 0.02));
-  assert.equal(B.length, 1); assert.ok(typeof gap === 'function');
+  const R = cars.map(c => rect(c, token.CAR_W + 0.02));
   for (const [i, c] of R.entries()) for (const [x, z] of c) assert.ok(Math.abs(x) <= token.ROOF.w / 2 && Math.abs(z) <= token.ROOF.d / 2, `car ${i} corner (${x.toFixed(2)}, ${z.toFixed(2)}) on the roof`);
   const seg = (x, z, [a, b]) => { const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); };
   for (const [i, c] of R.entries()) { const d = Math.min(...c.map((p, k) => seg(token.ANTENNA.x, token.ANTENNA.z, [p, c[(k + 1) % 4]]))); assert.ok(d >= 0.05, `car ${i} ${d.toFixed(3)} from the antenna`); }

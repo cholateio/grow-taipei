@@ -95,8 +95,8 @@ export function view(lv, flags) {
 //   wide-end 249 → 245、end 246 → 243、alien 208 → 205（手機 143／137 不變）；省下來的是營區／分店併第一段、鞦韆與兩支轉子各一個 mesh（裁決 R7：≤ 246）。
 //   trim §A：分店 glb、杯子、茶屋桌椅、棧橋拿掉（衛星島一般畫質 −4、手機 −1）。
 //   low: false——?quality=low（手機）不畫點綴：全 MAX 的手機截圖本來就 143（≤ 150），十幾個點綴放不下（併進黏土也一段一個）
-// tagAlong：跟同一拍第一個閃的零件一起閃、不多佔 stagger（beats.apply）——加了點綴，劇本與整局的時間一格不變。
-//   含基座的第一段（階梯丘）不標：營區是那一級的主角，跟原本的 sat.camp 一樣自己佔一格。
+// tagAlong：跟同一拍第一個閃的零件一起閃（beats.apply；計畫 15 B 之後同一拍的鍵本來就同一刻 commit，這拍只剩點綴時照常閃一次）——加了點綴，劇本與整局的時間一格不變。
+//   含基座的第一段（階梯丘）不標：營區是那一級的主角，跟原本的 sat.camp 一樣是一般的鍵。
 export const STAGE = { lighthouse: [['bulb', 7]], windmill: [['bulb', 7], ['chip', 6]], rocks: [['rat', 3]], pyramid: [['chip', 3], ['chip', 9]],
   playground: [['token', 8], ['milk', 10]], forest: [null, ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;

@@ -156,7 +156,7 @@ export function view(lv, flags = {}) {
     // 大巨蛋（glb）
     const big = n >= 7, m = big ? MODELS.domeB : MODELS.domeA, h = big ? DOME_H.b : DOME_H.a;
     // 標籤：Lv8 頂上坐著大棒球（h − 0.03 到 h + 0.42），h + 0.35 會從球裡冒出來 → h + 0.6（修正輪 1）。擴建的高巨蛋（Lv7 起）就用 h + 0.6：
-    // 只改 Lv8 的話 main 的 spec 在 Lv7 → Lv8 變了，舞台會把巨蛋整個換掉重長一次（◆ Lv8 多一格 stagger，整段 8.13 s 超過 8）
+    // 只改 Lv8 的話 main 的 spec 在 Lv7 → Lv8 變了，舞台會把巨蛋整個換掉重長一次（當時 ◆ Lv8 多一格 stagger，整段 8.13 s 超過 8；計畫 15 B 之後零件同一刻長、不再多一格，但巨蛋整個重長一次還是不要）
     v['baseball.main'] = { kind: 'glb', at, path: m.path, h, tint: DOME_TINT, labelY: h + (big ? 0.6 : 0.35), footprint: DOME_FP };
     // 底座、門口、頂縫透光（Lv4 暖黃；演唱會起跟應援棒、LED 帶同一個霓虹藍——一種發光色一個 draw call，整局截圖 ≤ 150）、
     // 應援棒（Lv5）、外牆 LED 帶（Lv7）：一個零件
@@ -308,9 +308,10 @@ export const script = {
       ];
     },
     // 擴建：球員 ！ → 閃白更高的圓頂與 LED 帶（多的兩個觀眾從月台入口走來）→ 觀眾 ♪ → LEVEL UP
+    //   wait 0.1：計畫 15 B 零件一起長（圓頂與 LED 帶同一刻），拍短了，一級 ≥ 3 s
     7(e, s, ctx) {
       const { B } = ctx;
-      return [B.bubble(player(0), '！', 0.8), B.apply(e), cheer(B), B.levelUp('baseball')];
+      return [B.bubble(player(0), '！', 0.8), B.apply(e), B.wait(0.1), cheer(B), B.levelUp('baseball')];
     },
     // ◆ 巨蛋捷運站直通（代幣 ≥8）：鏡頭對著巨蛋格 → 月台閃白出現 → 列車進巨蛋站停下，兩個觀眾從列車下來 →
     //   沿月台、磚道走到門口正前方 → 回全景定格、大家 ♪ → 這時 Lv7 的兩個觀眾才走回捷運站（套用觀眾 5 → 3），

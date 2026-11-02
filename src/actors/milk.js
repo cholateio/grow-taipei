@@ -248,10 +248,11 @@ export const script = {
     return [B.apply(e), B.wait(0.9), B.bubble(B.partHead('milk.crate', 0.75, ctx), '♪', 1.2), B.wait(1.0)];
   },
   grow: {
-    // 早餐店：店面與桌子長出來 → 停著看它長完 → LEVEL UP（沒有人揮鐵鎚；一級 ≥ 3 s 用 wait 補）
+    // 早餐店：店面與桌子長出來 → 停著看它長完 → LEVEL UP（沒有人揮鐵鎚；一級 ≥ 3 s 用 wait 補；
+    //   計畫 15 B 零件一起長，拍短了 0.15 s：1.8 → 1.9）
     2(e, s, ctx) {
       const { B } = ctx;
-      return [B.apply(e), B.wait(1.8), B.levelUp('milk')];
+      return [B.apply(e), B.wait(1.9), B.levelUp('milk')];
     },
     // 小學：校舍長出來（小學生的名冊 hold 住）→ 兩個小學生生在校門外的兩個入口（KID_ENTRIES），一個接一個走進來
     //   （gather 照路線排 delay，同 ◆ Lv7）→ 在操場集合 → ♪ → 跳一下、LEVEL UP；名冊由回合補的 apply 放開

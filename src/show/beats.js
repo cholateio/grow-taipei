@@ -18,7 +18,7 @@ export const GESTURE_DUR = { knock: 1.0, wave: 1.0, jump: 0.6, look: 0.6, sniff:
 export const TRAIN_ARRIVE = 4, TRAIN_STOP = 3, TRAIN_MAX_BOOST = 4.5;
 const STATION = anchorWorld('token');
 export const STATION_A = Math.atan2(STATION.z, STATION.x);   // 捷運站對島心的方位（列車車頭停在站前島緣）
-const STAGGER = 0.15, DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
+const DEPART_BEHIND = 0.6, TRAIN_SPEED = 0.35, JUMP_H = 0.7, HOP_H = 0.4, PUFF = 0.15, TWO_PI = 2 * Math.PI;
 
 const lerp = (a, b, k) => a + (b - a) * k;
 const ease = k => k * k * (3 - 2 * k);
@@ -162,20 +162,20 @@ export function gesture(who, kind, dur = GESTURE_DUR[kind], { at } = {}) {
   };
 }
 
-// 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）依序（間隔 0.15 s）commit，
-// commit 由舞台演（會長的建築長出來（不亮）、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK + 0.15·(n−1)——
-// 不亮的鍵照樣佔一格 stagger：拍長不變（整局的走位與節奏門檻對時間很敏感）。
+// 套用事件（§13.2）：blink 時新零件先藏著，舞台 pending 的鍵（有東西要露出或移除）在這拍第一步全部同一刻 commit，
+// commit 由舞台演（會長的建築長出來（不亮）、其餘直接出現、移除的縮下去，計畫 11 §設計 1），拍長 BLINK（有鍵要演時；不管幾個鍵）。
+// 計畫 15 B（使用者 2026-11-02 錄影：學校的鐘樓比校舍慢半拍長出來）：一棟建築的幾個零件一起長，不再一個鍵錯開 0.15 s。
 // 名冊的鍵不 pending（名冊自己在換裝的人身上閃），也不算進長度。跳過時在 end 一次 commit（不閃）。
-// stagger：鍵之間的間隔（預設 STAGGER）；0 = 全部同一刻 commit（大停電：電一斷整區一起，拍長 BLINK）
-// tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個 commit 的零件一起出現、不多佔一格 stagger：
-// 加了點綴不改任何一拍的長度（整局的走位對時間很敏感）；這拍只剩點綴時照常 commit 一次
-export function apply(e, { blink = true, only, hold, stagger = STAGGER } = {}) {
+// stagger：鍵之間的間隔（預設 0 = 全部同一刻）；參數留著，目前沒有人傳非 0（大停電、飛天車傳的 0 跟預設一樣）。
+// tagAlong 的零件（離島三段這類點綴，零件宣告 tagAlong: true）跟這拍第一個 commit 的零件一起出現；
+// 這拍只剩點綴時照常 commit 一次（拍長 BLINK）
+export function apply(e, { blink = true, only, hold, stagger = 0 } = {}) {
   let keys = [], along = [], fired = 0, t = 0;
   // only 可以是 ctx => 鍵陣列：演到這拍（start）才算（劇本建拍時還不知道角色到時候在哪）
   const optsOf = ctx => { const o = call(only, ctx); return { ...(o && { only: o }), ...(hold && { hold }), deferred: blink }; };
   return {
     kind: 'apply', only, blink,   // only 原樣留在拍上給測試看（陣列，或 ctx => 陣列）；blink 給 turn.js 判斷有沒有東西演
-    dur: () => (keys.length ? BLINK + stagger * (keys.length - 1) : 0),
+    dur: () => (keys.length ? BLINK + stagger * (keys.length - 1) : 0),   // stagger 0：BLINK
     estimate: () => (blink ? BLINK : 0),   // 還沒套用不知道幾個零件要閃：蒙太奇估長度時至少算一個
     start(ctx) {
       const all = ctx.stage.apply(e, optsOf(ctx)).changed; fired = 0; t = 0;

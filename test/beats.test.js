@@ -113,17 +113,17 @@ test('walk { delay: ctx => s } resolves the delay when the beat starts and holds
   const n = calls; tl.update(0.3); assert.deepEqual(member.pos, p0); assert.ok(!member.walking, 'still waiting');
   tl.update(0.2); assert.ok(member.walking, 'walking after the delay'); assert.equal(calls, n, 'resolved once at start');
 });
-// §13.2：apply 不再放白光，舞台 pending 的鍵依序（間隔 0.15 s）commit，commit 由舞台自己閃白 BLINK 秒；拍長 BLINK + 0.15·(n−1)
-test('apply defers the stage change and commits each key 0.15 s apart; it lasts BLINK + 0.15·(n−1)', () => {
+// §13.2：apply 不再放白光，舞台 pending 的鍵 commit，commit 由舞台自己閃白 BLINK 秒。
+// 計畫 15 B（使用者 2026-11-02 錄影：學校的鐘樓比校舍慢半拍長出來）：同一拍的鍵全部同一刻 commit，拍長 BLINK（不管幾個鍵）
+test('apply defers the stage change and commits every key on its first step; it lasts BLINK however many keys', () => {
   const { ctx, tl, stage, blink } = fake({ changed: ['a', 'b', 'c'] });
   tl.play([B.apply(ev)], ctx); tl.update(0); assert.deepEqual(stage.calls[0], ['apply', ev, { deferred: true }]);
-  assert.ok(Math.abs(tl.currentDur - (0.15 + 0.15 * 2)) < 1e-9); assert.deepEqual(stage.committed, ['a']);
-  tl.update(0.15); assert.deepEqual(stage.committed, ['a', 'b']); tl.update(0.15); assert.deepEqual(stage.committed, ['a', 'b', 'c']);
+  assert.equal(tl.currentDur, BLINK); assert.deepEqual(stage.committed, ['a', 'b', 'c'], 'all keys at once');
   assert.ok(!stage.committedAll); assert.equal(blink.count, 0, 'the beat itself blinks nothing');
-  tl.update(0.16); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);
+  tl.update(BLINK + 0.01); assert.ok(stage.committedAll); assert.ok(ctx.nav.footprintsSet); assert.ok(!tl.busy);
   const one = fake({ changed: ['a'] }); one.tl.play([B.apply(ev)], one.ctx); one.tl.update(0); assert.equal(one.tl.currentDur, BLINK);
 });
-// 大停電（選擇帶動升級）：stagger 0 → 全部同一刻 commit，拍長 BLINK；turn.js 的停電反應用它
+// 大停電（選擇帶動升級）：turn.js 的停電反應照樣傳 { stagger: 0 }——現在跟預設一樣，全部同一刻 commit，拍長 BLINK
 test('apply { stagger: 0 } commits every key at once and lasts BLINK; the blackout reaction uses it', async () => {
   const { ctx, tl, stage } = fake({ changed: ['a', 'b', 'c'] });
   tl.play([B.apply(ev, { stagger: 0 })], ctx); tl.update(0);
@@ -139,18 +139,18 @@ test('apply, skipped, commits everything at once', () => {
 });
 test('apply steps only the keys the stage holds pending; roster keys take no time', () => {
   const { ctx, tl, stage } = fake({ changed: ['a', { key: 'milk.kids', roster: true }] });
-  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, BLINK, 'roster key adds no stagger');
+  tl.play([B.apply(ev), B.wait(0.1)], ctx); tl.update(0); assert.equal(tl.currentDur, BLINK, 'roster key adds nothing');
   assert.deepEqual(stage.committed, ['a']); tl.update(0.16); assert.equal(tl.currentKind, 'wait');
   const only = fake({ changed: [{ key: 'milk.kids', roster: true }] });
   only.tl.play([B.apply(ev, { hold: ['milk.kids'] }), B.wait(0.1)], only.ctx); only.tl.update(0);
   assert.equal(only.tl.currentKind, 'wait'); assert.ok(only.stage.committedAll); assert.ok(only.ctx.nav.footprintsSet);
 });
-// 閃白在零件本身：島心的零件（軌道、列車、衛星島的 sat.boats）跟別的零件一樣依序 commit
-test('parts at the island centre are committed in turn like any other', () => {
+// 閃白在零件本身：島心的零件（軌道、列車、衛星島的 sat.boats）跟別的零件一樣同一刻 commit
+test('parts at the island centre are committed like any other', () => {
   const O = { x: 0, y: 0, z: 0 };
   const { ctx, tl, stage } = fake({ changed: [{ key: 'token.track', at: O }, { key: 'sat.boats', at: { x: 0, y: -0.2, z: 0 } }] });
-  tl.play([B.apply(ev)], ctx); tl.update(0); assert.ok(Math.abs(tl.currentDur - 0.3) < 1e-9);
-  tl.update(0.15); assert.deepEqual(stage.committed, ['token.track', 'sat.boats']);
+  tl.play([B.apply(ev)], ctx); tl.update(0); assert.equal(tl.currentDur, BLINK);
+  assert.deepEqual(stage.committed, ['token.track', 'sat.boats']);
 });
 // 估長度（estimateTurn、trainStop 的 during）：閃白的 apply 至少一個零件
 test('apply estimates one blink when blinking and nothing without', () => {

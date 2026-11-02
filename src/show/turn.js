@@ -66,8 +66,8 @@ const sameCell = (a, b) => !!a && !!b && a[0] === b[0] && a[1] === b[1];
 const opensOnFocus = b => b?.kind === 'focus' || (b?.kind === 'together' && !!b.beats?.some(x => x.kind === 'focus'));
 
 
-// 預設劇本（§6.6）。大停電（颱風放下的反應）：電一斷整區同時暗——零件一起閃，不一盞一盞錯開
-//   （選擇帶動升級：燈泡 ≤4 也會停電，Lv4 有九盞路燈，錯開要 2.3 s）
+// 預設劇本（§6.6）。大停電（颱風放下的反應）：電一斷整區同時暗——零件一起閃
+//   （計畫 15 B 之後 apply 的預設就是同一刻 commit，{ stagger: 0 } 跟預設一樣，留著寫明大停電不錯開）
 const applyOf = e => B.apply(e, e.flag?.name === 'blackout' ? { stagger: 0 } : {});
 // 鎖住的反應（見 LOCK_HOLD）：閃白套用、等被鎖那個物品的名冊走到新站位
 const lockArrived = id => c => c.roster.keys().filter(k => k.startsWith(`${id}.`)).flatMap(k => c.roster.members(k))

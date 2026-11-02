@@ -342,13 +342,14 @@ export const script = {
         B.levelUp('bulb'),
       ];
     },
-    // 霓虹、傍晚：電工快走到離他（走路）最近的那一站路燈下 → 敲一下 → 全島燈頭一站站閃白換成霓虹（粉藍交錯）→ 天色淡入傍晚。
+    // 霓虹、傍晚：電工快走到離他（走路）最近的那一站路燈下 → 敲一下 → 全島燈頭同一刻換成霓虹（粉藍交錯）→ 天色淡入傍晚。
     // 物品 v2 §6（一級 3–5 秒）：不再走到夜市前（從主路另一頭走過去要 3 秒多）；鏡頭對著那一站的格子，LEVEL UP 時轉回中心格
+    // wait 0.6：計畫 15 B 零件一起長——燈頭以前一站錯開 0.15 s、現在同一刻，拍短了 0.9 s；電工離得近時（亂放的局）一級掉到 2.47 s；補 0.5 剛好 3.00 s、貼著下限（鮮奶 2 就是 3.00 s 浮點差一點沒過測試），補 0.6
     3(e, s, ctx) {
       const { B } = ctx, m = el(ctx), k0 = once(c => nearestByRoute(c.roster.members('bulb.electrician')[0]?.pos, c.nav)), cell = c => stopCell(k0(c));
       return [
         B.focus(cell), B.walk(m, c => lampApproach(LAMP_STOPS[k0(c)][0]), { speed: LIGHTING_SPEED }), B.gesture(m, 'knock', 0.8),
-        B.apply(e), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
+        B.apply(e), B.wait(0.6), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
       ];
     },
     // 第二攤：離夜市最近的兩個人（島民、站務員）快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌亮起、一起 ♥（鏡頭對著夜市格，LEVEL UP 時轉回中心格）

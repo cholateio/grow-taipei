@@ -304,7 +304,7 @@ test('islet parts stay inside their islet footprint and off the keeper / tourist
   }
 });
 
-// 離島三段的零件都是 tagAlong：跟同一拍第一個閃的零件一起閃、不多佔一格 stagger（beats.apply）——加了點綴，任何一拍都不變長
+// 離島三段的零件都是 tagAlong：跟同一拍第一個閃的零件一起閃（beats.apply；計畫 15 B 之後同一拍的鍵本來就同一刻 commit）——加了點綴，任何一拍都不變長
 import * as B from '../src/show/beats.js';
 test('islet stages tag along: an apply beat is no longer with them (they blink with its first key); alone they blink once', () => {
   for (const v of [sat.view(allMax, {}), sat.view(lv({ bulb: 9, boba: 6, chip: 9, token: 8, milk: 10, rat: 3, baseball: 6 }), {})])
@@ -321,7 +321,7 @@ test('islet stages tag along: an apply beat is no longer with them (they blink w
   const durOf = changed => { const b = B.apply({ kind: 'grow' }), { ctx, committed } = fake(changed); b.start(ctx); const d = b.dur(); b.step(0, 0.001, ctx); return { d, first: [...committed] }; };
   const plain = durOf([{ key: 'a' }, { key: 'b' }]), withStages = durOf([{ key: 'a' }, { key: 'sat.x.stage1', tagAlong: true }, { key: 'b' }, { key: 'sat.y.stage2', tagAlong: true }]);
   assert.equal(withStages.d, plain.d);
-  assert.deepEqual(withStages.first.sort(), ['a', 'sat.x.stage1', 'sat.y.stage2']);
+  assert.deepEqual(withStages.first.sort(), ['a', 'b', 'sat.x.stage1', 'sat.y.stage2'], 'stages with the first key; every key on the first step (plan 15 B)');
   assert.equal(durOf([{ key: 'sat.x.stage1', tagAlong: true }, { key: 'sat.y.stage1', tagAlong: true }]).d, durOf([{ key: 'a' }]).d, 'only stages: one blink');
 });
 

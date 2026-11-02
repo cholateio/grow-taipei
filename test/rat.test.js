@@ -207,7 +207,7 @@ test('the crown rat: token 8 → the dome station cornice; token 10 → the hove
   assert.ok(Math.abs(k.y - (token.DECK_AT.y + token.PLATFORM.top)) < 1e-9, 'token 10: on the deck');
   // 水平投影：點到矩形（中心 c、朝 yaw、半長 hl、半寬 hw）的距離
   const toRect = (p, c, yaw, hl, hw) => { const dx = Math.sin(yaw), dz = Math.cos(yaw), rx = p.x - c.x, rz = p.z - c.z, a = rx * dx + rz * dz, s = rx * dz - rz * dx; return Math.hypot(Math.max(0, Math.abs(a) - hl), Math.max(0, Math.abs(s) - hw)); };
-  for (let i = 0; i < 3; i++) {
+  for (const i of Object.keys(v).filter(x => x.startsWith('token.cars.')).map(x => +x.split('.')[2])) {   // trim §B：一台
     const car = v[`token.cars.${i}`], { yaw } = orbitPose(car, Infinity), d = toRect(k, car.park, yaw, token.CAR_L / 2, token.CAR_W / 2 + token.WHEEL_OUT);
     assert.ok(d >= 0.2, `${d.toFixed(2)} from roadster ${i}`);
   }

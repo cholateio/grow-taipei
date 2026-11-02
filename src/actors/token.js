@@ -1,6 +1,6 @@
 // 代幣（物品 v2 §4.1，max 10）：站牌＋小月台 → 小站（售票亭、站務員＝Lv1 等車的島民原地換制服，裁決 R23）→ 大車站（站體、站前廣場）→ 環狀線 3 節通勤車 → 5 節
 //   → 高鐵（白底橘線）→ ★◆ 支線通到風車島與遊樂場島（列車開過去）→ 離島接駁車 → 豪華賽博站（霓虹站體、懸浮月台）
-//   → ◆ 飛天車（Tesla Roadster 三台從屋頂斜坡起飛、繞 101 一圈、落回車站屋頂）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
+//   → ◆ 飛天車（Tesla Roadster 一台從屋頂斜坡起飛、繞 101 一圈、落回車站屋頂；修正批次 trim §B：三台 → 一台）。捷運淹水（代幣 ≤2 時颱風登陸）站體變游泳池。
 // 列車用 Kenney Train Kit（subway／bullet，車頭、中間車、車尾），賽博站用 Quaternius Cyberpunk Kit（月台、欄杆、招牌），
 //   都經載入器 tint 重上色票；飛天車是 kit 零件拼的 Roadster（零件 kind 'orbit' 的 model.parts，parts.js）。
 // TRACK 與 trainPose 也給老鼠用（老鼠坐在車頂上）。ctx.rail 是共用的列車時鐘：offset 讓列車從站出發、停站；
@@ -184,7 +184,7 @@ const DECK_MODELS = [
 const DECK_RISE = 0.65;   // Lv9 劇本：懸浮月台從地面浮上來的高度
 
 // ── 飛天車（Lv10）：致敬 2026-10-16 在 SpaceX McGregor 發表的 Tesla Roadster（設計 §4.6）——kit 零件拼的低扁楔形車身、一整片玻璃座艙、
-// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡；零件見 roadsterParts）；紅、白、石墨灰三台停在賽博站屋頂（左中右）、車頭朝 101。
+// 四個輪子、車底 4 個冷氣體噴嘴（沒有後視鏡；零件見 roadsterParts）；紅、白、石墨灰三台的位置停在賽博站屋頂（左中右）、車頭朝 101（trim §B 之後只畫紅色那台、左邊）。
 // 起飛：每台車頭前一條坡道（token.ramp 的三條 LANES：長 RAMP_LEN、仰角 RAMP_ANGLE、朝 101），在屋頂上開過去、車鼻碰坡、前輪上坡、
 // 一路仰起來，前輪到坡頂離開坡道，車底噴白煙、拋物線拉高、繞 101 一圈、回屋頂四輪落地壓一下回彈（倒車入位：車頭一直朝 101）
 // （orbit 零件的 ramp／squash，parts.js orbitPose／rampRest）。停好之後每台各自隔 rest 秒再飛一趟（錯開，天上常常有一台在飛）。
@@ -225,6 +225,8 @@ export const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
 // 飛行本身縮短（Task 6a：◆ Lv10 live 8.5 s > 8；不砍全景定格）：繞圈 2.5 → 3.0 rad/s、屋頂＋坡道＋拉高 1.4 → 1.1（坡道 RAMP_T 0.6 照舊）、
 // 下降＋落地 1.0 → 0.8（落地 TOUCH 0.3 照舊）——一趟 4.9 → 4.0 s
 const ORBIT = { speed: 3.0, legs: [1.1, 0.8], squash: 0.03 }, FLY_STAGGER = 0.3;
+// 停在站頂的飛天車（修正批次 trim §B：三台 → 一台，紅色那台；停滿 rest 秒自己再飛一趟的日常照搬）
+const CAR_KEYS = ['token.cars.0'];
 export const FLIGHT = ORBIT.legs[0] + 2 * Math.PI / ORBIT.speed + ORBIT.legs[1];   // 一趟飛行幾秒（屋頂＋坡道＋拉高 1.1、一圈、下降＋落地 0.8）
 // 停車點：屋頂左中右（間距 0.33、比錨點往前 0.1，車頭那側留給坡道）；各自車頭朝 101、繞圈的入口（phase）在
 // 101 到停車點的那條線上——坡道、拉高、回程下降都是同一條直線
@@ -292,7 +294,8 @@ export function view(lv, flags) {
     const bullet = n >= 6;
     v['token.train'] = { kind: 'train', at: origin, models: trainModels(bullet ? 'bullet' : 'subway', trainCars(n)), h: CAR_H, tint: bullet ? BULLET_TINT : SUBWAY_TINT, speed: flags.flooded ? 0 : 0.35, footprint: false };
   }
-  if (n >= 10) { for (let i = 0; i < 3; i++) v[`token.cars.${i}`] = roadster(i); v['token.ramp'] = rampSpec(); }
+  // 修正批次 trim §B（使用者 2026-11-01「飛天車砍部分」）：三台 → 一台（紅色 token.cars.0、左邊那條坡道）；坡道零件照舊三條
+  if (n >= 10) { CAR_KEYS.forEach((k, i) => { v[k] = roadster(i); }); v['token.ramp'] = rampSpec(); }
   return v;
 }
 
@@ -375,8 +378,7 @@ function trainSwap(e, ctx, move) {
     B.home(st),
   ];
 }
-const CAR_KEYS = [0, 1, 2].map(i => `token.cars.${i}`);
-// 飛天車起飛：三台錯開 FLY_STAGGER 秒從屋頂斜坡起飛、繞 101 一圈、落回屋頂（零件的 userData.fly）；跳過時 land 立刻停好
+// 飛天車起飛：（以前三台錯開 FLY_STAGGER 秒；trim §B 只剩一台）從屋頂斜坡起飛、繞 101 一圈、落回屋頂（零件的 userData.fly）；跳過時 land 立刻停好
 const fly = () => ({
   kind: 'fly', dur: FLIGHT + FLY_STAGGER * (CAR_KEYS.length - 1),
   start(c) { CAR_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * FLY_STAGGER, speed: c.speed ?? 1 })); },
@@ -469,11 +471,12 @@ export const script = {
         B.apply(e), B.levelUp('token'), B.home(st),
       ];
     },
-    // ◆ 飛天車（Tesla Roadster）：回全景 → 三台和屋頂斜坡一起出現（不閃白：一出現就是停好的樣子）→ 沿斜坡起飛、繞 101 一圈、
-    //   四輪落回屋頂 → 全景定格 → LEVEL UP
+    // ◆ 飛天車（Tesla Roadster）：回全景 → 車和屋頂斜坡一起出現（不閃白：一出現就是停好的樣子）→ 沿斜坡起飛、繞 101 一圈、
+    //   四輪落回屋頂 → 全景定格＋LEVEL UP。修正批次 trim §B：一台車（fly 拍 = 一趟 FLIGHT，車與坡道同一刻出現）、定格 1.2 → 0.6、
+    //   LEVEL UP 在定格那一拍一起彈（整級 live 7.3 → ≤ 5.5 s；只砍定格到 0.6 還有 6.0 s）
     10(e, s, ctx) {
       const { B } = ctx;
-      return [B.focus('home'), B.apply(e, { only: [...CAR_KEYS, 'token.ramp'], blink: false }), fly(), B.apply(e), B.focus('home', { hold: 1.2 }), B.levelUp('token')];   // 停 2.0 → 1.2（裁決 R17 ◆ ≤ 8 s）
+      return [B.focus('home'), B.apply(e, { only: [...CAR_KEYS, 'token.ramp'], blink: false, stagger: 0 }), fly(), B.together([B.apply(e), B.focus('home', { hold: 0.6 }), B.levelUp('token')])];   // 停 2.0 → 1.2（裁決 R17）→ 0.6（trim §B：剩下的零件、LEVEL UP 跟定格同一拍）
     },
   },
   fx: () => null,   // 捷運淹水是颱風的劇本（cause 是颱風）

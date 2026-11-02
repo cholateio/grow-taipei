@@ -109,7 +109,7 @@ test('token view: something new at every level 1–10; one staff from Lv2 (peopl
   assert.ok(!keys(6).some(k => k.startsWith('token.spur')) && keys(7).filter(k => k.startsWith('token.spur')).length === 2, 'two spurs at Lv7');
   assert.ok(!keys(7).includes('token.shuttle') && keys(8).includes('token.shuttle'), 'shuttle at Lv8');
   assert.ok(!keys(8).includes('token.deck') && keys(9).includes('token.deck'), 'floating platform at Lv9');
-  assert.ok(!keys(9).some(k => k.startsWith('token.cars')) && keys(10).filter(k => k.startsWith('token.cars')).length === 3, 'three flying cars at Lv10');
+  assert.ok(!keys(9).some(k => k.startsWith('token.cars')) && keys(10).filter(k => k.startsWith('token.cars')).join() === 'token.cars.0', 'one flying car at Lv10 (trim §B: 3 → 1)');
 });
 test('trains: Lv4 subway 3 cars, Lv5 subway 5 cars, Lv6+ bullet train 5 cars (Kenney Train Kit glb, palette tint)', () => {
   const tr = n => views[n]['token.train'];
@@ -138,7 +138,7 @@ test('Lv9 cyber station: Cyberpunk Kit platform (hovering), railing and sign wit
   assert.ok(deck.at.y - AT.y >= 0.6, 'the platform floats above head height');
   assert.ok(v['token.main'].parts.some(p => p.glow === C.neonBlue), 'neon station body'); assert.ok(deck.models[1].glow['^Black$'] === C.neonPink && deck.models[2].glow['^Texture_Signs$'] === C.neonPink, 'pink neon railing and sign');
   const roof = token.ROOF_Y, f = v['token.main'].footprint;
-  for (let i = 0; i < 3; i++) {
+  for (const i of [0]) {
     const car = views[10][`token.cars.${i}`], pk = car.park;
     assert.equal(car.kind, 'orbit');
     assert.ok(Math.abs(pk.y - (AT.y + roof)) < 1e-9, 'parked on the roof');
@@ -178,10 +178,11 @@ test('flooded (token ≤ 2): the station is a pool with two swimmers (≤ 3), no
 });
 // 計畫 8 任務 5：Lv10 多一片屋頂斜坡（token.ramp，一個 compound）→ Lv10 上限 21，其餘照舊 ≤ 20。
 // 計畫 11 §設計 3：三台 Roadster 的紅色尾燈不再發光（計畫 10 R7 預留的第一刀，−3 draw call 讓給珍奶離島店的杯子招牌）——上限 24 → 21
-test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp ≤ 21)', () => {
+// 修正批次 trim §B：飛天車 3 台 → 1 台（一台一個黏土 mesh）——Lv10 上限 21 → 19
+test('token draw calls: ≤ 20 for the station, track, spurs, trains and flying cars at every level (Lv10 with the roof ramp and one car ≤ 19)', () => {
   for (let n = 1; n <= 10; n++) for (const flooded of [false, true]) {
     const d = drawCalls(token.view(L({ token: n }), { flooded }));
-    assert.ok(d <= (n === 10 ? 21 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
+    assert.ok(d <= (n === 10 ? 19 : 20), `lv${n}${flooded ? ' flooded' : ''}: ${d}`);
   }
 });
 test('every token station part and every footprint corner stays inside the token cell (track, spurs, trains and flying cars are on the water / in the sky)', () => {
@@ -246,7 +247,7 @@ test('orbit part: parked until fly(); takes off from the roof ramp, flies one la
 
 // 審稿第 1 輪：每一段交界（斜坡、拉高、上圓、離圓、落地）車頭不瞬間轉向——整趟（劇本叫的、停滿 rest 自己再飛的）每幀轉向 ≤ 0.2 rad
 test('orbit headings turn smoothly: ≤ 0.2 rad per frame through ramp → climb → lap → descent → park, both the scripted and the rest flight', () => {
-  const s = views[10]['token.cars.2'], p = factory().build(s), yaw = () => p.object.children[0].rotation.y;
+  const s = views[10]['token.cars.0'], p = factory().build(s), yaw = () => p.object.children[0].rotation.y;
   const turn = (a, b) => Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
   p.object.userData.fly(); p.update(0, 0);
   let prev = yaw(), worst = 0, frames = 0, retook = false;
@@ -260,11 +261,11 @@ test('orbit headings turn smoothly: ≤ 0.2 rad per frame through ramp → climb
   assert.ok(retook, 'took off again from the roof'); assert.ok(worst <= 0.2, `worst turn ${worst.toFixed(3)} rad in a frame`);
 });
 
-// ── 劇本（§6：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、回全景定格）──
+// ── 劇本（§6：一級 3–5 秒；◆ Lv7 6–8 秒、◆ Lv10 ≤ 5.5 秒（修正批次 trim §B：一台車、定格 0.6）、回全景定格）──
 const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
 // 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
 const want = (to, order) => (to === 7 ? [String(satCell(islandOf7(order))), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
-test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 / Lv10 6–10 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
+test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s whole, ◆ Lv10 ≤ 5.5 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -275,7 +276,8 @@ test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 / Lv10 6
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       const big = to === 7 || to === 10;
       assert.ok(secs >= 3 && secs <= (big ? KEY_MAX : SCRIPT_EXCEPT[`token ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
-      if (big) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+      if (to === 7) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+      if (to === 10) assert.ok(show.elapsed <= 5.5, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s (trim §B ≤ 5.5)`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = show.stage.headOf('token');
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over token`);
@@ -298,7 +300,7 @@ test('Lv8: the camera is back on the token cell before the LEVEL UP (the label n
 test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8 (the playground island once the windmill spur is there, R7)', () => {
   for (const n of [7, 10]) {
     const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n, milk: 5 }), flags: {} }, fakeCtx));
-    const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 1.0),   // 停 ≥ 1.0（裁決 R17：◆ ≤ 8 s，原 ≥ 1.5）
+    const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= (n === 10 ? 0.6 : 1.0)),   // 停 ≥ 1.0（裁決 R17：◆ ≤ 8 s，原 ≥ 1.5）；Lv10 ≥ 0.6（trim §B）
       j = beats.findIndex(b => b.kind === 'levelUp');
     assert.ok(i > 0 && j > i, `lv${n} holds on the overview before LEVEL UP`);
   }
@@ -404,12 +406,13 @@ test('Lv8 live: the playground kids get off the shuttle at the island end and go
   for (const k of ks) { assert.equal(cellAt(k.pos.x, k.pos.z), null); assert.ok(Math.hypot(k.pos.x - c.x, k.pos.z - c.z) < 1.5, 'stays on the playground island'); }
   assert.equal(show.roster.members('token.staff').length, 1);
 });
-test('Lv10 live: the three roadsters take off from the roof ramp, fly a lap round 101 and land on the station roof', async () => {
+test('Lv10 live: the roadster takes off from the roof ramp, flies a lap round 101 and lands on the station roof', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, lap = new Set();
-  show.update = (dt, t) => { update(dt, t); for (let i = 0; i < 3; i++) { const o = show.stage.partObject(`token.cars.${i}`); if (!o) continue; const p = o.children[0].position, w = { x: o.position.x + p.x, z: o.position.z + p.z }; if (Math.hypot(w.x - TOWER.x, w.z - TOWER.z) < 3) lap.add(i); } };
+  show.update = (dt, t) => { update(dt, t); for (let i = 0; i < 1; i++) { const o = show.stage.partObject(`token.cars.${i}`); if (!o) continue; const p = o.children[0].position, w = { x: o.position.x + p.x, z: o.position.z + p.z }; if (Math.hypot(w.x - TOWER.x, w.z - TOWER.z) < 3) lap.add(i); } };
   const done = !!await liveAt(h, SOLUTIONS[0], 10);
-  assert.ok(done); assert.equal(lap.size, 3, 'all three came round 101');
-  for (let i = 0; i < 3; i++) {
+  assert.ok(done); assert.equal(lap.size, 1, 'the car came round 101');
+  assert.ok(!show.stage.partObject('token.cars.1') && !show.stage.partObject('token.cars.2'), 'trim §B: only one car');
+  for (let i = 0; i < 1; i++) {
     const o = show.stage.partObject(`token.cars.${i}`), p = o.children[0].position, park = token.view(show.stage.lv, show.stage.flags)[`token.cars.${i}`].park;
     assert.ok(Math.hypot(o.position.x + p.x - park.x, o.position.y + p.y - park.y, o.position.z + p.z - park.z) < 1e-6, `car ${i} parked on the roof`);
   }
@@ -417,9 +420,11 @@ test('Lv10 live: the three roadsters take off from the roof ramp, fly a lap roun
 // ── 計畫 8 任務 5：飛天車改 Tesla Roadster（設計 §4.6）──
 const RAMP_A = 20 * Math.PI / 180, toTower = p => Math.atan2(TOWER.x - p.x, TOWER.z - p.z);
 const angErr = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-test('Lv10 roadsters: three primitive cars (red, white, graphite) — wedge body, 4 wheels r 0.045, one dark canopy, red (unlit) tail bar, 4 cone nozzles, no glb; parked facing 101', () => {
-  const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]);
-  assert.deepEqual(cars.map(c => c.model.parts[1].color), [C.coral, C.white, C.ink], 'red, white, graphite bodies');
+// 修正批次 trim §B（使用者 2026-11-01「飛天車砍部分」）：三台 → 一台（紅色，token.cars.0）；坡道照舊
+test('Lv10 roadster: one primitive car (red) — wedge body, 4 wheels r 0.045, one dark canopy, red (unlit) tail bar, 4 cone nozzles, no glb; parked facing 101', () => {
+  const cars = [0].map(i => views[10][`token.cars.${i}`]);
+  assert.equal(views[10]['token.cars.1'], undefined); assert.equal(views[10]['token.cars.2'], undefined);
+  assert.deepEqual(cars.map(c => c.model.parts[1].color), [C.coral], 'a red body');
   assert.deepEqual(cars[0].model.parts, token.roadsterParts(C.coral), 'built from the shared roadsterParts');
   for (const [i, car] of cars.entries()) {
     assert.equal(car.kind, 'orbit'); assert.equal(car.path, undefined, `car ${i}: no glb`); assert.ok(Array.isArray(car.model?.parts), `car ${i}: model.parts`);
@@ -454,7 +459,7 @@ const contactsWorld = p => token.CAR_CONTACTS.map(([a, u]) => {
 });
 test('roadster take-off rides its lane: rolls flat on the roof, then while the nose is between lane foot and top the underside sits on the lane (≤ 0.01 above, never below); wheels within the lane width', () => {
   assert.ok(token.CAR_W / 2 + token.WHEEL_OUT - token.WHEEL_W / 2 <= token.LANE_W / 2, 'wheel centres inside the lane width');
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 1; i++) {
     const car = views[10][`token.cars.${i}`], lane = token.LANES[i], top = laneTop(lane);
     let onLane = 0, flatFrames = 0;
     for (let t = 0; t < 0.6; t += 0.01) {
@@ -476,13 +481,15 @@ test('roadster take-off rides its lane: rolls flat on the roof, then while the n
     assert.ok(!(orbitPose(car, car.legs[0] + 0.5, 'park').pitch > 0), 'flat on the orbit');
   }
 });
-test('token.ramp: only at Lv10 — three lanes (one per car, 0.35 at 20°, pointing at 101) in one mesh, clear of each other and of the antenna; no footprint, not on the phone', () => {
+test('token.ramp: only at Lv10 — three lanes (0.35 at 20°, pointing at 101; lane 0 in front of the one car, trim §B keeps the ramp) in one mesh, clear of each other and of the antenna; no footprint, not on the phone', () => {
   for (let n = 1; n <= 9; n++) assert.equal(views[n]['token.ramp'], undefined, `lv${n}`);
   const r = views[10]['token.ramp'];
   assert.equal(r.kind, 'ramp'); assert.equal(r.footprint, false); assert.equal(r.low, false, 'phone draws no cars, so no ramp either');
   assert.ok(Math.abs(r.at.y - (AT.y + token.ROOF_Y)) < 1e-9, 'on the roof'); assert.equal(r.lanes, token.LANES); assert.equal(r.lanes.length, 3);
   for (const [i, lane] of r.lanes.entries()) {
-    const park = views[10][`token.cars.${i}`].park, f = laneFrame(lane, park);
+    assert.ok(angErr(lane.yaw, toTower(lane.foot)) < 0.05 && Math.abs(lane.foot.y - r.lanes[0].foot.y) < 1e-12, `lane ${i} points at 101, foot on the roof`);
+    const car = views[10][`token.cars.${i}`]; if (!car) continue;
+    const park = car.park, f = laneFrame(lane, park);
     assert.ok(angErr(lane.yaw, toTower(lane.foot)) < 0.05 && Math.abs(lane.yaw - park.yaw) < 1e-12, `lane ${i} points at 101 along its car`);
     assert.ok(Math.abs(-f.along - (token.CAR_L / 2 + token.LANE_GAP)) < 1e-9 && Math.abs(f.side) < 1e-9, `lane ${i} foot just ahead of its car's nose`);
     assert.ok(Math.abs(lane.foot.y - park.y) < 1e-12, 'foot on the roof');
@@ -507,8 +514,8 @@ test('token.ramp: only at Lv10 — three lanes (one per car, 0.35 at 20°, point
     assert.ok(d >= token.ANTENNA.r + 0.02, `lane ${i} ${d.toFixed(3)} from the antenna`);
   }
 });
-test('parked roadsters do not overlap each other, stay on the roof (token.ROOF) and clear the roof antenna (token.ANTENNA)', () => {
-  const cars = [0, 1, 2].map(i => views[10][`token.cars.${i}`]), Lc = token.CAR_L;
+test('the parked roadster stays on the roof (token.ROOF) and clears the roof antenna (token.ANTENNA)', () => {
+  const cars = [0].map(i => views[10][`token.cars.${i}`]), Lc = token.CAR_L;
   // 車身 CAR_W；連凸出車側 0.01 的輪子算寬 CAR_W + 0.02（保守：當成整條車長都有輪子）
   const rect = (c, W = token.CAR_W) => { const { yaw } = orbitPose(c, Infinity), f = [Math.sin(yaw), Math.cos(yaw)], r = [f[1], -f[0]], p = c.park;
     return [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [p.x + f[0] * a * Lc / 2 + r[0] * b * W / 2 - AT.x, p.z + f[1] * a * Lc / 2 + r[1] * b * W / 2 - AT.z]); };
@@ -516,10 +523,7 @@ test('parked roadsters do not overlap each other, stay on the roof (token.ROOF) 
     const p = P[i], q = P[(i + 1) % 4], n = [q[1] - p[1], p[0] - q[0]], l = Math.hypot(...n), pa = A.map(v => (v[0] * n[0] + v[1] * n[1]) / l), pb = Bq.map(v => (v[0] * n[0] + v[1] * n[1]) / l);
     best = Math.max(best, Math.min(...pb) - Math.max(...pa), Math.min(...pa) - Math.max(...pb)); } return best; };
   const B = cars.map(c => rect(c)), R = cars.map(c => rect(c, token.CAR_W + 0.02));
-  for (const [i, j] of [[0, 1], [1, 2], [0, 2]]) {
-    assert.ok(gap(B[i], B[j]) >= 0.02, `cars ${i}/${j} body gap ${gap(B[i], B[j]).toFixed(3)}`);
-    assert.ok(gap(R[i], R[j]) >= 0.01, `cars ${i}/${j} wheel gap ${gap(R[i], R[j]).toFixed(3)}`);
-  }
+  assert.equal(B.length, 1); assert.ok(typeof gap === 'function');
   for (const [i, c] of R.entries()) for (const [x, z] of c) assert.ok(Math.abs(x) <= token.ROOF.w / 2 && Math.abs(z) <= token.ROOF.d / 2, `car ${i} corner (${x.toFixed(2)}, ${z.toFixed(2)}) on the roof`);
   const seg = (x, z, [a, b]) => { const dx = b[0] - a[0], dz = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz))); return Math.hypot(x - a[0] - dx * t, z - a[1] - dz * t); };
   for (const [i, c] of R.entries()) { const d = Math.min(...c.map((p, k) => seg(token.ANTENNA.x, token.ANTENNA.z, [p, c[(k + 1) % 4]]))); assert.ok(d >= 0.05, `car ${i} ${d.toFixed(3)} from the antenna`); }
@@ -527,8 +531,16 @@ test('parked roadsters do not overlap each other, stay on the roof (token.ROOF) 
 test('quality low: Lv10 live draws no roadsters (empty Groups) and no ramp, and still plays through', async () => {
   const h = await headlessShow({ quality: 'low' }), done = !!await liveAt(h, SOLUTIONS[0], 10);
   assert.ok(done);
-  for (let i = 0; i < 3; i++) { const o = h.show.stage.partObject(`token.cars.${i}`); assert.ok(o?.isGroup, `car ${i} part exists`); assert.equal(o.children.length, 0, `car ${i} draws nothing`); }
+  for (let i = 0; i < 1; i++) { const o = h.show.stage.partObject(`token.cars.${i}`); assert.ok(o?.isGroup, `car ${i} part exists`); assert.equal(o.children.length, 0, `car ${i} draws nothing`); }
   let meshes = 0; h.show.stage.partObject('token.ramp')?.traverse(x => { if (x.isMesh) meshes++; }); assert.equal(meshes, 0, 'no ramp on the phone');
+});
+// 修正批次 trim §B：◆ Lv10 只飛一台（fly 拍 = 一趟 FLIGHT，沒有錯開）、最後全景定格 1.2 → 0.6
+test('Lv10 beats: one car flies (the fly beat lasts one FLIGHT, no stagger), the overview hold is 0.6 s, then LEVEL UP', () => {
+  const beats = flat(token.script.grow[10]({ kind: 'grow', item: 'token', to: 10 }, { lv: L({ token: 10 }), flags: {} }, fakeCtx));
+  const fly = beats.find(b => b.kind === 'fly'); assert.ok(fly && Math.abs(fly.dur - token.FLIGHT) < 1e-9, `fly ${fly?.dur} = FLIGHT ${token.FLIGHT}`);
+  const holds = beats.filter(b => b.kind === 'focus' && b.target === 'home').map(b => b.dur); assert.deepEqual(holds, [0, 0.6]);
+  assert.ok(beats.filter(b => b.kind === 'apply' && b.only).every(b => b.only.every(k => !/^token\.cars\.[12]$/.test(k))), 'only token.cars.0');
+  assert.equal(beats.at(-1).kind, 'levelUp');
 });
 // ◆ 關鍵節點：Lv4 環狀線（選擇帶動升級裁決 R6）、Lv7 通車到離島、Lv10 飛天車（裁決 R11）
 test('the ◆ key nodes are Lv4 (R6), Lv7 and Lv10 (R11)', () => {

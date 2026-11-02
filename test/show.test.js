@@ -860,7 +860,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
   assert.ok(gap(l7.sniffs[0], front) <= 0.5, `sniffed in front of the station (${l7.sniffs[0].x.toFixed(2)}, ${l7.sniffs[0].z.toFixed(2)})`);
 });
 
-// 計畫 15 C：回合預熱——show.turn 一開始 stage.prepare(events)，模型都載好後把預熱的物件交給 ctx.compile（app 的 renderer.compileAsync）；
+// 計畫 15 C：回合預熱——show.turn 一開始 stage.prepare(events)，模型都載好後把預熱的物件交給 ctx.compile（app 的 renderer.compile）；
 // 回合結束（照常演完、跳過、中止、RESET）沒用到的預熱零件都丟掉
 test('the turn prepares its parts before the beats and hands them to compile once their models are in (not before)', async () => {
   const calls = [], { show, run } = await headlessShow({ compile: objs => calls.push(objs) });

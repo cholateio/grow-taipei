@@ -27,7 +27,7 @@ export const KEY_MAX = 8;
 // seed：名冊與走路格的亂數種子，同一個種子每次演出的秒數一模一樣
 // rig：換成真的鏡頭 rig（測試鏡頭最後停在哪）；run 每幀也推它
 // quality：'low' 時零件與名冊省 draw call（手機畫質，裁決 R18），演出要照樣演完
-// compile：回合預熱的零件模型載好後收到的物件陣列（app 拿去 renderer.compileAsync，計畫 15 C）；沒給就不編
+// compile：回合預熱的零件模型載好後收到的物件陣列（app 拿去 renderer.compile，計畫 15 C）；沒給就不編
 export async function headlessShow({ modules = ALL, reducedMotion = false, seed = 21, rig: realRig = null, quality = 'high', compile = null } = {}) {
   const spawned = [], released = [], paths = [];   // paths：每次 spawn 要的模型路徑（tools/startup-bytes.mjs 量開局載入）
   const assets = {

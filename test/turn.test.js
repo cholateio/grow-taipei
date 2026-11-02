@@ -362,7 +362,7 @@ test('a jump wraps every LEVEL UP of its script, inside together too, but never 
   assert.equal(t.during[1].beats[0].twice, true, 'inside trainStop.during');
 });
 
-// 修正批次 trim §A：正解最後一輪珍奶 4 → 6 合成演 ◆6，劇本裡 101 頭上的「世界珍奶節」是標題字、不是升級——只彈一次；LEVEL UP 照樣彈兩次
+// withTwice 只換 LEVEL UP：別的字（這裡用合成的標題字測；計畫 15 D 之後遊戲裡已經沒有標題字）只彈一次，LEVEL UP 照樣彈兩次
 test('a jump doubles only the LEVEL UP pops, not a labelled pop such as 世界珍奶節 over 101', () => {
   const mod = { ...chipLike(), script: { grow: { 3: (e, s, c) => [c.B.levelUp('tower', { text: '世界珍奶節' }), c.B.together([c.B.wait(1), c.B.levelUp('tower', { text: '世界珍奶節' })]), c.B.levelUp('chip')] } } };
   const seg = between(buildTurn([grow('chip', 2, []), grow('chip', 3, [], { jump: true })], base([quietTower, mod]), fakeCtx()), 1);

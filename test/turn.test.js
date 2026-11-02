@@ -517,3 +517,30 @@ test('groupPlaced on the unique solution: token, bulb, chip, boba and rat move t
   }
   assert.deepEqual(moved, ['token', 'bulb', 'chip', 'boba', 'rat']);
 });
+
+// 計畫 15 最終審稿 M1：放下段與成長段中間有別的起因改了它的級數（foldEvent 用絕對的 to）——搬了會疊在搬過的 grow 上面，不搬
+test('groupPlaced: an event between the head block and the growth block that changes the placed item (delta target) → the original array', () => {
+  // 珍奶 up[2] 要鮮奶 ≥ 3（鮮奶 6，成立）；中間鮮奶起因的 fx 把珍奶 1 → 2（不在放下段：item 與 cause 都是鮮奶）
+  const events = [P('boba'), { kind: 'fx', item: 'milk', cause: 'milk', delta: { target: 'boba', from: 1, to: 2 } }, g('boba', 1, 2, ['milk'])];
+  assert.equal(groupPlaced(events, spec, { lv: lvOf({ milk: 6 }), flags: {} }), events);
+  const own = [P('boba'), g('milk', 6, 7), { kind: 'fx', item: 'boba', cause: 'milk' }, g('boba', 1, 2, ['milk'])];
+  assert.equal(groupPlaced(own, spec, { lv: lvOf({ milk: 6 }), flags: {} }), own, 'an fx on the placed item (item === id) in between, too');
+});
+
+// 計畫 15 最終審稿 M2：playOrder = 舞台真正套用的事件、照演出順序（預熱照這個建零件）——搬過、拿掉跳級第一級
+const { playOrder } = turnModule;
+test('playOrder: the groupPlaced order without the first grow of a jump pair; nothing to drop or move → the same array', () => {
+  const events = [P('boba'), g('milk', 6, 7, ['bulb']), g('chip', 2, 3, ['milk']), g('chip', 3, 4, ['milk'], { jump: true }), g('boba', 1, 2, ['milk'])];
+  const at = { modules: [tower], spec, lv: lvOf({ milk: 6, chip: 2 }), flags: {} };
+  const out = playOrder(events, at);
+  assert.deepEqual(out, [events[0], events[4], events[1], events[3]], 'boba 2 moved up, chip 3 (first of the jump) dropped');
+  // buildTurn 演的（不是 skipped 的 mark）就是這串、照這個順序
+  const raw = buildTurn(events, { ...at, meta: { total: 8 } }, fakeCtx()), played = [];
+  for (const b of raw.filter(b => b.kind === 'mark')) b.start({ onMark: (e, info) => { if (!info.skipped) played.push(e); } });
+  assert.deepEqual(played, out, 'the events buildTurn plays follow playOrder');
+  // 兩級都是 ◆ 不合成：兩個都留著
+  const keyed = { id: 'chip', view() {}, script: { grow: { 3: Object.assign(() => null, { key: true }), 4: Object.assign(() => null, { key: true }) } } };
+  assert.deepEqual(playOrder(events, { ...at, modules: [tower, keyed] }).length, 5, 'both ◆: no pair, nothing dropped');
+  const plain = [g('milk', 6, 7), g('bulb', 3, 4)];
+  assert.equal(playOrder(plain, { ...at, lv: lvOf({ milk: 6, bulb: 3 }) }), plain);
+});

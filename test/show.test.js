@@ -914,3 +914,39 @@ test('with the turn prepared, nothing is built while the beats play: the solutio
     for (const k of ['walls', 'jumps', 'pops']) assert.deepEqual([...inv[k]].slice(0, 10), [], `${name} ${k}`);
   }
 });
+
+// 計畫 15 最終審稿 M2：預熱照演出的順序——show.turn 交給 stage.prepare 的就是 turn.js playOrder（搬過、拿掉跳級第一級）
+test('the turn prepares in play order: groupPlaced order, the first grow of a jump pair left out', async () => {
+  const { playOrder } = await import('../src/show/turn.js');
+  const { show, run } = await headlessShow();
+  const got = [], prepare = show.stage.prepare;
+  show.stage.prepare = ev => { got.push(ev); return prepare(ev); };
+  let s = engine.createState(spec), dropped = 0;
+  for (const [i, step] of turnSteps(SOLUTIONS[0]).entries()) {
+    const r = step(s); s = r.state;
+    const events = [...r.events, { kind: 'settle' }], want = playOrder(events, { modules: ALL, spec, lv: show.stage.lv, flags: show.stage.flags });
+    await run(events, { instant: true });
+    assert.deepEqual(got.at(-1), want, `turn ${i + 1}`);
+    dropped += events.length - want.length;
+  }
+  assert.ok(dropped > 0, 'the solution has jump pairs whose first level is not prepared');
+});
+
+// 計畫 15 最終審稿 M3：預熱在 try 裡——零件工廠在 prepare 時丟錯，已經建好藏著的零件照樣丟掉
+test('a builder that throws while the turn prepares leaves no hidden part behind and the live parts unchanged', async () => {
+  const boom = {
+    id: 'boom', labelY: 1,
+    builders: {
+      boomPart(THREE_, s) { if (s.tag === 'bad') throw new Error('boom'); return { object: new THREE.Group(), dispose() {} }; },
+    },
+    view: lv => (lv.milk ? { 'boom.ok': { kind: 'boomPart', tag: 'ok', at: { x: 0, y: 0.65, z: 0 } }, 'boom.bad': { kind: 'boomPart', tag: 'bad', at: { x: 0, y: 0.65, z: 0 } } } : {}),
+  };
+  const { show, scene } = await headlessShow({ modules: [...ALL, boom] });
+  const group = scene.getObjectByName('stage:parts'), keys = show.stage.partKeys().sort(), count = group.children.length;
+  const r = place(engine.createState(spec), 'milk');
+  assert.throws(() => show.turn([...r.events, { kind: 'settle' }]), /boom/);
+  assert.deepEqual(show.stage.partKeys().sort(), keys, 'live parts unchanged');
+  assert.ok(!group.children.some(o => !o.visible && !show.stage.partKeys().some(k => show.stage.partObject(k) === o)), 'no hidden prepared part left');
+  assert.equal(group.children.length, count, 'the parts group is back to what it was');
+  assert.equal(show.busy, false);
+});

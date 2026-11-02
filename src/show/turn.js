@@ -115,7 +115,8 @@ function jumpPairs(events, isKey = () => false) {
 // 只收 grow／fx：回合結束反應 after（鮮奶過期，item／cause 是放下的物品）、wait、stall、settle 不算，留在原位（修正輪 1 Important 1）。
 // 從回合開始的 view 折完放下段，成長段每個 grow 的條件（spec 的 up[to]，跳級看 jump[to]）都成立才把成長段搬到放下段正後面。
 // 條件裡有 age／locked（演出層的 view 只有 lv 與 flags，算不準）或 ltPlus（兩個物品的相對級數，保守起見一律不搬）、找不到條件、沒有 placed、沒有成長段、
-// 或成長段本來就緊接著放下段：原樣回傳（同一個陣列參照）。純函數，不改輸入
+// 成長段本來就緊接著放下段，或兩段中間（[h, g)）有事件 item 或 delta 的目標是它（中途改了它的級數：foldEvent 用絕對的 to，
+// 搬了之後那個事件會疊在搬過的 grow 上面、把級數改回去，計畫 15 最終審稿 M1）：原樣回傳（同一個陣列參照）。純函數，不改輸入
 const UNSAFE_KEYS = ['age', 'locked', 'ltPlus'];   // 條件語言（conditions.js）裡讀 view 以外狀態的那幾種
 const readsHidden = c => !!c && typeof c === 'object' && (UNSAFE_KEYS.some(k => k in c) || Object.values(c).some(v => (Array.isArray(v) ? v.some(readsHidden) : readsHidden(v))));
 export function groupPlaced(events, spec, view) {
@@ -126,6 +127,7 @@ export function groupPlaced(events, spec, view) {
   while (h < events.length && mine(events[h], ['fx'])) h++;                          // 放下段 = [p, h)
   const g = events.findIndex((e, k) => k >= h && e.kind === 'grow' && e.item === id);
   if (g < 0 || g === h) return events;
+  for (let k = h; k < g; k++) if (events[k].item === id || events[k].delta?.target === id) return events;
   let end = g + 1;
   while (end < events.length && mine(events[end], ['grow', 'fx'])) end++;           // 成長段 = [g, end)
   let v = { lv: view?.lv ?? {}, flags: view?.flags ?? {} };
@@ -165,6 +167,16 @@ function scriptMembers(roster) {
   return roster.keys().flatMap(k => roster.members(k)).filter(m => m.mode === 'script');
 }
 
+// 跳級的兩級都是 ◆ 就不合成（見 jumpPairs）：◆ 看模組的 script.grow[n].key
+const keyOf = modules => (id, n) => !!modules.find(m => m.id === id)?.script?.grow?.[n]?.key;
+// 這回合舞台真正套用的事件、照演出的順序（回合預熱 stage.prepare 照這個建零件，計畫 15 最終審稿 M2）：
+// groupPlaced 搬過的順序，拿掉跳級的第一級（buildTurn 只給它一個 mark，從來不套）。純函數，不改輸入；沒搬也沒拿掉就回同一個陣列
+export function playOrder(events, { modules, spec, lv, flags }) {
+  const ordered = groupPlaced(events, spec, { lv, flags });
+  const { first } = jumpPairs(ordered, keyOf(modules));
+  return first.size ? ordered.filter((_, i) => !first.has(i)) : ordered;
+}
+
 export function buildTurn(events, { modules, spec, lv, flags, meta, finale = false }, ctx) {
   const mod = id => modules.find(m => m.id === id);
   events = groupPlaced(events, spec, { lv, flags });   // 剛放下的物品連著演（計畫 15 A）：跳級合成、逐事件折 view 都照搬過的順序
@@ -172,7 +184,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
   let view = { lv, flags }, settled = meta?.total ?? sum(lv);
   let lastItem = null, lastCell = null;   // 上一個有東西演的事件的物品、鏡頭現在對著的格子（null = 不知道）
   const out = finale ? [] : [...(ctx.stage?.tilted ?? [])].map(upright);
-  const { first: jumpFirst, second: jumpSecond } = jumpPairs(events, (id, n) => !!mod(id)?.script?.grow?.[n]?.key);
+  const { first: jumpFirst, second: jumpSecond } = jumpPairs(events, keyOf(modules));
   events.forEach((e, i) => {
     // 跳級合成的第二級：「這次升級前」是舞台上看得到的樣子——第一級沒有套，物品還在 n−2（中間的 fx 照樣折進去）。
     // 劇本看 s.prev 判斷升級前的狀態（老鼠 Lv4 看升級前有沒有在車頂上），要跟舞台一致

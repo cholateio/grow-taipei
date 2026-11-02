@@ -520,3 +520,21 @@ test('campus parts are ready when every model is in', async () => {
   gates[0](new THREE.Group()); await new Promise(r => setTimeout(r, 0)); assert.equal(ok, false, 'one of two');
   gates[1](new THREE.Group()); await new Promise(r => setTimeout(r, 0)); assert.equal(ok, true, 'both in');
 });
+
+// 計畫 15 最終審稿 M2：預熱照演出的順序（turn.js playOrder）——跳級的第一級從來不套，它那一級的零件不預熱
+test('a jump pair prepared in play order builds only the second level’s parts (none for the skipped first level)', async () => {
+  const { playOrder } = await import('../src/show/turn.js');
+  const perLevel = { ...fakeLot, view: lv => (lv.milk ? { 'milk.main': lotPart(`main${lv.milk}`, 0) } : {}) };
+  builds.length = 0; disposed.length = 0;
+  const { stage } = setup([perLevel]);
+  stage.apply(placed);
+  assert.deepEqual(builds, ['main1']);
+  const events = [grow(2), { ...grow(3), jump: true }];
+  const order = playOrder(events, { modules: [perLevel], spec, lv: stage.lv, flags: stage.flags });
+  assert.deepEqual(order, [events[1]], 'the first level is dropped');
+  const prep = stage.prepare(order);
+  assert.deepEqual(builds, ['main1', 'main3'], 'only Lv3 is prepared, no main2');
+  stage.apply(events[1]);
+  assert.equal(stage.partObject('milk.main'), prep.parts[0], 'the jump applies the prepared Lv3');
+  stage.dropPrepared(); assert.deepEqual(disposed, ['main1'], 'nothing unused to drop');
+});

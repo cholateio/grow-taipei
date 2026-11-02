@@ -8,13 +8,13 @@ import { createBlink } from './blink.js';
 import { createBubbles } from './bubbles.js';
 import { createRoster } from './roster.js';
 import { createTimeline } from './timeline.js';
-import { buildTurn } from './turn.js';
+import { buildTurn, playOrder } from './turn.js';
 import { B } from './beats.js';
 import { createStage } from '../actors/stage.js';
 import { worldEffects } from '../actors/world.js';
 
 // rnd：走路格散步點、名冊停頓用的亂數（測試與 tools/pace.mjs 傳固定種子，秒數每次一樣）
-// 回合預熱（計畫 15 C）：turn 一開始 stage.prepare(events) 把這回合的零件先建好藏著；ctx.compile（可省，app 給 renderer.compile）
+// 回合預熱（計畫 15 C）：turn 一開始 stage.prepare 把這回合的零件先建好藏著——照演出的順序（turn.js playOrder：搬過、拿掉跳級第一級）；ctx.compile（可省，app 給 renderer.compile）
 //   在它們的模型都載好之後收到還在舞台上的那些物件，先把 shader 編好——不等它，拍照常開始
 export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world, reducedMotion = false, rnd = Math.random }) {
   const { people, assets, glow, weather, rail, quality, compile = null } = parts;   // quality：'low' 時零件與名冊省 draw call（裁決 R18）
@@ -63,12 +63,15 @@ export function createShow(THREE, { scene, spec, modules, ctx: parts, rig, world
     camRig.release(); roster.setFocus(null);   // 回合之間拖過鏡頭不影響這回合跟主線；焦點從全部的人開始
     roster.showAll({ walk: true });   // 萬一還有躲在門裡的人（颱風放下的劇本自己會放大家出來），從門口出來、走回家（不閃）
     refresh();
-    const prep = stage.prepare(events);
-    // 回合已經結束、被丟掉的（parent 是 null）不編
-    if (compile) prep.ready.then(() => { const objs = prep.parts.filter(o => o.parent); if (objs.length) compile(objs); }).catch(err => console.warn('預熱編譯失敗', err));
+    // 預熱與建拍都在 try 裡：哪一個丟錯都把已經建好藏著的零件丟掉（計畫 15 最終審稿 M3）
     let beats;
-    try { beats = buildTurn(events, { modules, spec, lv: stage.lv, flags: stage.flags, meta: stage.meta, finale }, ctx); }
-    catch (err) { stage.dropPrepared(); throw err; }
+    try {
+      const at = { modules, spec, lv: stage.lv, flags: stage.flags };
+      const prep = stage.prepare(playOrder(events, at));
+      // 回合已經結束、被丟掉的（parent 是 null）不編
+      if (compile) prep.ready.then(() => { const objs = prep.parts.filter(o => o.parent); if (objs.length) compile(objs); }).catch(err => console.warn('預熱編譯失敗', err));
+      beats = buildTurn(events, { ...at, meta: stage.meta, finale }, ctx);
+    } catch (err) { stage.dropPrepared(); throw err; }
     const me = playing = {};
     const done = timeline.play(beats, ctx);
     const end = () => {

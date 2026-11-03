@@ -21,7 +21,7 @@ const SHIRTS = [C.coral, C.blue, 0xf2b5c6, 0x8db86f, C.yellow, C.white, C.navy, 
 
 // 四個壘包（本壘在前、一壘在右）：島民放置時照這個順序跑一圈，白線一段段跟著出現
 const BASES = [[0, 0.5], [0.5, 0], [0, -0.5], [-0.5, 0]];
-// 木看台：兩座 grandStand 並排，寬 1.2（原程式版 1.4）、footprint 只比看台寬 0.05：西端外擴 PAD 後才不蓋到球場格西北的橋頭（電工主路 ROAD 經過）
+// 木看台：兩座 grandStand 並排，寬 1.2（原程式版 1.4）、footprint 只比看台寬 0.05：西端外擴 PAD 後才不蓋到球場格西北的橋頭
 const STANDS_W = 1.2, STANDS = { x: 0, z: -1.33, w: STANDS_W + 0.05, d: 0.6 };
 export const MODELS = {
   stand: { path: 'kenney/racing/grandStand.glb', size: [1, 0.9, 1] },

@@ -68,19 +68,16 @@ test('people budget: queue of 3 at every level, no strollers anywhere', () => {
   assert.equal(boba.QUEUE_MAX, 3, '2026-10-28 錄影修正：人龍 4 → 3');
 });
 // 2026-10-28 錄影修正（珍奶格太擠、店貼著格子前緣）：店在錨點北邊 0.05；人龍跟著店走，店門口那排離格子南緣 ≥ 0.7（店前有空地）；
-// 噴泉東緣離電工主路 ≥ 0.1（也 ≥ PAD：手畫的主路不切進外擴後的噴泉）、離夜市每一攤的攤身 ≥ 0.1、跟店身不重疊
-test('the shop sits 0.05 north of the anchor with open ground in front; the fountain clears the road and the night market', async () => {
-  const { PAD } = await import('../src/show/nav.js'), hexIn = HEX_R * Math.sqrt(3) / 2, c = axialToWorld(...CELL);
+// 噴泉離夜市每一攤的攤身 ≥ 0.1、跟店身不重疊（原本還量離電工主路 ≥ 0.1——計畫 16 起電工 Lv1–6 不在、主路拿掉了）
+test('the shop sits 0.05 north of the anchor with open ground in front; the fountain clears the night market', async () => {
+  const hexIn = HEX_R * Math.sqrt(3) / 2, c = axialToWorld(...CELL);
   const edgeDist = p => hexIn - Math.max(...[0, 1, 2, 3, 4, 5].map(k => (p.x - c.x) * Math.cos(k * Math.PI / 3) + (p.z - c.z) * Math.sin(k * Math.PI / 3)));
   assert.ok(Math.abs(boba.SHOP.x - (AT.x - 0.1)) < 1e-9 && Math.abs(boba.SHOP.z - (AT.z - 0.05)) < 1e-9, 'SHOP = AT + (−0.1, −0.05)');
   for (const [n, dz] of [[2, 0.6], [3, 0.7]]) for (const q of views[n]['boba.queue'].home.spots) {
     assert.ok(Math.abs(q.z - boba.SHOP.z - dz) < 1e-9, `lv${n} queue ${dz} in front of the shop`);
     if (n >= 3) assert.ok(edgeDist(q) >= 0.7, `lv${n} open ground in front of the queue (${edgeDist(q).toFixed(2)} to the cell edge)`);
   }
-  const F = boba.FOUNTAIN, r = boba.FOUNTAIN_R, R = bulb.ROAD;
-  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
-  const road = Math.min(...R.map((a, i) => segD(F, a, R[(i + 1) % R.length]))) - r;
-  assert.ok(road >= Math.max(0.1, PAD), `fountain ${road.toFixed(3)} from the electrician's road`);
+  const F = boba.FOUNTAIN, r = boba.FOUNTAIN_R;
   const boxGap = (p, f, at) => Math.hypot(Math.max(0, Math.abs(p.x - at.x - f.x) - f.w / 2), Math.max(0, Math.abs(p.z - at.z - f.z) - f.d / 2));
   for (let b = 2; b <= 9; b++) { const m = bulb.view(lv({ bulb: b }), {})['bulb.market']; for (const f of m.footprint) assert.ok(boxGap(F, f, m.at) - r >= 0.1, `bulb ${b}: fountain ${(boxGap(F, f, m.at) - r).toFixed(3)} from a stall`); }
   const shop = views[4]['boba.main'].footprint; assert.ok(boxGap(F, { x: 0, z: 0, ...shop }, boba.SHOP) >= r, 'fountain clear of the shop body');
@@ -673,4 +670,21 @@ test('rats guarding boba 3 (the shop, the queue at its door) never come within t
   show.update = update;
   assert.ok(frames > 300, `${frames} rat–queue frames`);
   assert.deepEqual(bad.slice(0, 10), [], `${bad.length} frames too close`);
+});
+// 2026-10-28 錄影修正：北邊碼頭（珍奶觀光客的入口）走到人龍、北邊路口推攤車進來都不繞過捷運站
+// （每一級車站、淹水與否、每一種珍奶，路線 ≤ 4.5 公尺、不出珍奶格）。原本放在燈泡的測試裡守「夜市第二攤不關掉車站與夜市之間的通道」——
+// 計畫 16 夜市搬到中心格第一盞路燈旁之後這裡只剩車站與珍奶店，搬過來照樣守
+test('the walkway beside the station stays open: pier → queue and the cart push stay short at every station level', () => {
+  const AT = anchorWorld('boba'), nav = createNav(), from = { x: AT.x - 1.0, y: AT.y, z: AT.z - 3.65 }, cart = { x: boba.SHOP.x - 0.45, y: boba.SHOP.y, z: boba.SHOP.z };
+  for (const t of [0, 2, 3, 9]) for (const flags of [{}, { flooded: true }]) for (const n of [1, 2, 4]) {
+    const L = lv({ token: t, boba: n }), all = [token, boba].flatMap(m => Object.values(m.view(L, flags)));
+    nav.setFootprints(all.flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
+    const what = `token ${t} ${JSON.stringify(flags)} boba ${n}`;
+    if (n === 1) { const len = nav.routeLength(nav.route(nav.nearestWalkable(from), cart)); assert.ok(len <= 4.5, `${what}: cart push ${len.toFixed(2)} m`); continue; }
+    boba.queue(AT, boba.QUEUE_MAX, n >= 3).forEach((q, k) => {
+      const r = nav.route(nav.nearestWalkable(boba.PIER[k]), q), len = nav.routeLength(r);
+      assert.ok(len <= 4.5, `${what}: pier ${k} → queue ${len.toFixed(2)} m`);
+      assert.ok(r.every(p => String(cellAt(p.x, p.z) ?? '') === '0,1' || !cellAt(p.x, p.z)), `${what}: pier ${k} stays in the boba cell`);
+    });
+  }
 });

@@ -1,5 +1,5 @@
 // 演員測試共用：零等級、把 view 攤成世界座標的點（檢查不出格用）
-import { axialToWorld, cellAt, worldToAxial } from '../../src/scene/hex.js';
+import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R } from '../../src/scene/hex.js';
 import { cellOf, anchorWorld, routeBetween } from '../../src/actors/anchors.js';
 import { offset } from '../../src/actors/palette.js';
 import { measurePath, locateOnPath } from '../../src/scene/path.js';
@@ -57,4 +57,15 @@ export const OPEN_ROUTE = (() => {
   const AT = anchorWorld('chip'), TOWER = anchorWorld('tower'), door = offset(AT, -0.3, 1.25), west = offset(AT, -1.45, 1.25);
   const r = routeBetween([1, 0], door, [0, 0], offset(TOWER, 0.95, 0.25));
   return [r[0], { ...west, y: r[0].y }, ...r.slice(1)];
+})();
+// 測閉合折線日常（loop、過拱橋、等速繞圈）用的手畫路線：原本燈泡電工 Lv1–6 巡的主路（五個低格的環路接成一圈）。
+// 計畫 16（使用者 2026-11-03：「拿掉前期的燈泡工人，他亂跑」）起電工 Lv7 才登場、住在風車島上，遊戲裡已經沒有閉合折線；名冊的 loop 機制照樣留著、照樣測。
+// pointy-top：角在 30°+60°k、邊中點＝橋頭在 60°k；角往內收 0.05；捷運格 30° 角往外放到 RING_R + 0.05（同原本的 bulb.ROAD）
+export const RING_LOOP = (() => {
+  const at = (cell, deg, r) => { const c = axialToWorld(...cell), a = deg * Math.PI / 180; return { x: c.x + Math.cos(a) * r, y: cellTop(cell), z: c.z + Math.sin(a) * r }; };
+  const tour = [
+    [[0, 0], [180, 150, 90, 30, 0]], [[1, 0], [180, 210, 270, 330, 30, 90, 120]], [[0, 1], [300, 330, [30, RING_R + 0.05], 90, 150, 180]],
+    [[-1, 1], [0, 30, 90, 150, 210, 240]], [[-1, 0], [60, 90, 150, 210, 270, 330, 0]],
+  ];
+  return tour.flatMap(([cell, degs]) => degs.map(d => (Array.isArray(d) ? at(cell, ...d) : at(cell, d, d % 60 ? RING_R - 0.05 : RING_R * Math.sqrt(3) / 2))));
 })();

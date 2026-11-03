@@ -127,7 +127,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
 
   const pause = () => 0.5 + rnd();
   // path 日常的折線：手畫的點 y 是格面，過拱橋那一段直線內插會陷進橋面——先 nav.ground 貼地（補點、y 換成 groundY），
-  // 每條折線算一次（同一條 ROAD 每幀都要問）；回 { path（貼地後）, loop, lens, total }
+  // 每條折線算一次（同一條折線每幀都要問）；回 { path（貼地後）, loop, lens, total }
   const grounded = new WeakMap();
   function pathOf(h) {
     const loop = !!h.loop, hit = grounded.get(h.path); if (hit?.loop === loop) return hit;

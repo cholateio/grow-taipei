@@ -436,14 +436,12 @@ test('chip grow 2: the worker builds at the fab front before the factory appears
   const b = seen.filter(f => f.kind === 'build'); assert.ok(b.length > 10, `build frames ${b.length}`);
   for (const f of b) { assert.ok(Math.hypot(f.pos.x - f.front.x, f.pos.z - f.front.z) < 0.05, 'at the fab front'); assert.equal(f.lv, 1, 'before the factory appears'); }
 });
-// 2026-10-28 第二輪審稿：偵防師盯窩的站位不在橋口、不在電工主路上（橋上的人讓不開，每次過橋都會在橋頭被推）——離每個橋端、主路 ≥ 0.4，
+// 2026-10-28 第二輪審稿：偵防師盯窩的站位不在橋口（橋上的人讓不開，每次過橋都會在橋頭被推）——離每個橋端 ≥ 0.4（原本也量離電工主路；計畫 16 主路拿掉了），
 // 三種盤面都走得到
-test('NEST_WATCH stays ≥ 0.4 from every bridge end and from the electrician\'s road, walkable on three boards', async () => {
-  const { ALL } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { ROAD } = await import('../src/actors/bulb.js'), { createNav } = await import('../src/show/nav.js');
+test('NEST_WATCH stays ≥ 0.4 from every bridge end, walkable on three boards', async () => {
+  const { ALL } = await import('./helpers/show.js'), { MAIN_CELLS, adjacentPairs, edgeMidpoint, RING_R } = await import('../src/scene/hex.js'), { createNav } = await import('../src/show/nav.js');
   const w = chip.NEST_WATCH, ends = adjacentPairs(MAIN_CELLS).flatMap(([A, B]) => { const { a, b } = edgeMidpoint(A, B, RING_R * Math.sqrt(3) / 2); return [a, b]; });
   for (const e of ends) assert.ok(Math.hypot(e.x - w.x, e.z - w.z) >= 0.4, `${Math.hypot(e.x - w.x, e.z - w.z).toFixed(2)} from a bridge end`);
-  const segD = (p, a, b) => { const dx = b.x - a.x, dz = b.z - a.z, t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz))); return Math.hypot(p.x - a.x - dx * t, p.z - a.z - dz * t); };
-  const road = Math.min(...ROAD.map((a, i) => segD(w, a, ROAD[(i + 1) % ROAD.length]))); assert.ok(road >= 0.4, `${road.toFixed(2)} from the road`);
   for (const L of [lv({ chip: 5, rat: 2, token: 4, baseball: 8, boba: 7, bulb: 9, milk: 7 }), lv({ chip: 3, rat: 2, token: 2, baseball: 3, boba: 3, bulb: 4, milk: 4 }), lv({ chip: 3, rat: 2 })]) {
     const nav = createNav(); nav.setFootprints(ALL.flatMap(m => Object.values(m.view(L, {}, {}))).flatMap(p => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) }))));
     assert.ok(nav.walkable(w.x, w.z), `walkable at ${JSON.stringify(L)}`);

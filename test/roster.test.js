@@ -520,14 +520,14 @@ test('path homes with n ≥ 2: a member rejoining next to a same-direction walke
     assert.ok(joined.gap >= 1 - 1e-6, `${joined.gap.toFixed(2)} m behind m1 along the line`);
   }
 });
-// 計畫 9 任務 3 審稿：閉合折線上的人照舊等速——電工（ROAD，n 1，前面一直有人在走）、守塔人（衛星島繞圈 n 1）、
+// 計畫 9 任務 3 審稿：閉合折線上的人照舊等速——巡環路的人（RING_LOOP，原本的電工主路，n 1，前面一直有人在走）、守塔人（衛星島繞圈 n 1）、
 // 遊樂場小孩（衛星島繞圈 n 2，擠在一起接上圈）10 秒裡每一幀都照自己的速度往前（轉角弦長打八折），不停、不放慢、不互相等
-test('loops keep a constant speed: the electrician, the lighthouse keeper and the playground kids never stop or slow down', async () => {
-  const { ROAD } = await import('../src/actors/bulb.js'), sat = await import('../src/actors/satellites.js'), { lv } = await import('./helpers/actors.js');
+test('loops keep a constant speed: a ring-road walker, the lighthouse keeper and the playground kids never stop or slow down', async () => {
+  const sat = await import('../src/actors/satellites.js'), { lv, RING_LOOP } = await import('./helpers/actors.js');
   const { roster } = setup(), dt = 1 / 30, sv = sat.view(lv({ bulb: 9, token: 8, milk: 3 }), {});
   assert.ok(sv['sat.keeper'] && sv['sat.playground'].n === 2);
-  roster.declare('elec', { kind: 'roster', at: ROAD[0], n: 1, accessory: 'vest', home: { kind: 'path', path: ROAD, loop: true, speed: 0.5 } });
-  roster.declare('crowd', { kind: 'roster', at: ROAD[1], n: 3, home: { kind: 'wander', at: ROAD[1], r: 0.4 } });   // 電工前面一直有人在走
+  roster.declare('elec', { kind: 'roster', at: RING_LOOP[0], n: 1, accessory: 'vest', home: { kind: 'path', path: RING_LOOP, loop: true, speed: 0.5 } });
+  roster.declare('crowd', { kind: 'roster', at: RING_LOOP[1], n: 3, home: { kind: 'wander', at: RING_LOOP[1], r: 0.4 } });   // 巡路的人前面一直有人在走
   roster.declare('keeper', sv['sat.keeper']); roster.declare('kids', sv['sat.playground']); roster.snap();
   const [k0, k1] = roster.members('kids'); roster.claim(k1); roster.setPose(k1, { ...k0.pos, x: k0.pos.x + 0.02, walking: false }); roster.home(k1);   // 兩個小孩擠在一起
   const who = [['elec', 0.5], ['keeper', WANDER_SPEED], ['kids', WANDER_SPEED]].flatMap(([k, v]) => roster.members(k).map(m => [k, m, v]));
@@ -882,7 +882,7 @@ test('no roster member is ever inside a padded footprint, and nobody is stuck: e
   assert.deepEqual(stuck, []);
   assert.deepEqual([...walls].slice(0, 20), [], `${walls.size} frames inside a building`);
 });
-// 最終審查修正：手畫的折線（routeBetween 接起來的路、老鼠、電工主路 ROAD）唯一正解每一級都在外擴 PAD 的 footprint 外
+// 最終審查修正：手畫的折線（routeBetween 接起來的路、老鼠、原本的電工主路）唯一正解每一級都在外擴 PAD 的 footprint 外
 // （每 0.02 取樣，閉合的折線含最後接回起點那段）——沿折線走的人不檢查走路格，路本身要畫在建築外
 test('every hand-drawn path home stays outside every padded footprint at every level of the solution', async () => {
   const spec = await import('../src/rules/spec.js'), engine = await import('../src/rules/engine.js'), { enumerate, stats } = await import('../src/solver/run.js');
@@ -911,8 +911,9 @@ test('every hand-drawn path home stays outside every padded footprint at every l
       }
     }
   }
-  // 唯一正解：老鼠 Lv4 分岔就是最終型態（軍團繞 101 是 wander）；裁決 R23 起工程師在廠區散步（wander）——手畫路線只剩電工
-  assert.deepEqual([...seen].sort(), ['bulb.electrician']);
+  // 唯一正解：老鼠 Lv4 分岔就是最終型態（軍團繞 101 是 wander）；裁決 R23 起工程師在廠區散步（wander）；
+  // 計畫 16 起電工 Lv1–6 不在（Lv7 起住在風車島上 wander）——遊戲裡一條手畫路線都不剩（名冊的 path 機制由 OPEN_ROUTE／RING_LOOP 測）
+  assert.deepEqual([...seen].sort(), []);
   assert.deepEqual([...bad].slice(0, 20), [], `${bad.size} path segments cut into a padded footprint`);
 });
 // 最終審查修正：沿手畫折線（開放折線、老鼠、電工主路）、走路、劇本手上的人過拱橋都貼著橋面，不陷進板子

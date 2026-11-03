@@ -156,6 +156,7 @@ const NEST_SHORE = shoreAt(NEST_A), SPRING_SHORE = shoreAt(SPRING_A);
 // 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來（颱風 Lv3 的堤防在這裡留缺口，typhoon.js）
 export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
+const MIN_RUN = 1.5;   // 放下那回合跑去出問題那棟的那段最短秒數（見 placed）
 const JUMP = 0.5, FOLLOW = 0.15, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
@@ -252,7 +253,8 @@ export const script = {
     const at = biting ? BITE_AT : trouble;
     const ashore = [B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING))];   // 從水裡爬上岸
     if (biting) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })])];
-    if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })]), B.gesture(r0, 'sniff'), B.home(r0)];
+    // 跑過去至少 MIN_RUN 秒（計畫 16：夜市搬到中心格第一盞路燈旁，燈泡 Lv4 出問題時門口離上岸點很近，整段掉到 2.9 s < 3；人在近處就站著多看一下）
+    if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(MIN_RUN)]), B.gesture(r0, 'sniff'), B.home(r0)];
     return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0)];
   },
   grow: {

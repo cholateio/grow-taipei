@@ -5,18 +5,18 @@ import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
 import { cellAt, cellTop, NEIGHBORS } from '../src/scene/hex.js';
 import { TIMES } from '../src/scene/daynight.js';
 import { B } from '../src/show/beats.js';
-import { createNav } from '../src/show/nav.js';
+import { createNav, PAD } from '../src/show/nav.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX, turnSteps, ALL } from './helpers/show.js';
 import { lv, worldPoints, entryProblems, focusCell, focusTrail, rosterSpots } from './helpers/actors.js';
 import * as sat from '../src/actors/satellites.js';
 import * as chip from '../src/actors/chip.js';
 import * as tower from '../src/actors/tower.js';
-import { diffParts } from '../src/actors/stage.js';
-import { C } from '../src/actors/palette.js';
-import { MAIN_CELLS, adjacentPairs, SATELLITES, axialToWorld, R } from '../src/scene/hex.js';
+import { diffParts, troubleSpot, TROUBLE_IN } from '../src/actors/stage.js';
+import { C, offset } from '../src/actors/palette.js';
+import { MAIN_CELLS, adjacentPairs, SATELLITES, axialToWorld, R, RING_R, edgeMidpoint } from '../src/scene/hex.js';
 import { satelliteAt } from '../src/show/nav.js';
 import { trainPose, TRACK } from '../src/actors/token.js';
 import { STATION_A, TRAIN_MAX_BOOST } from '../src/show/beats.js';
@@ -43,10 +43,9 @@ test('blackout strips every glow from the bulb views', () => {
   const v = bulb.view(lv({ bulb: 2 }), { blackout: true });
   for (const s of Object.values(v)) if (s.parts) assert.ok(!s.parts.some(p => p.glow));
 });
-// 2026-10-28 錄影修正（珍奶格太擠）：夜市 Lv2–3 一攤、Lv4 起兩攤（第二攤在東邊），不再有四攤；footprint 只有攤身。
-// 攤身離捷運站站體（每一級、淹水）≥ 0.3；兩攤南緣離珍奶攤車／店北緣 ≥ 0.4；Lv4 的霓虹招牌照舊、Lv9 霓虹條一攤一條
-test('lv4 opens a second night-market stall beside the first with a neon sign; lv2–3 one stall; clear of the station and the boba shop', async () => {
-  const token = await import('../src/actors/token.js'), boba = await import('../src/actors/boba.js');
+// 夜市 Lv2–3 一攤、Lv4 起兩攤（第二攤在東邊、往南錯開 0.15）；footprint 只有攤身；Lv4 的霓虹招牌板照舊、Lv9 霓虹條一攤一條。
+// 計畫 16（使用者 2026-11-03：「車站旁的這兩棟是什麼，看不出來」）：夜市搬到中央格第一盞路燈旁（跟燈走），攤身跟路燈、101、變電所之間都留得出走道
+test('lv4 opens a second night-market stall beside the first with a neon sign; lv2–3 one stall; clear of the first lamp, the 101 and the substation', () => {
   const market = n => bulb.view(lv({ bulb: n }), {})['bulb.market'], stalls = n => market(n).parts.filter(p => p.kind === 'hip').length;
   assert.equal(stalls(2), 1); assert.equal(stalls(3), 1); for (let n = 4; n <= 9; n++) assert.equal(stalls(n), 2, `lv${n}`);
   assert.ok(market(4).parts.some(p => p.glow === 0xff3fa0 && p.kind === 'box'), 'neon sign board at Lv4');
@@ -54,19 +53,120 @@ test('lv4 opens a second night-market stall beside the first with a neon sign; l
   assert.equal(bulb.view(lv({ bulb: 9, token: 9 }), {})['bulb.neon.market'].parts.length, 2, 'one neon strip per stall');
   const M = market(4).at, box = (f, at) => ({ x0: at.x + (f.x ?? 0) - (f.r ?? f.w / 2), x1: at.x + (f.x ?? 0) + (f.r ?? f.w / 2), z0: at.z + (f.z ?? 0) - (f.r ?? f.d / 2), z1: at.z + (f.z ?? 0) + (f.r ?? f.d / 2) });
   const gap = (a, b) => Math.hypot(Math.max(0, a.x0 - b.x1, b.x0 - a.x1), Math.max(0, a.z0 - b.z1, b.z0 - a.z1));
-  const bodies = market(4).footprint.map(f => box(f, M));
-  for (let t = 1; t <= 10; t++) for (const flags of [{}, { flooded: true }]) {
-    const st = token.view(lv({ token: t }), flags)['token.main'], s = box(st.footprint, st.at);
-    for (const b of bodies) assert.ok(gap(b, s) >= 0.3 - 1e-9, `token ${t} ${JSON.stringify(flags)}: stall ${gap(b, s).toFixed(3)} from the station`);
-  }
-  for (let n = 1; n <= 7; n++) {
-    const main = boba.view(lv({ boba: n }), {})['boba.main'], north = main.at.z - main.footprint.d / 2;
-    for (const b of bodies) assert.ok(north - b.z1 >= 0.4, `boba ${n}: shop ${(north - b.z1).toFixed(2)} south of the market`);
+  const bodies = market(4).footprint.map(f => box(f, M)), v6 = bulb.view(lv({ bulb: 6 }), {}), t = { at: anchorWorld('tower'), footprint: { w: 1.6, d: 1.6 } };   // 101 底座 1.6 見方（自動 footprint 也是這個大小）
+  // 路燈：攤身不碰燈桿（外擴後連在一起沒關係，走道在東邊）；101：最東那一攤和 101 底座之間要留一條外擴 PAD 後還有 0.2 寬的走道；變電所在北邊
+  for (const b of bodies) assert.ok(gap(b, box(v6['bulb.main'].footprint, v6['bulb.main'].at)) >= 0.2, `stall ${gap(b, box(v6['bulb.main'].footprint, v6['bulb.main'].at)).toFixed(3)} from the first lamp`);
+  for (const b of bodies) assert.ok(gap(b, box(t.footprint, t.at)) - 2 * PAD >= 0.2, `stall ${gap(b, box(t.footprint, t.at)).toFixed(3)} from the 101 foot`);
+  for (const b of bodies) assert.ok(gap(b, box(v6['bulb.substation'].footprint, v6['bulb.substation'].at)) >= 0.5, 'clear of the substation');
+});
+// 攤子重畫（計畫 16 §設計 2）：封閉方塊換成開放式攤位——四根木柱撐一片斜棚、前面（+z，鏡頭側）一張奶油色櫃台（底在地面）；
+// 第一攤櫃台上兩層木蒸籠＋白色薄蓋、第二攤（Lv4）一座深色烤架＋三根斜插的竹籤。顏色只用現有色票
+const STALL_W = 0.5, marketOf = (n, flags = {}) => bulb.view(lv({ bulb: n }), flags)['bulb.market'];
+test('the night market is open stalls: four wood posts under a hip canopy, a cream counter in front; steamers on the first, a grill with skewers on the second', () => {
+  for (const n of [2, 3, 4, 9]) {
+    const m = marketOf(n), k = n >= 4 ? 2 : 1, roofs = m.parts.filter(p => p.kind === 'hip');
+    assert.equal(roofs.length, k, `lv${n} canopies`); assert.deepEqual(roofs.map(p => p.color), [C.coral, C.yellow].slice(0, k));
+    for (const r of roofs) assert.deepEqual(r.scale, [0.62, 0.22, 0.52]);
+    assert.ok(!m.parts.some(p => p.color === C.wall), 'no closed box any more');
+    const posts = m.parts.filter(p => p.kind === 'cylinder' && p.color === C.wood && p.scale[1] === 0.55);
+    assert.equal(posts.length, 4 * k, `lv${n} posts`);
+    for (const p of posts) { assert.equal(p.scale[0], 0.03); assert.ok(Math.abs(p.pos[1] - 0.275) < 1e-9, 'post stands on the ground'); }
+    roofs.forEach((r, i) => {
+      const mine = posts.filter(p => Math.abs(p.pos[0] - r.pos[0]) <= STALL_W / 2 && Math.abs(p.pos[2] - r.pos[2]) <= 0.2);
+      assert.equal(mine.length, 4, `stall ${i}: four posts under its canopy`);
+      assert.ok(Math.abs(r.pos[1] - r.scale[1] / 2 - 0.55) < 1e-9, `stall ${i}: the canopy sits on the posts`);
+    });
+    const counters = m.parts.filter(p => p.kind === 'box' && p.color === C.cream);
+    assert.equal(counters.length, k, `lv${n} counters`);
+    counters.forEach((c, i) => {
+      assert.deepEqual(c.scale, [0.5, 0.22, 0.18]); assert.ok(Math.abs(c.pos[1] - 0.11) < 1e-9, 'counter bottom on the ground');
+      assert.ok(Math.abs(c.pos[0] - roofs[i].pos[0]) < 1e-9 && c.pos[2] > roofs[i].pos[2] && c.pos[2] + 0.09 <= roofs[i].pos[2] + 0.2 + 1e-9, `counter ${i} at the front (+z) of its stall`);
+    });
+    // 第一攤：兩層蒸籠疊在櫃台上、頂上一個白色薄圓蓋
+    const steam = m.parts.filter(p => p.kind === 'cylinder' && p.color === C.wood && p.scale[0] === 0.16).sort((a, b) => a.pos[1] - b.pos[1]);
+    assert.equal(steam.length, 2, 'two steamer layers'); for (const p of steam) assert.equal(p.scale[1], 0.06);
+    assert.ok(Math.abs(steam[0].pos[1] - 0.03 - 0.22) < 1e-9 && Math.abs(steam[1].pos[1] - steam[0].pos[1] - 0.06) < 1e-9, 'stacked on the counter');
+    const lid = m.parts.filter(p => p.color === C.white);
+    assert.equal(lid.length, 1); assert.ok(lid[0].pos[1] > steam[1].pos[1] && Math.abs(lid[0].pos[0] - steam[1].pos[0]) < 1e-9, 'white lid on top');
+    assert.ok(steam.every(p => Math.abs(p.pos[0] - roofs[0].pos[0]) < 0.25 && Math.abs(p.pos[2] - counters[0].pos[2]) < 1e-9), 'on the first counter');
+    // 第二攤：烤架＋三根斜插的竹籤
+    const grill = m.parts.filter(p => p.kind === 'box' && p.color === C.ink), skewers = m.parts.filter(p => p.kind === 'cylinder' && p.color === C.cream);
+    if (k === 1) { assert.equal(grill.length + skewers.length, 0, `lv${n}: no grill yet`); continue; }
+    assert.equal(grill.length, 1); assert.deepEqual(grill[0].scale, [0.26, 0.04, 0.12]);
+    assert.ok(Math.abs(grill[0].pos[0] - roofs[1].pos[0]) < 0.25 && Math.abs(grill[0].pos[2] - counters[1].pos[2]) < 1e-9 && Math.abs(grill[0].pos[1] - 0.02 - 0.22) < 1e-9, 'grill on the second counter');
+    assert.equal(skewers.length, 3);
+    for (const p of skewers) { assert.deepEqual([p.scale[0], p.scale[1]], [0.012, 0.2]); assert.ok(Math.abs(p.rot[0] + 0.5) <= 0.1, `skewer tilted (rot x ${p.rot[0]})`); assert.ok(Math.abs(p.pos[0] - grill[0].pos[0]) <= 0.13, 'stuck in the grill'); }
   }
 });
-
+// 紅燈籠串：從第一盞路燈的桿頂拉到每一攤的棚頂，等距四顆（Lv2 一串、Lv4 起兩串）；Lv3 起發光（珊瑚紅）、大停電不亮。
+// 端點從零件算（路燈桿頂、棚頂尖），攤子搬位置時燈籠跟著兩端走、不會懸空
+test('a red lantern string runs from the first lamp\'s post top to each stall canopy: four evenly spaced, lit from Lv3, dark in a blackout', () => {
+  for (const n of [2, 3, 4, 9]) {
+    const v = bulb.view(lv({ bulb: n }), {}), lamp = v['bulb.main'], post = lamp.parts.find(p => p.kind === 'cylinder'), m = v['bulb.market'];
+    const top = { x: lamp.at.x, y: lamp.at.y + post.pos[1] + post.scale[1] / 2, z: lamp.at.z }, roofs = m.parts.filter(p => p.kind === 'hip');
+    const L = m.parts.filter(p => p.kind === 'sphere');
+    assert.equal(L.length, 4 * roofs.length, `lv${n}: four lanterns per stall`);
+    for (const p of L) { assert.equal(p.scale, 0.07); if (n >= 3) assert.equal(p.glow, C.coral, `lv${n} lit`); else assert.ok(!p.glow && p.color === C.coral, 'Lv2 unlit red'); }
+    roofs.forEach((r, i) => {
+      const apex = { x: m.at.x + r.pos[0], y: m.at.y + r.pos[1] + r.scale[1] / 2, z: m.at.z + r.pos[2] };
+      for (let j = 0; j < 4; j++) {
+        const t = (j + 1) / 5, q = L[4 * i + j], w = { x: m.at.x + q.pos[0], y: m.at.y + q.pos[1], z: m.at.z + q.pos[2] };
+        for (const a of ['x', 'y', 'z']) assert.ok(Math.abs(w[a] - (top[a] + (apex[a] - top[a]) * t)) < 1e-9, `lv${n} string ${i} lantern ${j} ${a}`);
+      }
+    });
+    if (n >= 3) assert.ok(!marketOf(n, { blackout: true }).parts.some(p => p.glow), `lv${n} blackout: lanterns dark`);
+  }
+  assert.ok(!marketOf(2).parts.some(p => p.glow), 'Lv2: nothing in the market glows yet');
+  const sign = marketOf(4).parts.find(p => p.glow === C.neonPink), apexY = Math.max(...marketOf(4).parts.filter(p => p.kind === 'hip').map(r => r.pos[1] + r.scale[1] / 2));
+  assert.ok(sign.pos[1] - sign.scale[1] / 2 > apexY, 'Lv4 sign board above the canopies');
+});
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const near = (a, b, d = 1e-9) => Math.hypot(a.x - b.x, a.z - b.z) < d;
+
+// 走路格（計畫 16 §設計 1）：照正解每一回合演完，夜市外擴 PAD 後 (a) 中央格西橋頭 ↔ 120° 橋頭 ↔ 101 北側互相走得到、不繞出中央格；
+// (b) Lv4 排隊點 MARKET_FRONT 落在可走點附近（< 0.15）；(c) 老鼠 Lv4／9 的 trouble 點（夜市門口）在 TROUBLE_IN 內、走得到
+const CENTRE_HEADS = { west: edgeMidpoint([0, 0], [-1, 0], RING_R * Math.sqrt(3) / 2).a, nw: edgeMidpoint([0, 0], [-1, 1], RING_R * Math.sqrt(3) / 2).a };
+async function centreTurns(check) {
+  for (const order of SOLUTIONS) {
+    const h = await headlessShow(); let s = engine.createState(spec);
+    for (const step of turnSteps(order)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); check(h.show, `${order.join('>')} ${JSON.stringify(h.show.stage.lv)}`); }
+  }
+}
+test('walkable (a): with the market padded, the west bridge head, the 120° bridge head and the 101\'s north side still reach each other inside the centre cell', async () => {
+  const north = offset(anchorWorld('tower'), 0, -1.0), spots = [CENTRE_HEADS.west, CENTRE_HEADS.nw, north];
+  await centreTurns((show, label) => {
+    for (const [a, b] of [[0, 1], [1, 2], [0, 2]]) {
+      const from = spots[a], to = spots[b], path = show.nav.route(from, to), last = path.at(-1), end = show.nav.nearestWalkable(to);
+      assert.ok(path.length >= 2 && Math.hypot(last.x - end.x, last.z - end.z) < 1e-6, `${label}: ${a}→${b} reaches`);
+      assert.ok(path.every(p => Math.hypot(p.x, p.z) <= RING_R + 0.05), `${label}: ${a}→${b} stays in the centre cell (${show.nav.routeLength(path).toFixed(2)} long)`);
+    }
+  });
+});
+test('walkable (b): the Lv4 queue spot MARKET_FRONT (in front of the second stall) is within 0.15 of a walkable point, and both queue slots can be walked to from the 120° bridge head', async () => {
+  const m = landmarkWorld('market'), f = bulb.MARKET_FRONT;
+  assert.ok(Math.abs(f.x - m.x - 0.5) < 1e-9 && Math.abs(f.z - m.z - 0.55) < 1e-9, 'south of the second stall');
+  let seen = 0;
+  await centreTurns((show, label) => {
+    if (!(show.stage.lv.bulb >= 4)) return;
+    seen++; const p = show.nav.nearestWalkable(f);
+    assert.ok(Math.hypot(p.x - f.x, p.z - f.z) < 0.15, `${label}: queue spot ${Math.hypot(p.x - f.x, p.z - f.z).toFixed(3)} from walkable`);
+    for (const q of show.nav.slots(f, 2, 0.15)) {
+      const last = show.nav.route(CENTRE_HEADS.nw, q).at(-1);
+      assert.ok(Math.hypot(last.x - q.x, last.z - q.z) < 0.05, `${label}: slot (${q.x.toFixed(2)}, ${q.z.toFixed(2)}) reachable (route ends at ${last.x.toFixed(2)}, ${last.z.toFixed(2)})`);
+    }
+  });
+  assert.ok(seen > 0);
+});
+test('walkable (c): the rat\'s trouble spot at the market (bulb Lv4, Lv9) stays within TROUBLE_IN of the centre and on walkable ground', async () => {
+  const mods = ALL;
+  await centreTurns((show, label) => {
+    for (const n of [4, 9]) {
+      const L = { ...show.stage.lv, bulb: n }, p = troubleSpot('bulb', L, {}, mods);
+      assert.deepEqual(cellAt(p.x, p.z), [0, 0]); assert.ok(Math.hypot(p.x, p.z) <= TROUBLE_IN + 1e-9, `${label} lv${n}`);
+      const q = show.nav.nearestWalkable(p); assert.ok(Math.hypot(q.x - p.x, q.z - p.z) < 0.3, `${label} lv${n}: trouble spot ${Math.hypot(q.x - p.x, q.z - p.z).toFixed(2)} from walkable`);
+    }
+  });
+});
 
 test('view: posts are one part, heads are one part per lighting stop in road order, the electrician is a vest roster patrolling ROAD', () => {
   const v = bulb.view(lv({ bulb: 2 }), {});
@@ -353,7 +453,7 @@ test('grow 2 live: each pan reaches a cell as the electrician walks into it; the
     });
   }
 });
-// 物品 v2 §6：Lv3 電工就近在最近的那一站路燈下點霓虹（鏡頭對那一站的格子）；Lv4 島民去夜市排隊（鏡頭對夜市格）
+// 物品 v2 §6：Lv3 電工就近在最近的那一站路燈下點霓虹（鏡頭對那一站的格子）；Lv4 島民去夜市排隊（鏡頭對夜市格——計畫 16 起就是中心格，LEVEL UP 不再轉一次）
 test('grow 3 focuses the electrician\'s nearest stop cell, grow 4 the night-market cell; LEVEL UP pans back to the centre cell', async () => {
   const market = landmarkWorld('market'), mc = [...cellAt(market.x, market.z)], p = bulb.lampApproach(9);
   for (const n of [3, 4]) {
@@ -365,7 +465,7 @@ test('grow 3 focuses the electrician\'s nearest stop cell, grow 4 the night-mark
       await liveAt({ ...h, run: (evs, opts) => { if (!opts?.instant) n0 = h.rig.log.length; return h.run(evs, opts); } }, order, isBulb(n));
       const trail = focusTrail(h.rig.log, n0);
       assert.deepEqual(trail.slice(-2), [[0, 0], 'home'], `lv${n} ${order.join('>')} ${JSON.stringify(trail)}`);
-      if (n === 4) assert.deepEqual(trail, [mc, [0, 0], 'home']); else assert.ok(trail.length <= 3, JSON.stringify(trail));
+      if (n === 4) assert.deepEqual(trail, [mc, 'home'], 'market in the centre cell (plan 16): no second pan for LEVEL UP'); else assert.ok(trail.length <= 3, JSON.stringify(trail));
     }
   }
 });
@@ -634,7 +734,7 @@ test('the night market never closes the walkway between the station and the mark
 test('visitSpot(n, s) for every level 1..max: on the main island cell of the item (or null for off-island levels), frontOf(spot, r, nav) walkable within 0.6', async () => {
   const { visitSpotsThroughSolutions } = await import('./helpers/show.js');
   assert.equal(typeof bulb.visitSpot, 'function');
-  const { bad, seen } = await visitSpotsThroughSolutions(bulb, SOLUTIONS, { cells: n => (n === 4 || n === 9 ? [[0, 1]] : [[0, 0]]) });
+  const { bad, seen } = await visitSpotsThroughSolutions(bulb, SOLUTIONS, { cells: () => [[0, 0]] });   // 計畫 16 起夜市（Lv4／Lv9 的拜訪點）也在中心格
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9]);
 });

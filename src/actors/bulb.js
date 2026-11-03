@@ -17,13 +17,15 @@ import { C, offset } from './palette.js';
 export const id = 'bulb';
 export const labelY = 0.8;
 const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
-// 夜市前（第一攤的南邊、珍奶店北邊那條走道的西段）：Lv4 島民排隊站這裡，面向攤子、背對鏡頭。原本在第一攤西邊（捷運站那側的通道口），
-// 2026-10-28 錄影修正把店往北挪之後改站走道裡；走道兩邊外擴 PAD 後還有 0.4 寬。不用「夜市中心附近的可走點」（會挑到攤子後面、走不到的死角）
-const MARKET_FRONT = offset(MARKET, -0.3, 0.52);
+// 夜市前（第二攤櫃台的南邊）：Lv4 島民排隊站這裡，面向攤子、背對鏡頭（計畫 16 夜市搬到第一盞路燈旁之後）。
+// 設計原訂 offset(MARKET, 0.25, 0.55)、是照夜市 dx −1.2 算的（世界座標 (−0.95, 0.9)）；夜市往西挪到 −1.45 之後同一個公式會落在路燈外擴 PAD 裡，
+// 兩個排隊位有一個掉進「兩攤、路燈、格邊」圍起來的死角（走路格連不出去）。改 +0.5：世界座標還是設計那一點，正好在第二攤（Lv4 開張那攤）櫃台前。
+// 不用「夜市中心附近的可走點」（會挑到攤子後面、走不到的死角）
+export const MARKET_FRONT = offset(MARKET, 0.5, 0.55);
 const SITE = offset(TOWER, 0.9, 1.0);     // 101 工地（電工從這裡出發；名冊入口 §13.2）：101 南側走得到的空地，和晶片的工人同一處
 export const ELECTRICIAN_ENTRY = SITE;
 const STATION = anchorWorld('token');
-const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市、捷運站
+const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市（計畫 16 起也在中心格）、捷運站
 const ISLAND_ZOOM = 0.8;   // 鏡頭到衛星島拉近 0.8（島和支線都要進畫面，同代幣 Lv7）
 const QUEUE_SPEED = 2.4;   // Lv4 島民快步去夜市排隊（一般走路 1.6；一級 3–5 秒）
 const SQ3 = Math.sqrt(3), LAMP_R = RING_R + 0.12, APPROACH = 0.45;
@@ -62,18 +64,51 @@ export const lampApproach = i => { const [cell, deg] = LAMPS[i]; return ringPoin
 // 每一站（路口）點的燈號：[[0, 1, 2], [3, 4], [5], …]；燈頭零件 bulb.lamps.<站> 照這張表分組（大停電也一站站熄）
 export const LAMP_STOPS = JUNCTIONS.map((j, k) => j.map((_, i) => JUNCTIONS.slice(0, k).flat().length + i));
 
-// 夜市的攤子 [x, z, 屋頂色]（相對夜市地標）：Lv2 一攤、Lv4 第二攤（2026-10-28 錄影修正：原本 Lv2 兩攤、Lv4 四攤，南邊兩攤壓到珍奶店、珍奶格太擠）。
-// 第二攤放東邊、往南錯開 0.15（跟第一攤肩並肩）：西邊（x −0.55）那一格是捷運站站體和夜市之間唯一的通道——站體外擴 PAD 後東緣在格心 x +0.02，
-//   西邊放攤子兩個 PAD 之間只剩 0.06，北邊碼頭（觀光客入口）、北橋頭被整個關起來（觀光客走 7 公尺繞過捷運站、老闆推攤車 6 秒以上）。
-// 東攤攤身離電工主路 0.16（≥ PAD）、南緣離珍奶店北緣 0.5、離噴泉 0.35；兩攤外擴 PAD 後連成一塊，不留夾縫
+// 夜市的攤子 [x, z, 屋頂色]（相對夜市地標）：Lv2 一攤、Lv4 第二攤（2026-10-28 錄影修正：原本 Lv2 兩攤、Lv4 四攤）。
+// 第二攤放東邊、往南錯開 0.15（跟第一攤肩並肩）；兩攤外擴 PAD 後連成一塊，不留夾縫。
+// 計畫 16（使用者 2026-11-03：「車站旁的這兩棟是什麼，看不出來」）：夜市從捷運站旁搬到中心格第一盞路燈旁（anchors.js 的 LANDMARKS.market）——
+//   西邊（格邊）、北邊（變電所）、南邊（路燈）都靠著，東攤和 101 底座之間留一條外擴後 0.26 寬的走道（西橋頭、120° 橋頭、101 北側照樣互通）
 export const STALL_W = 0.5, STALL_D = 0.4;
 export const marketStalls = n => [[0, 0, C.coral], ...(n >= 4 ? [[0.5, 0.15, C.yellow]] : [])];
-// 夜市的 footprint：每一攤的攤身（不是整個包圍盒：攤子外圍、東側主路那一條都是走得到的地）
+// 夜市的 footprint：每一攤的攤身（不是整個包圍盒：攤子外圍是走得到的地；燈籠串在頭上，不算）
 const marketFootprint = n => marketStalls(n).map(([x, z]) => ({ x, z, w: STALL_W, d: STALL_D }));
 // Lv4 的霓虹招牌板、Lv9 的霓虹招牌（glb）：兩攤中間上方
 const SIGN_AT = [0.25, 0.075];
+// 攤子（計畫 16 重畫）：開放式攤位——四根木柱撐一片斜棚、前面（+z，鏡頭側）一張櫃台（底在地面）；
+// 第一攤櫃台上兩層蒸籠＋白色薄蓋、第二攤一座烤架＋三根斜插的竹籤。棚子底在柱頂 POST_H
+const POST_H = 0.55, ROOF = [0.62, 0.22, 0.52], COUNTER = [STALL_W, 0.22, 0.18];
+const COUNTER_Z = STALL_D / 2 - COUNTER[2] / 2;   // 櫃台前緣貼攤身前緣
+const roofApex = (x, z) => [x, POST_H + ROOF[1], z];
+const onCounter = h => COUNTER[1] + h / 2;   // 擺在櫃台上、高 h 的東西的中心高度
+function stall([x, z, roof], i) {
+  const cz = z + COUNTER_Z, out = [
+    ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => ({ kind: 'cylinder', pos: [x + sx * (STALL_W / 2 - 0.02), POST_H / 2, z + sz * (STALL_D / 2 - 0.02)], scale: [0.03, POST_H, 0.03], color: C.wood })),
+    { kind: 'hip', pos: [x, POST_H + ROOF[1] / 2, z], scale: ROOF, color: roof },
+    { kind: 'box', pos: [x, COUNTER[1] / 2, cz], scale: COUNTER, color: C.cream },
+  ];
+  if (i === 0) out.push(   // 蒸籠：兩層疊著、頂上一個白色薄圓蓋
+    ...[0, 1].map(k => ({ kind: 'cylinder', pos: [x - 0.1, onCounter(0.06) + k * 0.06, cz], scale: [0.16, 0.06, 0.16], color: C.wood })),
+    { kind: 'cylinder', pos: [x - 0.1, COUNTER[1] + 0.12 + 0.0075, cz], scale: [0.17, 0.015, 0.17], color: C.white },
+  );
+  else out.push(           // 烤架＋三根竹籤（往後斜插，籤尾在烤架上）
+    { kind: 'box', pos: [x + 0.06, onCounter(0.04), cz], scale: [0.26, 0.04, 0.12], color: C.ink },
+    ...[-0.08, 0, 0.08].map(dx => ({ kind: 'cylinder', pos: [x + 0.06 + dx, COUNTER[1] + 0.04 + 0.1 * Math.cos(0.5), cz - 0.1 * Math.sin(0.5)], scale: [0.012, 0.2, 0.012], rot: [-0.5, 0, 0], color: C.cream })),
+  );
+  return out;
+}
+// 紅燈籠串：從第一盞路燈的桿頂拉到一攤的棚頂尖（from、to 相對夜市地標），等距四顆燈籠穿在一條細繩上。
+// 端點直接用桿頂與棚頂的座標算——夜市挪位置時兩端跟著走，不會懸空
+const LANTERNS = 4;
+function lanternString(from, to, look) {
+  const d = to.map((v, k) => v - from[k]), L = Math.hypot(...d), u = d.map(v => v / L);
+  return [
+    { kind: 'cylinder', pos: from.map((v, k) => v + d[k] / 2), scale: [0.008, L, 0.008], rot: [Math.atan2(u[2], u[1]), 0, -Math.asin(u[0])], color: C.ink },
+    ...Array.from({ length: LANTERNS }, (_, j) => ({ kind: 'sphere', pos: from.map((v, k) => v + d[k] * (j + 1) / (LANTERNS + 1)), scale: 0.07, ...look })),
+  ];
+}
 
-const post = (x, z) => ({ kind: 'cylinder', pos: [x, 0.25, z], scale: [0.06, 0.5, 0.06], color: C.ink });
+const POST_TOP = 0.5;   // 路燈桿頂（燈頭中心 0.52 的下緣附近）：夜市的燈籠串從這裡拉出去
+const post = (x, z) => ({ kind: 'cylinder', pos: [x, POST_TOP / 2, z], scale: [0.06, POST_TOP, 0.06], color: C.ink });
 const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head });
 const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 
@@ -155,16 +190,14 @@ export function view(lv, flags = {}) {
       const o = LAMP_POINTS[g[0]];
       v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(k + 1))), footprint: false };
     });
-    const stall = ([x, z, roof]) => [
-      { kind: 'box', pos: [x, 0.22, z], scale: [STALL_W, 0.45, STALL_D], color: C.wall },
-      { kind: 'hip', pos: [x, 0.58, z], scale: [0.62, 0.22, 0.52], color: roof },
-      { kind: 'sphere', pos: [x + 0.2, 0.47, z + 0.22], scale: 0.07, ...glowOf(C.warm) },
-    ];
-    const stalls = marketStalls(n), market = stalls.flatMap(stall);
+    // 燈籠：Lv2 紅色不亮、Lv3（霓虹、傍晚）起發光；大停電不亮（glowOf）。一攤一串，從路燈桿頂（燈頭底下）拉過去
+    const stalls = marketStalls(n), lantern = n >= 3 ? glowOf(C.coral) : { color: C.coral };
+    const postTop = [AT.x - MARKET.x, POST_TOP, AT.z - MARKET.z];
+    const market = stalls.flatMap((s, i) => [...stall(s, i), ...lanternString(postTop, roofApex(s[0], s[1]), lantern)]);
     if (n >= 4 && n < 9) market.push({ kind: 'box', pos: [SIGN_AT[0], 0.95, SIGN_AT[1]], scale: [0.7, 0.18, 0.04], ...glowOf(C.neonPink) });
     v['bulb.market'] = { kind: 'compound', at: MARKET, parts: market, footprint: marketFootprint(n) };
     if (n >= 9) v['bulb.neon.market'] = { kind: 'neon', at: MARKET, footprint: false,
-      parts: stalls.map(([x, z]) => ({ kind: 'box', pos: [x, 0.48, z + 0.27], scale: [0.6, 0.025, 0.025], ...glowOf(C.neonBlue) })),
+      parts: stalls.map(([x, z]) => ({ kind: 'box', pos: [x, POST_H, z + ROOF[2] / 2], scale: [0.6, 0.025, 0.025], ...glowOf(C.neonBlue) })),
       models: [sign('Sign_2', [SIGN_AT[0], 0.82, SIGN_AT[1]], 0.3, C.neonPink, lit)] };
   }
   if (n >= 6) v['bulb.substation'] = { kind: 'compound', at: SUBSTATION, parts: substationParts(lit), footprint: { x: 0, z: 0, w: SUB.w, d: SUB.d } };
@@ -352,13 +385,13 @@ export const script = {
         B.apply(e), B.wait(0.6), B.world({ time: TIMES.dusk }), B.home(m), levelUpAtHome(B, cell),
       ];
     },
-    // 第二攤：離夜市最近的兩個人（島民、站務員）快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌亮起、一起 ♥（鏡頭對著夜市格，LEVEL UP 時轉回中心格）
+    // 第二攤：離夜市最近的兩個人（島民、站務員）快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌亮起、一起 ♥（鏡頭對著夜市格；計畫 16 起夜市就在中心格，LEVEL UP 不再轉）
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
       return [
         // 閃白第二攤的同時一起 ♥（裁決 R15 一級 ≤ 4.5 s）
         B.focus(MARKET_CELL), B.together([...[0, 1].map(i => B.walk(islander(i), slot(i), { speed: QUEUE_SPEED })), B.wait(MIN_WALK.market)]), B.together([B.apply(e), ...[0, 1].map(i => B.bubble(islander(i), '♥', 0.4))]),
-        B.home([islander(0), islander(1)]), levelUpAtHome(B),
+        B.home([islander(0), islander(1)]), levelUpAtHome(B, () => MARKET_CELL),
       ];
     },
     // 全島 LED（棒球 ≥4）：回全景 → 電工在原地轉頭看 101 → ！ 的同時閃白全島 LED、101 燈光秀 → 入夜 → LEVEL UP（全景裝得下整島與 101）。

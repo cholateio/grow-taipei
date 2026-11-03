@@ -321,6 +321,24 @@ function push(w) {
 const pier = k => c => c.nav.nearestWalkable(PIER[k % PIER.length]);
 // Lv2 人龍從碼頭出發的間隔（秒，計畫 11 最終修正 #2 裁決 ≥ 0.28：一人身寬 0.25 ÷ 0.9 m/s；名冊走路速度 1.6 時前後相距約 0.45 m）
 export const QUEUE_DELAY = 0.28;
+// 誰先出發（計畫 16）：人龍第 k 位從自己的碼頭點走到 spots[k]，出發順序照「走過去不會擦過已經站好的人」挑。碼頭到人龍的路看走路格——
+//   夜市還在碼頭南邊時大家都從攤車西邊繞，照 0、1、2 走剛好；夜市搬去中心格（燈泡第一盞路燈旁）之後頭兩位改從東邊繞，
+//   照 0、1、2 走的話第 1 位會從站好的第 0 位身上擦過去（0.28 × 兩人半徑）。每一種順序數一次擦過幾回（路線離先到的人站位 < PASS），
+//   挑最少的；一樣少就照原本的 0、1、2
+const PASS = 0.2;
+const perms = a => (a.length < 2 ? [a] : a.flatMap((x, i) => perms(a.filter((_, j) => j !== i)).map(p => [x, ...p])));
+const segDist = (a, b, p) => {
+  const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz, t = L2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / L2)) : 0;
+  return Math.hypot(a.x + dx * t - p.x, a.z + dz * t - p.z);
+};
+const brushes = (route, p) => route.some((q, i) => i > 0 && segDist(route[i - 1], q, p) < PASS);
+// rank[k]：人龍第 k 位第幾個出發
+function departRanks(c, spots) {
+  const routes = spots.map((sp, k) => c.nav.route(pier(QUEUE_MAX - 1 - k)(c), sp));
+  const cost = order => order.reduce((n, k, i) => n + order.slice(0, i).filter(j => brushes(routes[k], spots[j])).length, 0);
+  const best = perms(spots.map((_, k) => k)).reduce((b, o) => (cost(o) < cost(b) ? o : b));
+  return spots.map((_, k) => best.indexOf(k));
+}
 
 // Lv5 劇本看無人機飛幾秒再打 LEVEL UP（2.4 + LEVEL UP 1.0 ≈ 第一台繞完一圈，整段約 4 s；trim §A）
 export const DRONE_WATCH = 2.4;
@@ -341,12 +359,13 @@ export const script = {
     // 人龍：3 個觀光客從碼頭一個接一個走過來，在攤車前排成一排 → LEVEL UP
     2(e, s, ctx) {
       // 先出發的站在碼頭西端（離開碼頭的路往西走）：後面的人還在原地等時，前面的人不從他身邊擦過去（計畫 11 最終修正 #2）
-      const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(QUEUE_MAX - 1 - k)));
+      const { B } = ctx, spots = queue(AT, QUEUE_MAX), sp = spots.map((_, k) => B.spawn('boba.queue', pier(QUEUE_MAX - 1 - k))), rank = once(c => departRanks(c, spots));
       return [
         B.apply(e, { hold: ['boba.queue'] }), ...sp,
         // 一個接一個出發，間隔 0.25 → 0.15（裁決 R15）→ 0.1（計畫 6 裁決 R2：拜訪之後第 6 回合 ≤ 60 s）→ QUEUE_DELAY（計畫 11 最終修正 #2：
         //   0.1 s 時三人從碼頭疊成一串走、相距 0.09 m 走了 2.2 s）
-        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: k * QUEUE_DELAY }))),
+        //   出發順序看走路格（departRanks，計畫 16）
+        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: c => rank(c)[k] * QUEUE_DELAY }))),
         B.home(shown('boba.queue')), B.levelUp('boba'),
       ];
     },

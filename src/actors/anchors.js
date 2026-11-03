@@ -10,10 +10,12 @@ export const ANCHORS = {
   boba: { cell: [0, 1], dx: 1.0, dz: 0.4 },      baseball: { cell: [-1, 1], dx: -0.2, dz: -0.2 },
   tower: { cell: [0, 0], dx: 0.6, dz: -0.3 },
 };
-// 北側台地：陽明山（火山）與北投溫泉；中心格的河濱公園；捷運站旁的夜市
+// 北側台地：陽明山（火山）與北投溫泉；中心格的河濱公園；中心格第一盞路燈旁的夜市（計畫 16：夜市跟著燈走，使用者 2026-11-03）。
+// 夜市 dx −1.45（設計原訂 −1.2）：兩攤外擴 PAD 後，−1.2／−1.3 會把西格邊、路燈、101 之間連成一道牆（西橋頭到 120° 橋頭要繞出中心格 13.7），
+// 往西挪到東攤和 101 底座之間留出一條走道（外擴後 0.26 寬、走路格 x −0.5 那一排）
 export const LANDMARKS = {
   volcano: { cell: [0, -1], dx: -0.2, dz: 0.1 }, spring: { cell: [1, -1], dx: 0.1, dz: 0.2 },
-  park: { cell: [0, 0], dx: 1.2, dz: 1.2 },      market: { cell: [0, 1], dx: 1.0, dz: -0.9 },
+  park: { cell: [0, 0], dx: 1.2, dz: 1.2 },      market: { cell: [0, 0], dx: -1.45, dz: 0.35 },
 };
 
 const toWorld = a => { const c = axialToWorld(...a.cell); return { x: c.x + a.dx, y: cellTop(a.cell), z: c.z + a.dz }; };

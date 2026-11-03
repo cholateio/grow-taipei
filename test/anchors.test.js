@@ -17,9 +17,10 @@ test('no two anchors closer than 0.8', () => {
   const ids = Object.keys(ANCHORS);
   for (const a of ids) for (const b of ids) if (a < b) { const p = anchorWorld(a), q = anchorWorld(b); assert.ok(Math.hypot(p.x - q.x, p.z - q.z) >= 0.8, `${a}-${b}`); }
 });
-test('landmarks sit on their cells: volcano and spring on the plateau, park in the centre, market with the token cell', () => {
+test('landmarks sit on their cells: volcano and spring on the plateau, park and market in the centre (the market by the first street lamp, ≤ 1.0)', () => {
   assert.deepEqual(LANDMARKS.volcano.cell, [0, -1]); assert.deepEqual(LANDMARKS.spring.cell, [1, -1]);
-  assert.deepEqual(LANDMARKS.park.cell, [0, 0]); assert.deepEqual(LANDMARKS.market.cell, [0, 1]);
+  assert.deepEqual(LANDMARKS.park.cell, [0, 0]); assert.deepEqual(LANDMARKS.market.cell, [0, 0]);
+  const m = landmarkWorld('market'), lamp = anchorWorld('bulb'); assert.ok(Math.hypot(m.x - lamp.x, m.z - lamp.z) <= 1.0, 'market by the first lamp');
   for (const k of Object.keys(LANDMARKS)) assert.ok(Math.hypot(LANDMARKS[k].dx, LANDMARKS[k].dz) < RING_R - 0.3, k);
   assert.equal(landmarkWorld('volcano').y, PLATEAU_TOP);
 });

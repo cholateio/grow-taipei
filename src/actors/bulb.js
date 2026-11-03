@@ -212,22 +212,25 @@ const el = ctx => () => ctx.roster.members('bulb.electrician')[0] ?? null;
 // Lv8：電工在風車島上才演他的拍（不在島上——例如剛 RESET 還沒到家——那幾拍跳過，不從主島走過海）
 const onIsland = ctx => () => { const m = ctx.roster.members('bulb.electrician')[0]; return m && !cellAt(m.pos.x, m.pos.z) ? m : null; };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-// 離夜市最近的兩個看得見、在日常裡的島民（每段劇本自己記一組）。
-// 計畫 16（協調者裁決）：不再找站務員——夜市以前在捷運站旁，站務員就近去排；夜市搬到中心格之後他要從捷運格走過來，
-//   同回合下一個代幣劇本要他時還在回崗位的半路上（吹偏／老鼠跑遠第 7 回合代幣 3 拖到 6.4 s）。其他名冊的人都有自己的崗位，也不叫；
-//   島民不夠兩位就一位或沒有（唯一正解到燈泡 Lv4 時島民都已經換了身分：沒有人排隊，第二攤照樣開張）。
-// 「最近」照走過去的路有多長（不是直線距離）：直線近的人可能隔著一座橋要繞（計畫 9 任務 3）。
+// Lv4 去夜市排隊的人：鮮奶的兩個小學生（milk.kids）——「夜市開第二攤，小學生來排隊」（計畫 16 修正輪 1，協調者裁決）。
+//   燈泡 Lv4 要鮮奶 ≥3（up[4] = min('milk', 3)），小學（Lv3）和兩個小學生一定已經在；從校舍格走西橋過來。
+//   以前找島民或站務員：站務員從捷運格走過來，同回合下一個代幣劇本要他時還在回崗位的半路上（吹偏／老鼠跑遠第 7 回合代幣 3 拖到 6.4 s）；
+//   島民到燈泡 Lv4 時都已經換了身分。看得見、在日常裡的才叫（藏起來的、正被別的劇本拿著的不叫）；不夠兩位就一位或沒有。
+//   每段劇本自己記一組；排的順序照走過去的路有多長（不是直線距離：直線近的人可能隔著一座橋要繞，計畫 9 任務 3）。
 //   走不到的人（nav.route 到不了就只回起點，路長 0）不算——不然 0 會排第一
+export const QUEUE_KEY = 'milk.kids';
 export const nearestPair = () => once(c => {
   const end = c.nav.nearestWalkable(MARKET_FRONT);
   const walk = m => { const path = c.nav.route(m.pos, MARKET_FRONT), last = path.at(-1); return last && dist(last, end) < 1e-3 ? c.nav.routeLength(path) : Infinity; };
-  return c.roster.members('landmarks.islanders').filter(m => !m.hidden && m.mode === 'home')
+  return c.roster.members(QUEUE_KEY).filter(m => !m.hidden && m.mode === 'home')
     .map(m => [m, walk(m)]).filter(([, d]) => d < Infinity).sort((a, b) => a[1] - b[1]).slice(0, 2).map(([m]) => m);
 });
 // 第 k 站那一格（站的第一盞燈在哪一格）：Lv2 燈光掃到這一站時鏡頭對的格子
 export const stopCell = k => { const p = LAMP_POINTS[LAMP_STOPS[k][0]]; return cellAt(p.x, p.z); };
 const sameCell = (a, b) => a[0] === b[0] && a[1] === b[1];
-// Lv4 排隊那段至少幾秒（島民本來就在附近、或沒有人可叫時站著等，一級才不短於 3 秒）
+// 從別格叫來的人演完放回日常：hurry（roster.home）——走路速度回家、不在別人的格子裡站著等焦點；藏起來、已經在退場的不管
+const hurryHome = who => ({ kind: 'home', dur: 0, start(c) { for (const f of who) { const m = f(c); if (m) c.roster.home(m, { hurry: true }); } } });
+// Lv4 排隊那段至少幾秒（小學生本來就在附近、或沒有人可叫時站著等，一級才不短於 3 秒）
 const QUEUE_MIN = 1.7;
 // Lv2 燈光一站一拍：亮了停 SWEEP_STEP 秒再換下一站（計畫 16 §設計 4 原訂 0.3；九站加夜市、LEVEL UP 劇本 5.6 s，超過 4.5 → 0.25 是設計給的退路）
 const SWEEP_STEP = 0.25;
@@ -315,15 +318,17 @@ export const script = {
       const { B } = ctx;
       return [B.focus('home'), B.apply(e), B.wait(0.8), B.world({ time: TIMES.dusk }), B.wait(1.2), B.levelUp('bulb')];
     },
-    // 第二攤：離夜市最近的兩個島民快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌板亮起、一起 ♥（鏡頭對著夜市格；計畫 16 起夜市就在中心格，LEVEL UP 不再轉）。
-    //   沒有島民可叫（見 nearestPair）：照樣等 QUEUE_MIN、開張那拍停 0.4（♥ 的長度），一級不短於 3 秒
+    // 第二攤：兩個小學生快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌板亮起、一起 ♥（鏡頭對著夜市格；計畫 16 起夜市就在中心格，LEVEL UP 不再轉）。
+    //   沒有人可叫（見 nearestPair）：照樣等 QUEUE_MIN、開張那拍停 0.4（♥ 的長度），一級不短於 3 秒
     4(e, s, ctx) {
-      const { B } = ctx, pair = nearestPair(), islander = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
+      const { B } = ctx, pair = nearestPair(), pupil = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
+      // 這一級只在演的時候把小學生拿在手上；演完用 hurry 放回日常（走路速度、焦點不在小學那格也照走，同颱風躲雨走出來）——
+      //   一般的 home 在焦點外會站在夜市前等焦點回來，下一回合鮮奶 4 叫他們時還在中心格（命中最後一輪鮮奶 4 拖到 7.2 s）
       return [
         // 閃白第二攤的同時一起 ♥（裁決 R15 一級 ≤ 4.5 s）
-        B.focus(MARKET_CELL), B.together([...[0, 1].map(i => B.walk(islander(i), slot(i), { speed: QUEUE_SPEED })), B.wait(QUEUE_MIN)]),
-        B.together([B.apply(e), B.wait(0.4), ...[0, 1].map(i => B.bubble(islander(i), '♥', 0.4))]),
-        B.home([islander(0), islander(1)]), levelUpAtHome(B, () => MARKET_CELL),
+        B.focus(MARKET_CELL), B.together([...[0, 1].map(i => B.walk(pupil(i), slot(i), { speed: QUEUE_SPEED })), B.wait(QUEUE_MIN)]),
+        B.together([B.apply(e), B.wait(0.4), ...[0, 1].map(i => B.bubble(pupil(i), '♥', 0.4))]),
+        hurryHome([pupil(0), pupil(1)]), levelUpAtHome(B, () => MARKET_CELL),
       ];
     },
     // 全島 LED（棒球 ≥4）：回全景 → 停一下 → 閃白全島 LED、101 燈光秀 → 入夜 → LEVEL UP（全景裝得下整島與 101）

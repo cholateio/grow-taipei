@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as bulb from '../src/actors/bulb.js';
-import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
+import { anchorWorld, landmarkWorld, cellOf } from '../src/actors/anchors.js';
 import { cellAt, cellTop, NEIGHBORS } from '../src/scene/hex.js';
 import { TIMES } from '../src/scene/daynight.js';
 import { B } from '../src/show/beats.js';
@@ -228,15 +228,18 @@ test('grow 2 sweeps the light round the ring: focus the stop\'s cell (no re-pan 
   assert.ok(waits.slice(0, N_STOPS).every(w => w === waits[0] && w <= 0.3), `one beat per stop (${waits[0]} s)`); assert.equal(waits.at(-1), 0.4);
 });
 // 計畫 9 任務 4（任務 3 延後的小項）：Lv4 去夜市排隊的兩個人照走路的路長挑；走不到的人（route 只回起點，路長 0）不算，不會排第一
-// 計畫 16（協調者裁決）：夜市搬到中心格之後不叫站務員——他從捷運格走過來排隊，同回合下一個代幣劇本要他時還在回崗位的半路上
-//   （吹偏／老鼠跑遠第 7 回合代幣 3 拖到 6.4 s）。只找島民；不夠兩位就一位或沒有
-test('nearestPair: the two shortest walks to the market among the islanders (never the station staff); somebody who cannot get there (route stops at the start) is skipped, not ranked first', () => {
+// 計畫 16 修正輪 1（協調者裁決）：排隊的是鮮奶的兩個小學生（milk.kids，「夜市開第二攤，小學生來排隊」）——不叫站務員
+//   （他從捷運格走過來，同回合下一個代幣劇本要他時還在半路上）、也不叫島民；不夠兩位就一位或沒有
+test('nearestPair: the two pupils (milk.kids) by their walk to the market, never the station staff or islanders; somebody who cannot get there (route stops at the start) is skipped, not ranked first', () => {
   const end = { x: 0, y: 0, z: 0 }, m = (x, stuck = false) => ({ pos: { x, y: 0, z: 0 }, hidden: false, mode: 'home', stuck });
-  const people = [m(0.5, true), m(3), m(1), m(2)], staff = [m(0.2)], everyone = [...people, ...staff];
+  const kids = [m(0.5, true), m(3), m(1), m(2)], others = [m(0.2)], everyone = [...kids, ...others];
   const nav = { nearestWalkable: () => end, route: (from) => (everyone.find(p => p.pos === from).stuck ? [from] : [from, end]), routeLength: path => (path.length < 2 ? 0 : Math.abs(path[0].x)) };
-  const roster = k => ({ members: key => (key === 'landmarks.islanders' ? k : key === 'token.staff' ? staff : []) });
-  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster(people) }).map(p => p.pos.x), [1, 2]);
-  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster([]) }), [], 'no islanders: nobody queues, not the station staff');
+  const roster = k => ({ members: key => (key === 'milk.kids' ? k : key === 'token.staff' || key === 'landmarks.islanders' ? others : []) });
+  assert.equal(bulb.QUEUE_KEY, 'milk.kids');
+  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster(kids) }).map(p => p.pos.x), [1, 2]);
+  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster(kids.slice(2, 3)) }).map(p => p.pos.x), [1], 'one pupil: one queues');
+  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster([]) }), [], 'no pupils: nobody queues, not the station staff or an islander');
+  assert.deepEqual(bulb.nearestPair()({ nav, roster: roster([{ ...m(1), mode: 'script' }]) }), [], 'a pupil held by another script is left alone');
 });
 test('world beats: Lv3 fades to dusk, Lv5 to night', () => {
   const worlds = n => bulb.script.grow[n](E(n), { lv: lv({ bulb: n }), flags: {} }, fakeCtx()).filter(b => b.kind === 'world').map(b => b.effects);
@@ -337,29 +340,69 @@ test('placed, Lv2, Lv3, Lv5, Lv6 live: no roster member is ever in a script whil
     assert.ok(secs >= 3 && secs <= (name === 'lv2' ? SCRIPT_EXCEPT['bulb 2'] : SCRIPT_MAX), `${name} ${secs.toFixed(2)} s`);
   }
 });
-// 排隊的那一刻（♥ 冒出來時）都在夜市旁。計畫 16（協調者裁決）：只找島民、不叫站務員（見 nearestPair）——
-// 唯一正解到燈泡 Lv4 時島民都已經換了身分（站長、小學生……），沒有人排隊：第二攤照樣開張、LEVEL UP 照樣冒，一級照樣 ≥ 3 s
-test('Lv4: only islanders queue at the market, never the station staff; with nobody free the second stall still opens with LEVEL UP', async () => {
-  const m = landmarkWorld('market');
-  let staffBusy = false;
-  const h = await liveFrames(SOLUTIONS[0], isBulb(4), hh => { if (hh.show.roster.members('token.staff').some(x => x.mode === 'script')) staffBusy = true; });
-  assert.equal(h.e.to, 4); assert.ok(!staffBusy, 'the station staff stays at his post');
-  const hearts = h.bubblesLog.slice(h.n).filter(b => b.kind === '♥'), avail = h.show.roster.members('landmarks.islanders').filter(x => !x.hidden).length;
-  assert.equal(hearts.length, Math.min(2, avail));
-  assert.ok(hearts.every(b => Math.hypot(b.at.x - m.x, b.at.z - m.z) < 1.6), `islanders by the market: ${hearts.map(b => Math.hypot(b.at.x - m.x, b.at.z - m.z).toFixed(2))}`);
+// 計畫 16 修正輪 1：「夜市開第二攤，小學生來排隊」——燈泡 Lv4 要鮮奶 ≥3（小學和兩個小學生一定在）。第二攤開張（♥ 冒出來）那一刻
+// 兩個小學生站在夜市前的兩個排隊位上；站務員（token.*）整段都不離開自己的格子；一級 3–4.5 s。
+// 唯一正解的燈泡 4 是 3 → 5 跳級的第一級（只演 Lv5 的劇本），這裡照正解走到那個事件、單獨 live 演 Lv4 的劇本；
+// 真的回合裡演到 Lv4 的是壞結局（吹偏、命中第 7／8 回合：鮮奶 3、燈泡 4、代幣 3 同一回合），整回合 live 再驗一次
+function lv4Watch() {
+  const w = { kids: null, moved: [], start: null, n: 0 };
+  w.frame = hh => {
+    const log = hh.bubblesLog, show = hh.show;
+    w.start ??= Object.fromEntries(show.roster.keys().filter(k => k.startsWith('token.')).flatMap(k => show.roster.members(k).map(m => [`${k}#${m.i}`, String(cellAt(m.pos.x, m.pos.z))])));
+    for (const k of show.roster.keys().filter(k => k.startsWith('token.'))) for (const m of show.roster.members(k)) {
+      const id = `${k}#${m.i}`, c = String(cellAt(m.pos.x, m.pos.z));
+      if (id in w.start && c !== w.start[id] && cellAt(m.pos.x, m.pos.z)) w.moved.push(`${id} ${w.start[id]} → ${c}`);
+    }
+    if (!w.kids && log.slice(w.n).some(b => b.kind === '♥')) w.kids = show.roster.members('milk.kids').map(m => ({ ...m.pos, mode: m.mode }));
+  };
+  return w;
+}
+const atSlots = (show, kids) => { const slots = show.nav.slots(bulb.MARKET_FRONT, 2, 0.15); return kids.length === 2 && slots.every(q => kids.some(k => Math.hypot(k.x - q.x, k.z - q.z) < 0.1)); };
+test('Lv4: the two pupils (milk.kids) stand at the queue slots when the second stall opens; no token.* member leaves its cell; 3–4.5 s', async () => {
+  const w = lv4Watch();
+  const h = await liveFrames(SOLUTIONS[0], isBulb(4), (hh, _dt) => { if (w.n === 0) w.n = hh.bubblesLog.length; w.frame(hh); });
+  assert.equal(h.e.to, 4); assert.ok(h.show.stage.lv.milk >= 3, 'the school is up');
+  assert.ok(w.kids && atSlots(h.show, w.kids), `pupils at the queue slots when the stall opens: ${JSON.stringify(w.kids)}`);
+  assert.deepEqual(w.moved.slice(0, 5), [], 'token people stay in their cells');
+  assert.equal(h.bubblesLog.slice(h.n).filter(b => b.kind === '♥').length, 2);
   assert.ok(h.bubblesLog.slice(h.n).some(b => b.text === 'LEVEL UP'), 'LEVEL UP');
-  assert.equal(h.show.stage.partObject('bulb.market')?.visible, true);
+  assert.ok(h.show.roster.members('milk.kids').every(m => m.mode === 'home'), 'the pupils go back to their day');
   assert.ok(h.secs >= 3 && h.secs <= SCRIPT_MAX, `${h.secs.toFixed(2)} s`);
 });
-test('Lv4 never picks hidden islanders', () => {
+test('Lv4 in the real turn (bad endings: milk 3, bulb 4, token 3 in one turn): the pupils queue and are back at school by the end of the turn, no token.* member leaves its cell', async () => {
+  const { EXAMPLE } = await import('./helpers/endings.js');
+  for (const order of [EXAMPLE.deflect, EXAMPLE.hit]) {
+    const h = await headlessShow(), w = lv4Watch(), update = h.show.update;
+    let s = engine.createState(spec), found = false;
+    for (const step of turnSteps(order)) {
+      const r = step(s); s = r.state;
+      if (!r.events.some(isBulb(4))) { await h.run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
+      found = true;
+      let on = false;
+      h.show.update = (dt, t) => { update(dt, t); if (on) w.frame(h); };
+      await h.run([...r.events, { kind: 'settle' }], { onMark: e => { if (isBulb(4)(e)) { on = true; w.n = h.bubblesLog.length; } } });
+      h.show.update = update;
+      break;
+    }
+    assert.ok(found, order.join('>'));
+    assert.ok(w.kids && atSlots(h.show, w.kids), `${order.join('>')}: pupils at the queue slots: ${JSON.stringify(w.kids)}`);
+    assert.deepEqual(w.moved.slice(0, 5), [], `${order.join('>')}: token people stay in their cells`);
+    const held = h.show.roster.keys().flatMap(k => h.show.roster.members(k)).filter(m => m.mode === 'script').map(m => m.key);
+    assert.deepEqual(held, [], `${order.join('>')}: nobody left in a script`);
+    // 演完用 hurry 放回日常：回合結束時已經走回小學那一格（不站在夜市前等焦點，下一回合鮮奶 4 才不用等他們走回去）
+    const kidCells = h.show.roster.members('milk.kids').map(m => String(cellAt(m.pos.x, m.pos.z)));
+    assert.ok(kidCells.every(c => c === String(cellOf('milk'))), `${order.join('>')}: pupils back at school by the end of the turn (${kidCells})`);
+  }
+});
+test('Lv4 never picks hidden pupils', () => {
   const vis = { pos: { x: 9, z: 9 }, mode: 'home', head: () => ({ x: 9, y: 0, z: 9 }) }, m = landmarkWorld('market');
   const hid = { pos: { ...m }, hidden: true, mode: 'home', head: () => m }, vis2 = { pos: { x: 8, z: 8 }, mode: 'home', head: () => ({ x: 8, y: 0, z: 8 }) };
-  const ctx = { B, roster: { members: k => (k === 'landmarks.islanders' ? [hid, vis, vis2] : []) }, nav: { slots: () => [m, m] } };
+  const ctx = { B, roster: { members: k => (k === 'milk.kids' ? [hid, vis, vis2] : []) }, nav: { slots: () => [m, m] } };
   const beats = flat(bulb.script.grow[4](E(4), { lv: lv({ bulb: 4 }), flags: {} }, ctx)).filter(b => b.kind === 'walk');
   const who = [];
   const fakeCtx2 = { ...ctx, roster: { ...ctx.roster, claim: x => who.push(x) }, nav: { route: (a, b) => [a, b], routeLength: () => 0, nearestWalkable: p => p, slots: () => [m, m] } };
   for (const b of beats) b.start(fakeCtx2);
-  assert.ok(!who.includes(hid), 'hidden islander picked'); assert.equal(who.length, 2);
+  assert.ok(!who.includes(hid), 'hidden pupil picked'); assert.equal(who.length, 2);
 });
 
 // 入口點（§13.2）：計畫 16 起電工 Lv1–6 不在（以前從 101 工地走出來巡路）；Lv7 起住在風車島上（衛星島的家沒有入口，同 sat.keeper）。

@@ -28,7 +28,7 @@ export const FESTIVAL_R = [HOME_R, HOME_R, 1.0];
 const HOOP = offset(AT, 0.75, 0.95), SHOT = offset(HOOP, -0.55, 0.1);
 const ARCH = offset(AT, 1.1, 0.3), PILLAR = 0.3;      // 大學拱門校門（中心、兩根柱子離中心多遠）；右柱離小學生入口 ≥ 0.3（柱子有 footprint）
 const BIKES = offset(AT, 1.4, 0.8);                   // 校門旁的 YouBike 站
-const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的電工主路、橋頭都不擋）
+const TRUCK = offset(AT, -1.25, 0.1);                 // 鮮奶節的牛奶車：牛奶箱與研究大樓之間（西岸的環島步道（舊電工主路）、橋頭都不擋）
 // 小學生的入口（§13.2）：校門外、靠中心格那側的邊上（中心格那座橋的橋頭旁）；出場、躲完回來、退場都走這裡（Lv3 兩個小學生也從這裡一個接一個進場，計畫 13）
 export const KID_ENTRY = offset(AT, 1.65, 0.1);
 // 名冊一次補好幾個小孩時各用一個入口（陣列依 i 輪流，roster）：拱門右柱東邊那條南北向的走道上往北排開 0.3（≥ 兩人半徑相加）——

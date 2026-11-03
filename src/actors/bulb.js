@@ -18,7 +18,7 @@ import { C, offset } from './palette.js';
 export const id = 'bulb';
 export const labelY = 0.8;
 const AT = anchorWorld('bulb'), TOWER = anchorWorld('tower'), MARKET = landmarkWorld('market');
-// 夜市前（第二攤櫃台的南邊）：Lv4 島民排隊站這裡，面向攤子、背對鏡頭（計畫 16 夜市搬到第一盞路燈旁之後）。
+// 夜市前（第二攤櫃台的南邊）：Lv4 小學生排隊站這裡，面向攤子、背對鏡頭（計畫 16 夜市搬到第一盞路燈旁之後）。
 // 設計原訂 offset(MARKET, 0.25, 0.55)、是照夜市 dx −1.2 算的（世界座標 (−0.95, 0.9)）；夜市往西挪到 −1.45 之後同一個公式會落在路燈外擴 PAD 裡，
 // 兩個排隊位有一個掉進「兩攤、路燈、格邊」圍起來的死角（走路格連不出去）。改 +0.5：世界座標還是設計那一點，正好在第二攤（Lv4 開張那攤）櫃台前。
 // 不用「夜市中心附近的可走點」（會挑到攤子後面、走不到的死角）
@@ -26,7 +26,7 @@ export const MARKET_FRONT = offset(MARKET, 0.5, 0.55);
 const STATION = anchorWorld('token');
 const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市（計畫 16 起也在中心格）、捷運站
 const ISLAND_ZOOM = 0.8;   // 鏡頭到衛星島拉近 0.8（島和支線都要進畫面，同代幣 Lv7）
-const QUEUE_SPEED = 2.4;   // Lv4 島民快步去夜市排隊（一般走路 1.6；一級 3–4.5 秒）
+const QUEUE_SPEED = 2.4;   // Lv4 小學生快步去夜市排隊（一般走路 1.6；一級 3–4.5 秒）
 const LAMP_R = RING_R + 0.12;
 export const ISLAND_LV = 7;   // 離岸風電啟動那一級電工才登場，之後住在風車島上
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）

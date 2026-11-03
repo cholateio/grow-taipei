@@ -161,7 +161,7 @@ export const builders = {
         const free = room(bodies, dir, dt), want = Math.min(1, free * SCOOTER_R / BRAKE_EASE);
         k = want < k ? want : Math.min(want, k + dt * RAMP);
         const step = Math.min(full * k, free); a += dir * step;
-        // 前面的人讓不開（窄路上迎面走來的電工：主路北半圈跟機車的圈疊在一起）、停住超過 TURN_AFTER 秒：原地迴轉，往另一個方向騎
+        // 前面的人讓不開（窄路上迎面走來的人：舊電工主路的北半圈跟機車的圈疊在一起）、停住超過 TURN_AFTER 秒：原地迴轉，往另一個方向騎
         stuck = step < SCOOTER_W * dt * 0.05 ? stuck + dt : 0;
         if (stuck > TURN_AFTER) { dir = -dir; stuck = 0; k = 0; turn = TURN_DUR; }
         pose();

@@ -416,8 +416,9 @@ test('a turn with a stage crossing into 點燈 holds the mid-script focus(home) 
   const levelUp = show.bubbles.levelUp;
   show.bubbles.levelUp = (head, o = {}) => { log.push(['levelUp', now, o.text]); return levelUp(head, o); };
   await h.run(events);
-  const lit = log.findIndex(l => l[0] === 'levelUp' && l[2] === '101 點燈');
-  assert.ok(lit >= 0, 'the turn crosses into 點燈');
+  // 階段名 2026-11-03 拿掉了：101 的 LEVEL UP 跟別人一樣是「LEVEL UP」——settle 是回合最後一個事件，所以是這回合最後一個 LEVEL UP
+  const lit = log.findLastIndex(l => l[0] === 'levelUp');
+  assert.ok(lit >= 0 && log[lit][2] === 'LEVEL UP', 'the turn crosses into 點燈 (a bare LEVEL UP)');
   const before = log.slice(0, lit), mid = before.findLastIndex(l => l[0] === 'home');
   assert.ok(mid >= 0, log.map(l => l[0]).join(' '));
   // 唯一正解 2026-10-31：點燈落在第 8 回合（颱風移到巨蛋），不是放下的回合（第 6 回合）——101 的劇本照演：回全景之前先飛去 101。

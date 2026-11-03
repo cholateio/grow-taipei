@@ -5,17 +5,12 @@ import { ICONS, BUBBLE_ICONS } from '../ui/icons.js';
 export const BUBBLE_KINDS = ['！', '……', '♥', '♪', '？', '3', '2', '1'];
 const BUBBLE_DY = 0.25, LEVELUP_DY = 0.2, LEVELUP_DUR = 1.0;
 
-// 泡泡內容：符號放 span，圖框放 span.icon + SVG，跑馬燈 { text }（最終章 §7 賽博：黑塔螢幕上的「飛天跑車今日抵台…」）放 span.text
-// （文字跳脫 HTML；CSS 字級比符號小、可換行成兩行）；不認得的種類直接丟錯（腳本寫錯要馬上看到）
-const escape = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// 泡泡內容：符號放 span，圖框放 span.icon + SVG；不認得的種類直接丟錯（腳本寫錯要馬上看到）。
+// 跑馬燈 { text } 2026-11-03 拿掉了（使用者：小字越少越好）——畫面上的字只剩 LEVEL UP／LEVEL DOWN
 function bubbleHtml(kind) {
   if (typeof kind === 'string') {
     if (!BUBBLE_KINDS.includes(kind)) throw new Error(`bubble kind ${kind}`);
     return `<span>${kind}</span>`;
-  }
-  if (typeof kind === 'object' && kind !== null && 'text' in kind) {
-    if (typeof kind.text !== 'string' || !kind.text) throw new Error(`bubble kind ${JSON.stringify(kind)}`);
-    return `<span class="text">${escape(kind.text)}</span>`;
   }
   const icon = ICONS[kind?.icon] ?? BUBBLE_ICONS[kind?.icon];
   if (!icon) throw new Error(`bubble kind ${JSON.stringify(kind)}`);

@@ -84,8 +84,6 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .bubble { pointer-events: none; }
 .bubble span { display: inline-block; background: #fff; color: var(--ink); border-radius: 10px; padding: 2px 8px; font: 900 clamp(18px, 2vh, 36px) ui-monospace, monospace; box-shadow: 0 1px 4px #4a2a1440; white-space: nowrap; animation: bubble-pop .25s cubic-bezier(.3,1.6,.5,1); }
 .bubble .icon { padding: 4px; line-height: 0; }
-/* 跑馬燈文字（最終章 §7 賽博）：字級約符號的 0.6 倍、可換行（最多約 14 字寬，兩行）、置中 */
-.bubble span.text { font-size: clamp(11px, 1.2vh, 22px); white-space: normal; max-width: 14em; text-align: center; line-height: 1.3; padding: 3px 8px; }
 .bubble .icon svg { width: clamp(28px, 3vh, 52px); height: clamp(28px, 3vh, 52px); }
 @keyframes bubble-pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
 /* 升級的那個東西上方 1 秒的 LEVEL UP：黃字墨線描邊往上升；掉級灰字往下掉 */

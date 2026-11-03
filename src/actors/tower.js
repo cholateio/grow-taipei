@@ -36,7 +36,7 @@ const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
 // 螢幕：1.1 × 0.6、厚 0.08，朝 +z（鏡頭）；底邊在桅杆尖上 SCREEN_UP（天線細桿 0.55 高，留 0.05）
 const SCREEN = [1.1, 0.6, 0.08], SCREEN_UP = 0.6;
 
-export const STAGE_NAMES = { site: '101 工地', half: null, full: '101 完工', lit: '101 點燈' };
+// 階段名（「101 工地／完工／點燈」）2026-11-03 拿掉了：使用者「整體遊戲中的小字越少越好」——跨階只打 LEVEL UP
 
 // 選擇帶動升級（計畫 5b 任務 3）：9 回合（8 次放置＋最後一輪），門檻取在（當時）兩條正解總等級曲線的空檔中間——
 //   賽博 2 5 9 14 24 35 45 57 61、外星 2 5 9 15 23 34 45 56 61。
@@ -218,6 +218,6 @@ export const script = {
     // 換零件前回全景（§14.4）：停 0.8 s 等鏡頭飛到；天際線先用新階段的頭頂，換上去的塔頂與 LEVEL UP 才不出框。
     // 開場就是 focus：turn.js 不再先平移到 101 那一格（opensOnFocus）；沒有人被叫來，也就不用叫誰回家
     const skyline = AT.y + body(stage).top + LABEL_UP;
-    return [B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower', STAGE_NAMES[stage] ? { text: STAGE_NAMES[stage] } : {})];
+    return [B.focus('home', { hold: 0.8, skyline }), B.apply(e), B.levelUp('tower')];
   },
 };

@@ -256,14 +256,13 @@ test('crane, antenna pulse and lightshow builders animate', () => {
 });
 
 // 101 跳階只在回合最後的 settle 發生（計畫 3.6）：view 用 meta.total，沒給才自己加總
-test('view uses meta.total when given; stage names for the float', () => {
+test('view uses meta.total when given', () => {
   assert.equal(tiers(tower.view(lvOf(31), {}, { total: 0 })), 1, 'meta.total wins');
   assert.equal(tiers(tower.view(lvOf(31), {})), 10);
-  assert.deepEqual(tower.STAGE_NAMES, { site: '101 工地', half: null, full: '101 完工', lit: '101 點燈' });
   assert.ok(tower.view(zero, {}, { total: 0 })['tower.main'].labelY > 1);
 });
 
-// ── settle 劇本（§8.9；計畫 11 §設計 4）：跨門檻才演——回全景、換零件（長出來）、頭上寫階段名；沒有人走過去揮鐵鎚 ──
+// ── settle 劇本（§8.9；計畫 11 §設計 4）：跨門檻才演——回全景、換零件（長出來）、頭上 LEVEL UP（階段名 2026-11-03 拿掉）；沒有人走過去揮鐵鎚 ──
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
 const labelOf = beats => {
   let text = null; const ctx = { stage: { headOf: () => ({ x: 0, y: 0, z: 0 }) }, bubbles: { levelUp: (h, o) => { text = o.text; return { cancel() {} }; } } };
@@ -279,8 +278,8 @@ test('settle crossing 6→7 yields focus(home) + apply + levelUp (bare LEVEL UP)
   assert.equal(labelOf(beats), 'LEVEL UP');
   assert.deepEqual(tower.script.settle(e, { total: 6, prevTotal: 6 }, ctx), []);
   assert.deepEqual(tower.script.settle(e, { total: 28, prevTotal: 7 }, ctx), []);
-  assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), '101 完工');
-  assert.equal(labelOf(tower.script.settle(e, { total: 57, prevTotal: 50 }, ctx)), '101 點燈');
+  assert.equal(labelOf(tower.script.settle(e, { total: 30, prevTotal: 21 }, ctx)), 'LEVEL UP', '完工：沒有階段名');
+  assert.equal(labelOf(tower.script.settle(e, { total: 57, prevTotal: 50 }, ctx)), 'LEVEL UP', '點燈：沒有階段名');
 });
 
 // 照正解演到第 n 回合（放置回合之後接最後一輪）：只有第 n 回合 live，之前的 instant；回傳 settle 那段的秒數與這回合新增的泡泡。
@@ -311,12 +310,12 @@ test('headless: the turn crossing into 蓋一半 ends with the bare LEVEL UP lab
   allHome(h.show); assert.equal(h.show.stage.meta.total, totals[at.half - 1]);
 });
 
-// 跨進點燈的那一回合（從總等級曲線找；放置回合或最後一輪都一樣演）：看得到階段名
-test('headless: the turn crossing into 點燈 shows the label', async () => {
+// 跨進點燈的那一回合（從總等級曲線找；放置回合或最後一輪都一樣演）：101 頭上只有 LEVEL UP，沒有階段名
+test('headless: the turn crossing into 點燈 pops a bare LEVEL UP over 101', async () => {
   const order = SOLUTIONS[0], { at } = towerCrossings(order);
   assert.ok(at.lit >= 1, `點燈 is reached (turn ${at.lit})`);
   const h = await headlessShow(), t = await liveTurn(h, order, at.lit);
-  assert.equal(t.bubbles.at(-1).text, '101 點燈'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
+  assert.equal(t.bubbles.at(-1).text, 'LEVEL UP'); nearHead(h.show, t.bubbles.at(-1).at); allHome(h.show);
 });
 
 // 計畫 11 §設計 4：101 跨階沒有人揮鐵鎚——跨進「蓋一半」那一段 settle 裡沒有人在演 build、也沒有人被叫去走路

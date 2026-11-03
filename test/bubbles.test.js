@@ -28,12 +28,8 @@ test('levelUp lasts 1 s; down variant has the down class; clear removes everythi
   bubbles.update(0.9); assert.equal(group.children.length, 2); bubbles.update(0.2); assert.equal(group.children.length, 0);
   bubbles.show(() => ({ x: 0, y: 0, z: 0 }), '！', 5); bubbles.clear(); assert.equal(group.children.length, 0); assert.equal(bubbles.count, 0);
 });
-// 最終章 §7 賽博、§8：跑馬燈泡泡 { text }——span.text 裝文字（跳脫 HTML），CSS 字級小一號、可兩行；不認得的形狀照樣丟錯
-test('{ text } bubble renders a span.text with the text; unknown shapes still throw', () => {
-  const { group, bubbles } = setup(), head = () => ({ x: 0, y: 0, z: 0 });
-  bubbles.show(head, { text: '飛天跑車今日抵台，先付清 755 萬' }, 3);
-  assert.equal(group.children[0].element._html, '<span class="text">飛天跑車今日抵台，先付清 755 萬</span>');
-  bubbles.show(head, { text: '<b>&' }, 1);
-  assert.equal(group.children[1].element._html, '<span class="text">&lt;b&gt;&amp;</span>');
-  for (const bad of [{ text: '' }, { text: 3 }, { foo: 'x' }, { icon: 'nope' }, null, 5, true]) assert.throws(() => bubbles.show(head, bad, 1), /bubble kind/, JSON.stringify(bad));
+// 跑馬燈 { text } 2026-11-03 拿掉了：文字形狀跟不認得的形狀一樣丟錯
+test('{ text } bubbles are gone; unknown shapes throw', () => {
+  const { bubbles } = setup(), head = () => ({ x: 0, y: 0, z: 0 });
+  for (const bad of [{ text: '飛天跑車今日抵台' }, { text: '' }, { text: 3 }, { foo: 'x' }, { icon: 'nope' }, null, 5, true]) assert.throws(() => bubbles.show(head, bad, 1), /bubble kind/, JSON.stringify(bad));
 });

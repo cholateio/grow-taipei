@@ -447,7 +447,7 @@ test('meteor script instant (skip): the final state matches the live one for all
 });
 
 // ── 賽博尾聲（設計 §7，任務 6）──
-import { CAR_FLIGHT, MARQUEE } from '../src/actors/finale.js';
+import { CAR_FLIGHT } from '../src/actors/finale.js';
 import { ROOF_SPOTS } from '../src/actors/rat.js';
 import { orbitPose } from '../src/actors/parts.js';
 import { TIMES } from '../src/scene/daynight.js';
@@ -477,7 +477,7 @@ test('view: epilogue cyber draws finale.car (the token Roadster model in red, fr
 });
 
 // 賽博正解整局瞬間演完（含倒數三回合）、飛彈瞬間演完，尾聲 live（終局回合 1 倍速）：量尾聲自己的秒數
-test('cyber epilogue live: night, black tower blinks in, the car flies in and parks within 4 s, the marquee text shows 3 s, the rats appear on the roof, ends on the overview; ≤ 12 s real', async () => {
+test('cyber epilogue live: night, black tower blinks in, the car flies in and parks within 4 s, no marquee text, the rats appear on the roof, ends on the overview; ≤ 12 s real', async () => {
   const h = await headlessShow(), { show, run, bubblesLog, worldLog, rig } = h;
   let s = createState(spec);
   for (const st of turnSteps(CYBER_ORDER)) {
@@ -489,7 +489,7 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
   await run([warn, missileEvent], { finale: true, instant: true });
   const w0 = worldLog.length, n0 = bubblesLog.length, r0 = rig.log.length, main0 = show.stage.partObject('tower.main');
   const park = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META)['finale.car'].park;
-  let darkAt = null, flyAt = null, parkedAt = null, textAt = null, textSeen = 0, ratsAt = null, maxBubbles = 0;
+  let darkAt = null, flyAt = null, parkedAt = null, ratsAt = null, maxBubbles = 0;
   const update = show.update.bind(show), dt = 1 / 30;
   const carPos = () => { const o = show.stage.partObject('finale.car'); if (!o?.children[0]) return null; const p = o.children[0].position; return { x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }; };
   const onRoof = () => show.roster.members('rat.pack').every(m => Math.abs(m.pos.y - ROOF_SPOTS[0].y) < 1e-6);
@@ -500,27 +500,21 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
     const c = carPos();
     if (c && flyAt === null && dist3(c, park) > 1) flyAt = now;
     if (c && flyAt !== null && parkedAt === null && dist3(c, park) < 1e-6) parkedAt = now;
-    if (textAt === null && bubblesLog.slice(n0).some(b => b.kind?.text === MARQUEE)) textAt = now;
-    if (textAt !== null && show.bubbles.count > 0) textSeen += d;
     if (ratsAt === null && onRoof()) ratsAt = now;
   };
   await run([epilogueEvent], { finale: true });
   show.update = update;
   const secs = show.elapsed;
   assert.ok(secs <= 12, `≤ 12 s real (${secs.toFixed(2)})`);
-  console.log(`cyber epilogue: ${secs.toFixed(2)} s real (dark ${darkAt?.toFixed(2)}, fly ${flyAt?.toFixed(2)}, parked ${parkedAt?.toFixed(2)}, marquee ${textAt?.toFixed(2)} for ${textSeen.toFixed(2)}, rats ${ratsAt?.toFixed(2)})`);
+  console.log(`cyber epilogue: ${secs.toFixed(2)} s real (dark ${darkAt?.toFixed(2)}, fly ${flyAt?.toFixed(2)}, parked ${parkedAt?.toFixed(2)}, rats ${ratsAt?.toFixed(2)})`);
   const w = worldLog.slice(w0).map(([x]) => x);
   assert.ok(w.some(x => x.time === TIMES.night && x.glowScale === NEON_BOOST), 'night, neon up');
   assert.ok(darkAt !== null && darkAt < flyAt, 'the black tower first');
   assert.ok(show.stage.partKeys().includes('tower.screen'), 'the screen is up');
   assert.ok(parkedAt !== null && parkedAt - flyAt <= CAR_FLIGHT + 0.05 && CAR_FLIGHT < 4.6, `the car parks ${(parkedAt - flyAt).toFixed(2)} s after take-off`);
   assert.ok(dist3(carPos(), park) < 1e-6, 'the car ends parked on the roof');
-  const marquee = bubblesLog.slice(n0).filter(b => b.kind?.text === MARQUEE);
-  assert.equal(marquee.length, 1, 'one marquee'); assert.equal(MARQUEE, '飛天跑車今日抵台，先付清 755 萬', 'the design text (§7)');
-  const sc = show.stage.partObject('tower.screen').position;
-  assert.ok(dist3(marquee[0].at, sc) < 1e-6, 'on the screen');
-  assert.ok(Math.abs(textSeen - 3) < 0.1, `marquee 3 s (${textSeen.toFixed(2)})`);
-  assert.ok(ratsAt !== null && ratsAt >= textAt, 'the rats line up after the marquee starts');
+  assert.ok(!bubblesLog.slice(n0).some(b => b.kind && typeof b.kind === 'object' && 'text' in b.kind), 'no marquee text（2026-11-03 拿掉）');
+  assert.ok(ratsAt !== null && ratsAt >= parkedAt, 'the rats line up after the car parks');
   const rats = show.roster.members('rat.pack');
   assert.equal(rats.length, 10);
   for (const m of rats) assert.ok(dist3(m.pos, ROOF_SPOTS[m.i]) < 1e-6 && m.mode === 'home', `rat ${m.i} on its roof spot`);

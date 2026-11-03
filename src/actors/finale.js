@@ -11,7 +11,7 @@
 //   shield 罩子全亮、隕石撞上罩子碎成一發煙火、全島跳＋♥；deflect 落到 101 旁被風吹偏、邊滾邊掉進北投溫泉、水花、全島？再♪；
 //   hit 砸進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑、霓虹（燈泡 Lv9 早就開到 NEON_BOOST）→ 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
-//   從海上飛進來繞 101 一圈、停上黑塔屋頂；飛到後半螢幕上冒跑馬燈泡泡 → 機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
+//   從海上飛進來繞 101 一圈、停上黑塔屋頂；機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
 // 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
 //   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
@@ -91,9 +91,8 @@ const carSpec = () => ({
   at: TOWER, h: towerBody('lit').top + 0.6, phase: Math.PI / 2, ...CAR_ORBIT, from: CAR_FROM,
   park: { x: TOWER.x, y: TOWER.y + towerBody('lit', { dark: true }).roof, z: TOWER.z + CAR_PARK_Z, yaw: -Math.PI / 2 }, footprint: false,
 });
-export const MARQUEE = '飛天跑車今日抵台，先付清 755 萬';
-// 跑馬燈：起飛後 MARQUEE_AT 秒冒、停 MARQUEE_DUR 秒（跟飛行後半重疊，剛好在車停好時收掉）；最後全景停 END_HOLD 秒
-const MARQUEE_AT = 1.5, MARQUEE_DUR = 3.0, END_HOLD = 1.5;
+// 跑馬燈「飛天跑車今日抵台…」2026-11-03 拿掉了（使用者：小字越少越好）；最後全景停 END_HOLD 秒
+const END_HOLD = 1.5;
 
 // ── 外星尾聲（設計 §7、§8）──
 // 三台 UFO：老鼠 Lv5 小 UFO 的零件（rat.js UFO_PARTS）放大 2 倍（碟半徑 1.0），碟心在石堆島中心外 UFO_R、等分三個方位；
@@ -346,7 +345,7 @@ export const script = {
   // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
   //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
-  //   同時起飛後 1.5 秒螢幕冒跑馬燈 3 秒 → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
+  //   → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
   //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alien()
   epilogue(e, s, ctx) {
     const { B } = ctx;
@@ -357,11 +356,10 @@ export const script = {
       begin: (o, c) => { if (!o.userData.fly) return false; o.userData.fly({ speed: c.speed ?? 1 }); return true; },
       finish: o => o.userData.land(),
     });
-    const marquee = later(MARQUEE_AT, MARQUEE_DUR, B.bubble('tower.screen', { text: MARQUEE }, MARQUEE_DUR));
     return [
       B.world({ time: TIMES.night, glowScale: NEON_BOOST }),
       B.apply(e, { only: ['tower.main', 'tower.show', 'tower.antenna', 'tower.screen'] }),
-      B.together([fly, marquee]),
+      fly,
       B.apply(e, { only: ['rat.pack', 'rat.king'] }), roof(rats, m => ROOF_SPOTS[m.i % ROOF_SPOTS.length]), B.home(rats),
       B.apply(e), B.focus('home', { hold: END_HOLD }),
     ];

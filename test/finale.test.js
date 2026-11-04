@@ -921,6 +921,7 @@ test('alien epilogue beats (≤ 5.5 s): the spring shot + the king waves ！ (fo
   assert.equal(out.beats[2].dur, finale.LOVE);
   assert.equal(rest.only, undefined);
   assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.ALIEN_END);
+  assert.deepEqual(ship.beats[1].beat.only, ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'typhoon.main', 'typhoon.rain', 'typhoon.scooter'], 'the storm shrinks away as the mothership blinks in');
   const { BLINK: blink } = await import('../src/show/blink.js');
   const total = finale.WAVE + finale.RUSH + finale.UFO_FALL + finale.SHIP_WAIT + blink + finale.LOVE + finale.ALIEN_END;
   console.log(`alien epilogue nominal: ${total.toFixed(2)} s`);
@@ -953,6 +954,8 @@ const alienEnd = (show, h, what) => {
   assert.ok(show.stage.partObject('finale.aliens'), `${what}: the aliens are out`);
   assert.equal(show.stage.partObject('rat.ufo'), null, `${what}: no small UFO`);
   assert.equal(h.worldLog.at(-1)[0].mood, 'alien', `${what}: third eyes`);
+  assert.equal(h.worldLog.at(-1)[0].storm, 0, `${what}: the storm cleared`);
+  assert.ok(!show.stage.partKeys().some(k => k.startsWith('typhoon.') && ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'].includes(k)), `${what}: no storm cloud, rain or scooter`);
   assert.equal(everyone(show).filter(m => m.hidden).length, 0, `${what}: nobody hidden`);
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${what}: nobody in script mode`);
 };
@@ -981,4 +984,22 @@ test('skip mid-epilogue (alien): the final state at once — nobody hidden, nobo
     show.skip(); await p;
     alienEnd(show, h, `alien skipped after ${frames} frames`);
   }
+});
+
+// 審稿：躲進門的那一拍有上限（RUSH ＋ UFO_FALL）——離門很遠的人到時候就在原地藏起來，第二段不會被拉長（吹偏局的終局只剩 0.43 s）
+test('alien hide beat is capped at RUSH + UFO_FALL: a far-away islander hides when the cap runs out (segment 2 never stretches)', () => {
+  const B = beatsMod.B, far = { x: 40, y: 0, z: 0 };
+  const m = { pos: { x: 0, y: 0, z: 0 }, head: () => ({ x: 0, y: 0.5, z: 0 }), hidden: false, speed: 1.6, mode: 'home' };
+  const ctx = {
+    B, stage: { footprints: () => [{ x: TOWER0.x, z: TOWER0.z, w: 1.6, d: 1.6 }] },
+    nav: { nearestWalkable: () => far, route: (a, b) => [{ ...a }, { ...b }], routeLength: r => Math.hypot(r[1].x - r[0].x, r[1].z - r[0].z), version: 0 },
+    roster: { claim() {}, setPose(mm, p) { mm.pos = { x: p.x, y: p.y ?? 0, z: p.z }; }, hide(mm) { mm.hidden = true; } },
+  };
+  const beat = finale.hideBeat(B, m);
+  assert.notEqual(beat.start(ctx), false);
+  const cap = finale.RUSH + finale.UFO_FALL, d = typeof beat.dur === 'function' ? beat.dur(ctx) : beat.dur;
+  assert.ok(d <= cap + 1e-9, `capped (${d.toFixed(2)} ≤ ${cap}) though the door is 40 m away (${(40 / 2).toFixed(1)} s at HURRY)`);
+  for (let t = 0; t < d; t += 1 / 30) beat.step(Math.min(1, t / d), 1 / 30, ctx);
+  beat.end(ctx);
+  assert.ok(m.hidden, 'hidden when the cap runs out');
 });

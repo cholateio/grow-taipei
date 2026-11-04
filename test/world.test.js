@@ -28,6 +28,14 @@ test('the storm pours island-wide at typhoon Lv1 (the placement turn) and Lv2, a
   const after = worldEffects(lv({ typhoon: 3 }), {}); assert.equal(after.storm, 0); assert.equal(after.rain, 0);
   assert.equal(worldEffects(lv({}), {}).storm, 0, 'no typhoon, no storm');
 });
+// 計畫 17 任務 4 審稿：外星收尾——母艦一來暴風圈就散了（颱風 Lv1–2 的雲把 101 和母艦蓋住），全島不再下雨
+test('the alien epilogue clears the storm (typhoon Lv1–2): storm 0, rain 0; other epilogues keep it', () => {
+  for (const n of [1, 2]) {
+    const w = worldEffects(lv({ typhoon: n }), { missile: 'deflect', epilogue: 'alien' });
+    assert.equal(w.storm, 0, `Lv${n}`); assert.equal(w.rain, 0);
+    for (const epilogue of [undefined, 'flood', 'blackout']) assert.equal(worldEffects(lv({ typhoon: n }), { missile: 'deflect', epilogue }).storm, 1, `${epilogue}: still pouring`);
+  }
+});
 test('stepWorld eases toward the target: ~98% in one second, snaps when close, never overshoots', () => {
   const from = worldEffects(lv({}), {}), to = { ...worldEffects(lv({ bulb: 5, typhoon: 1 }), {}), peopleVisible: false };
   let w = from; for (let i = 0; i < 60; i++) { w = stepWorld(w, to, 1 / 60); assert.ok(w.time <= to.time && w.storm <= 1); }

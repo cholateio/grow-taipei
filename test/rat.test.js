@@ -239,7 +239,7 @@ test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower to
 // 計畫 17 任務 4（變異鼠稱王災難版）：外星收尾時另外有一群 10 隻變異鼠（名冊 rat.swarm；鼠王照舊是 rat.pack 唯一一隻）——
 // 綠色發光、三眼、沒有天線、沒有王冠、一般大小（h 0.2）；家是 stand 在母艦碟緣上（SAUCER_SPOTS：碟頂高度 shipTop、圍著碟頂中心的鼠王一圈、
 // 面朝外，後側留給天線），入口是園區門口（PARK_ENTRIES）。沒有收尾、賽博收尾都沒有這一群。骨架：10 + 鼠王 + 柴犬 = 12
-test('epilogue alien: rat.swarm is 10 mutants (C.alien tint + glow, the eye, no antenna, no crown, h 0.2) standing on SAUCER_SPOTS round the king on the saucer rim, entering from the park gate (SWARM_ENTRIES); none otherwise', async () => {
+test('epilogue alien: rat.swarm is 10 mutants (C.alien tint + glow, the eye, no antenna, no crown, h 0.2) standing on SAUCER_SPOTS round the king on the saucer rim, entering from SWARM_ENTRIES (the five park-gate entries + a second row outside them); none otherwise', async () => {
   const tower = await import('../src/actors/tower.js'), { C } = await import('../src/actors/palette.js');
   const L = lv({ rat: 4 });
   for (const missile of ['deflect', 'hit']) {

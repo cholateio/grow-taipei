@@ -11,7 +11,8 @@ export const stormy = lv => lv.typhoon >= 1 && lv.typhoon <= 2;
 export function worldEffects(lv, flags) {
   // 計畫 17 任務 3：大停電收尾（flags.epilogue 'blackout'）比夜晚更黑——漆黑（TIMES.pitch）；收尾劇本的 worldNow、回合收尾、跳過都照這一份
   const time = flags.epilogue === 'blackout' ? TIMES.pitch : flags.blackout || lv.bulb >= 5 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
-  const storm = stormy(lv) ? 1 : 0;
+  // 計畫 17 任務 4 審稿：外星收尾——母艦一來暴風圈就散了（typhoon.js 不畫雲雨），雨停
+  const storm = stormy(lv) && flags.epilogue !== 'alien' ? 1 : 0;
   // 全島心情（最終章 §6、§8）：隕石命中全島躺平比讚，外星收尾全島長第三隻眼；app 交給 people.setMood。
   // 計畫 17：命中之後接收尾的壞結局（flags.epilogue 有值），收尾裡大家站起來——只有沒收尾的（矽盾未就緒等）躺到最後
   const mood = flags.epilogue === 'alien' ? 'alien' : flags.missile === 'hit' && !flags.epilogue ? 'lie' : 'normal';

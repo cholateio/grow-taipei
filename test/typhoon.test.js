@@ -613,3 +613,15 @@ test('placement turn live: with boba Lv2–3 one of the queue stays out in the r
     } else assert.equal(stayed.length, 0, 'at the fountain plaza everyone hides');
   }
 });
+
+// 計畫 17 任務 4 審稿：外星收尾時暴風圈散掉——颱風 Lv1–2 不畫雲、雨、外送機車（finale.js 的母艦那一拍一起套用，雲縮下去、母艦閃白換上）；
+// 沒有彩虹（那是 Lv3 放晴的事）；其他收尾照舊
+test('view: the alien epilogue disperses the storm (no cloud, rain or scooter at Lv1–2, no rainbow either); other epilogues keep it', () => {
+  for (const n of [1, 2]) {
+    const L = lv({ typhoon: n, boba: 5 }), plain = typhoon.view(L, {}), gone = typhoon.view(L, { missile: 'deflect', epilogue: 'alien' });
+    assert.ok(plain['typhoon.main'] && plain['typhoon.rain'] && plain['typhoon.scooter'], `Lv${n}: the storm before`);
+    assert.deepEqual(gone, {}, `Lv${n}: dispersed`);
+    assert.deepEqual(typhoon.view(L, { missile: 'deflect', epilogue: 'flood' }), plain, `Lv${n}: other epilogues keep the storm`);
+  }
+  assert.deepEqual(typhoon.view(lv({ typhoon: 3 }), { epilogue: 'alien' }), typhoon.view(lv({ typhoon: 3 }), {}), 'Lv3 is already clear');
+});

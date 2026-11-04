@@ -51,10 +51,13 @@ function levee() {
     parts: LEVEE_EDGES.map(e => ({ kind: 'box', pos: [e.x, e.y + LEVEE_H / 2, e.z], scale: [e.len, LEVEE_H, 0.07], rot: [0, e.yaw, 0], color: C.window })) };
 }
 
-export function view(lv) {
+export function view(lv, flags = {}) {
   const n = lv.typhoon, v = {};
   if (!n) return v;
   if (n <= 2) {
+    // 外星收尾（計畫 17 任務 4 審稿）：母艦一來暴風圈就散了——雲、雨、外送機車都不畫（finale.js 跟母艦同一拍套用）；
+    // 也不是放晴（沒有彩虹、河濱公園、堤防：那是 Lv3 的事）。world.js 同一個旗標讓雨停
+    if (flags.epilogue === 'alien') return v;
     // 暴風圈：一團深灰雲繞 y 轉，停在 101 旁邊上空（放下那回合從海上飄進來；Lv2 還在原地）
     v['typhoon.main'] = { kind: 'cloud', at: AT, labelY: 3.9, spin: 0.5, footprint: false, parts: [
       { kind: 'sphere', pos: [0, 4.6, 0], scale: 1.6, color: STORM },

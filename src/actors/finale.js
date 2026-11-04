@@ -320,7 +320,7 @@ const later = (delay, dur, beat) => {
   let on = false, shown = false;
   const open = c => { on = true; shown = beat.start?.(c) !== false; };
   return {
-    kind: 'later', dur: delay + dur,
+    kind: 'later', dur: delay + dur, beat,   // beat 留在拍上給測試看
     start() { on = false; shown = false; },
     step(k, dt, c) {
       const t = k * (delay + dur);
@@ -419,12 +419,14 @@ export const script = {
 //   ① 鏡頭到溫泉格，同時鼠王（名冊 rat.pack 唯一一隻，演到才點名）揮手＋「！」WAVE 秒；第一拍先折旗標（apply only []）、
 //      心情先切回站著（world mood normal：命中之後大家躺平；第三隻眼留到最後走出來那一刻，所以不在這裡 worldNow）；
 //   ② 一段：回全景（鏡頭飛 1 s），鼠群（rat.swarm 10 隻）從園區門口（SWARM_ENTRIES）閃白出現、衝向 101 腳下 RUSH 秒（DASH，跑不到的停在半路），
-//      同一刻小 UFO、石堆島的兩隻老鼠縮掉（骨架動畫 ≤ 12：鼠群 10＋鼠王＋柴犬）、主島的小人（crowd.islanders，演到才點名）各自快走到最近的建築門口躲進去（typhoon.js toDoor，同颱風放下的躲雨）；
+//      同一刻小 UFO、石堆島的兩隻老鼠縮掉（骨架動畫 ≤ 12：鼠群 10＋鼠王＋柴犬）、主島的小人（crowd.islanders，演到才點名）各自快走到最近的建築門口躲進去
+//      （typhoon.js toDoor，同颱風放下的躲雨；hideBeat 上限 RUSH ＋ UFO_FALL）；
 //      RUSH 秒後鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外）：綠光圈閃白變降落場，三台 UFO 不閃白套上、從 UFO_DROP 高降下 UFO_FALL 秒，
 //      降落前 BLINK 外星生物閃白；
-//   ③ 回全景，SHIP_WAIT 秒後 101 閃白變母艦（塔身、天線、燈光秀、罩子；命中局也變，tower.js；母艦 grow false 不從矮樁長，這裡自己 blinkPart 閃白），同一刻鼠群、鼠王閃白站上碟緣（rat.js SAUCER_SPOTS）、碟頂（SHIP_SPOT）
+//   ③ 回全景，SHIP_WAIT 秒後 101 閃白變母艦（塔身、天線、燈光秀、罩子；命中局也變，tower.js；母艦 grow false 不從矮樁長，這裡自己 blinkPart 閃白；
+//      颱風 Lv1–2 的暴風雲、雨、外送機車同一拍縮掉——母艦一來暴風圈就散了，typhoon.js），同一刻鼠群、鼠王閃白站上碟緣（rat.js SAUCER_SPOTS）、碟頂（SHIP_SPOT）
 //      （roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常（站定）；
-//   ④ worldNow（全島第三隻眼：world.js 有外星收尾就是 mood alien）、躲著的人走出來（放回日常、roster.showAll({ walk })：從門口用走路速度走回家），同時鼠王「♥」LOVE 秒；
+//   ④ worldNow（全島第三隻眼：world.js 有外星收尾就是 mood alien；雨停 storm 0）、躲著的人走出來（放回日常、roster.showAll({ walk })：從門口用走路速度走回家），同時鼠王「♥」LOVE 秒；
 //   ⑤ 剩下的套用 → 全景停 ALIEN_END。
 // 名義秒數 WAVE＋RUSH＋UFO_FALL＋SHIP_WAIT＋BLINK＋LOVE＋ALIEN_END＝5.25 s（live 多幾幀拍與拍之間的換手）。
 // 跳過：躲進門的 toDoor 收尾照樣藏起來，④ 的走出來（跳過時也是 start → end）、回合 snap 的 showAll 都把人放出來
@@ -446,6 +448,21 @@ const rush = (B, m, to) => {
     end(c) { if (!done && !m.gone) c.roster.setPose(m, { ...m.pos, walking: false }); },
   };
 };
+// 躲進門（typhoon.js toDoor）有上限 RUSH ＋ UFO_FALL（第二段的長度）：離門很遠的人時間到就在半路藏起來（toDoor 的收尾把他擺到門口、藏好），
+// 第二段不會因為誰站得遠被拉長（吹偏局的終局只剩約 0.4 s）。dur 照 walk 的長度、超過就截到上限；拍照常 step／end
+const capped = (beat, max) => {
+  let d = 0;
+  return {
+    kind: beat.kind, dur: () => d,
+    start(c) { const r = beat.start?.(c); d = r === false ? 0 : Math.min(max, typeof beat.dur === 'function' ? beat.dur(c) : beat.dur); return r; },
+    step(k, dt, c) { beat.step?.(k, dt, c); },
+    end(c) { beat.end?.(c); },
+  };
+};
+export const hideBeat = (B, m) => capped(toDoor(B, m), RUSH + UFO_FALL);
+// 母艦一來暴風圈就散了（審稿：颱風 Lv1–2 的雲把 101 跟母艦蓋住）：雲、雨、外送機車跟母艦同一拍套用（縮下去），
+// 雨停（world.js 外星收尾 storm 0）在第 ④ 拍的 worldNow
+const STORM = ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'];
 export function alienEpilogue(e, ctx) {
   const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), swarm = c => c.roster.members('rat.swarm') ?? [];
   // 101 腳下一圈 10 個點，離園區門口近的先給（老鼠 0 從最靠 101 的入口出來）
@@ -459,7 +476,7 @@ export function alienEpilogue(e, ctx) {
     B.together([
       B.focus('home'), B.apply(e, { only: ['rat.pack', 'rat.swarm', 'rat.ufo', 'sat.rocks'] }), appear(swarm),
       crowd(B, c => swarm(c).map((m, i) => rush(B, m, foot(c)[i]))),
-      crowd(B, c => cast(c).map(m => toDoor(B, m))),
+      crowd(B, c => cast(c).map(m => hideBeat(B, m))),
       later(RUSH, UFO_FALL, drop),
       later(RUSH, BLINK, B.apply(e, { only: ['sat.rocksRing'] })),
       later(RUSH, FOCUS_BEAT, B.focus(ROCKS)),
@@ -467,7 +484,8 @@ export function alienEpilogue(e, ctx) {
     ]),
     B.together([
       B.focus('home'),
-      later(SHIP_WAIT, BLINK, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] })), later(SHIP_WAIT, 0, blinkPart('tower.main')),
+      // 同一幀的順序：前一個 later 先開演、apply 第一步就 commit 母艦，blinkPart 接著才開，閃的是剛換上的母艦（不是舊的塔）
+      later(SHIP_WAIT, BLINK, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', ...STORM] })), later(SHIP_WAIT, 0, blinkPart('tower.main')),
       later(SHIP_WAIT, BLINK, roof(crew, m => (m.key === 'rat.swarm' ? SAUCER_SPOTS[m.i % SAUCER_SPOTS.length] : SHIP_SPOT))),
     ]),
     B.home(crew),

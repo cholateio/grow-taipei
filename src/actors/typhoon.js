@@ -196,8 +196,9 @@ function nearestDoor(c, pos) {
   const d = Math.hypot(pos.x - f.x, pos.z - f.z) || 1, k = ext(f) * 0.9 / d;
   return c.nav.nearestWalkable({ x: f.x + (pos.x - f.x) * k, z: f.z + (pos.z - f.z) * k });
 }
-// 走到門口就躲進去（藏起來、不閃；躲 HUDDLE 秒後由放下劇本的 comeOut 放出來走回家，跳過時 snap 也會全部露出來）
-function toDoor(B, m) {
+// 走到門口就躲進去（藏起來、不閃；躲 HUDDLE 秒後由放下劇本的 comeOut 放出來走回家，跳過時 snap 也會全部露出來）。
+// 外星收尾（finale.js，計畫 17 任務 4）躲變異鼠群也用這一個
+export function toDoor(B, m) {
   const w = B.walk(m, c => nearestDoor(c, m.pos), { speed: HURRY }), end = w.end;
   w.end = c => { end(c); c.roster.hide(m); };
   return w;

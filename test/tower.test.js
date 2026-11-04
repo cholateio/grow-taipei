@@ -250,6 +250,19 @@ test('view with epilogue alien: base lifted by 1.0 with a green glow disc beneat
   assert.equal(v['tower.screen'], undefined);
   assert.deepEqual(tower.body('lit', { ship: false }), lit);
 });
+// 計畫 17 任務 4：外星是壞結局，隕石命中（彎 L）之後也接外星收尾——101 照樣閃白變母艦（外星人把它改裝了；命中拿掉的天線、燈光秀、罩子不回來），
+// 頭頂回到點燈的塔（同吹偏、擋下的母艦）；沒有外星收尾照舊彎 L
+test('view with missile hit + epilogue alien: the mothership too (no antenna / lightshow / shield after the hit); without the epilogue the bent tower', () => {
+  for (const total of [30, 45, 59]) {
+    const lv = lvOf(total, { chip: 8, bulb: 5 }), v = tower.view(lv, { missile: 'hit', epilogue: 'alien' }, { total }), bent = tower.view(lv, { missile: 'hit' }, { total });
+    assert.deepEqual(v['tower.main'].parts, tower.body('lit', { ship: true }).parts, `total ${total}: the ship`);
+    assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 });
+    assert.equal(v['tower.main'].grow, false, 'swaps whole (the rats blink onto the saucer at once)');
+    assert.equal(v['tower.main'].labelY, tower.view(lvOf(61), { missile: 'shield', epilogue: 'alien' }, { total: 61 })['tower.main'].labelY, 'the lit head');
+    for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane']) assert.equal(v[k], undefined, `total ${total}: no ${k}`);
+    assert.notDeepEqual(bent['tower.main'].parts, v['tower.main'].parts, 'bent without the epilogue');
+  }
+});
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');
   for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);

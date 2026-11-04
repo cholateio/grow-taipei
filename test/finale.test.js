@@ -671,9 +671,8 @@ test('view: epilogue alien draws finale.ufos (one compound, three saucers over t
 });
 
 // 外星是壞結局（唯一正解 §4.5）：結局「變異鼠稱王」；畫面就是老鼠 Lv4 外星型態——戴王冠的變異鼠、頭上的小 UFO、石堆島的綠光圈。
-// 計畫 17（2026-11-04）：壞結局也有收尾事件。任務 1 的 script.epilogue 對外星先只套用（舊的 alienEpilogue ≈ 8.8 s 接上去 pace「老鼠跑遠」局終局超過 12 s）；
-// 舊劇本留給任務 4 改成災難版——這裡從真的外星局（EXAMPLE.alien）把它 live 演一次：不出錯、≤ 12 s
-test('alien is a bad ending (變異鼠稱王) with an epilogue: before it the crowned mutant + the small UFO + the rocks-islet ring; dispatch only applies for now; the old alienEpilogue plays live from a real alien game, ≤ 12 s', async () => {
+// 計畫 17（2026-11-04）：壞結局也有收尾事件；收尾劇本（災難版，任務 4）見下面「計畫 17 任務 4」那幾個測試
+test('alien is a bad ending (變異鼠稱王) with an epilogue: before it the crowned mutant + the small UFO + the rocks-islet ring, no swarm, no landing UFOs', async () => {
   const { ENDINGS } = await import('../src/rules/endings.js');
   assert.deepEqual(EXAMPLE.alien, ALIEN_ORDER, 'EXAMPLE.alien is the first alien game (rat Lv4)');
   const h = await headlessShow();
@@ -682,6 +681,7 @@ test('alien is a bad ending (變異鼠稱王) with an epilogue: before it the cr
   assert.equal(s.flags.ratBranch, 'alien'); assert.equal(s.lv.rat, 4);
   const ending = resolve(s, spec);
   assert.equal(ending.id, 'alien'); assert.equal(ENDINGS.alien.kind, 'bad'); assert.equal(ending.title, '變異鼠稱王');
+  assert.equal(ending.missile, 'deflect', 'EXAMPLE.alien is a deflect game');
   const evs = finaleEvents(ending);
   assert.deepEqual(evs.map(e => e.kind), ['warning', 'missile', 'epilogue']);
   assert.equal(evs[2].ending, 'alien');
@@ -690,21 +690,11 @@ test('alien is a bad ending (變異鼠稱王) with an epilogue: before it the cr
   assert.equal(show.roster.members('rat.pack').length, 1);
   assert.ok(mutant.dress.crown && mutant.dress.eye && mutant.dress.h === 0.5, 'the crowned mutant');
   assert.ok(Math.hypot(mutant.pos.x - SHIP_SPOT.x, mutant.pos.z - SHIP_SPOT.z) > 1, 'not on a mothership yet');
+  assert.equal(show.roster.members('rat.swarm').length, 0, 'no swarm yet');
   assert.ok(show.stage.partObject('rat.ufo'), 'the small UFO');
   assert.ok(show.stage.partObject('sat.rocksRing'), 'the green ring on the rocks islet');
   assert.ok(!show.stage.partKeys().some(k => k === 'finale.ufos' || k === 'finale.aliens'), 'no landing UFOs, no aliens yet');
   assert.equal(show.stage.flags.epilogue, undefined);
-  const B = beatsMod.B;
-  assert.deepEqual(finale.script.epilogue(evs[2], show.stage, { B }).map(b => b.kind), [B.apply(evs[2]).kind], 'task 1: the alien epilogue only applies (task 4 wires the script)');
-  const dispatch = finale.script.epilogue;
-  finale.script.epilogue = (e, st, ctx) => finale.alienEpilogue(e, ctx);
-  try { await h.run([evs[2]], { finale: true }); } finally { finale.script.epilogue = dispatch; }
-  const secs = show.elapsed;
-  console.log(`alien epilogue (plan 17 task 1, old alien()): ${secs.toFixed(2)} s real`);
-  assert.ok(secs <= 12, `≤ 12 s real for now (${secs.toFixed(2)})`);
-  assert.equal(show.stage.flags.epilogue, 'alien');
-  assert.ok(show.stage.partKeys().includes('finale.ufos') && show.stage.partKeys().includes('finale.aliens'), 'the UFOs landed, the aliens are out');
-  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
 });
 
 // ── 計畫 17 任務 3：大停電、捷運淹水收尾（設計 §4；終局回合 1 倍速，每段 ≤ 7.0 s 真實秒數，最後回全景停 END_HOLD）──
@@ -715,12 +705,12 @@ import { cellTop as hexTop } from '../src/scene/hex.js';
 const kinds = beats => beats.map(b => b.kind);
 const fakeRoster = { members: () => [], keys: () => [], nearest: () => null };
 // 從 EXAMPLE 的那一局把前面的回合瞬間演完，回 { h, show, evs }（終局三個事件：警告、隕石、收尾）
-async function badGame(ending) {
+async function badGame(ending, order = EXAMPLE[ending]) {
   const h = await headlessShow();
   let s = createState(spec);
-  for (const st of turnSteps(EXAMPLE[ending])) { const r = st(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  for (const st of turnSteps(order)) { const r = st(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   const res = resolve(s, spec);
-  assert.equal(res.id, ending, `EXAMPLE.${ending} reaches ${ending}`);
+  assert.equal(res.id, ending, `${order.join(',')} reaches ${ending}`);
   const evs = finaleEvents(res);
   assert.deepEqual(evs.map(e => e.kind), ['warning', 'missile', 'epilogue']); assert.equal(evs[2].ending, ending);
   return { h, show: h.show, evs, state: s };
@@ -902,5 +892,93 @@ test('meteor beats: with an epilogue following (e.epilogue) the tail drops the o
     assert.deepEqual(plain.slice(-3).map(b => [b.kind, b.target, b.dur]).slice(-1), [['focus', 'home', finale.HOLD_END]], `${outcome}: overview hold`);
     assert.deepEqual(kinds(chained), kinds(plain).slice(0, -1), `${outcome}: the same beats minus the hold`);
     assert.deepEqual(kinds(chained).slice(-2), ['apply', 'home']);
+  }
+});
+
+// ── 計畫 17 任務 4：變異鼠稱王（災難版）收尾（設計 §4 alien；協調者裁決：整段 ≤ 5.5 s 真實秒數——外星局也可能是吹偏局，
+//   警告＋吹偏的隕石已經 10.2 s，壞結局終局上限 16 s）──
+import * as ratMod from '../src/actors/rat.js';
+const ROCKS0 = island('rocks');
+// 外星的命中局：列舉裡第一條結局是外星、隕石命中的放法（EXAMPLE.alien 是吹偏局）；pace 的「老鼠跑遠」局也是外星命中局
+const ALIEN_HIT = enumerate(spec).find(r => r.ending.id === 'alien' && missileOf(r.state, spec) === 'hit').order;
+const swarmOf = show => show.roster.members('rat.swarm');
+test('alien epilogue beats (≤ 5.5 s): the spring shot + the king waves ！ (fold, stand up), then one segment — rats from the park rush 101 while everyone hides, the camera goes to the rocks islet, UFOs land, aliens out — then home: mothership + rats and king blink onto the saucer, third eyes + come out + ♥, the rest, the overview hold', async () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'alien', flag: { name: 'epilogue', value: 'alien' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['together', 'together', 'together', 'home', 'together', 'apply', 'focus']);
+  const [open, swarm, ship, , out, rest, hold] = beats;
+  assert.deepEqual(kinds(open.beats), ['apply', 'world', 'focus', 'gesture', 'bubble']);
+  assert.deepEqual(open.beats[0].only, [], 'fold the flag first');
+  assert.deepEqual(open.beats[1].effects, { mood: 'normal' }, 'stand up (after a hit) — the third eyes come at the end');
+  assert.ok(dist3(open.beats[2].target, landmarkWorld('spring')) < 1e-9, 'the spring');
+  assert.equal(open.beats[3].dur, finale.WAVE); assert.equal(open.beats[4].dur, finale.WAVE);
+  assert.equal(swarm.beats[0].target, 'home');
+  assert.deepEqual(swarm.beats[1].only, ['rat.pack', 'rat.swarm', 'rat.ufo', 'sat.rocks'], 'the small UFO and the two islet rats go as the swarm comes (skeletons ≤ 12)');
+  assert.ok(swarm.beats.some(b => b.kind === 'later' && b.dur === finale.RUSH + beatsMod.FOCUS_BEAT), 'the rocks shot after the rush');
+  assert.ok(swarm.beats.some(b => b.kind === 'later' && Math.abs(b.dur - (finale.RUSH + finale.UFO_FALL)) < 1e-9), 'the UFOs land in UFO_FALL');
+  assert.equal(ship.beats[0].target, 'home');
+  assert.deepEqual(kinds(out.beats), ['world', 'home', 'bubble']); assert.equal(out.beats[0].effects, undefined, 'worldNow: mood alien');
+  assert.equal(out.beats[2].dur, finale.LOVE);
+  assert.equal(rest.only, undefined);
+  assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.ALIEN_END);
+  const { BLINK: blink } = await import('../src/show/blink.js');
+  const total = finale.WAVE + finale.RUSH + finale.UFO_FALL + finale.SHIP_WAIT + blink + finale.LOVE + finale.ALIEN_END;
+  console.log(`alien epilogue nominal: ${total.toFixed(2)} s`);
+  assert.ok(total <= 5.3, `nominal ≤ 5.3 s, frame rounding inside 5.5 (${total.toFixed(2)})`);
+});
+
+// 外星收尾 live（警告＋隕石＋收尾同一個 live 回合，同 game.js）：吹偏局（EXAMPLE.alien）與命中局（ALIEN_HIT）
+async function alienLive(order) {
+  const g = await badGame('alien', order), { show, h } = g, { people } = h;
+  const hidden = [], lying = [], running = [];
+  let r0 = null;
+  const res = await liveFinale(g, t => {
+    if (t === null) { r0 = h.rig.log.length; return; }   // 收尾開始前最後一幀的鏡頭紀錄長度（收尾第一拍的平移跟 mark 同一幀）
+    if (t > 0.1 && people.mood === 'lie') lying.push(t);
+    hidden.push(everyone(show).filter(m => m.hidden).length);
+    running.push(swarmOf(show).filter(m => m.mode === 'script' && m.walking).length);
+  });
+  return { ...g, ...res, hidden, lying, running, cam: h.rig.log.slice(r0) };
+}
+const alienEnd = (show, h, what) => {
+  const sw = swarmOf(show);
+  assert.equal(sw.length, 10, `${what}: 10 mutants`);
+  sw.forEach((m, i) => { assert.ok(dist3(m.pos, ratMod.SAUCER_SPOTS[i]) < 1e-6, `${what}: mutant ${i} on the saucer rim (${m.pos.x.toFixed(2)}, ${m.pos.y.toFixed(2)}, ${m.pos.z.toFixed(2)})`); assert.ok(m.dress.eye && !m.dress.crown, 'a mutant'); });
+  const [king] = show.roster.members('rat.pack');
+  assert.ok(dist3(king.pos, SHIP_SPOT) < 1e-6 && king.dress.crown, `${what}: the crowned king on the saucer top`);
+  const main = show.stage.partObject('tower.main'); main.updateMatrixWorld(true);
+  assert.ok(new THREE.Box3().setFromObject(main).min.y > TOWER0.y + 0.4, `${what}: 101 is the mothership (floating)`);
+  const ufos = show.stage.partObject('finale.ufos');
+  assert.ok(ufos && dist3(ufos.position, ROCKS0) < 1e-9, `${what}: three UFOs landed on the rocks islet`);
+  assert.ok(show.stage.partObject('finale.aliens'), `${what}: the aliens are out`);
+  assert.equal(show.stage.partObject('rat.ufo'), null, `${what}: no small UFO`);
+  assert.equal(h.worldLog.at(-1)[0].mood, 'alien', `${what}: third eyes`);
+  assert.equal(everyone(show).filter(m => m.hidden).length, 0, `${what}: nobody hidden`);
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${what}: nobody in script mode`);
+};
+test('alien live from EXAMPLE.alien (deflect) and the first alien hit game (whole finale as one live turn): the swarm rushes 101 while the islanders hide, all come out with the third eye; mothership, king and 10 mutants on the saucer, UFOs landed; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
+  for (const [what, order, outcome] of [['deflect', EXAMPLE.alien, 'deflect'], ['hit', ALIEN_HIT, 'hit']]) {
+    const r = await alienLive(order), { show, h } = r;
+    assert.equal(show.stage.flags.missile, outcome, `${what}: meteor ${outcome}`);
+    console.log(`alien epilogue (${what}): ${r.secs.toFixed(2)} s, finale ${r.total.toFixed(2)} s (plan 17 task 4)`);
+    assert.ok(r.secs <= 5.5, `${what}: epilogue ≤ 5.5 s (${r.secs.toFixed(2)})`);
+    assert.ok(r.total <= 16, `${what}: finale ≤ 16 s (${r.total.toFixed(2)})`);
+    assert.deepEqual(r.lying, [], `${what}: nobody lies during the epilogue`);
+    assert.ok(Math.max(...r.hidden) >= 10, `${what}: the islanders hide (${Math.max(...r.hidden)} at once)`);
+    assert.ok(Math.max(...r.running) >= 5, `${what}: the mutants rush (${Math.max(...r.running)} running at once)`);
+    alienEnd(show, h, what);
+    // 鏡頭：溫泉 → 全景 → 石堆島 → 全景（最後一拍）
+    const shots = r.cam.filter(([k]) => k === 'focus' || k === 'home').map(([k, p]) => (k === 'home' ? 'home' : dist3(p, landmarkWorld('spring')) < 1e-6 ? 'spring' : dist3(p, ROCKS0) < 1e-6 ? 'rocks' : 'other'));
+    assert.deepEqual(shots.filter((x, i) => x !== shots[i - 1]), ['spring', 'home', 'rocks', 'home'], `${what}: camera ${shots.join(' ')}`);
+  }
+});
+test('skip mid-epilogue (alien): the final state at once — nobody hidden, nobody in script mode, king + mutants on the saucer, UFOs landed, third eyes', async () => {
+  for (const frames of [10, 40, 80, 120, 150]) {
+    const g = await badGame('alien'), { show, h } = g;
+    await h.run(g.evs.slice(0, 2), { finale: true, instant: true });
+    const p = show.turn([g.evs[2]], { finale: true });
+    for (let i = 0; i < frames; i++) { show.update(1 / 30, i / 30); await Promise.resolve(); }
+    show.skip(); await p;
+    alienEnd(show, h, `alien skipped after ${frames} frames`);
   }
 });

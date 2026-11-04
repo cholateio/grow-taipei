@@ -4,7 +4,8 @@
 // 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
 // （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
-// 變異鼠王坐碟頂中心（shipTop），天線退到碟緣後側；燈光秀跟著抬高、矽盾照樣全亮。
+// 變異鼠王坐碟頂中心（shipTop），天線退到碟緣後側；燈光秀跟著抬高、矽盾照樣全亮。計畫 17 任務 4：外星是壞結局，隕石命中（彎 L）
+// 之後也演外星收尾——彎掉的塔一樣變母艦（命中拿掉的天線、燈光秀、罩子不回來）。
 // 劇本（§8.9、§14.4；計畫 11 §設計 4）：回合最後的 settle 跨門檻時，回全景 → 換零件（塔身長出來）→ 頭上寫階段名。
 // 以前先飛去 101 那一格、工人走過去揮鐵鎚，使用者 2026-10-31 不要了。
 import { anchorWorld } from './anchors.js';
@@ -56,7 +57,7 @@ export const stageOfView = (lv, meta = {}) => stageOf(meta.total ?? Object.value
 // ship（最終章 §7 外星母艦）：點燈的塔拿掉頂帽與尖塔，其餘每個零件 y + SHIP_LIFT（底座懸浮離地 1.0）；底下 y 0.5 一片綠光盤
 //   （cylinder r 1.2，C.alien 發光）；八節之上一個倒扣的碟（dome 繞 x 翻 π：碗朝下壓在最上一節上）＋碟緣（扁 cylinder，碗口沒有蓋，
 //   從上面看得到的是碟緣的頂面）。回傳多帶 deck（碟頂面高度，變異鼠王坐的地方）、mast（天線在碟緣後側）、lift，都相對 101 的 at；
-//   top = deck（天線細桿立在碟頂高度）。外星尾聲時 101 一定點燈（全 MAX）；其他階段照點燈的樣子畫（不丟錯）
+//   top = deck（天線細桿立在碟頂高度）。外星是壞結局（計畫 17），收尾時 101 可能還在蓋一半、完工——一律照點燈的塔改裝
 export function body(stage, { bent = false, dark = false, ship = false } = {}) {
   if (dark) return darkBody();
   if (ship) return shipBody();
@@ -141,11 +142,15 @@ export function view(lv, flags = {}, meta = {}) {
   // 不會瞬間跳鏡頭（2026-10-31 最終修正：以前蓋一半照完工塔彎、頭頂照沒彎的半塔，兩邊對不上）
   // 賽博尾聲（§7）：黑塔＋螢幕；頭頂一樣照點燈的塔（天際線不變，尾聲收尾的 focus home 不跳鏡頭；螢幕頂在頭頂下）
   // 外星尾聲（§7）：母艦；頭頂一樣照點燈的塔（碟頂比尖塔低，坐上去的王冠鼠也在頭頂下；天際線不變、收尾不跳鏡頭）
-  const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien' && !hit;
-  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit, dark, ship }), head = dark || ship ? body('lit').top : top;
+  // 計畫 17 任務 4：外星是壞結局，命中之後也接外星收尾——彎掉的塔照樣變母艦（下面 hit 的 return 照舊拿掉天線、燈光秀、罩子）
+  const dark = flags.epilogue === 'cyber' && !hit, ship = flags.epilogue === 'alien';
+  const { parts, top, mast, lift = 0 } = body(stage, { bent: hit && !ship, dark, ship }), head = dark || ship ? body('lit').top : top;
   const v = { 'tower.main': { kind: 'compound', at, labelY: head + LABEL_UP, parts } };
   // 母艦底下的綠光盤比底座寬、黑塔屋頂的霓虹邊條（1.64）比底座寬 0.04：站位照底座 1.6 見方（同彎 L 的塔、同點燈的塔自動算出來的）
   if (ship || dark) v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 };
+  // 母艦不從矮樁長出來（grow false：一換就是整座，finale.js 的外星收尾自己閃白）——鼠群、鼠王同一刻閃白站上碟頂，碟子要已經在那個高度
+  // （計畫 17 任務 4 截圖：長的 0.8 秒裡碟子還在下面，牠們浮在半空）
+  if (ship) v['tower.main'].grow = false;
   if (dark) {
     // 螢幕：墨黑外框＋朝鏡頭那面霓虹藍發光板＋底下一條霓虹粉跑馬燈條；at 就是螢幕中心（泡泡掛在零件位置上，tower.screen 的泡泡就在螢幕上）
     const c = screenAt(), [w, hh, d] = SCREEN;

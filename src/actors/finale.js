@@ -17,13 +17,14 @@
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 //   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO）；
-//   計畫 17（2026-11-04）壞結局也接收尾（任務 1 先只套用），任務 4 把這段改成災難版接進 script.epilogue（外星局 test/helpers/endings.js EXAMPLE.alien）。
+//   計畫 17 任務 4（2026-11-04）：壞結局也演收尾——改成災難版（alienEpilogue）：前面加鼠群變異（10 隻變異鼠 rat.swarm 從園區門口衝向 101、
+//   全島小人躲進建築），UFO 降落 1 秒，母艦一換鼠群和鼠王一起閃白站上碟緣／碟頂，最後走出來才長第三隻眼；整段 ≤ 5.5 s、全景停 ALIEN_END 1.0 秒。
 // 計畫 17 任務 3：大停電（漆黑、只剩 101 塔尖的警示燈 finale.beacon 從慢閃變快閃）與捷運淹水（捷運格淹水、小船載兩個泳客划到東南岸、
 //   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
-import { ROOF_SPOTS, SHIP_SPOT, UFO_PARTS } from './rat.js';
+import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, UFO_PARTS, DASH } from './rat.js';
 import { island, ROCKS_HOME_A as HOME_A } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
@@ -33,6 +34,7 @@ import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token
 import { floodPerch } from './boba.js';
 import { SHIELD_FAIL_DUR } from './parts.js';
 import { FOCUS_BEAT } from '../show/beats.js';
+import { toDoor } from './typhoon.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
 export { BAD_EPILOGUES } from '../rules/endings.js';
 
@@ -106,7 +108,7 @@ const END_HOLD = 1.5;
 // 朝主島那個方位（HOME_A）留空給外星生物，碟心在 HOME_A ± π/3 與對面。UFO_R 1.2：三個碟心彼此 2.08（碟寬 2.0，不重疊）。
 // 石堆的四顆石頭擠在島心 0.7 以內、最高 0.56：碟懸停在島面上 UFO_Y，底光（碟心下 0.24）離最高的石頭還有 0.05（設計寫「降到降落場」，
 // 0.35 會讓石頭穿過碟身）。三個碟是一個 compound：手機畫質（quality low）發光併進黏土，一個 mesh
-export const UFO_N = 3, UFO_R = 1.2, UFO_Y = 0.85, UFO_DROP = 7, UFO_FALL = 2.0;
+export const UFO_N = 3, UFO_R = 1.2, UFO_Y = 0.85, UFO_DROP = 7, UFO_FALL = 1.0;   // 降落 2.0 → 1.0 s（計畫 17 任務 4：收尾 ≤ 5.5 s）
 const ROCKS = island('rocks');   // HOME_A：石堆島朝主島中心的方位（satellites.js ROCKS_HOME_A，降落場的燈也從它起算）
 const big = p => ({ ...p, pos: p.pos.map(x => x * 2), scale: p.scale.map(x => x * 2) });
 export const UFO_PARTS_BIG = UFO_PARTS.map(big);
@@ -127,8 +129,10 @@ export const alienParts = () => [-1, 0, 1].flatMap(k => {
     ...[[-0.065, 0.02], [0.065, 0.02], [0, 0.085]].map(([ex, ey]) => ({ kind: 'sphere', pos: [x + ex, head + ey, face - Math.abs(ex) * 0.4], scale: 0.06, color: C.ink })),
   ];
 });
-// 外星尾聲的真實秒數：揮手 1.0、「！」0.8、回全景停 0.8、「♥」0.9、最後全景停 END_HOLD
-const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
+// 外星收尾的真實秒數（計畫 17 任務 4，協調者裁決整段 ≤ 5.5 s，見 alienEpilogue）：鼠王揮手＋「！」WAVE、鼠群衝向 101 RUSH、
+// UFO 降落 UFO_FALL、回全景後 SHIP_WAIT 才換母艦（鏡頭從石堆島飛回來，101 先進畫面）、「♥」LOVE、最後全景停 ALIEN_END
+// （其他收尾停 END_HOLD 1.5；外星的吹偏局警告＋隕石已經 10.2 s）
+export const WAVE = 0.8, RUSH = 1.2, SHIP_WAIT = 0.4, LOVE = 0.7, ALIEN_END = 1.0;
 
 // 警示燈的位置：這一階段的塔尖上 BEACON_UP（stageOfView）。命中（flags.missile 'hit'，工地不彎）之後塔尖倒向 +x：
 // tower.js 的 bent 把彎角（by）以上的點 (x, y) 轉成 (y − by, by − x)——尖端 (0, top) 落在 (top − by, by)，燈再往外（+x）BEACON_UP
@@ -384,13 +388,14 @@ export const script = {
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
   //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
   //   → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
-  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。最前面先回全景（隕石停在 WIDE，見下面）。外星尾聲在下面的 alienEpilogue()（計畫 17 任務 4 接回 dispatch）
+  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。最前面先回全景（隕石停在 WIDE，見下面）。
   epilogue(e, s, ctx) {
     const { B } = ctx;
-    // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue，見下面）。
-    // 其餘的壞結局先只套用（之後的任務各自換成自己的劇本；外星由任務 4 以下面的 alienEpilogue 為底改成災難版）
+    // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue）；任務 4：變異鼠稱王（alienEpilogue）——都在下面。
+    // 還沒有自己劇本的壞結局先只套用（之後的任務各自換成自己的劇本）
     if (e.ending === 'blackout') return blackoutEpilogue(e, ctx);
     if (e.ending === 'flood') return floodEpilogue(e, ctx);
+    if (e.ending === 'alien') return alienEpilogue(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -409,26 +414,67 @@ export const script = {
   },
 };
 
-// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速；外星是壞結局，計畫 17 任務 4 以這段為底改成災難版再接進 script.epilogue，見檔頭；
-//   匯出給任務 4 與 finale.test——測試從真的外星局 live 演這段）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
-//   鏡頭推到石堆島（裁決 R5；focus 的點用 worldToAxial 反算格子，衛星島也算得出格子，點直接交給 rig.focus）→ 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
-//   外星生物閃白 → 回全景停 0.8 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
-//   老鼠的家搬上碟頂（apply）、閃白放上去（roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常 → 剩下的套用（小 UFO 拿掉）→
-//   「♥」→ 全景停 1.5 秒
+// ── 計畫 17 任務 4：變異鼠稱王（災難版）收尾（設計 §4 alien；以舊的外星尾聲為底，前面加鼠群變異；終局回合 1 倍速，真實秒數）──
+// 協調者裁決：整段 ≤ 5.5 s（外星局約一半是吹偏局，警告＋吹偏的隕石 10.2 s，壞結局終局 ≤ 16 s），所以各段疊著演：
+//   ① 鏡頭到溫泉格，同時鼠王（名冊 rat.pack 唯一一隻，演到才點名）揮手＋「！」WAVE 秒；第一拍先折旗標（apply only []）、
+//      心情先切回站著（world mood normal：命中之後大家躺平；第三隻眼留到最後走出來那一刻，所以不在這裡 worldNow）；
+//   ② 一段：回全景（鏡頭飛 1 s），鼠群（rat.swarm 10 隻）從園區門口（SWARM_ENTRIES）閃白出現、衝向 101 腳下 RUSH 秒（DASH，跑不到的停在半路），
+//      同一刻小 UFO、石堆島的兩隻老鼠縮掉（骨架動畫 ≤ 12：鼠群 10＋鼠王＋柴犬）、主島的小人（crowd.islanders，演到才點名）各自快走到最近的建築門口躲進去（typhoon.js toDoor，同颱風放下的躲雨）；
+//      RUSH 秒後鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外）：綠光圈閃白變降落場，三台 UFO 不閃白套上、從 UFO_DROP 高降下 UFO_FALL 秒，
+//      降落前 BLINK 外星生物閃白；
+//   ③ 回全景，SHIP_WAIT 秒後 101 閃白變母艦（塔身、天線、燈光秀、罩子；命中局也變，tower.js；母艦 grow false 不從矮樁長，這裡自己 blinkPart 閃白），同一刻鼠群、鼠王閃白站上碟緣（rat.js SAUCER_SPOTS）、碟頂（SHIP_SPOT）
+//      （roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常（站定）；
+//   ④ worldNow（全島第三隻眼：world.js 有外星收尾就是 mood alien）、躲著的人走出來（放回日常、roster.showAll({ walk })：從門口用走路速度走回家），同時鼠王「♥」LOVE 秒；
+//   ⑤ 剩下的套用 → 全景停 ALIEN_END。
+// 名義秒數 WAVE＋RUSH＋UFO_FALL＋SHIP_WAIT＋BLINK＋LOVE＋ALIEN_END＝5.25 s（live 多幾幀拍與拍之間的換手）。
+// 跳過：躲進門的 toDoor 收尾照樣藏起來，④ 的走出來（跳過時也是 start → end）、回合 snap 的 showAll 都把人放出來
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
+// 鼠群閃白出現（BLINK 秒）：名冊新生的成員不閃，模型 holder 是非同步載入的——這拍每幀看一次，誰的 holder 到了就閃誰（每隻一次）
+const appear = who => {
+  let done = new Set();
+  const flash = c => { for (const m of who(c)) if (m.holder && !done.has(m)) { done.add(m); c.blink?.part(m.holder); } };
+  return { kind: 'appear', dur: BLINK, start(c) { done = new Set(); if (!who(c).length) return false; flash(c); }, step(k, dt, c) { flash(c); } };
+};
+// 衝向 101：走 RUSH 秒（DASH）就停——跑到了照 walk 的收尾停在終點，沒跑到的停在半路原地（不瞬移到終點；之後 roof 閃白上碟緣）
+const rush = (B, m, to) => {
+  const w = B.walk(m, to, { speed: DASH });
+  let t = 0, done = false;
+  return {
+    kind: 'rush', dur: RUSH,
+    start(c) { t = 0; done = false; return w.start(c); },
+    step(k, dt, c) { if (done) return; t += dt; if (t >= w.dur()) { done = true; w.end(c); } else w.step(k, dt, c); },
+    end(c) { if (!done && !m.gone) c.roster.setPose(m, { ...m.pos, walking: false }); },
+  };
+};
 export function alienEpilogue(e, ctx) {
-  const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), kings = c => [king(c)].filter(Boolean);
+  const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), swarm = c => c.roster.members('rat.swarm') ?? [];
+  // 101 腳下一圈 10 個點，離園區門口近的先給（老鼠 0 從最靠 101 的入口出來）
+  const foot = once(c => { const from = SWARM_ENTRIES[0]; return c.nav.slots(TOWER, 10, 1.3).sort((p, q) => Math.hypot(p.x - from.x, p.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z)); });
+  const cast = once(c => islanders(c));
+  const drop = B.together([B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL })]);
+  const comeOut = { kind: 'home', dur: 0, start(c) { for (const m of cast(c) ?? []) c.roster.home(m); c.roster.showAll({ walk: true }); return false; } };
+  const crew = c => [...swarm(c), king(c)].filter(Boolean);
   return [
-    B.focus(SPRING), B.together([B.gesture(king, 'wave', WAVE), B.bubble(king, '！', SHOUT)]),
-    B.focus(ROCKS), B.apply(e, { only: ['sat.rocksRing', 'sat.rocks'] }),
-    B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL }),
-    B.apply(e, { only: ['finale.aliens'] }), B.focus('home', { hold: ALIEN_HOLD }),
-    B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(),
-    B.apply(e, { only: ['rat.pack'] }), roof(kings, () => SHIP_SPOT), B.home(kings),
-    B.apply(e), B.bubble(king, '♥', LOVE), B.focus('home', { hold: END_HOLD }),
+    B.together([B.apply(e, { only: [] }), B.world({ mood: 'normal' }), B.focus(SPRING), B.gesture(king, 'wave', WAVE), B.bubble(king, '！', WAVE)]),
+    B.together([
+      B.focus('home'), B.apply(e, { only: ['rat.pack', 'rat.swarm', 'rat.ufo', 'sat.rocks'] }), appear(swarm),
+      crowd(B, c => swarm(c).map((m, i) => rush(B, m, foot(c)[i]))),
+      crowd(B, c => cast(c).map(m => toDoor(B, m))),
+      later(RUSH, UFO_FALL, drop),
+      later(RUSH, BLINK, B.apply(e, { only: ['sat.rocksRing'] })),
+      later(RUSH, FOCUS_BEAT, B.focus(ROCKS)),
+      later(RUSH + UFO_FALL - BLINK, BLINK, B.apply(e, { only: ['finale.aliens'] })),
+    ]),
+    B.together([
+      B.focus('home'),
+      later(SHIP_WAIT, BLINK, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] })), later(SHIP_WAIT, 0, blinkPart('tower.main')),
+      later(SHIP_WAIT, BLINK, roof(crew, m => (m.key === 'rat.swarm' ? SAUCER_SPOTS[m.i % SAUCER_SPOTS.length] : SHIP_SPOT))),
+    ]),
+    B.home(crew),
+    B.together([B.worldNow(), comeOut, B.bubble(king, '♥', LOVE)]),
+    B.apply(e), B.focus('home', { hold: ALIEN_END }),
   ];
 }
-
 // ── 計畫 17 任務 3：大停電、捷運淹水收尾（設計 §4；終局回合 1 倍速，真實秒數，每段 ≤ 7.0 s；隕石命中之後全島躺平，
 //   收尾第一拍把 epilogue 旗標折進舞台、緊接 worldNow——world.js 有收尾就不躺，大家站起來）──
 // 大停電（約 4 s）：警示燈重新亮在塔尖（閃白；折旗標）→ worldNow（漆黑 TIMES.pitch、發光照舊關著、站起來）→
@@ -487,7 +533,7 @@ export function floodEpilogue(e, ctx) {
   ];
 }
 
-// 閃白站上 101 頂（BLINK 秒）：先拿到劇本手上（日常的「不瞬移」不算這一下）、放到 spot(m)（賽博：屋頂 ROOF_SPOTS[i]；外星：碟頂 SHIP_SPOT）、閃白；
+// 閃白站上 101 頂（BLINK 秒）：先拿到劇本手上（日常的「不瞬移」不算這一下）、放到 spot(m)（賽博：屋頂 ROOF_SPOTS[i]；外星：鼠群碟緣 SAUCER_SPOTS[i]、鼠王碟頂 SHIP_SPOT）、閃白；
 // 之後 B.home 放回日常（stand 已在站位上，站定）
 function roof(who, spot) {
   return {

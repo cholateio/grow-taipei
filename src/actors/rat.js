@@ -6,12 +6,13 @@
 // 颱風把老鼠沖進大巨蛋：5 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
 // 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩在舞台結算的 meta.trouble 那棟門口晃（沒有 trouble 才在窩旁）；放下那回合有 trouble 就跑過去聞一聞。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
-// 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）。
+// 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）；
+// 外星收尾是鼠群 rat.swarm 10 隻＋鼠王（rat.pack 一隻），一樣 11 隻。
 // 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 10 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，兩排各 5 隻面向鏡頭），
 // 王冠鼠照舊坐站頂。屋頂在 101 的 footprint 裡、走不上去：finale.js 的尾聲劇本把牠們閃白放上去（不是走上去）。
 // 最終章 §7 外星尾聲（flags.epilogue 'alien'）：變異鼠王的站位搬到 101 母艦的碟頂中心（SHIP_SPOT，面向鏡頭），頭上的小 UFO 不畫
-// （三台大 UFO 取代它，finale.js）；碟頂走不上去，finale.js 的尾聲劇本把牠閃白放上去。唯一正解之後外星是壞結局、不演尾聲——
-// 這一段到不了，留給圖鑑（finale.js 檔頭）。
+// （三台大 UFO 取代它，finale.js）；碟頂走不上去，finale.js 的尾聲劇本把牠閃白放上去。唯一正解之後外星是壞結局；
+// 計畫 17 任務 4 壞結局也演收尾（災難版）：多一群 10 隻變異鼠（rat.swarm）站上母艦碟緣（SAUCER_SPOTS）。
 // 劇本（物品 v2 §6）：一級 ≤ 4.5 秒；◆ Lv4 ≤ 8 秒（回全景定格）。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { CRATE, KIDS } from './milk.js';
@@ -34,6 +35,8 @@ const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 
 // 間距 PARK_STEP（≥ 兩隻的半徑相加 0.26），名冊依序輪流（rat#5 在最西邊、最靠 101，先走在前面）
 const PARK_STEP = 0.3;
 export const PARK_ENTRIES = [-2, -1, 0, 1, 2].map(k => offset(PARK, k * PARK_STEP, 0));
+// 外星收尾的 10 隻變異鼠（計畫 17 任務 4）也從園區門口出來：同一列再往外（+z，門口外）排一列，十個入口各一隻（兩隻不會在同一點冒出來）
+export const SWARM_ENTRIES = [...PARK_ENTRIES, ...PARK_ENTRIES.map(p => offset(p, 0, PARK_STEP))];
 // 王冠鼠的站位（看 lv.token）：代幣 Lv9 起坐在賽博站前的懸浮月台上（token.js DECK_AT／PLATFORM：招牌右邊、欄杆後面，身體斜斜面向鏡頭）——
 // 站頂平屋頂 Lv10 停滿三台 Roadster 和三條起飛坡道，沒有牠的位子（計畫 8 任務 5 裁決 (a)）；代幣 Lv9 以前（偏離正解的放法，
 // 賽博 Lv4 可能碰上代幣 4–8）沒有月台也沒有坡道，坐大車站圓頂外的簷角
@@ -48,8 +51,17 @@ export const kingSpot = lv => (lv.token >= 9
 const ROOF = towerBody('lit', { dark: true }).roof;
 export const ROOF_SPOTS = [0.1, -0.26].flatMap(z => [-0.52, -0.26, 0, 0.26, 0.52].map(x => ({ ...offset(TOWER, x, z, ROOF), yaw: 0 })));
 
-// 母艦碟頂中心（世界座標，tower.js shipTop；外星尾聲在單一正解下到不了，留給圖鑑：finale.js）
+// 母艦碟頂中心（世界座標，tower.js shipTop）：外星收尾（計畫 17：壞結局「變異鼠稱王」的收尾）鼠王坐這裡
 export const SHIP_SPOT = { x: TOWER.x, y: shipTop(), z: TOWER.z, yaw: 0 };
+// 外星收尾的變異鼠群（計畫 17 任務 4，名冊 rat.swarm）站在母艦碟緣上（碟頂高度 shipTop）：圍著碟頂中心的鼠王一圈（半徑 SAUCER_R 0.6，
+// 鼠王半徑 0.33＋老鼠 0.13 之外；碟緣半徑 0.8），面朝外；後側 90° 留給天線（tower.js 母艦的桅杆在碟緣後側 z −0.55）——
+// 10 隻排在 ±135° 之間、每隻差 30°（相鄰 0.31 ≥ 名冊的 0.26，不會被 separateStanding 推開）。
+// 設計寫「家在 ROOF_SPOTS（黑塔屋頂，同賽博）」：母艦整座抬高 1.0，黑塔屋頂的高度在母艦最上兩節塔身裡面，所以改站碟緣
+export const SAUCER_R = 0.6;
+export const SAUCER_SPOTS = Array.from({ length: 10 }, (_, i) => {
+  const a = (-135 + i * 30) * Math.PI / 180;
+  return { x: TOWER.x + Math.sin(a) * SAUCER_R, y: SHIP_SPOT.y, z: TOWER.z + Math.cos(a) * SAUCER_R, yaw: a };
+});
 // 小 UFO 的零件（相對碟心）：銀色碟身＋碟緣＋綠色底光。finale.js 外星尾聲的三台大 UFO 照這個放大 2 倍
 export const UFO_PARTS = [
   { kind: 'dome', pos: [0, 0, 0], scale: [0.9, 0.3, 0.9], color: 0xc0c8d0 }, { kind: 'cylinder', pos: [0, 0, 0], scale: [1.0, 0.04, 1.0], color: 0x9aa7b8 },
@@ -98,10 +110,13 @@ export function view(lv, flags, meta) {
     };
     case 'alien': {
       // Lv4 最終型態（壞結局「變異鼠稱王」）：變異鼠加冕（戴王冠）、頭上盤旋一艘小 UFO；石堆島的綠光圈在 satellites.js
-      // 外星尾聲（單一正解下到不了，留給圖鑑）：站位搬上母艦碟頂、小 UFO 不畫（同一隻、同一個模型）
+      // 外星收尾（計畫 17 任務 4 災難版）：鼠王的站位搬上母艦碟頂、小 UFO 不畫（同一隻、同一個模型）；
+      // 另外一群 10 隻變異鼠（rat.swarm：綠色發光、三眼、沒有天線、一般大小）從園區門口出來（SWARM_ENTRIES）、家在碟緣上（SAUCER_SPOTS）——
+      // 碟緣在 101 的 footprint 上面走不上去，finale.js 的收尾劇本讓牠們先衝向 101 再閃白上去。骨架：10 + 鼠王 + 柴犬 = 12
       const ship = flags.epilogue === 'alien';
       const v = { 'rat.pack': pack(MUTANT, 1, { kind: 'stand', spots: [ship ? SHIP_SPOT : { ...MUTANT, yaw: 0 }] }, { h: 0.5, tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true, crown: true }) };
-      if (!ship) v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
+      if (ship) v['rat.swarm'] = pack(TOWER, 10, { kind: 'stand', spots: SAUCER_SPOTS, entry: SWARM_ENTRIES }, { tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true });
+      else v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
       return v;
     }
     case 'dome': return { 'rat.pack': pack(GATE, 5, wander(GATE, 0.9)) };
@@ -157,7 +172,8 @@ const NEST_SHORE = shoreAt(NEST_A), SPRING_SHORE = shoreAt(SPRING_A);
 export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const MIN_RUN = 1.5;   // 放下那回合跑去出問題那棟的那段最短秒數（見 placed）
-const JUMP = 0.5, FOLLOW = 0.15, DASH = 4.5;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）、老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度
+const JUMP = 0.5, FOLLOW = 0.15;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）
+export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度；外星收尾的鼠群衝向 101 也用（finale.js）
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;

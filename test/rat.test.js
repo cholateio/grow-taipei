@@ -191,7 +191,7 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
     const F = { ratBranch: epilogue, missile: 'shield', epilogue };
     const views = Object.assign({}, ...ALL.filter(m => ['rat', 'satellites', 'finale', 'tower'].includes(m.id)).map(m => m.view(MAXED, F, { total: 61 })));
     const animated = Object.values(views).reduce((n, sp) => n + (sp.model?.anim || sp.anim ? sp.n ?? 1 : 0), 0);
-    assert.ok(animated >= (epilogue === 'cyber' ? 11 : 1), `${epilogue}: the rats are counted (${animated})`);
+    assert.ok(animated >= 11, `${epilogue}: the rats are counted (${animated}; alien: 10 mutants + the king, plan 17 task 4)`);
     assert.ok(animated + 1 <= 12, `${epilogue}: skeletons ${animated} + shiba ≤ 12`);
   }
   assert.equal(sat.view(L, { ratBranch: 'cyber', epilogue: 'cyber' })['sat.rocks'], undefined, 'no rocks-islet rats');
@@ -235,6 +235,37 @@ test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower to
   assert.ok(plain['rat.ufo'], 'the small UFO stays before the epilogue');
   // 賽博尾聲旗標不影響外星鼠
   assert.deepEqual(rat.view(L, { ratBranch: 'alien', epilogue: 'cyber' }), plain);
+});
+// 計畫 17 任務 4（變異鼠稱王災難版）：外星收尾時另外有一群 10 隻變異鼠（名冊 rat.swarm；鼠王照舊是 rat.pack 唯一一隻）——
+// 綠色發光、三眼、沒有天線、沒有王冠、一般大小（h 0.2）；家是 stand 在母艦碟緣上（SAUCER_SPOTS：碟頂高度 shipTop、圍著碟頂中心的鼠王一圈、
+// 面朝外，後側留給天線），入口是園區門口（PARK_ENTRIES）。沒有收尾、賽博收尾都沒有這一群。骨架：10 + 鼠王 + 柴犬 = 12
+test('epilogue alien: rat.swarm is 10 mutants (C.alien tint + glow, the eye, no antenna, no crown, h 0.2) standing on SAUCER_SPOTS round the king on the saucer rim, entering from the park gate (SWARM_ENTRIES); none otherwise', async () => {
+  const tower = await import('../src/actors/tower.js'), { C } = await import('../src/actors/palette.js');
+  const L = lv({ rat: 4 });
+  for (const missile of ['deflect', 'hit']) {
+    const v = rat.view(L, { ratBranch: 'alien', missile, epilogue: 'alien' }), sw = v['rat.swarm'];
+    assert.ok(sw, `${missile}: the swarm`);
+    assert.equal(sw.kind, 'roster'); assert.equal(sw.n, 10);
+    assert.equal(sw.model.path, RAT); assert.equal(sw.model.h, 0.2);
+    assert.deepEqual(sw.model.tint, { Grey: C.alien }); assert.deepEqual(sw.model.glow, { Grey: C.alien });
+    assert.equal(sw.model.eye, true); assert.ok(!sw.model.antenna && !sw.model.crown, 'no antenna, no crown');
+    assert.equal(sw.home.kind, 'stand'); assert.deepEqual(sw.home.spots, rat.SAUCER_SPOTS); assert.deepEqual(sw.home.entry, rat.SWARM_ENTRIES);
+    assert.deepEqual(rat.SWARM_ENTRIES.slice(0, 5), rat.PARK_ENTRIES, 'the park gate (+ a second row outside it: one rat per entry)');
+    rat.SWARM_ENTRIES.forEach((p, i) => rat.SWARM_ENTRIES.slice(i + 1).forEach(q => assert.ok(Math.hypot(p.x - q.x, p.z - q.z) >= 0.26, 'entries apart')));
+    assert.equal(v['rat.pack'].n, 1, 'the king stays the only rat.pack');
+  }
+  const b = tower.body('lit', { ship: true }), rim = b.parts.find(p => p.name === 'rim'), kingR = 0.65 * 0.5;
+  assert.equal(rat.SAUCER_SPOTS.length, 10);
+  for (const [i, s] of rat.SAUCER_SPOTS.entries()) {
+    const r = Math.hypot(s.x - TOWER.x, s.z - TOWER.z);
+    assert.ok(Math.abs(s.y - tower.shipTop()) < 1e-9, `rat ${i} on the saucer top (y ${s.y})`);
+    assert.ok(r <= rim.scale[0] / 2 - 0.13, `rat ${i} on the rim (${r.toFixed(2)})`);
+    assert.ok(r >= kingR + 0.13 + 0.1, `rat ${i} clear of the king (${r.toFixed(2)})`);
+    assert.ok(Math.hypot(s.x - TOWER.x - b.mast.x, s.z - TOWER.z - b.mast.z) >= 0.3, `rat ${i} clear of the antenna mast`);
+    assert.ok(Math.abs(Math.atan2(Math.sin(s.yaw - Math.atan2(s.x - TOWER.x, s.z - TOWER.z)), Math.cos(s.yaw - Math.atan2(s.x - TOWER.x, s.z - TOWER.z)))) < 1e-9, `rat ${i} faces out`);
+    for (const o of rat.SAUCER_SPOTS.slice(i + 1)) assert.ok(Math.hypot(o.x - s.x, o.z - s.z) >= 0.26, 'spots ≥ 0.26 apart');
+  }
+  for (const flags of [{ ratBranch: 'alien' }, { ratBranch: 'alien', missile: 'hit' }, { ratBranch: 'alien', epilogue: 'cyber' }, { ratBranch: 'cyber', epilogue: 'cyber' }]) assert.equal(rat.view(L, flags)['rat.swarm'], undefined, JSON.stringify(flags));
 });
 // 外星是壞結局「變異鼠稱王」（唯一正解 §4.5）：畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO
 test('alien Lv4 (the bad ending 變異鼠稱王): the mutant wears a crown, a small UFO hovers over it, a green glow ring circles the rocks islet', () => {

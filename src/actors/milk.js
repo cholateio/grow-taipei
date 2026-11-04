@@ -17,6 +17,7 @@ export const labelY = 1.4;
 const AT = anchorWorld('milk');
 const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（灰）
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
+export const KID_RUN = 2.4;   // 小學生用跑的（Lv4 去喝奶、回操場；同燈泡 Lv4 排隊的 QUEUE_SPEED；一般走路 1.6）
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 export const FESTIVAL_HOMES = [[-1, 0], [1, 0], [1, -1]].map(cellCentre);   // 鮮奶節多的三個小孩：鮮奶格、晶片格、溫泉格（裁決 R16）
 // 溫泉格那個小孩的家往格子西北移（−0.4, −1.0）、散步半徑 1.0（其他兩個照島民的 HOME_R）：外星結局的變異鼠（半徑 0.325）站在池子正前方，
@@ -213,7 +214,8 @@ const allKids = c => c.roster.members('milk.kids');
 //   一樣少就挑短的，0 幀就不再試——本來就錯得開的不用等，◆ ≤ 8 s 不多花時間）。走路速度不變；
 //   排好的路線跟 walk 拍自己找的同一條（同一個 nav、同起訖點）
 const FILE_CLEAR = 0.32, FILE_STEP = 0.05, FILE_MAX = 1.2, FILE_DT = 1 / 30, FILE_SPAN = 6;   // FILE_CLEAR：兩人半徑相加 0.25 加 0.07（0.3 時整局 live 的軌跡剛好讓鼠窩老鼠擦過草皮觀眾 1 幀 0.15 m，roster.test）；FILE_SPAN：比任何一段 gather 都長（之後每個人都站在站位上）
-const gather = (ctx, centre, r) => {
+// speed：全員用這個速度（Lv4 跑去喝奶、跑回操場：KID_RUN；沒給就各自的走路速度）
+const gather = (ctx, centre, r, { speed } = {}) => {
   const plan = once(c => {
     const ks = KIDS.map(i => kid(ctx, i)(c)), live = KIDS.filter(i => ks[i] && !ks[i].hidden);
     const toCentre = new Map(live.map(i => [i, c.nav.routeLength(c.nav.route(ks[i].pos, centre))]));
@@ -222,7 +224,7 @@ const gather = (ctx, centre, r) => {
     const spots = c.nav.slots(centre, KIDS.length, r).sort((p, q) => Math.hypot(q.x - from.x, q.z - from.z) - Math.hypot(p.x - from.x, p.z - from.z));
     const spot = new Map(live.map((i, k) => [i, spots[k]])), delay = new Map(), done = [];
     for (const i of live) {
-      const path = c.nav.route(ks[i].pos, spot.get(i)), lens = measurePath(path, false), v = ks[i].speed;
+      const path = c.nav.route(ks[i].pos, spot.get(i)), lens = measurePath(path, false), v = speed ?? ks[i].speed;
       let best = null;
       for (let d = 0; d <= FILE_MAX + 1e-9; d += FILE_STEP) {
         const me = { d, at: t => locateOnPath(path, lens, Math.max(0, (t - d) * v), false) }; let bad = 0;
@@ -237,7 +239,7 @@ const gather = (ctx, centre, r) => {
     }
     return { delay: i => delay.get(i) ?? 0, spot: i => spot.get(i) ?? spots[i] };
   });
-  return ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => plan(c).spot(i), { delay: c => plan(c).delay(i) })));
+  return ctx.B.together(KIDS.map(i => ctx.B.walk(kid(ctx, i), c => plan(c).spot(i), { delay: c => plan(c).delay(i), speed })));
 };
 
 export const script = {
@@ -266,14 +268,15 @@ export const script = {
         B.together([B.gesture(kid(ctx, 0), 'jump'), B.levelUp('milk')]), B.home(allKids),
       ];
     },
-    // 長高、兩層：一起去牛奶箱喝奶、各 ♥ → 閃白變高 1.3、校舍加一棟兩層（大家轉頭看）→ 跑回操場（同時 LEVEL UP）
+    // 長高、兩層：一起跑去牛奶箱喝奶、各 ♥ → 閃白變高 1.3、校舍加一棟兩層（大家轉頭看）→ 跑回操場（同時 LEVEL UP）。
+    // 2026-11-04 兩段都用跑的（KID_RUN）：壞結局（老鼠跑遠）量到 5.3 s（> 4.5）——走到牛奶箱多久看小學生當時站在操場哪裡，用跑的就不隨站位飄
     4(e, s, ctx) {
       const { B } = ctx;
       return [
-        gather(ctx, CRATE, 0.55),
+        gather(ctx, CRATE, 0.55, { speed: KID_RUN }),
         B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 1.0))),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'look', { at: offset(AT, 0.75, ROW) }))),
-        B.together([gather(ctx, PLAY, 0.45), B.levelUp('milk')]),
+        B.together([gather(ctx, PLAY, 0.45, { speed: KID_RUN }), B.levelUp('milk')]),
         B.home(allKids),
       ];
     },

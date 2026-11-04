@@ -37,11 +37,10 @@ export function createBubbles(THREE, { group }) {
     return add(el, head, dur, BUBBLE_DY);
   }
   // dur：預設 LEVELUP_DUR；蒙太奇倍速時短一點，上升淡出的動畫一起縮短。
-  // dy：比平常的高度再抬高幾公尺（跳級彈兩次的第二個字樣，beats.js 的 TWICE_DY）
-  function levelUp(head, { text = 'LEVEL UP', down = false, dur = LEVELUP_DUR, dy = 0 } = {}) {
+  // big：跳級的字大一號（beats.js twice；2026-11-04 取代彈兩次）；dy：比平常的高度再抬高幾公尺
+  function levelUp(head, { text = 'LEVEL UP', down = false, big = false, dur = LEVELUP_DUR, dy = 0 } = {}) {
     const el = document.createElement('div'); el.className = 'levelup';
-    // 中文標籤（101 階段名）描邊細一點、不斜，否則筆畫糊成一團
-    const span = document.createElement('span'); span.className = [down ? 'down' : '', /[^\x00-\x7f]/.test(text) ? 'cjk' : ''].filter(Boolean).join(' '); span.textContent = text;
+    const span = document.createElement('span'); span.className = [down ? 'down' : '', big ? 'big' : '', /[^\x00-\x7f]/.test(text) ? 'cjk' : ''].filter(Boolean).join(' '); span.textContent = text;
     if (dur !== LEVELUP_DUR) span.style.animationDuration = `${dur}s`;
     el.append(span);
     return add(el, head, dur, LEVELUP_DY + dy);

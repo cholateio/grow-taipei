@@ -9,7 +9,7 @@ import { axialToWorld, cellTop } from '../src/scene/hex.js';
 import { createPeople } from '../src/scene/people.js';
 import { createBlink, BLINK } from '../src/show/blink.js';
 installFakeDom();
-const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead, TWICE_AFTER, TWICE_DY } = await import('../src/show/beats.js');
+const { B, STATION_A, TRAIN_ARRIVE, TRAIN_STOP, TRAIN_MAX_BOOST, FOCUS_BEAT, SPUR_BRAKE, partHead } = await import('../src/show/beats.js');
 const { GAP } = await import('../src/actors/token.js');
 
 const c = cell => ({ ...axialToWorld(...cell), y: cellTop(cell) });
@@ -199,8 +199,8 @@ test('levelUp over an item id uses headOfEvent when ctx.event is that item\'s (i
   ctx.event = fx; tl.play([B.levelUp('milk', { down: true })], ctx); tl.update(0); tl.update(1);
   assert.deepEqual(bubbles.levels[2].head(), { ev: 'fx', item: 'milk', x: 7, y: 8, z: 9 }, 'delta.target');
   ctx.event = grow; const twice = B.levelUp('bulb', { twice: true }); twice.start(ctx); twice.step(0.6, 0.6, ctx);
-  assert.equal(bubbles.levels.length, 5); assert.deepEqual(bubbles.levels[4].head(), bubbles.levels[3].head(), 'twice: both labels share the head');
-  assert.deepEqual(bubbles.levels[3].head(), { ev: 'grow', item: 'bulb', x: 7, y: 8, z: 9 });
+  assert.equal(bubbles.levels.length, 4, 'a jump pops one label (使用者 2026-11-04：兩個字連著跳太像升了兩次)');
+  assert.deepEqual(bubbles.levels[3].head(), { ev: 'grow', item: 'bulb', x: 7, y: 8, z: 9 }); assert.equal(bubbles.levels[3].opts.big, true);
 });
 test('bubble shows over the target and is cancelled when the beat ends; a dotted key resolves to the part', () => {
   const { ctx, tl, bubbles, objects } = fake({ parts: ['typhoon.main'] }); objects.get('typhoon.main').position.set(1, 2, 3);
@@ -413,14 +413,14 @@ test('ctx.speed 2: bubble, LEVEL UP and camera flight are handed real-time lengt
   const o = rail.offset; ctx.now += 0.5; tl.update(0.5); assert.ok(Math.abs(rail.offset - (o - 0.5)) < 1e-6, 'held: the train stands still in real time');
 });
 
-// 回到 GROW 設計 §4.2：跳級合成一段，LEVEL UP 彈兩次（計畫 11 §設計 2：第二次晚 0.55 秒、高 0.35——第一個已升到一半淡掉，不疊在一起）
+// 回到 GROW 設計 §4.2：跳級合成一段。LEVEL UP 原本彈兩次（計畫 11 §設計 2），使用者 2026-11-04：「連續跳了兩個 Level up 字」太像升了兩次——
+// 改成只彈一個、大一號（big），拍長跟一般的一樣 1 s；沒有「×2」、沒有別的字
 const fakeCtx = (extra = {}) => ({ stage: { headOf: () => ({ x: 0, y: 1, z: 0 }) }, ...extra });
-test('levelUp twice: beat lasts 1.55 s, pops the label twice (second after 0.55 s, 0.35 higher)', () => {
-  assert.equal(TWICE_AFTER, 0.55); assert.equal(TWICE_DY, 0.35);
+test('levelUp twice (a jump): one bigger label, beat lasts 1 s like a single LEVEL UP', () => {
   const calls = [], ctx = fakeCtx({ bubbles: { levelUp: (head, o) => { calls.push(o); return { cancel() {} }; } } });
-  const b = B.levelUp('chip', { twice: true }); assert.ok(Math.abs(b.dur - 1.55) < 1e-9); assert.equal(b.twice, true); assert.equal(b.target, 'chip');
-  b.start(ctx); b.step(0.1, 0.1, ctx); b.step(0.3, 0.4, ctx); assert.equal(calls.length, 1, 'still one label at 0.5 s');
-  b.step(0.36, 0.05, ctx); assert.equal(calls.length, 2, 'second label at 0.55 s');
-  assert.ok(Math.abs((calls[1].dy ?? 0) - (calls[0].dy ?? 0) - 0.35) < 1e-9);
+  const b = B.levelUp('chip', { twice: true }); assert.equal(b.dur, 1.0); assert.equal(b.twice, true); assert.equal(b.target, 'chip');
+  b.start(ctx); b.step(0.1, 0.1, ctx); b.step(0.3, 0.4, ctx); b.step(0.36, 0.05, ctx); b.step(0.5, 0.5, ctx);
+  assert.equal(calls.length, 1, 'one label only'); assert.equal(calls[0].big, true, 'the jump label is the big one'); assert.equal(calls[0].dy, undefined);
+  const single = B.levelUp('chip'); single.start(ctx); assert.equal(calls.length, 2); assert.equal(calls[1].big, undefined, 'an ordinary LEVEL UP is not big');
   assert.equal(B.levelUp('chip').dur, 1.0, 'a single LEVEL UP stays 1 s');
 });

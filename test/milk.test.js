@@ -417,3 +417,13 @@ test('bitten milk (flags.bitten_milk while the rat is Lv1–2): the crate lies t
   assert.ok(tipped.parts.some(p => p.spill));
   for (const r of [3, 4]) assert.ok(!milk.view(L(r), { bitten_milk: 'rat' })['milk.crate'].parts.some(p => p.spill), `rat ${r}: upright`);
 });
+
+// 2026-11-04：壞結局（老鼠跑遠）第 8 回合鮮奶 Lv4 量到劇本 5.3 s（> 4.5）——小學生站在操場哪裡決定走到牛奶箱多久；
+// 改成用跑的（KID_RUN，同燈泡 Lv4 排隊的 2.4）去喝奶、跑回操場，一級不再隨站位飄
+test('Lv4: the pupils run to the crate and back (every walk in both gathers at KID_RUN)', async () => {
+  const beats = milk.script.grow[4]({ kind: 'grow', item: 'milk', from: 3, to: 4 }, { lv: { milk: 4 }, flags: {} }, { B });
+  const walksOf = b => (b.kind === 'together' ? b.beats.flatMap(walksOf) : b.kind === 'walk' ? [b] : []);
+  const walks = [walksOf(beats[0]), walksOf(beats[4])];
+  assert.equal(milk.KID_RUN, 2.4);
+  for (const [k, ws] of walks.entries()) { assert.equal(ws.length, 2, `gather ${k}: two pupils walk`); for (const w of ws) assert.equal(w.speed, milk.KID_RUN, `gather ${k} runs`); }
+});

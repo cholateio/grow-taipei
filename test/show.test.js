@@ -12,6 +12,9 @@ import { createCameraRig, overviewDistance } from '../src/scene/camera.js';
 import { cellCentre } from '../src/actors/anchors.js';
 import { finaleStep, EXAMPLE } from './helpers/endings.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
+// 這回合會冒幾個 LEVEL UP：每個 grow 一個，合成的跳級（第二級 jump: true、兩級不都是 ◆）兩個 grow 只冒一個大一號的（2026-11-04 之前是彈兩次）
+const isKeyLevel = (id, n) => !!ALL.find(m => m.id === id)?.script?.grow?.[n]?.key;
+const expectedLevelUps = events => events.filter(e => e.kind === 'grow').length - events.filter(e => e.kind === 'grow' && e.jump && !(isKeyLevel(e.item, e.to) && isKeyLevel(e.item, e.to - 1))).length;
 
 const allHome = show => { for (const k of show.roster.keys()) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', k); };
 // 舞台與名冊的最終狀態：零件鍵、每個名冊的人數與配件
@@ -469,13 +472,13 @@ test('skip during a jump lands both levels', async () => {
 
 // 回到 GROW 設計 §4.2 的整局探針：唯一正解 live 演完（真的鏡頭 rig），跳級合成之後共用不變式照樣乾淨
 // （不穿牆、不瞬移、換位置閃白、每回合回全景、每個 LEVEL UP 字樣至少一半時間在畫面裡）；mark 的 info 不再有 cause（起因提示 2026-10-31 拿掉，R22）；
-// LEVEL UP 彈兩次的第二個字樣（bubbles.levelUp 收到 dy）次數 = 引擎這回合 jump: true 的 grow 個數
-test('the solution live with merged jumps: invariants clean, no cause marks, one twice LEVEL UP per engine jump', async () => {
+// 跳級版 LEVEL UP（bubbles.levelUp 收到 big）次數 = 引擎這回合 jump: true 的 grow 個數（2026-11-04 之前是彈兩次的第二個字樣）
+test('the solution live with merged jumps: invariants clean, no cause marks, one big LEVEL UP per engine jump', async () => {
   for (const order of SOLUTIONS) {
     const cam = overviewRig(), { show, run } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
     let seconds = 0;
     const levelUp = show.bubbles.levelUp;
-    show.bubbles.levelUp = (head, opts = {}) => { if (opts.dy > 0) seconds++; return levelUp(head, opts); };
+    show.bubbles.levelUp = (head, opts = {}) => { if (opts.big) seconds++; return levelUp(head, opts); };
     let s = engine.createState(spec);
     for (const [i, step] of turnSteps(order).entries()) {
       const r = step(s); s = r.state; seconds = 0;
@@ -486,7 +489,7 @@ test('the solution live with merged jumps: invariants clean, no cause marks, one
       // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決）：各一個 LEVEL UP，不算
       const isKey = e => !!ALL.find(m => m.id === e.item)?.script?.grow?.[e.to]?.key;
       const jumps = r.events.filter(e => e.kind === 'grow' && e.jump && !(isKey(e) && isKey({ ...e, to: e.to - 1 }))).length;
-      assert.equal(seconds, jumps, `${what}: one twice LEVEL UP per jump (${jumps})`);
+      assert.equal(seconds, jumps, `${what}: one big LEVEL UP per jump (${jumps})`);
       assert.deepEqual(show.stage.lv, s.lv, `${what}: stage levels equal the engine`);
     }
     assert.deepEqual([...inv.walls].slice(0, 20), [], `${inv.walls.size} inside a building`);
@@ -601,7 +604,7 @@ test('both new solutions play to the end without a script error at every level (
       let s = engine.createState(spec), grows = 0;
       const steps = [...order.map(id => st => place(st, id)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))];
       for (const [i, step] of steps.entries()) {
-        const r = step(s); s = r.state; grows += r.events.filter(e => e.kind === 'grow').length;
+        const r = step(s); s = r.state; grows += expectedLevelUps(r.events);
         await run([...r.events, { kind: 'settle' }]);
         assert.deepEqual(show.stage.lv, s.lv, `${order.join('>')} step ${i + 1}`);
       }
@@ -640,9 +643,8 @@ test('the typhoon placement turn plays live with a LEVEL UP for every grow; nobo
   for (const [i, step] of steps.entries()) {
     const r = step(s); s = r.state;
     if (!r.events.some(engine.landsTyphoon)) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
-    const n = bubblesLog.length, grows = r.events.filter(e => e.kind === 'grow').length;
+    const n = bubblesLog.length, grows = expectedLevelUps(r.events);
     await run([...r.events, { kind: 'settle' }]);
-    // 跳級第一級的那一個由第二級彈兩次補上
     assert.ok(bubblesLog.slice(n).filter(b => b.text === 'LEVEL UP').length >= grows, 'LEVEL UP for every grow');
     assert.equal(show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.hidden).length, 0, 'nobody hidden at the end of the turn');
     const next = steps[i + 1](s), p = show.turn([...next.events, { kind: 'settle' }]);

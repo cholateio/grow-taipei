@@ -88,7 +88,7 @@ export function walk(who, to, { speed, delay = 0 } = {}) {
     return { mm, r, len: ctx.nav.routeLength(r), v: speed ?? mm.speed };   // 蒙太奇的兩倍速由時間軸統一換算（ctx.speed）
   };
   return {
-    kind: 'walk', to,   // to 原樣留在拍上給測試看（點，或 ctx => 點）
+    kind: 'walk', to, speed,   // to、speed 原樣留在拍上給測試看（點，或 ctx => 點；speed 沒給就是那個人的走路速度）
     dur: () => wait + span,
     estimate(ctx) { const p = plan(ctx); return !p || p.len < 1e-6 ? 0 : call(delay, ctx) + p.len / p.v; },
     start(ctx) {
@@ -196,27 +196,22 @@ export function apply(e, { blink = true, only, hold, stagger = 0 } = {}) {
   };
 }
 
-// LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：拍長 1.0 + TWICE_AFTER，第二個字樣在 TWICE_AFTER 秒後冒、多抬高 TWICE_DY——
-// 計畫 11 §設計 2：0.3／0.25 時第二個疊在第一個上（使用者 2026-10-31）；0.55 秒時第一個已升到一半淡掉，再抬高 0.35 就分得開。
-// 沒有「×2」、沒有別的字。target／text／down／twice 留在拍上（turn.js 把跳級劇本裡的 LEVEL UP 換成彈兩次的要讀）。
-// 跳過、reduced-motion（不 step）只冒第一個。
+// LEVEL UP 字樣。twice（跳級合成一段，回到 GROW 設計 §4.2）：只冒**一個**、大一號的字樣（bubbles 的 big），拍長跟一般的一樣 1 s——
+// 原本彈兩次（計畫 11 §設計 2：第二個晚 0.55 s、高 0.35），使用者 2026-11-04「連續跳了兩個 Level up 字」看起來像升了兩次，合併成一個。
+// 沒有「×2」、沒有別的字。target／text／down／twice 留在拍上（turn.js 把跳級劇本裡的 LEVEL UP 換成跳級版的要讀）。
 // 冒在哪（計畫 15 D）：target 是物品 id、而且正在演的事件（ctx.event，turn.js 每個事件的 mark 拍演到時設好）就是這個物品的
 // （item 或 delta.target）→ 這個事件變了的零件頭上（stage.headOfEvent）；不然照舊物品頭上（headOf）。跳級的兩個字樣同一個頭
-export const TWICE_AFTER = 0.55, TWICE_DY = 0.35;
 export function levelUp(target, { text = 'LEVEL UP', down = false, twice = false } = {}) {
   let handles = [], head = null, t = 0;
-  const pop = (ctx, extra = {}) => handles.push(ctx.bubbles.levelUp(head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...extra, ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) }));
+  const pop = (ctx, extra = {}) => handles.push(ctx.bubbles.levelUp(head, { text: down && text === 'LEVEL UP' ? 'LEVEL DOWN' : text, down, ...extra, ...(twice && { big: true }), ...(rate(ctx) !== 1 && { dur: 1.0 / rate(ctx) }) }));
   return {
-    kind: 'levelUp', dur: twice ? 1.0 + TWICE_AFTER : 1.0, target, text, down, twice,
+    kind: 'levelUp', dur: 1.0, target, text, down, twice,
     start(ctx) {
       const ev = ctx.event, own = typeof target === 'string' && !isPartKey(target) && !!ev && (ev.item === target || ev.delta?.target === target);
       const r = own ? { head: () => ctx.stage.headOfEvent(ev, target) } : resolveTarget(target, ctx); if (!r) return false;
       handles = []; head = r.head; t = 0; pop(ctx);
     },
-    step(k, dt, ctx) {
-      t += dt;
-      if (twice && handles.length === 1 && t >= TWICE_AFTER - 1e-9) pop(ctx, { dy: TWICE_DY });
-    },
+    step(k, dt) { t += dt; },
     end() { for (const h of handles) h?.cancel(); handles = []; },
   };
 }

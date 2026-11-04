@@ -230,7 +230,7 @@ test('an event with no cell neither pans nor counts as a change of item', () => 
 });
 
 // 跳級（回到 GROW 設計 §4.2）：同一物品一回合連兩個 grow、第二個 jump: true——合成一段：第一級只有 mark（0 秒），
-// 第二級照一般事件演 n 級的劇本、LEVEL UP 彈兩次，它的 apply 一次套兩級的零件
+// 第二級照一般事件演 n 級的劇本、LEVEL UP 換成跳級版（twice：一個大一號的字），它的 apply 一次套兩級的零件
 const between = (raw, k) => { const at = raw.flatMap((b, i) => (b.kind === 'mark' ? [i] : [])); return raw.slice(at[k] + 1, at[k + 1] ?? raw.length - 3); };
 // 假模組：幫手（Lv2 劇本一拍）、晶片（Lv2／Lv3 劇本各一拍＋LEVEL UP）；grow 事件；一串拍裡每個 mark 的 info（start 一次就知道）
 const helperLike = id => ({ id, view() {}, script: { grow: { 2: (e, s, c) => [c.B.wait(1)] } } });
@@ -252,7 +252,7 @@ test('a jump: the first grow plays only a mark (0 s), the second plays level n s
   // 第一級：只有 mark（0 秒）——不套、不閃、不平移
   assert.deepEqual(between(raw, 1), [], 'the first level: a mark only');
   assert.deepEqual(marksOf(raw)[1].info, { gap: 0, key: false, skipped: true });
-  // 第二級：照一般事件演（換物品空 GAP、平移到晶片格、n 級劇本、補的 apply），LEVEL UP 彈兩次
+  // 第二級：照一般事件演（換物品空 GAP、平移到晶片格、n 級劇本、補的 apply），LEVEL UP 換成跳級版（twice）
   const second = between(raw, 2);
   assert.deepEqual(second.map(b => b.kind), ['wait', 'focus', 'wait', 'levelUp', 'apply']);
   assert.equal(second[3].twice, true, 'LEVEL UP pops twice');
@@ -305,7 +305,7 @@ test('a merged jump plays the highest key level among n−1 and n: n−1 key, n 
   assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
 });
 // Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：矽盾測試不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
-// 各演自己的 ◆ 劇本、各一個（不是彈兩次的）LEVEL UP、各自一個 apply（起因提示 2026-10-31 拿掉了，R22）
+// 各演自己的 ◆ 劇本、各一個（不是跳級版的）LEVEL UP、各自一個 apply（起因提示 2026-10-31 拿掉了，R22）
 test('a jump between two key levels is not merged: both levels play their own key script with a single LEVEL UP', () => {
   const asked = [], fn = n => { const f = (e, s, c) => { asked.push(n); return [c.B.wait(2), c.B.levelUp('chip')]; }; f.key = true; return f; };
   const mod = { id: 'chip', view() {}, script: { grow: { 8: fn(8), 9: fn(9) } } };
@@ -350,7 +350,7 @@ test('after the typhoon placed event the rest of the turn plays normally (script
   assert.deepEqual(kindsOf(between(after, 2)).filter(k => k !== 'wait' && k !== 'focus'), kindsOf(between(without, 1)).filter(k => k !== 'wait' && k !== 'focus'), 'the merged level plays the same script as without the typhoon');
   assert.ok(between(after, 2).filter(b => b.kind === 'levelUp').every(b => b.twice));
 });
-// LEVEL DOWN（knock-back）不會被換成彈兩次；together 裡的 LEVEL UP 也換
+// LEVEL DOWN（knock-back）不會被換成跳級版；together 裡的 LEVEL UP 也換
 test('a jump wraps every LEVEL UP of its script, inside together too, but never a LEVEL DOWN', () => {
   const mod = { ...chipLike(), script: { grow: { 3: (e, s, c) => [c.B.together([c.B.wait(1), c.B.levelUp('chip')]), c.B.levelUp('chip', { down: true })] } } };
   const raw = buildTurn([grow('chip', 2, []), grow('chip', 3, [], { jump: true })], base([quietTower, mod]), fakeCtx());

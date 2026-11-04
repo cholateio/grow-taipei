@@ -92,6 +92,8 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .levelup span { display: block; font: italic 900 clamp(26px, 2.4vh, 44px)/1 "Arial Black", Impact, "Noto Sans TC", sans-serif; letter-spacing: .05em; color: #fcea8b; -webkit-text-stroke: 1.5px #211d1d;
   text-shadow: 1px 0 0 #211d1d, -1px 0 0 #211d1d, 0 1px 0 #211d1d, 0 -1px 0 #211d1d; white-space: nowrap; animation: levelup-rise 1s ease-out forwards; }
 .levelup span.down { color: #7a6f68; animation-name: levelup-fall; }
+/* 跳級：一個大一號的 LEVEL UP（2026-11-04 取代彈兩次） */
+.levelup span.big { font-size: clamp(34px, 3.1vh, 57px); }
 .levelup span.cjk { font-style: normal; letter-spacing: 0; -webkit-text-stroke-width: 1px; }
 @keyframes levelup-rise { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-24px); opacity: 0; } }
 @keyframes levelup-fall { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(24px); opacity: 0; } }

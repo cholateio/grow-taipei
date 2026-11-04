@@ -14,7 +14,7 @@
 //   ctx.speed 恆為 1（時間軸、beats.js 讀它的換算都保留，預設 1 就是不換算）。
 // 跳級 = 一個事件（回到 GROW 設計 §4.2）：引擎照舊記兩個 grow（第二個 jump: true，中間可能夾著跨過那一級的 onLevel fx）。
 //   第一級（同物品後面有 jump: true、from 接著它的 to、中間沒有同物品別的 grow 的那個）只推 mark(e, { gap: 0, key: false, skipped: true })：
-//   不套、不閃、不平移、不查劇本。第二級照一般事件演 n 級的劇本（沒寫就預設；n−1 是 ◆、n 不是時演 n−1 的，見下面 ◆），裡面所有 LEVEL UP 換成彈兩次
+//   不套、不閃、不平移、不查劇本。第二級照一般事件演 n 級的劇本（沒寫就預設；n−1 是 ◆、n 不是時演 n−1 的，見下面 ◆），裡面所有 LEVEL UP 換成跳級版（一個大一號的字；2026-11-04 之前是彈兩次）
 //   （withTwice，together 裡也換；LEVEL DOWN 不換）；它的 apply 一次套兩級的零件（舞台 foldEvent 直接設 lv = e.to，從 n−2 到 n 一次 diff，
 //   兩級的新零件一起閃白出現）。第二級劇本拿到的 s.prev 是 n−2（跟舞台一致）。
 // ◆ 關鍵節點（裁決 R11）：劇本函數帶 key: true（script.grow[n].key；放下事件看 script.placed.key，唯一正解 §5.3 颱風放下）——跳級的第二級落在關鍵級時照樣演完整劇本，LEVEL UP 一樣彈兩次。
@@ -82,7 +82,7 @@ function defaults(e) {
   return [B.apply(e, { blink: false })];
 }
 
-// 跳級合成一段（見檔頭）：LEVEL UP 換成彈兩次的；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換；
+// 跳級合成一段（見檔頭）：LEVEL UP 換成跳級版（twice：一個大一號的字）；together 裡也換（裡面沒換到就留原拍）；LEVEL DOWN 不換；
 // 別的字（101 的階段名這種）也不換；以前 101 頭上的「世界珍奶節」標題字計畫 15 D 拿掉了。
 // 列車進站拍（trainStop）的 during 也換：拍上的 during 就是它裡面依序演的那個陣列，就地換掉元素（燈泡 Lv7 的 LEVEL UP 在列車停靠的 during 裡）
 function withTwice(beats) {
@@ -202,7 +202,7 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const grows = e.kind === 'grow' ? mod(e.item)?.script?.grow : null;
     const keyFn = grows && (jumpSecond.has(i) && !grows[e.to]?.key && grows[e.to - 1]?.key ? grows[e.to - 1] : grows[e.to]);
     const key = e.kind === 'placed' ? !!mod(e.item)?.script?.placed?.key : !!keyFn?.key;   // 放下的 ◆（颱風到 101、全島躲雨）
-    // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 彈兩次、它的 apply 一次套兩級
+    // 跳級的第一級：只有 mark（0 秒）；第二級（twice）照一般事件演、LEVEL UP 大一號、它的 apply 一次套兩級
     if (jumpFirst.has(i)) { out.push(mark(e, { gap: 0, key: false, skipped: true })); return; }
     const twice = jumpSecond.has(i), twiced = beats => (twice ? withTwice(beats) : beats);
     // 合成事件（警告、隕石、尾聲）：finale 劇本整串照演，鏡頭由劇本自己管（不補平移、不空拍、不算上一個物品）

@@ -22,10 +22,11 @@ test('an icon bubble embeds the item SVG; unknown kinds throw', () => {
 });
 test('levelUp lasts 1 s; down variant has the down class; clear removes everything at once', () => {
   const { group, bubbles } = setup();
-  bubbles.levelUp(() => ({ x: 0, y: 2, z: 0 })); bubbles.levelUp(() => ({ x: 0, y: 2, z: 0 }), { down: true, text: 'LEVEL DOWN' });
+  bubbles.levelUp(() => ({ x: 0, y: 2, z: 0 })); bubbles.levelUp(() => ({ x: 0, y: 2, z: 0 }), { down: true, text: 'LEVEL DOWN' }); bubbles.levelUp(() => ({ x: 0, y: 2, z: 0 }), { big: true });
   assert.equal(group.children[0].element.className, 'levelup'); assert.equal(group.children[0].element.textContent, 'LEVEL UP');
   assert.equal(group.children[1].element.children[0].className, 'down'); assert.equal(group.children[1].element.textContent, 'LEVEL DOWN');
-  bubbles.update(0.9); assert.equal(group.children.length, 2); bubbles.update(0.2); assert.equal(group.children.length, 0);
+  assert.equal(group.children[2].element.children[0].className, 'big', '跳級的字大一號（2026-11-04）'); assert.equal(group.children[2].element.textContent, 'LEVEL UP');
+  bubbles.update(0.9); assert.equal(group.children.length, 3); bubbles.update(0.2); assert.equal(group.children.length, 0);
   bubbles.show(() => ({ x: 0, y: 0, z: 0 }), '！', 5); bubbles.clear(); assert.equal(group.children.length, 0); assert.equal(bubbles.count, 0);
 });
 // 跑馬燈 { text } 2026-11-03 拿掉了：文字形狀跟不認得的形狀一樣丟錯

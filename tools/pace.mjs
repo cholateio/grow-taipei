@@ -18,6 +18,7 @@ import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
 import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
+import { ENDINGS } from '../src/rules/endings.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了、起因提示 2026-10-31 拿掉了，上限留著當餘裕）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
 // 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
@@ -100,6 +101,14 @@ for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹偏']]) {
   console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
   for (const d of details) console.log(d);
   if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的隕石是 ${fin.ending.missile}`);
+}
+// 計畫 17：有自己收尾的壞結局各跑一局（EXAMPLE 裡那條到得了的順序；捷運淹水已在上面兩局、變異鼠稱王在下面的老鼠跑遠局），只看終局 ≤ 16 s
+for (const id of ['blackout', 'domeFlood', 'cartBlown', 'milkExpired']) {
+  const order = EXAMPLE[id], head = `${ENDINGS[id].title}（${order.map(name).join('、')}）`;
+  const { cells, details, total, fin } = await playOrder(order, ENDINGS[id].title, BAD_FINALE_MAX);
+  console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);
+  if (verbose) for (const d of details) console.log(d);
+  if (fin.ending.id !== id) failures.push(`${ENDINGS[id].title}：EXAMPLE.${id} 的結局是 ${fin.ending.id}`);
 }
 
 // 老鼠跑遠處的 trouble（唯一正解 §5.2、2026-10-31 Task 5）：放下的老鼠爬上岸直接跑去上一回合出問題的那棟門口聞一聞。

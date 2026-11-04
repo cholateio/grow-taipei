@@ -261,7 +261,7 @@ export const laneParts = lane => {
 const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LANES.slice(0, CAR_KEYS.length), footprint: false, low: false });
 
 // ── 捷運淹水收尾（計畫 17 任務 3，設計 §4；flags.epilogue 'flood'，劇本在 finale.js）──
-// 水淹上來：捷運格整格一片半透明的水（token.floodSheet，kind 'flood'：六角薄板，pointy-top、半徑同格子 HEX_R，厚 SHEET_H，FLOOD_COLOR、不透明度 FLOOD_OPACITY（設計原本 C.glass 0.55，修正輪 1 加深）；
+// 水淹上來：捷運格整格一片半透明的水（token.floodSheet，kind 'flood'：六角薄板，pointy-top、半徑同格子 HEX_R，厚 SHEET_H，FLOOD_COLOR、不透明度 FLOOD_OPACITY（設計原本 C.glass 0.55；2026-11-05 改成飽和水藍 0.8＋自己微微發光）；
 //   設計寫 compound＋box——compound 是不透明的黏土、box 蓋不滿六角又會蓋到隔壁格，改用自己的 builder，一個 mesh）。頂面在格面上 FLOOD_UP，
 //   at 就是升好的位置（劇本從格面下 SHEET_DROP 升上來；跳過、截圖直接是升好的樣子）。
 // 小船（token.boat，鮮奶觀光船同一個 Boat.glb、同色票、h 0.35，船長約 1.5）：from 車站門口 DOOR、划到格子東南岸 BOAT_TO（格心往 60° 方位 1.45：
@@ -269,9 +269,9 @@ const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LAN
 // 船上兩個座位：沿船身 ±BOAT_SEAT（0.15），高在船底上 BOAT_FLOOR——淹水時沒有站長（token.staff 換成了泳客），坐船的是兩個泳客（0 號就是原本的站長）；
 //   收尾之後泳客的家就是這兩個座位（stand、不 rescue）
 export const FLOOD_UP = 0.08, SHEET_H = 0.04, SHEET_DROP = 0.15;
-// 水色（修正輪 1，協調者看截圖：C.glass 0.55 在白天的灰鋪面上看不出淹水）：C.glass 往 C.navy 混 30%、不透明度 FLOOD_OPACITY 0.75——比海水明顯深、偏藍
-const mix3 = (a, b, k) => [16, 8, 0].reduce((c, sh) => c | (Math.round(((a >> sh) & 255) * (1 - k) + ((b >> sh) & 255) * k) << sh), 0);
-export const FLOOD_COLOR = mix3(C.glass, C.navy, 0.3), FLOOD_OPACITY = 0.75;
+// 2026-11-05 使用者：「淹水的水面改藍一點，現在看起來像石板」——C.glass 偏綠灰、混深藍之後在暖光下發灰。改成飽和的水藍、不透明度 0.8，
+// 再讓水面自己微微發光（emissive 同色 × FLOOD_GLOW）：黃昏、夜晚的暖光照下去也還是藍的
+export const FLOOD_COLOR = 0x2f8fe0, FLOOD_OPACITY = 0.8, FLOOD_GLOW = 0.35;
 const FLOOD_CELL = [0, 1], FLOOD_C = axialToWorld(...FLOOD_CELL), FLOOD_Y = cellTop(FLOOD_CELL) + FLOOD_UP;
 export const BOAT_H = 0.35, BOAT_DRAFT = 0.03, BOAT_SEAT = 0.15, BOAT_FLOOR = 0.06;
 export const BOAT_FROM = { x: DOOR.x, y: FLOOD_Y - BOAT_DRAFT, z: DOOR.z };
@@ -334,7 +334,7 @@ export function view(lv, flags) {
 export const builders = {
   // 淹水的薄板（計畫 17 任務 3）：六角柱（CylinderGeometry 6 邊——第一個頂點在 +z，跟格子一樣 pointy-top），半透明、不寫深度、不投影不收影
   flood(THREE, spec) {
-    const geo = new THREE.CylinderGeometry(spec.r, spec.r, spec.h, 6), mat = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.3, metalness: 0, transparent: true, opacity: spec.opacity, depthWrite: false });
+    const geo = new THREE.CylinderGeometry(spec.r, spec.r, spec.h, 6), mat = new THREE.MeshStandardMaterial({ color: spec.color, emissive: spec.color, emissiveIntensity: FLOOD_GLOW, roughness: 0.3, metalness: 0, transparent: true, opacity: spec.opacity, depthWrite: false });
     const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group();
     mesh.castShadow = mesh.receiveShadow = false; object.add(mesh);
     return { object, dispose() { geo.dispose(); mat.dispose(); } };

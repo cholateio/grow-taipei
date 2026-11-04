@@ -784,10 +784,11 @@ test('flood epilogue view: a translucent hex sheet over the whole token cell, a 
     assert.ok(s && b, `lv${n}: sheet and boat`);
     assert.equal(s.kind, 'flood'); assert.equal(s.footprint, false); assert.equal(s.shadow, false);
     assert.ok(Math.hypot(s.at.x - c.x, s.at.z - c.z) < 1e-9, 'centred on the token cell');
-    // 修正輪 1（協調者看截圖：白天看不出淹水）：不透明度 0.75、顏色 C.glass 往 C.navy 混 30%——比海水明顯深、偏藍
-    assert.equal(s.r, R); assert.equal(s.h, 0.04); assert.equal(s.color, token.FLOOD_COLOR); assert.equal(s.opacity, 0.75);
-    const rgb = c => [(c >> 16) & 255, (c >> 8) & 255, c & 255], g = rgb(C.glass), nv = rgb(C.navy);
-    rgb(token.FLOOD_COLOR).forEach((v, i) => assert.ok(Math.abs(v - Math.round(g[i] * 0.7 + nv[i] * 0.3)) <= 1, `channel ${i}`));
+    // 2026-11-05 使用者：「淹水的水面改藍一點，現在看起來像石板」——C.glass（偏綠灰）混深藍在暖光下發灰；改成飽和的水藍 0x2f8fe0、不透明度 0.8
+    assert.equal(s.r, R); assert.equal(s.h, 0.04); assert.equal(s.color, token.FLOOD_COLOR); assert.equal(s.opacity, 0.8);
+    assert.equal(token.FLOOD_COLOR, 0x2f8fe0);
+    const rgb = c => [(c >> 16) & 255, (c >> 8) & 255, c & 255], [r, g, bl] = rgb(token.FLOOD_COLOR);
+    assert.ok(bl > g && g > r && bl - r > 150, 'clearly blue, not grey');
     assert.ok(Math.abs(s.at.y + s.h / 2 - (cellTop(CELL) + token.FLOOD_UP)) < 1e-9 && token.FLOOD_UP === 0.08, 'top face 0.08 over the ground');
     assert.equal(b.kind, 'glb'); assert.equal(b.path, 'quat/ships/Boat.glb'); assert.equal(b.h, 0.35); assert.deepEqual(b.tint, milk.BOAT_TINT); assert.equal(b.footprint, false);
     assert.ok(Math.abs(b.ry - (token.BOAT_YAW + Math.PI)) < 1e-9, 'bow along the row (Boat.glb bow is −z: turned half a turn)');
@@ -812,14 +813,16 @@ test('flood epilogue view: a translucent hex sheet over the whole token cell, a 
   // 沒淹水就不會是捷運淹水結局；保險起見也不畫
   assert.equal(token.view(L({ token: 3 }), { epilogue: 'flood' })['token.floodSheet'], undefined);
 });
-test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like the cell), FLOOD_COLOR at 0.75, no depth write, no shadow', () => {
+test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like the cell), FLOOD_COLOR at 0.8 with its own glow, no depth write, no shadow', () => {
   const v = token.view(L({ token: 1 }), { flooded: true, epilogue: 'flood' });
   const part = createPartFactory(THREE, { glow: createGlowRegistry(), people: null, assets: { spawn: async () => new THREE.Group() }, builders: token.builders }).build(v['token.floodSheet']);
   const meshes = []; part.object.traverse(o => { if (o.isMesh) meshes.push(o); });
   assert.equal(meshes.length, 1);
   const [m] = meshes, g = m.geometry;
-  assert.ok(m.material.transparent && Math.abs(m.material.opacity - 0.75) < 1e-9 && !m.material.depthWrite);
+  assert.ok(m.material.transparent && Math.abs(m.material.opacity - 0.8) < 1e-9 && !m.material.depthWrite);
   assert.equal(m.material.color.getHex(), token.FLOOD_COLOR);
+  // 自己微微發光（emissive 同色、強度 FLOOD_GLOW）：黃昏、夜晚的暖光照下去也還是藍的，不會被染成石板灰
+  assert.equal(m.material.emissive.getHex(), token.FLOOD_COLOR); assert.ok(Math.abs(m.material.emissiveIntensity - token.FLOOD_GLOW) < 1e-9 && token.FLOOD_GLOW === 0.35);
   assert.ok(!m.castShadow && !m.receiveShadow);
   g.computeBoundingBox(); const bb = g.boundingBox;
   assert.ok(Math.abs(bb.max.y - bb.min.y - 0.04) < 1e-6, '0.04 thick');

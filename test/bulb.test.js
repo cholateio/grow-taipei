@@ -44,14 +44,12 @@ test('blackout strips every glow from the bulb views', () => {
   const v = bulb.view(lv({ bulb: 2 }), { blackout: true });
   for (const s of Object.values(v)) if (s.parts) assert.ok(!s.parts.some(p => p.glow));
 });
-// 夜市 Lv2–3 一攤、Lv4 起兩攤（第二攤在東邊、往南錯開 0.15）；footprint 只有攤身；Lv4 的霓虹招牌板照舊、Lv9 霓虹條一攤一條。
+// 夜市 Lv2–3 一攤、Lv4 起兩攤（第二攤在東邊、往南錯開 0.15）；footprint 只有攤身（招牌 2026-11-04 拿掉，見下一個測試）。
 // 計畫 16（使用者 2026-11-03：「車站旁的這兩棟是什麼，看不出來」）：夜市搬到中央格第一盞路燈旁（跟燈走），攤身跟路燈、101、變電所之間都留得出走道
-test('lv4 opens a second night-market stall beside the first with a neon sign; lv2–3 one stall; clear of the first lamp, the 101 and the substation', () => {
+test('lv4 opens a second night-market stall beside the first; lv2–3 one stall; clear of the first lamp, the 101 and the substation', () => {
   const market = n => bulb.view(lv({ bulb: n }), {})['bulb.market'], stalls = n => market(n).parts.filter(p => p.kind === 'hip').length;
   assert.equal(stalls(2), 1); assert.equal(stalls(3), 1); for (let n = 4; n <= 9; n++) assert.equal(stalls(n), 2, `lv${n}`);
-  assert.ok(market(4).parts.some(p => p.glow === 0xff3fa0 && p.kind === 'box'), 'neon sign board at Lv4');
   assert.deepEqual(market(4).footprint, [{ x: 0, z: 0, w: 0.5, d: 0.4 }, { x: 0.5, z: 0.15, w: 0.5, d: 0.4 }], 'stall bodies only');
-  assert.equal(bulb.view(lv({ bulb: 9, token: 9 }), {})['bulb.neon.market'].parts.length, 2, 'one neon strip per stall');
   const M = market(4).at, box = (f, at) => ({ x0: at.x + (f.x ?? 0) - (f.r ?? f.w / 2), x1: at.x + (f.x ?? 0) + (f.r ?? f.w / 2), z0: at.z + (f.z ?? 0) - (f.r ?? f.d / 2), z1: at.z + (f.z ?? 0) + (f.r ?? f.d / 2) });
   const gap = (a, b) => Math.hypot(Math.max(0, a.x0 - b.x1, b.x0 - a.x1), Math.max(0, a.z0 - b.z1, b.z0 - a.z1));
   const bodies = market(4).footprint.map(f => box(f, M)), v6 = bulb.view(lv({ bulb: 6 }), {}), t = { at: anchorWorld('tower'), footprint: { w: 1.6, d: 1.6 } };   // 101 底座 1.6 見方（自動 footprint 也是這個大小）
@@ -118,8 +116,16 @@ test('a red lantern string runs from the first lamp\'s post top to each stall ca
     if (n >= 3) assert.ok(!marketOf(n, { blackout: true }).parts.some(p => p.glow), `lv${n} blackout: lanterns dark`);
   }
   assert.ok(!marketOf(2).parts.some(p => p.glow), 'Lv2: nothing in the market glows yet');
-  const sign = marketOf(4).parts.find(p => p.glow === C.neonPink), apexY = Math.max(...marketOf(4).parts.filter(p => p.kind === 'hip').map(r => r.pos[1] + r.scale[1] / 2));
-  assert.ok(sign.pos[1] - sign.scale[1] / 2 > apexY, 'Lv4 sign board above the canopies');
+});
+// 使用者 2026-11-04（夜市截圖）：「夜市上面這塊方方的是什麼，不好看」——Lv4–8 的粉紅招牌板、Lv9 的霓虹招牌（bulb.neon.market）都拿掉；
+// 夜市發光的只有燈籠串（Lv3 起，珊瑚紅），燈泡 2–9 都沒有招牌、沒有粉紅的東西
+test('no night-market sign: bulb 2–9 has no bulb.neon.market and nothing pink in bulb.market (only the coral lanterns glow)', () => {
+  for (let n = 2; n <= 9; n++) for (const L of [lv({ bulb: n }), atLv(n)]) {
+    const v = bulb.view(L, {});
+    assert.equal(v['bulb.neon.market'], undefined, `lv${n}: no neon market sign`);
+    assert.ok(!v['bulb.market'].parts.some(p => p.glow === C.neonPink || p.color === C.neonPink), `lv${n}: no pink board`);
+    assert.ok(v['bulb.market'].parts.filter(p => p.glow).every(p => p.glow === C.coral), `lv${n}: only lanterns glow`);
+  }
 });
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const near = (a, b, d = 1e-9) => Math.hypot(a.x - b.x, a.z - b.z) < d;
@@ -454,7 +460,7 @@ const pick = (v, keys) => Object.fromEntries(Object.entries(v).filter(([k]) => k
 const whole = L => ({ ...bulb.view(L, {}), ...pick(sat.view(L, {}), ['sat.windmill', 'sat.lighthouse', 'sat.beam']), ...pick(chip.view(L, {}), ['chip.cable']), ...pick(tower.view(L, {}, { total: 20 }), ['tower.show']) });
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const V = Array.from({ length: 10 }, (_, n) => whole(atLv(n)));
-const NEON = ['bulb.neon.station', 'bulb.neon.bridges', 'bulb.neon.market'];
+const NEON = ['bulb.neon.station', 'bulb.neon.bridges'];
 
 test('bulb has its v2 ladder (max 9)', () => { assert.equal(spec.ITEMS.bulb.max, 9); });
 test('bulb has something new at every level 1–9: substation (6), turbine and lighthouse (7), the cable (8), island-wide neon (9)', () => {
@@ -480,8 +486,8 @@ test('Lv6 substation: battery cabinets and a transformer whose insulators hum (g
   assert.ok(s.parts.filter(p => p.kind === 'cylinder' && p.glow).length >= 3, 'three insulators on the transformer');
   assert.deepEqual(cellAt(s.at.x, s.at.z), [0, 0]); assert.ok(!bulb.view(atLv(6), { blackout: true })['bulb.substation'].parts.some(p => p.glow), 'dark in a blackout');
 });
-// Lv9 全島霓虹：橋面（主島每一座橋＋上台地的階梯）、懸浮月台、夜市與車站的招牌；每個零件都發光
-test('Lv9 neon: every main-island bridge gets glowing deck strips; the floating platform and the market get strips and a cyberpunk sign', () => {
+// Lv9 全島霓虹：橋面（主島每一座橋＋上台地的階梯）、懸浮月台與車站的招牌；每個零件都發光（夜市招牌 2026-11-04 拿掉）
+test('Lv9 neon: every main-island bridge gets glowing deck strips; the floating platform gets strips and a cyberpunk sign', () => {
   const v = bulb.view(atLv(9), {}), br = v['bulb.neon.bridges'], pairs = adjacentPairs(MAIN_CELLS);
   assert.equal(pairs.length, 12);
   assert.ok(br.parts.length >= pairs.length * 2 && br.parts.every(p => p.glow), `${br.parts.length} bridge strips, all glowing`);
@@ -489,7 +495,7 @@ test('Lv9 neon: every main-island bridge gets glowing deck strips; the floating 
     const a = axialToWorld(...A), b = axialToWorld(...Bc), m = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
     assert.ok(worldPoints(br).some(p => Math.hypot(p.x - m.x, p.z - m.z) < 0.3), `bridge ${A}–${Bc}`);
   }
-  for (const k of ['bulb.neon.station', 'bulb.neon.market']) {
+  for (const k of ['bulb.neon.station']) {
     const p = v[k]; assert.equal(p.kind, 'neon'); assert.ok(p.parts.length && p.parts.every(q => q.glow), `${k} strips glow`);
     assert.ok(p.models.length === 1 && p.models[0].path.startsWith('quat/cyberpunk/') && existsSync(new URL(`../assets/${p.models[0].path}`, import.meta.url)), `${k} sign glb`);
     assert.ok(Object.values(p.models[0].glow).length, `${k} sign glows`);
@@ -666,16 +672,16 @@ test('Lv9 live: the neon parts light up one after another within 1.5 s, with one
     assert.deepEqual(trail.slice(0, 2).map(String), ['0,1', 'home'], JSON.stringify(trail));
   }
 });
-// 裁決 R18：?quality=low 不畫霓虹燈條（橋面、月台、夜市屋簷），招牌 glb 留著
+// 裁決 R18：?quality=low 不畫霓虹燈條（橋面、月台），招牌 glb 留著
 test('quality low: neon parts drop their strips and keep only the sign models', async () => {
   const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
   const spawned = [], f = q => createPartFactory(THREE, { glow: createGlowRegistry(), builders: bulb.builders, quality: q, assets: { spawn: async (p, o) => { spawned.push(p); const g = new THREE.Group(); o?.parent?.add(g); return g; } } });
   const v = bulb.view(lv({ bulb: 9, token: 9 }), {});
-  for (const key of ['bulb.neon.bridges', 'bulb.neon.station', 'bulb.neon.market']) {
+  for (const key of ['bulb.neon.bridges', 'bulb.neon.station']) {
     const meshes = q => { let n = 0; f(q).build(v[key]).object.traverse(o => { if (o.isMesh) n++; }); return n; };
     assert.ok(meshes('high') > 0, `${key} has strips at high`); assert.equal(meshes('low'), 0, `${key} no strips at low`);
   }
-  assert.ok(spawned.length >= 2, 'signs still load at low');
+  assert.ok(spawned.length >= 1, 'the station sign still loads at low');
 });
 // 審稿（裁決 R17）：◆ Lv7 在唯一正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）。
 // 計畫 5b 任務 4（節奏）：Lv5 全島 LED 在真的回合裡也 ≤ 4.5 s——放下當回合就長，電工常在主島另一頭，以前走去 101 腳下要 9 秒（外星第 6 回合 59 s）

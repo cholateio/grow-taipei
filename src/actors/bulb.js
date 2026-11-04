@@ -55,8 +55,6 @@ export const STALL_W = 0.5, STALL_D = 0.4;
 export const marketStalls = n => [[0, 0, C.coral], ...(n >= 4 ? [[0.5, 0.15, C.yellow]] : [])];
 // 夜市的 footprint：每一攤的攤身（不是整個包圍盒：攤子外圍是走得到的地；燈籠串在頭上，不算）
 const marketFootprint = n => marketStalls(n).map(([x, z]) => ({ x, z, w: STALL_W, d: STALL_D }));
-// Lv4 的霓虹招牌板、Lv9 的霓虹招牌（glb）：兩攤中間上方
-const SIGN_AT = [0.25, 0.075];
 // 攤子（計畫 16 重畫）：開放式攤位——四根木柱撐一片斜棚、前面（+z，鏡頭側）一張櫃台（底在地面）；
 // 第一攤櫃台上兩層蒸籠＋白色薄蓋、第二攤一座烤架＋三根斜插的竹籤。棚子底在柱頂 POST_H
 const POST_H = 0.55, ROOF = [0.62, 0.22, 0.52], COUNTER = [STALL_W, 0.22, 0.18];
@@ -124,7 +122,7 @@ const SWITCH_FRONT = { ...offset(WIND, 0.3, 0.6), yaw: Math.PI };   // 開關箱
 export const ISLAND_HOME = offset(WIND, 0.5, 0.75), ISLAND_R = 0.35;
 
 // ── 全島賽博霓虹（Lv9）：主島每一座橋（含上台地的階梯）兩側一條霓虹藍燈條；懸浮月台四邊一圈粉紅燈條＋電視牆；
-// 夜市每一攤（兩攤）屋簷一條燈條＋霓虹招牌（換掉 Lv4 的招牌板）。每一份是一個零件（劇本一份份閃白亮起）——三份共 7 個 draw call ──
+// 每一份是一個零件（劇本一份份閃白亮起）。夜市的屋簷燈條＋霓虹招牌（bulb.neon.market）2026-11-04 拿掉了 ──
 const NEON = [C.neonPink, C.neonBlue, C.yellow];   // 燈頭的霓虹三色
 const strip = (x, y, z, len, ry, glow) => ({ kind: 'box', pos: [x, y, z], scale: [0.03, 0.02, len], rot: [0, ry, 0], ...glow });
 function bridgeStrips(glow) {
@@ -177,11 +175,9 @@ export function view(lv, flags = {}) {
     const stalls = marketStalls(n), lantern = n >= 3 ? glowOf(C.coral) : { color: C.coral };
     const postTop = [AT.x - MARKET.x, POST_TOP, AT.z - MARKET.z];
     const market = stalls.flatMap((s, i) => [...stall(s, i), ...lanternString(postTop, roofApex(s[0], s[1]), lantern)]);
-    if (n >= 4 && n < 9) market.push({ kind: 'box', pos: [SIGN_AT[0], 0.95, SIGN_AT[1]], scale: [0.7, 0.18, 0.04], ...glowOf(C.neonPink) });
+    // 招牌拿掉（使用者 2026-11-04：「夜市上面這塊方方的是什麼，不好看」）：Lv4–8 的粉紅招牌板、Lv9 的霓虹招牌（bulb.neon.market）都不畫，
+    // 夜市的霓虹就是 Lv3 起發光的燈籠串
     v['bulb.market'] = { kind: 'compound', at: MARKET, parts: market, footprint: marketFootprint(n) };
-    if (n >= 9) v['bulb.neon.market'] = { kind: 'neon', at: MARKET, footprint: false,
-      parts: stalls.map(([x, z]) => ({ kind: 'box', pos: [x, POST_H, z + ROOF[2] / 2], scale: [0.6, 0.025, 0.025], ...glowOf(C.neonBlue) })),
-      models: [sign('Sign_2', [SIGN_AT[0], 0.82, SIGN_AT[1]], 0.3, C.neonPink, lit)] };
   }
   if (n >= 6) v['bulb.substation'] = { kind: 'compound', at: SUBSTATION, parts: substationParts(lit), footprint: { x: 0, z: 0, w: SUB.w, d: SUB.d } };
   if (n >= 9) {
@@ -318,7 +314,7 @@ export const script = {
       const { B } = ctx;
       return [B.focus('home'), B.apply(e), B.wait(0.8), B.world({ time: TIMES.dusk }), B.wait(1.2), B.levelUp('bulb')];
     },
-    // 第二攤：兩個小學生快步走去夜市前排隊 → 閃白第二攤開張、霓虹招牌板亮起、一起 ♥（鏡頭對著夜市格；計畫 16 起夜市就在中心格，LEVEL UP 不再轉）。
+    // 第二攤：兩個小學生快步走去夜市前排隊 → 閃白第二攤開張、一起 ♥（鏡頭對著夜市格；計畫 16 起夜市就在中心格，LEVEL UP 不再轉）。
     //   沒有人可叫（見 nearestPair）：照樣等 QUEUE_MIN、開張那拍停 0.4（♥ 的長度），一級不短於 3 秒
     4(e, s, ctx) {
       const { B } = ctx, pair = nearestPair(), pupil = i => c => pair(c)[i] ?? null, slot = i => c => c.nav.slots(MARKET_FRONT, 2, 0.15)[i];
@@ -379,15 +375,15 @@ export const script = {
         B.focus('home', { hold: 0.6 }), B.levelUp('bulb'),   // 全景停 1.0 → 0.6（裁決 R17，颱風回合 ≤ 50 s）
       ];
     },
-    // ◆ 全島賽博霓虹（代幣 ≥9）：鏡頭到車站格 → 站務員 ！ → 懸浮月台的燈條與電視牆閃白亮起 → 回全景，同時橋面燈條、夜市招牌一份份亮起
-    //   （霓虹從第一份到最後一份 ≤ 1.5 秒）→ 全景定格 → 大家 ♪ → LEVEL UP
+    // ◆ 全島賽博霓虹（代幣 ≥9）：鏡頭到車站格 → 站務員 ！ → 懸浮月台的燈條與電視牆閃白亮起 → 回全景，同時橋面燈條、風車林一份份亮起
+    //   （霓虹從第一份到最後一份 ≤ 1.5 秒；夜市招牌 2026-11-04 拿掉了，夜市 Lv9 不再變）→ 全景定格 → 大家 ♪ → LEVEL UP
     9(e, s, ctx) {
       const { B } = ctx, staff = c => c.roster.members('token.staff').find(m => !m.hidden) ?? null;
       const cheer = c => [...c.roster.members('token.staff'), ...c.roster.members('landmarks.islanders')].filter(m => !m.hidden);
       return [
         B.focus(TOKEN_CELL), B.bubble(staff, '！', 0.8),
         B.apply(e, { only: ['bulb.neon.station'] }),
-        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'bulb.neon.market', 'bulb.market', 'sat.forest.stage2'] })]),
+        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'sat.forest.stage2'] })]),
         B.together([0, 1, 2, 3].map(i => B.bubble(c => cheer(c)[i] ?? null, '♪', 1.0))),
         B.levelUp('bulb'),
       ];

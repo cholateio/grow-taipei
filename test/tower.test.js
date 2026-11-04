@@ -182,7 +182,7 @@ test('view with epilogue cyber: body colours are ink, trims neon blue, tower.scr
   const trims = b.parts.filter(p => p.glow != null);
   assert.ok(trims.length >= 8 && trims.every(p => p.glow === tower.NEON_BLUE && p.color === tower.NEON_BLUE), 'the trims glow neon blue');
   assert.ok(b.parts.every(p => p.color === tower.DARK || p.color === tower.NEON_BLUE), 'nothing cream, sand or glass-green is left');
-  // 平屋頂：roof 是屋頂面高度（相對 at），寬 ≥ 1.4（10 隻機器鼠＋一台車站得下），桅杆在屋頂後緣、尖頂 = top
+  // 平屋頂：roof 是屋頂面高度（相對 at），寬 ≥ 1.4（5 隻機器鼠（一排）＋一台車站得下），桅杆在屋頂後緣、尖頂 = top
   const deck = b.parts.find(p => p.name === 'deck');
   assert.ok(deck && deck.scale[0] >= 1.4 && deck.scale[2] >= 1.4, 'a flat roof deck');
   assert.ok(Math.abs(deck.pos[1] + deck.scale[1] / 2 - b.roof) < 1e-9, 'roof = the deck top face');

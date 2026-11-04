@@ -42,7 +42,7 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 燈泡 | 1 | `bulb.main` | 程式（燈桿＋燈頭；`Streetlight_Single.glb` 沒換：15 盞路燈一盞一個 glb 會超 draw call，主燈和其他燈要同一款） | — | 現有（glb 未採用） |
 | 燈泡 | 2 | `bulb.posts`、`bulb.lamps.<站>`、`bulb.market` | 程式（燈桿一個零件、燈頭一站一個零件；夜市 2 攤）；`Streetlight_Double`、`MarketStand_1/2` 沒換（夜市東攤離主路只剩 0.04，glb 攤子比程式攤大） | — | 現有（glb 未採用） |
 | 燈泡 | 3 | `bulb.lamps.<站>`、`bulb.main` | 程式（霓虹：一站一色、沿路粉藍交錯——一站一個 draw call；傍晚） | — | 現有 |
-| 燈泡 | 4 | `bulb.market` | 程式（四攤＋粉紅招牌板）；`display-fruit/bread` 沒用 | — | 現有（glb 未採用） |
+| 燈泡 | 4 | `bulb.market` | 程式（兩攤＋紅燈籠串；粉紅招牌板 2026-11-05 拿掉）；`display-fruit/bread` 沒用 | — | 現有（glb 未採用） |
 | 燈泡 | 5 | `bulb.posts`、`tower.*` | 程式（全島 LED、101 燈光秀、夜晚） | — | 現有 |
 | 燈泡 | 6 | `bulb.substation` | 程式（中心格 101 西邊：水泥台、兩座儲能櫃（指示燈）、變壓器＋三根礙子亮淡藍、矮圍籬）；沒配散熱塔 glb | — | 現有 |
 | 燈泡 | 7 ★◆ | `sat.windmill`（speed 0 → 1）、`sat.lighthouse`、`sat.beam`、`sat.keeper`、`bulb.electrician`（家換到風車島） | 程式：風車塔身＋開關箱在 island.js 的 kit、葉片是 `blades` 演員；燈塔燈室改成不發光的 kit 球（開局暗），演員亮燈。`windturbine_tall.gltf` 沒用（可選；kit 塔身不花 draw call） | — | 現有 |

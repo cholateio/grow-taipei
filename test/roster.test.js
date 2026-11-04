@@ -1115,7 +1115,7 @@ test('wander never routes through another cell: a cell split by a wall keeps its
   for (let i = 0; i < 30 * 120; i++) { roster.update(1 / 30, i / 30); const c = cellAt(m.pos.x, m.pos.z); cells.add(c ? String(c) : 'bridge'); }
   assert.deepEqual([...cells], ['-1,0'], `visited ${[...cells]}`);
 });
-// 裁決 R18：?quality=low 一份模型名冊最多載 3 隻 glb（機器鼠軍團 10 隻，其餘不畫；位置、劇本照舊）
+// 裁決 R18：?quality=low 一份模型名冊最多載 3 隻 glb（機器鼠軍團 5 隻，其餘不畫；位置、劇本照舊）
 test('quality low: a model roster loads at most 3 glb holders; the rest exist without a model', () => {
   const people = createPeople(THREE, { max: 8 }), spawned = [];
   const assets = { spawn: async (path, opts) => { const g = new THREE.Group(); g.userData.mixer = { timeScale: 1 }; opts.parent?.add(g); spawned.push(g); return g; }, release() {} };

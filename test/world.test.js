@@ -70,3 +70,9 @@ test('TIMES.pitch (1380) is darker than night: a near-black sky and about 0.15×
   let prev = night.hemiI;
   for (let m = TIMES.night + 10; m <= TIMES.pitch; m += 10) { const x = sample(m); assert.ok(x.hemiI <= prev + 1e-9, `minute ${m}`); prev = x.hemiI; }
 });
+// 計畫 17 任務 3：大停電收尾的天色是漆黑（TIMES.pitch）——收尾一開始 worldNow、回合收尾的 world 拍、跳過的 snap 都照這一份算
+test('worldEffects: the blackout epilogue is pitch dark (TIMES.pitch), glow still off, people standing; other epilogues keep their clock', () => {
+  assert.deepEqual(worldEffects(lv({ bulb: 2 }), { blackout: true, missile: 'hit', epilogue: 'blackout' }), { time: TIMES.pitch, peopleVisible: true, glowScale: 0, storm: 0, rain: 0, mood: 'normal' });
+  assert.equal(worldEffects(lv({ bulb: 2 }), { blackout: true, missile: 'hit' }).time, TIMES.night, 'before the epilogue: night');
+  assert.equal(worldEffects(lv({ bulb: 4 }), { flooded: true, missile: 'hit', epilogue: 'flood' }).time, TIMES.dusk);
+});

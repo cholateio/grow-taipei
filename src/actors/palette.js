@@ -5,6 +5,8 @@ export const C = {
   neonPink: 0xff3fa0, neonBlue: 0x3fe0ff, alien: 0x5fcf7a, wood: 0x9c7a4e, white: 0xffffff,
   red: 0xe8322e,   // 跑車紅（尾聲的紅色飛天跑車車身、Roadster 的尾燈條）
 };
+// Quaternius Boat.glb 的上色（深色木頭珊瑚、淺色木頭奶油）：鮮奶 Lv10 的觀光船、捷運淹水收尾的小船（計畫 17）共用
+export const BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream };
 export const ROOFS = [C.coral, C.navy, C.yellow];
 export const roofColor = (base, rebuilt) => rebuilt ? ROOFS[(ROOFS.indexOf(base) + 1) % ROOFS.length] : base;
 export const rebuilt = lv => lv.typhoon >= 3;   // 颱風 Lv3 放晴（修正批次 2：三級）

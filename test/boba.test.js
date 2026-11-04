@@ -666,3 +666,23 @@ test('the walkway beside the station stays open: pier → queue and the cart pus
     });
   }
 });
+
+// 計畫 17 任務 3：捷運淹水收尾——珍奶老闆跳上攤車頂躲水（finale.js 的劇本 B.jump 到 floodPerch，之後家就在那裡、不 rescue）。
+// 攤車（Lv1–2）：SHOP 上方 0.95（設計原文）；店（Lv3 起）：屋頂上（後半，杯子招牌在前緣）；MAX 的超大杯子佔滿屋頂：杯頂上。
+// 攤車被吹走（flags.cartBlown，捷運淹水局常常一起成立——EXAMPLE.flood 就是）：SHOP 上沒有攤車，改跳上翻在海裡那台攤車朝上的那一面（協調者待確認）
+test('flood epilogue: the owner perches on the cart roof (SHOP + 0.95), the shop roof, or the tipped cart in the sea when it was blown away; his home moves there (no rescue)', () => {
+  const near3 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1e-9;
+  for (const n of [1, 2]) {
+    const p = boba.floodPerch(lv({ boba: n }), {});
+    assert.ok(near3(p, { x: boba.SHOP.x, y: boba.SHOP.y + 0.95, z: boba.SHOP.z }), `lv${n}: on the cart roof`);
+  }
+  for (const n of [3, 5]) { const p = boba.floodPerch(lv({ boba: n }), {}); assert.ok(Math.abs(p.y - boba.SHOP.y - 1.0) < 1e-9 && Math.hypot(p.x - boba.SHOP.x, p.z - boba.SHOP.z) < 0.4, `lv${n}: on the shop roof`); }
+  assert.ok(Math.abs(boba.floodPerch(lv({ boba: 6 }), {}).y - boba.SHOP.y - 1.0 - boba.BIG_CUP_H) < 1e-9, 'MAX: on top of the giant cup');
+  const blown = boba.floodPerch(lv({ boba: 1 }), { cartBlown: true });
+  assert.ok(Math.hypot(blown.x - boba.BLOWN.x, blown.z - boba.BLOWN.z) < 0.4 && blown.y > boba.BLOWN.y + 0.3 && blown.y < boba.BLOWN.y + 0.5, `blown: on the tipped cart (${blown.x.toFixed(2)}, ${blown.y.toFixed(2)}, ${blown.z.toFixed(2)})`);
+  for (const [n, flags] of [[1, {}], [2, {}], [4, {}], [1, { cartBlown: true }]]) {
+    const o = boba.view(lv({ boba: n }), { ...flags, epilogue: 'flood' })['boba.owner'].home;
+    assert.equal(o.kind, 'stand'); assert.ok(!o.rescue, 'no rescue'); assert.ok(near3(o.spots[0], boba.floodPerch(lv({ boba: n }), flags)));
+    assert.deepEqual(boba.view(lv({ boba: n }), flags)['boba.owner'].home.spots, [flags.cartBlown ? boba.blownSpot() : boba.ownerSpot(n)], 'unchanged without the epilogue');
+  }
+});

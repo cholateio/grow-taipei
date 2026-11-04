@@ -190,6 +190,23 @@ export const bitten = (lv, flags) => !!heldBy({ lv, flags }, 'boba');
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
 
+// 捷運淹水收尾（計畫 17 任務 3，設計 §4）：水淹上捷運格，老闆跳上攤車頂躲水（finale.js 的劇本 B.jump 到這裡；收尾之後家就在這裡，不 rescue）。
+//   攤車（Lv1–2）：SHOP 上方 FLOOD_PERCH_UP 0.95（設計原文；遮雨棚頂約 0.92）；
+//   店（Lv3 起）：屋頂（SHOP_H）後半（杯子招牌在屋頂前緣、外送無人機停在 −0.15 兩側 ±0.2：站在兩台中間往後 0.05）；MAX 的超大杯子佔滿屋頂：站在杯頂上；
+//   攤車被吹走（cartBlown；捷運淹水局常常一起成立，EXAMPLE.flood 就是）：SHOP 上沒有攤車——跳上翻在海裡那台攤車朝上的那一面
+//   （推車那面（−x）翻倒後朝上、斜約 21°：取那一面的中心，tipped() 同一個轉法）。都面向鏡頭（yaw 0）
+export const FLOOD_PERCH_UP = 0.95;
+export function floodPerch(lv, flags = {}) {
+  const n = lv.boba;
+  if (flags.cartBlown && n < 3) {
+    const x = -CART.w / 2, y = CART_BODY.y0 + CART_BODY.h / 2, c = Math.cos(TIP), sn = Math.sin(TIP);
+    return { x: BLOWN.x + x * c - y * sn, y: BLOWN.y + x * sn + y * c, z: BLOWN.z, yaw: 0 };
+  }
+  if (n < 3) return { ...offset(SHOP, 0, 0, FLOOD_PERCH_UP), yaw: 0 };
+  if (n >= 6) return { ...offset(SHOP, 0, SHOP_W / 2 - BIG_CUP_INSET, SHOP_H + BIG_CUP_H), yaw: 0 };
+  return { ...offset(SHOP, 0, -0.2, SHOP_H), yaw: 0 };
+}
+
 // 立牌的板子（相對 AT）：靠店（攤車）東牆外、老闆站位（BY_DOOR，sz + 0.56）北邊 0.41：原本在 sz + 0.62 跟老闆站位只差 0.12，錄影裡老闆和立牌疊在一起（2026-10-27）。
 // 立牌擋人（修正批次 fix3 §A，使用者 2026-11-01「珍奶店升級時顧客會穿越招牌」：院子以前 footprint false，人龍從碼頭走來時直直穿過立牌）：
 // footprint 只有立牌（0.16 × 0.08，蓋住 0.16 × 0.04 的板子和往後仰的那一截），磚地與遮雨棚照舊走得過去；外擴 PAD 後是 0.40 × 0.32 的框。
@@ -255,6 +272,8 @@ export function view(lv, flags = {}) {
   // 入口：碼頭（推攤車那段是劇本從北邊放他出來；名冊自己補人時從碼頭走來）
   // 攤車被吹走：老闆走到岸邊、面向海看著翻在水裡的攤車（fidget look：偶爾瞥一下）
   v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [blown ? blownSpot() : ownerSpot(n)], fidget: blown ? 'look' : 'wave', rescue: true, entry: PIER[3] } };
+  // 捷運淹水收尾（計畫 17 任務 3）：老闆站在攤車頂／屋頂上（floodPerch；不 rescue、不晃）
+  if (flags.epilogue === 'flood') v['boba.owner'].home = { kind: 'stand', spots: [floodPerch(lv, flags)], entry: PIER[3] };
   // 人龍：攤車前／店門口一排（人數預算 ≤ 3）；從碼頭走來
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
   // Lv5 外送無人機：店屋頂兩台（修正批次 trim §A：離島的分店、旗艦店、渡船、觀光客全砍，只剩主島這兩台）

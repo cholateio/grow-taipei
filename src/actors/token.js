@@ -7,8 +7,8 @@
 //   trip（trainStop 的支線版在演時才有）＝列車正開在支線上：車頭在 trip.path 上第 s 公尺，後面的車廂還在環上。
 // 劇本（§6）：一級 3–5 秒；◆ Lv7、Lv10 6–10 秒、最後回全景定格。
 import { anchorWorld } from './anchors.js';
-import { TOP, groundAt, axialToWorld, SATELLITES } from '../scene/hex.js';
-import { C, roofColor, rebuilt, offset } from './palette.js';
+import { TOP, R as HEX_R, groundAt, axialToWorld, cellTop, SATELLITES } from '../scene/hex.js';
+import { C, roofColor, rebuilt, offset, BOAT_TINT } from './palette.js';
 import { createPathCursor, measurePath, locateOnPath } from '../scene/path.js';
 
 export const id = 'token';
@@ -260,6 +260,30 @@ export const laneParts = lane => {
 // 一台車一條坡道（修正輪 1 審稿 Minor：trim §B 只剩一台，另外兩條空著很怪）；LANES 三條的位置照舊算（左中右）
 const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LANES.slice(0, CAR_KEYS.length), footprint: false, low: false });
 
+// ── 捷運淹水收尾（計畫 17 任務 3，設計 §4；flags.epilogue 'flood'，劇本在 finale.js）──
+// 水淹上來：捷運格整格一片半透明的水（token.floodSheet，kind 'flood'：六角薄板，pointy-top、半徑同格子 HEX_R，厚 SHEET_H，C.glass、不透明度 0.55；
+//   設計寫 compound＋box——compound 是不透明的黏土、box 蓋不滿六角又會蓋到隔壁格，改用自己的 builder，一個 mesh）。頂面在格面上 FLOOD_UP，
+//   at 就是升好的位置（劇本從格面下 SHEET_DROP 升上來；跳過、截圖直接是升好的樣子）。
+// 小船（token.boat，鮮奶觀光船同一個 Boat.glb、同色票、h 0.35，船長約 1.5）：from 車站門口 DOOR、划到格子東南岸 BOAT_TO（格心往 60° 方位 1.45：
+//   船頭還在格子裡），船頭朝划行方向（BOAT_YAW，atan2(dx, dz) 同名冊的 yaw；模型船頭朝 −z，ry 再加 π）；船底吃水 BOAT_DRAFT。at 是終點（劇本從 BOAT_FROM 的偏移划回 0）。
+// 船上兩個座位：沿船身 ±BOAT_SEAT（0.15），高在船底上 BOAT_FLOOR——淹水時沒有站長（token.staff 換成了泳客），坐船的是兩個泳客（0 號就是原本的站長）；
+//   收尾之後泳客的家就是這兩個座位（stand、不 rescue）
+export const FLOOD_UP = 0.08, SHEET_H = 0.04, SHEET_DROP = 0.15;
+const FLOOD_CELL = [0, 1], FLOOD_C = axialToWorld(...FLOOD_CELL), FLOOD_Y = cellTop(FLOOD_CELL) + FLOOD_UP;
+export const BOAT_H = 0.35, BOAT_DRAFT = 0.03, BOAT_SEAT = 0.15, BOAT_FLOOR = 0.06;
+export const BOAT_FROM = { x: DOOR.x, y: FLOOD_Y - BOAT_DRAFT, z: DOOR.z };
+export const BOAT_TO = { x: FLOOD_C.x + 1.45 * Math.cos(Math.PI / 3), y: FLOOD_Y - BOAT_DRAFT, z: FLOOD_C.z + 1.45 * Math.sin(Math.PI / 3) };
+export const BOAT_YAW = Math.atan2(BOAT_TO.x - BOAT_FROM.x, BOAT_TO.z - BOAT_FROM.z);
+// 第 i 個座位（0 船尾、1 船頭）在船在 p 時的位置與朝向（朝划行方向）；劇本每幀照船現在的位置擺人
+export const boatSeat = (i, p = BOAT_TO) => {
+  const off = i ? BOAT_SEAT : -BOAT_SEAT;
+  return { x: p.x + Math.sin(BOAT_YAW) * off, y: p.y + BOAT_FLOOR, z: p.z + Math.cos(BOAT_YAW) * off, yaw: BOAT_YAW };
+};
+const floodParts = () => ({
+  'token.floodSheet': { kind: 'flood', at: { x: FLOOD_C.x, y: FLOOD_Y - SHEET_H / 2, z: FLOOD_C.z }, r: HEX_R, h: SHEET_H, color: C.glass, opacity: 0.55, footprint: false, shadow: false },
+  'token.boat': { kind: 'glb', at: { ...BOAT_TO }, path: 'quat/ships/Boat.glb', h: BOAT_H, tint: BOAT_TINT, ry: BOAT_YAW + Math.PI, footprint: false },   // Boat.glb 的船頭朝 −z（截圖量的）：轉半圈讓船頭朝划行方向
+});
+
 export function view(lv, flags) {
   const n = lv.token, at = AT, v = {};
   if (!n) return v;
@@ -279,6 +303,11 @@ export function view(lv, flags) {
   // 站長（使用者 2026-10-31「車站工人直接變成站長」，裁決 R23）：Lv1 等車的那位島民（from + pick 'nearest'：島民名冊同時少一個，
   //   名冊搬離 at 最近的那位、原地換制服閃一下）。淹水退了、來源沒有多的島民時由名冊從 STAFF_ENTRY 補進來
   else if (n >= 2) v['token.staff'] = { kind: 'roster', at, n: 1, accessory: 'uniform', from: 'landmarks.islanders', pick: 'nearest', home: { kind: 'stand', spots: [{ ...POST, yaw: 0 }], rescue: true, entry: STAFF_ENTRY } };
+  // 捷運淹水收尾（計畫 17 任務 3）：整格淹水、小船停在東南岸，兩個泳客坐在船上（見 floodParts、boatSeat）
+  if (flags.flooded && flags.epilogue === 'flood') {
+    Object.assign(v, floodParts());
+    v['token.swimmers'] = { ...v['token.swimmers'], home: { kind: 'stand', spots: [0, 1].map(i => boatSeat(i)), entry: STAFF_ENTRY } };
+  }
   if (n >= 9 && !flags.flooded) v['token.deck'] = { kind: 'deck', at: DECK_AT, models: DECK_MODELS, footprint: false };
   if (n >= 4) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
@@ -300,6 +329,13 @@ export function view(lv, flags) {
 }
 
 export const builders = {
+  // 淹水的薄板（計畫 17 任務 3）：六角柱（CylinderGeometry 6 邊——第一個頂點在 +z，跟格子一樣 pointy-top），半透明、不寫深度、不投影不收影
+  flood(THREE, spec) {
+    const geo = new THREE.CylinderGeometry(spec.r, spec.r, spec.h, 6), mat = new THREE.MeshStandardMaterial({ color: spec.color, roughness: 0.3, metalness: 0, transparent: true, opacity: spec.opacity, depthWrite: false });
+    const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group();
+    mesh.castShadow = mesh.receiveShadow = false; object.add(mesh);
+    return { object, dispose() { geo.dispose(); mat.dispose(); } };
+  },
   // 小島接駁車：一節黃色小車在支線上來回（跟列車一起照 CAR_H 等比例放大）
   shuttle(THREE, spec, ctx) {
     const car = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: [{ kind: 'rbox', pos: [0, 0.14 * K, 0], scale: [0.25 * K, 0.22 * K, 0.4 * K], color: C.yellow }, { kind: 'box', pos: [0, 0.18 * K, 0], scale: [0.26 * K, 0.06 * K, 0.32 * K], color: C.white }] });

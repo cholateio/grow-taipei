@@ -7,7 +7,7 @@
 import { anchorWorld, cellCentre } from './anchors.js';
 import { heldBy } from '../rules/engine.js';
 import { HOME_R } from './landmarks.js';
-import { C, roofColor, rebuilt, offset } from './palette.js';
+import { C, roofColor, rebuilt, offset, BOAT_TINT } from './palette.js';
 import { WATER_Y } from '../scene/hex.js';
 import { measurePath, locateOnPath } from '../scene/path.js';
 
@@ -60,7 +60,8 @@ const LAB_TINT = kenneyTint(C.blue, { glass: C.blue, wall: C.glass });   // 研�
 const SHOP_TINT = { '^DarkWood$': C.coral, '^DarkBrown$': C.wood, '^Dark$': C.wall, '^Bricks$': C.sand, '^Main$': C.cream, '^Light$': C.yellow, '^White$': C.white, '^Black$': C.ink, '^Glass$': C.glass };
 // 牛奶車：綠色車身換白、車窗淡藍
 const TRUCK_TINT = { '^#[3-5][0-9a-f][9a-c]': C.white, '^#[89ab][0-9a-f][89ab][0-9a-f][a-e]': C.glass, '^#[3-4][0-9a-f][3-4]': C.navy };
-const BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream };
+// 觀光船（Boat.glb）的上色：色票在 palette.js（計畫 17 任務 3：捷運淹水收尾的小船 token.boat 也用；token.js 不能直接 import 這裡——landmarks ↔ token 的循環）
+export { BOAT_TINT };
 
 // 一棟模型：pos 相對零件的 at；佔地（footprint）照縮放後的尺寸（轉 90° 長寬對調）
 const model = (key, pos, h, extra = {}) => ({ path: MODELS[key].path, pos, h, ...extra });

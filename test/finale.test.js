@@ -428,10 +428,10 @@ async function missileShow(outcome) {
   }
   assert.equal(missileOf(s, spec), outcome, `${order.join('>')} → ${outcome}`);
   // 終局回合照 game.js：警告（光點亮起）先瞬間演完，再單獨演隕石
-  const [warn, e] = finaleEvents(resolve(s, spec));
+  const [warn, full] = finaleEvents(resolve(s, spec)), { epilogue, ...e } = full;   // 這幾局後面都接收尾（計畫 17）：隕石本身的測試照沒有收尾的版本演（最後回全景停 HOLD_END）
   assert.equal(warn.kind, 'warning');
   await h.run([warn], { finale: true, instant: true });
-  return { ...h, e };
+  return { ...h, e, epilogue };
 }
 
 test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fall, then ♥+jump (shield) / ？ then ♪ (deflect) / mood lie (hit); the camera watches from the WIDE framing, back on the overview at the end', async () => {
@@ -695,4 +695,200 @@ test('alien is a bad ending (變異鼠稱王) with an epilogue: before it the cr
   assert.equal(show.stage.flags.epilogue, 'alien');
   assert.ok(show.stage.partKeys().includes('finale.ufos') && show.stage.partKeys().includes('finale.aliens'), 'the UFOs landed, the aliens are out');
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+});
+
+// ── 計畫 17 任務 3：大停電、捷運淹水收尾（設計 §4；終局回合 1 倍速，每段 ≤ 7.0 s 真實秒數，最後回全景停 END_HOLD）──
+import * as tokenMod from '../src/actors/token.js';
+import * as bobaMod from '../src/actors/boba.js';
+import { gameInvariants } from './helpers/show.js';
+import { cellTop as hexTop } from '../src/scene/hex.js';
+const kinds = beats => beats.map(b => b.kind);
+const fakeRoster = { members: () => [], keys: () => [], nearest: () => null };
+// 從 EXAMPLE 的那一局把前面的回合瞬間演完，回 { h, show, evs }（終局三個事件：警告、隕石、收尾）
+async function badGame(ending) {
+  const h = await headlessShow();
+  let s = createState(spec);
+  for (const st of turnSteps(EXAMPLE[ending])) { const r = st(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  const res = resolve(s, spec);
+  assert.equal(res.id, ending, `EXAMPLE.${ending} reaches ${ending}`);
+  const evs = finaleEvents(res);
+  assert.deepEqual(evs.map(e => e.kind), ['warning', 'missile', 'epilogue']); assert.equal(evs[2].ending, ending);
+  return { h, show: h.show, evs, state: s };
+}
+// 終局整段 live（警告＋隕石＋收尾），量收尾自己的秒數；每幀交給 sample(t)（t：收尾開始後幾秒，收尾之前是 null）
+async function liveFinale(g, sample = () => {}) {
+  const { h, show, evs } = g, inv = gameInvariants(show);
+  inv.label(`${evs[2].ending} finale`);
+  let epi = null;
+  const update = show.update;
+  show.update = (dt, t) => { update(dt, t); sample(epi === null ? null : show.elapsed - epi); };
+  const t0 = show.elapsed;
+  await h.run(evs, { finale: true, onMark: e => { if (e === evs[2]) epi = show.elapsed; } });
+  show.update = update;
+  const total = show.elapsed - t0, secs = show.elapsed - epi;
+  for (const k of ['walls', 'jumps', 'pops']) assert.deepEqual([...inv[k]].slice(0, 10), [], `${evs[2].ending}: ${k}`);
+  return { total, secs };
+}
+
+test('view: the blackout epilogue lights finale.beacon again on the 101 tip (the end of the fallen top after a hit), rate 1; other epilogues do not', () => {
+  const { body, bendPoint: bend } = tower, lv0 = { milk: 4, chip: 2, bulb: 2, token: 1, typhoon: 3, rat: 2, boba: 1, baseball: 3 }, meta = { total: 18 };
+  const b = finale.view(lv0, { alarm: 1, missile: 'hit', blackout: true, epilogue: 'blackout' }, meta)['finale.beacon'];
+  assert.ok(b, 'the beacon'); assert.equal(b.kind, 'beacon'); assert.equal(b.rate, 1); assert.equal(b.footprint, false); assert.equal(b.shadow, false);
+  const by = bend('half').y, tip = body('half').top;
+  assert.ok(dist3(b.at, { x: TOWER0.x + (tip - (by - TOWER0.y)) + finale.BEACON_UP, y: by, z: TOWER0.z }) < 1e-9, `at the end of the fallen top (${b.at.x.toFixed(2)}, ${b.at.y.toFixed(2)})`);
+  assert.ok(dist3(finale.beaconAt(lv0, { missile: 'hit' }, meta), b.at) < 1e-9);
+  // 沒命中（大停電也可能被擋下、吹偏）：塔尖照舊
+  const up = finale.view(lv0, { alarm: 1, missile: 'deflect', epilogue: 'blackout' }, meta)['finale.beacon'];
+  assert.ok(dist3(up.at, { x: TOWER0.x, y: TOWER0.y + body('half').top + finale.BEACON_UP, z: TOWER0.z }) < 1e-9, 'on the spire when the tower stands');
+  for (const epilogue of [undefined, 'flood', 'cyber', 'alien']) assert.equal(finale.view(lv0, { alarm: 1, missile: 'hit', epilogue }, meta)['finale.beacon'], undefined, `${epilogue}: no beacon after the meteor`);
+});
+test('beacon part: userData.setRate(2) doubles the pulse and the sweep from that moment on, without a jump in phase', () => {
+  const spec0 = finale.view({ milk: 3, chip: 2 }, { alarm: 1 }, {})['finale.beacon'];
+  const part = createPartFactory(THREE, { glow: createGlowRegistry(), people: null, assets: { spawn: async () => new THREE.Group() }, builders: finale.builders }).build(spec0);
+  const beam = part.object.getObjectByName('beam'), yaw = t => { part.update(1 / 30, t); return beam.rotation.y; };
+  assert.equal(part.object.userData.rate, 1);
+  const a = yaw(1.0); part.object.userData.setRate(2); assert.equal(part.object.userData.rate, 2);
+  const b = yaw(1.0); assert.ok(Math.abs(b - a) < 1e-9, 'no jump when the rate changes');
+  const c = yaw(1.25);
+  assert.ok(Math.abs(c - b - 2 * Math.PI * finale.BEACON_REV * 0.25 * 2) < 1e-9, 'twice the sweep');
+  const hz = finale.FLARE_HZ, op = t => { part.update(1 / 30, t); return beam.material.opacity; };
+  assert.ok(Math.abs(op(2 + 0.1 / hz) - op(2 + 0.1 / hz + 0.5 / hz)) < 1e-9, 'the pulse period is halved');
+  part.dispose();
+});
+test('blackout epilogue beats: beacon back on (fold the flag), worldNow (pitch dark, everyone up), the camera close on the 101 tip (TIP_ZOOM), the beacon speeds up ×2 for 1.5 s, apply the rest, the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'blackout', flag: { name: 'epilogue', value: 'blackout' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['apply', 'world', 'focus', 'replay', 'apply', 'focus']);
+  assert.deepEqual(beats[0].only, ['finale.beacon']);
+  assert.equal(beats[1].effects, undefined, 'worldNow (world.js decides: pitch + normal mood)');
+  assert.equal(typeof beats[2].target, 'function'); assert.equal(beats[2].kind, 'focus');
+  assert.ok(finale.TIP_ZOOM < 0.6, `the tip is the subject: closer than a cell focus (zoom ${finale.TIP_ZOOM} × the overview distance)`);
+  assert.equal(beats[3].dur, finale.SPEED_UP); assert.equal(finale.SPEED_UP, 1.5); assert.equal(finale.BEACON_FAST, 2);
+  assert.equal(beats[4].only, undefined);
+  assert.equal(beats[5].target, 'home'); assert.equal(beats[5].dur, 1.5);
+});
+test('flood epilogue beats (≈ 5.25 s): fold + worldNow, the camera pans to the token cell while the sheet rises 1.0 s, the boat blinks in at the door with two riders, rows 2.5 s while the boba owner jumps onto the roof in the last 0.5 s, homes, the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'flood', flag: { name: 'epilogue', value: 'flood' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'together', 'together', 'apply', 'home', 'apply', 'focus']);
+  assert.deepEqual(beats[0].only, [], 'fold the flag first (nothing shows yet)');
+  const [pan, sheet, rise] = beats[2].beats;
+  assert.deepEqual([pan.kind, pan.target], ['focus', 'token']);
+  assert.deepEqual(sheet.only, ['token.floodSheet']); assert.equal(sheet.blink, false);
+  assert.deepEqual([rise.kind, rise.dur], ['move', 1.0]);
+  assert.deepEqual(kinds(beats[3].beats), ['apply', 'move', 'board']); assert.deepEqual(beats[3].beats[0].only, ['token.boat']);
+  const [row, jump] = beats[4].beats;
+  assert.deepEqual([row.kind, row.dur], ['row', 2.5]);
+  assert.deepEqual([jump.kind, jump.dur], ['later', 2.5], 'the owner lands as the boat stops'); assert.equal(finale.OWNER_JUMP, 0.5);
+  assert.deepEqual(beats[5].only, ['token.swimmers', 'boba.owner']);
+  assert.equal(beats[8].target, 'home'); assert.equal(beats[8].dur, 1.5);
+  const total = 1.0 + 0.15 + 2.5 + 1.5;
+  assert.ok(Math.abs(total - 5.15) < 1e-9);
+});
+
+test('blackout live from EXAMPLE.blackout (whole finale): pitch dark to the end, the beacon on the bent tip blinks twice as fast, nobody lying in the epilogue, invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+  const g = await badGame('blackout'), { show, h } = g, { people, worldLog, rig } = h;
+  const lying = [];
+  let w0 = null, r0 = null;
+  const res = await liveFinale(g, t => {
+    if (t === null) return;
+    w0 ??= worldLog.length; r0 ??= rig.log.length;
+    if (t > 0.3 && people.mood === 'lie') lying.push(t);
+  });
+  console.log(`blackout epilogue: ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (plan 17 task 3)`);
+  assert.ok(res.secs <= 7.0, `epilogue ≤ 7.0 s (${res.secs.toFixed(2)})`);
+  assert.ok(res.total <= 16, `finale ≤ 16 s (${res.total.toFixed(2)})`);
+  assert.equal(show.stage.flags.epilogue, 'blackout');
+  assert.deepEqual(lying, [], 'nobody lies during the epilogue');
+  assert.equal(people.mood, 'normal');
+  const w = worldLog.slice(w0).map(([x]) => x);
+  assert.ok(w.length && w.every(x => x.time === TIMES.pitch), 'pitch dark from the epilogue on');
+  assert.equal(worldLog.at(-1)[0].time, TIMES.pitch, 'still pitch dark at the end of the turn');
+  const o = show.stage.partObject('finale.beacon');
+  assert.ok(o, 'the beacon is on'); assert.equal(o.userData.rate, 2, 'blinking twice as fast');
+  const spot = finale.beaconAt(show.stage.lv, show.stage.flags, show.stage.meta);
+  assert.ok(dist3(o.position, spot) < 1e-9, 'on the bent tip');
+  const cam = rig.log.slice(r0), tip = cam.find(([k]) => k === 'focus');
+  assert.ok(tip && dist3(tip[1], spot) < 1e-9 && tip[2].zoom === finale.TIP_ZOOM, 'the camera goes to the 101 tip at TIP_ZOOM');
+  assert.equal(cam.at(-1)[0], 'home');
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+});
+
+test('flood live from EXAMPLE.flood (whole finale): the sheet rises over the cell, the boat rows from the door to the shore with the two swimmers seated, the boba owner on his (blown) cart, nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+  const g = await badGame('flood'), { show, h } = g, { people } = h;
+  assert.ok(g.state.flags.flooded && g.state.flags.cartBlown, 'EXAMPLE.flood: flooded, and the cart was blown away');
+  const lying = [], sheetY = [], boat = [], seatErr = [];
+  let rowing = false;
+  const res = await liveFinale(g, t => {
+    if (t === null) return;
+    if (t > 0.1 && people.mood === 'lie') lying.push(t);
+    const s = show.stage.partObject('token.floodSheet'); if (s) sheetY.push(s.position.y);
+    const b = show.stage.partObject('token.boat');
+    if (b?.visible) boat.push({ ...b.position });
+    const riders = show.roster.members('token.swimmers');
+    if (b?.visible && riders.every(m => m.mode === 'script')) {
+      rowing = true;
+      riders.forEach((m, i) => { const q = tokenMod.boatSeat(i, b.position); seatErr.push(Math.hypot(m.pos.x - q.x, m.pos.y - q.y, m.pos.z - q.z)); });
+    }
+  });
+  console.log(`flood epilogue: ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (plan 17 task 3)`);
+  assert.ok(res.secs <= 7.0, `epilogue ≤ 7.0 s (${res.secs.toFixed(2)})`);
+  assert.ok(res.total <= 16, `finale ≤ 16 s (${res.total.toFixed(2)})`);
+  assert.deepEqual(lying, [], 'nobody lies during the epilogue'); assert.equal(people.mood, 'normal');
+  const spec0 = tokenMod.view(show.stage.lv, show.stage.flags)['token.floodSheet'];
+  assert.ok(Math.min(...sheetY) < hexTop([0, 1]) - 0.02, 'the sheet starts under the ground');
+  assert.ok(Math.abs(sheetY.at(-1) - spec0.at.y) < 1e-9, 'and ends risen (top 0.08 over the ground)');
+  assert.ok(sheetY.every((y, i) => !i || y >= sheetY[i - 1] - 1e-9), 'rising only');
+  assert.ok(boat.length && Math.hypot(boat[0].x - tokenMod.BOAT_FROM.x, boat[0].z - tokenMod.BOAT_FROM.z) < 1e-6, 'the boat shows up at the station door');
+  assert.ok(dist3(boat.at(-1), tokenMod.BOAT_TO) < 1e-9, 'and ends at the south-east shore');
+  assert.ok(rowing && Math.max(...seatErr) < 1e-6, `the two riders sit on the boat while it rows (${Math.max(...seatErr).toExponential(1)})`);
+  const riders = show.roster.members('token.swimmers');
+  assert.equal(riders.length, 2);
+  riders.forEach((m, i) => { assert.ok(dist3(m.pos, tokenMod.boatSeat(i)) < 1e-6, `rider ${i} stays seated`); assert.equal(m.mode, 'home'); });
+  const [owner] = show.roster.members('boba.owner'), perch = bobaMod.floodPerch(show.stage.lv, show.stage.flags);
+  assert.ok(dist3(owner.pos, perch) < 1e-6 && owner.mode === 'home', `the boba owner on his cart (${owner.pos.x.toFixed(2)}, ${owner.pos.y.toFixed(2)}, ${owner.pos.z.toFixed(2)})`);
+  assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+  // 標題卡底下再走 3 秒：船上的人、攤車上的老闆都不動
+  const p0 = [...riders, owner].map(m => ({ ...m.pos }));
+  for (let i = 0; i < 90; i++) show.update(1 / 30, 5000 + i / 30);
+  [...riders, owner].forEach((m, i) => assert.ok(dist3(m.pos, p0[i]) < 1e-6, `${m.key} stays put`));
+});
+
+test('skip mid-epilogue (blackout, flood): the final state at once — beacon fast and pitch dark; sheet up, boat at the shore, riders seated, owner on the cart; nobody in script mode', async () => {
+  for (const ending of ['blackout', 'flood']) {
+    for (const frames of [10, 60, 120]) {
+      const g = await badGame(ending), { show, h } = g;
+      await h.run(g.evs.slice(0, 2), { finale: true, instant: true });
+      const p = show.turn([g.evs[2]], { finale: true });
+      for (let i = 0; i < frames; i++) { show.update(1 / 30, i / 30); await Promise.resolve(); }
+      show.skip(); await p;
+      const what = `${ending} skipped after ${frames} frames`;
+      assert.equal(show.stage.flags.epilogue, ending, what);
+      assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${what}: nobody in script mode`);
+      assert.equal(h.worldLog.at(-1)[0].mood, 'normal', `${what}: standing`);
+      if (ending === 'blackout') {
+        assert.equal(h.worldLog.at(-1)[0].time, TIMES.pitch, `${what}: pitch dark`);
+        assert.equal(show.stage.partObject('finale.beacon')?.userData.rate, 2, `${what}: beacon fast`);
+      } else {
+        const sheet = show.stage.partObject('token.floodSheet'), spec0 = tokenMod.view(show.stage.lv, show.stage.flags)['token.floodSheet'];
+        assert.ok(sheet && Math.abs(sheet.position.y - spec0.at.y) < 1e-9, `${what}: sheet up`);
+        assert.ok(dist3(show.stage.partObject('token.boat').position, tokenMod.BOAT_TO) < 1e-9, `${what}: boat at the shore`);
+        show.roster.members('token.swimmers').forEach((m, i) => assert.ok(dist3(m.pos, tokenMod.boatSeat(i)) < 1e-6, `${what}: rider ${i} seated`));
+        const [owner] = show.roster.members('boba.owner');
+        assert.ok(dist3(owner.pos, bobaMod.floodPerch(show.stage.lv, show.stage.flags)) < 1e-6, `${what}: owner on the cart`);
+      }
+    }
+  }
+});
+
+// 計畫 17 任務 3 裁決：隕石事件帶 epilogue（後面接收尾）時，最後不回全景停 HOLD_END（收尾第一拍自己接手鏡頭）；人照樣放回日常、剩下的照樣套用
+test('meteor beats: with an epilogue following (e.epilogue) the tail drops the overview hold; without, it ends on focus home + HOLD_END', () => {
+  const B = beatsMod.B, ctx = { B, roster: fakeRoster };
+  for (const outcome of ['shield', 'deflect', 'hit']) {
+    const e = { kind: 'missile', outcome, flag: { name: 'missile', value: outcome } };
+    const plain = finale.script.missile(e, { lv: {}, flags: {} }, ctx), chained = finale.script.missile({ ...e, epilogue: 'flood' }, { lv: {}, flags: {} }, ctx);
+    assert.deepEqual(plain.slice(-3).map(b => [b.kind, b.target, b.dur]).slice(-1), [['focus', 'home', finale.HOLD_END]], `${outcome}: overview hold`);
+    assert.deepEqual(kinds(chained), kinds(plain).slice(0, -1), `${outcome}: the same beats minus the hold`);
+    assert.deepEqual(kinds(chained).slice(-2), ['apply', 'home']);
+  }
 });

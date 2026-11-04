@@ -138,11 +138,12 @@ test('reset during the closing turn or the warning: no onFinished, new game play
   }
 });
 test('finaleEvents: warning first; true ending → missile shield + epilogue; a bad ending in BAD_EPILOGUES → missile + its epilogue; chip max but not all max → missile shield only; other bad endings → missile hit/deflect only', () => {
-  const missile = m => ({ kind: 'missile', outcome: m, flag: { name: 'missile', value: m } });
-  assert.deepEqual(finaleEvents({ id: 'cyber', missile: 'shield' }), [WARNING, missile('shield'), { kind: 'epilogue', ending: 'cyber', flag: { name: 'epilogue', value: 'cyber' } }]);
+  // 計畫 17 任務 3：有收尾時隕石事件多帶 epilogue（結局 id；一般欄位，不是旗標）——剛好在有第三個事件時
+  const missile = (m, epilogue) => ({ kind: 'missile', outcome: m, flag: { name: 'missile', value: m }, ...(epilogue && { epilogue }) });
+  assert.deepEqual(finaleEvents({ id: 'cyber', missile: 'shield' }), [WARNING, missile('shield', 'cyber'), { kind: 'epilogue', ending: 'cyber', flag: { name: 'epilogue', value: 'cyber' } }]);
   // 計畫 17（2026-11-04）：六個壞結局各自有收尾（finale.js BAD_EPILOGUES）——警告、隕石、收尾三個事件
   for (const id of BAD_EPILOGUES) for (const m of ['hit', 'deflect']) {
-    assert.deepEqual(finaleEvents({ id, missile: m }), [WARNING, missile(m), { kind: 'epilogue', ending: id, flag: { name: 'epilogue', value: id } }], `${id} (${m})`);
+    assert.deepEqual(finaleEvents({ id, missile: m }), [WARNING, missile(m, id), { kind: 'epilogue', ending: id, flag: { name: 'epilogue', value: id } }], `${id} (${m})`);
   }
   // 晶片滿級但不是全 MAX：壞結局（或再接再厲）照樣 shield，沒有尾聲
   const chipMax = { ...engine.createState(spec) }; chipMax.lv = { ...chipMax.lv, chip: spec.ITEMS.chip.max, milk: 1 };
@@ -155,6 +156,7 @@ test('finaleEvents: warning first; true ending → missile shield + epilogue; a 
   // 沒有收尾的：矽盾未就緒、大巨蛋鼠災、颱風吹偏、再接再厲只有警告＋隕石
   for (const id of ['shieldDown', 'domeRats', 'typhoonDeflect', 'tryAgain']) {
     assert.ok(!BAD_EPILOGUES.includes(id)); assert.deepEqual(finaleEvents({ id, missile: 'hit' }).map(e => e.kind), ['warning', 'missile'], id);
+    assert.equal('epilogue' in finaleEvents({ id, missile: 'hit' })[1], false, `${id}: no epilogue on the missile`);
   }
 });
 test('reset during the finale turn or during hold: no onFinished, new game playable (review focus 1)', async () => {

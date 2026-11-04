@@ -767,3 +767,59 @@ test('fix3 C live: Lv5 / Lv6 play 3–4.5 s; at the swap the head car stands at 
     assert.deepEqual(Object.keys(seen).map(Number), [5, 6], `${order.join('>')}: both levels seen (${JSON.stringify(seen)})`);
   }
 });
+
+// ── 計畫 17 任務 3：捷運淹水收尾（flags.epilogue 'flood'，finale.js 的劇本演）──
+// token.floodSheet：捷運格整格（六角，pointy-top，跟格子一樣 R）的半透明薄板（C.glass、不透明度 0.55、厚 0.04），頂面在格面上 FLOOD_UP 0.08；
+//   不踩走路格、不投影（設計寫 compound＋box：compound 是不透明的黏土、box 蓋不滿六角又會蓋到隔壁格——改成自己的 builder 'flood'，一個 mesh）。
+// token.boat：鮮奶觀光船同一個 Boat.glb（BOAT_TINT、h 0.35），終點在捷運格東南岸（格裡）、浮在薄板上；從車站門口（DOOR）划過去（劇本的 move）。
+// 泳客（站長換的那位＋另一位，淹水時沒有 token.staff）的家換成船上兩個座位（沿船身 ±0.15，不 rescue：坐在船上，不是走路格）
+test('flood epilogue view: a translucent hex sheet over the whole token cell, a boat at the south-east shore, the swimmers seated on it; none without the epilogue', async () => {
+  const { R, TOP: top, cellTop } = await import('../src/scene/hex.js');
+  const milk = await import('../src/actors/milk.js');
+  const c = axialToWorld(...CELL);
+  for (const n of [1, 2]) {
+    const base = token.view(L({ token: n }), { flooded: true, missile: 'hit' });
+    assert.equal(base['token.floodSheet'], undefined); assert.equal(base['token.boat'], undefined);
+    const v = token.view(L({ token: n }), { flooded: true, missile: 'hit', epilogue: 'flood' }), s = v['token.floodSheet'], b = v['token.boat'];
+    assert.ok(s && b, `lv${n}: sheet and boat`);
+    assert.equal(s.kind, 'flood'); assert.equal(s.footprint, false); assert.equal(s.shadow, false);
+    assert.ok(Math.hypot(s.at.x - c.x, s.at.z - c.z) < 1e-9, 'centred on the token cell');
+    assert.equal(s.r, R); assert.equal(s.h, 0.04); assert.equal(s.color, C.glass); assert.equal(s.opacity, 0.55);
+    assert.ok(Math.abs(s.at.y + s.h / 2 - (cellTop(CELL) + token.FLOOD_UP)) < 1e-9 && token.FLOOD_UP === 0.08, 'top face 0.08 over the ground');
+    assert.equal(b.kind, 'glb'); assert.equal(b.path, 'quat/ships/Boat.glb'); assert.equal(b.h, 0.35); assert.deepEqual(b.tint, milk.BOAT_TINT); assert.equal(b.footprint, false);
+    assert.ok(Math.abs(b.ry - token.BOAT_YAW) < 1e-9 || Math.abs(b.ry - token.BOAT_YAW - Math.PI) < 1e-9, 'bow along the row');
+    assert.deepEqual({ x: b.at.x, y: b.at.y, z: b.at.z }, { x: token.BOAT_TO.x, y: token.BOAT_TO.y, z: token.BOAT_TO.z });
+    assert.ok(Math.abs(b.at.y - (top + token.FLOOD_UP)) < 0.05, 'floats on the sheet');
+    // 起點是車站門口、終點在格子的東南（+x、+z）岸邊：船頭（船長約 1.5）也還在格子裡
+    assert.ok(Math.hypot(token.BOAT_FROM.x - token.DOOR.x, token.BOAT_FROM.z - token.DOOR.z) < 1e-9, 'from the station door');
+    const to = token.BOAT_TO, dx = to.x - c.x, dz = to.z - c.z;
+    assert.ok(dx > 0 && dz > 0 && Math.hypot(dx, dz) > 1.2, `south-east of the cell centre (${dx.toFixed(2)}, ${dz.toFixed(2)})`);
+    for (const k of [-0.75, 0.75]) assert.deepEqual(cellAt(to.x + Math.sin(token.BOAT_YAW) * k, to.z + Math.cos(token.BOAT_YAW) * k), CELL, `bow/stern ${k} inside the cell`);
+    assert.ok(Math.abs(token.BOAT_YAW - Math.atan2(to.x - token.BOAT_FROM.x, to.z - token.BOAT_FROM.z)) < 1e-9);
+    const sw = v['token.swimmers'];
+    assert.equal(sw.n, 2); assert.equal(sw.home.kind, 'stand'); assert.ok(!sw.home.rescue, 'seated, not rescued to the walk grid');
+    sw.home.spots.forEach((p, i) => { const q = token.boatSeat(i); assert.ok(Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z) < 1e-9 && p.yaw === q.yaw, `seat ${i}`); });
+    const [a, z] = [token.boatSeat(0), token.boatSeat(1)];
+    assert.ok(Math.abs(Math.hypot(a.x - z.x, a.z - z.z) - 0.3) < 1e-9, 'seats ±0.15 along the boat');
+    assert.ok(a.y > to.y && a.y < to.y + 0.2, 'on the boat floor');
+    // 座位跟著船走：boatSeat(i, p) 是 p 加同一個偏移
+    const p = { x: 1, y: 2, z: 3 }, q = token.boatSeat(1, p);
+    assert.ok(Math.abs(q.x - p.x - (z.x - to.x)) < 1e-9 && Math.abs(q.z - p.z - (z.z - to.z)) < 1e-9 && Math.abs(q.y - p.y - (z.y - to.y)) < 1e-9);
+  }
+  // 沒淹水就不會是捷運淹水結局；保險起見也不畫
+  assert.equal(token.view(L({ token: 3 }), { epilogue: 'flood' })['token.floodSheet'], undefined);
+});
+test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like the cell), C.glass at 0.55, no depth write, no shadow', () => {
+  const v = token.view(L({ token: 1 }), { flooded: true, epilogue: 'flood' });
+  const part = createPartFactory(THREE, { glow: createGlowRegistry(), people: null, assets: { spawn: async () => new THREE.Group() }, builders: token.builders }).build(v['token.floodSheet']);
+  const meshes = []; part.object.traverse(o => { if (o.isMesh) meshes.push(o); });
+  assert.equal(meshes.length, 1);
+  const [m] = meshes, g = m.geometry;
+  assert.ok(m.material.transparent && Math.abs(m.material.opacity - 0.55) < 1e-9 && !m.material.depthWrite);
+  assert.equal(m.material.color.getHex(), C.glass);
+  assert.ok(!m.castShadow && !m.receiveShadow);
+  g.computeBoundingBox(); const bb = g.boundingBox;
+  assert.ok(Math.abs(bb.max.y - bb.min.y - 0.04) < 1e-6, '0.04 thick');
+  assert.ok(Math.abs(bb.max.z - 2.5) < 1e-6 && Math.abs(bb.max.x - 2.5 * Math.sqrt(3) / 2) < 1e-6, 'a corner at +z, flat sides at ±x (pointy-top)');
+  part.dispose();
+});

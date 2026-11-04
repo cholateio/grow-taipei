@@ -15,7 +15,11 @@ export const WARNING = { kind: 'warning', flag: { name: 'alarm', value: 1 } };
 export function finaleEvents(ending) {
   const out = [{ ...WARNING, flag: { ...WARNING.flag } }, {   // 每局一個新物件：舞台用 WeakSet 認事件，共用同一個物件時同一個 show 不 reset 連演兩次終局，第二次紅光不出現（最終審稿）
     kind: 'missile', outcome: ending.missile, flag: { name: 'missile', value: ending.missile } }];
-  if (ENDINGS[ending.id].kind === 'true' || BAD_EPILOGUES.includes(ending.id)) out.push({ kind: 'epilogue', ending: ending.id, flag: { name: 'epilogue', value: ending.id } });
+  // 有收尾時隕石事件多帶 epilogue（一般欄位，不是旗標；計畫 17 任務 3 裁決）：隕石劇本就不在最後回全景停 HOLD_END，收尾第一拍自己接手鏡頭
+  if (ENDINGS[ending.id].kind === 'true' || BAD_EPILOGUES.includes(ending.id)) {
+    out[1].epilogue = ending.id;
+    out.push({ kind: 'epilogue', ending: ending.id, flag: { name: 'epilogue', value: ending.id } });
+  }
   return out;
 }
 export const TITLE_HOLD = 2;   // 終局演完再停幾秒才算結束（設計 §7：不能跳過；reduced-motion 0 秒，show.hold 管）

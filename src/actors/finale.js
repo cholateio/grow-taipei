@@ -18,6 +18,8 @@
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 //   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO）；
 //   計畫 17（2026-11-04）壞結局也接收尾（任務 1 先只套用），任務 4 把這段改成災難版接進 script.epilogue（外星局 test/helpers/endings.js EXAMPLE.alien）。
+// 計畫 17 任務 3：大停電（漆黑、只剩 101 塔尖的警示燈 finale.beacon 從慢閃變快閃）與捷運淹水（捷運格淹水、小船載兩個泳客划到東南岸、
+//   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
@@ -27,7 +29,8 @@ import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
-import { roadsterParts } from './token.js';
+import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
+import { floodPerch } from './boba.js';
 import { SHIELD_FAIL_DUR } from './parts.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
 export { BAD_EPILOGUES } from '../rules/endings.js';
@@ -126,14 +129,25 @@ export const alienParts = () => [-1, 0, 1].flatMap(k => {
 // 外星尾聲的真實秒數：揮手 1.0、「！」0.8、回全景停 0.8、「♥」0.9、最後全景停 END_HOLD
 const WAVE = 1.0, ALIEN_HOLD = 0.8, LOVE = 0.9;
 
+// 警示燈的位置：這一階段的塔尖上 BEACON_UP（stageOfView）。命中（flags.missile 'hit'，工地不彎）之後塔尖倒向 +x：
+// tower.js 的 bent 把彎角（by）以上的點 (x, y) 轉成 (y − by, by − x)——尖端 (0, top) 落在 (top − by, by)，燈再往外（+x）BEACON_UP
+export function beaconAt(lv, flags = {}, meta = {}) {
+  const stage = stageOfView(lv, meta), top = towerBody(stage).top;
+  if (flags.missile !== 'hit' || stage === 'site') return { x: TOWER.x, y: TOWER.y + top + BEACON_UP, z: TOWER.z };
+  const by = bendPoint(stage).y - TOWER.y;
+  return { x: TOWER.x + (top - by) + BEACON_UP, y: TOWER.y + by, z: TOWER.z };
+}
+
 export function view(lv, flags = {}, meta = {}) {
   const v = {};
   // 隕石一落下光點就熄（設計 §4、§6）；alarm 只會是 1（警告）。脈動頻率固定 FLARE_HZ（builders.star）
   if (flags.alarm && !flags.missile) {
     v['finale.star'] = { kind: 'star', at: STAR_AT, shadow: false, footprint: false };
     // 警示燈：101 的階段照 tower.js 的算法（stageOfView），站在這一階段的塔尖上
-    v['finale.beacon'] = { kind: 'beacon', at: { x: TOWER.x, y: TOWER.y + towerBody(stageOfView(lv, meta)).top + BEACON_UP, z: TOWER.z }, shadow: false, footprint: false };
+    v['finale.beacon'] = { kind: 'beacon', at: beaconAt(lv, flags, meta), shadow: false, footprint: false };
   }
+  // 大停電收尾（計畫 17 任務 3）：全島漆黑，只剩 101 塔尖這一盞紅燈（隕石落下時熄掉的同一個警示燈，重新亮在現在的塔尖上；劇本把它從 rate 1 加快成 BEACON_FAST）
+  if (flags.epilogue === 'blackout') v['finale.beacon'] = { kind: 'beacon', at: beaconAt(lv, flags, meta), rate: 1, shadow: false, footprint: false };
   const o = flags.missile;
   if (o) {
     // 101 的階段照 tower.js 的算法（stageOfView：meta.total，沒給才自己加總）：deflect 的塔頂跟著塔身；
@@ -242,9 +256,15 @@ export const builders = {
       beamMat.opacity = 0.15 + 0.4 * k;
       beam.rotation.y = t * Math.PI * 2 * BEACON_REV;
     };
+    // 速率（計畫 17 任務 3，大停電收尾從慢閃變快閃）：脈動與光束一起照「相位」走，相位 = base + (t − t0) × rate；
+    // userData.setRate(r) 在最後一次 update 的時刻接上（相位不跳）。spec.rate 沒給是 1（相位就是 t，跟以前一樣）
+    let rate = spec.rate ?? 1, base = 0, t0 = 0, last = 0;
+    const phase = t => base + (t - t0) * rate;
+    object.userData.rate = rate;
+    object.userData.setRate = r => { base = phase(last); t0 = last; rate = r; object.userData.rate = r; };
     pose(0);
     return {
-      object, materials: [lampMat], update(dt, t) { pose(t); },
+      object, materials: [lampMat], update(dt, t) { last = t; pose(phase(t)); },
       dispose() { lamp.geometry.dispose(); beam.geometry.dispose(); lampMat.dispose(); beamMat.dispose(); },
     };
   },
@@ -337,7 +357,7 @@ export const script = {
   },
   // 隕石（設計 §6，真實秒數，終局回合 1 倍速）：鏡頭在 WIDE（警告已經停在那裡，這拍 0.8 s 當停頓）→ 光點熄掉 →
   //   隕石從光點的位置由上往下落（replay：套用零件、launch 重落），落到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→
-  //   結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END。
+  //   結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END（後面接收尾時不停：e.epilogue，計畫 17 任務 3 裁決）。
   //   shield：罩子切 full（閃白就是那一下亮），隕石撞上罩子碎成煙火；全島原地跳＋♥。
   //   deflect：第二段 DEFLECT 秒被風吹偏、掉進溫泉（同一個 replay 拍裡）→ 水花 → 全島「？」再「♪」。
   //   hit：101 換成彎 L 的塔身、天線／燈光秀／罩子拿掉（閃白）→ 全島躺平（world 拍只帶 mood，app 合進目前的全島效果；
@@ -353,7 +373,8 @@ export const script = {
       finish: (m, c) => { if (c?.instant) m.userData.finish(); },
     });
     const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)]))])];
-    const tail = [B.apply(e), B.home(() => list ?? []), B.focus('home', { hold: HOLD_END })];
+    // 後面接收尾（e.epilogue，game.js finaleEvents；計畫 17 任務 3 裁決）：不回全景停 HOLD_END——收尾第一拍自己平移鏡頭（終局 ≤ 16 s 的預算）
+    const tail = [B.apply(e), B.home(() => list ?? []), ...(e.epilogue ? [] : [B.focus('home', { hold: HOLD_END })])];
     if (o === 'shield') return [...lead, B.apply(e, { only: ['tower.shield'] }), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
     return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）
@@ -365,8 +386,11 @@ export const script = {
   //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alienEpilogue()（計畫 17 任務 4 接回 dispatch）
   epilogue(e, s, ctx) {
     const { B } = ctx;
-    // 計畫 17 任務 1：壞結局的收尾先只套用（之後的任務各自換成自己的劇本）。外星也先只套用：舊的 alien()（下面，≈ 8.8 s）接上去，
+    // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue，見下面）。
+    // 其餘的壞結局（任務 1）先只套用（之後的任務各自換成自己的劇本）。外星也先只套用：舊的 alien()（下面，≈ 8.8 s）接上去，
     // pace 的「老鼠跑遠」局（剛好是外星命中局）終局 16.8 s 超過壞結局上限 12 s（tools/pace.mjs，任務 6 才放寬到 16）——任務 4 改成 ≤ 7 s 的災難版再接回來
+    if (e.ending === 'blackout') return blackoutEpilogue(e, ctx);
+    if (e.ending === 'flood') return floodEpilogue(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -400,6 +424,64 @@ export function alienEpilogue(e, ctx) {
     B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(),
     B.apply(e, { only: ['rat.pack'] }), roof(kings, () => SHIP_SPOT), B.home(kings),
     B.apply(e), B.bubble(king, '♥', LOVE), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+
+// ── 計畫 17 任務 3：大停電、捷運淹水收尾（設計 §4；終局回合 1 倍速，真實秒數，每段 ≤ 7.0 s；隕石命中之後全島躺平，
+//   收尾第一拍把 epilogue 旗標折進舞台、緊接 worldNow——world.js 有收尾就不躺，大家站起來）──
+// 大停電（約 4 s）：警示燈重新亮在塔尖（閃白；折旗標）→ worldNow（漆黑 TIMES.pitch、發光照舊關著、站起來）→
+//   鏡頭推近 101 塔尖（beaconAt，zoom TIP_ZOOM 0.4＝全景距離的 0.4 倍：紅燈是畫面主角，截圖選的；設計的 1.2 比全景還遠）→ 警示燈從慢閃變快閃（replay：rate × BEACON_FAST，SPEED_UP 秒）→ 剩下的套用 → 全景停 END_HOLD
+export const TIP_ZOOM = 0.4, SPEED_UP = 1.5, BEACON_FAST = 2;
+export function blackoutEpilogue(e, ctx) {
+  const { B } = ctx, fast = o => { if (!o.userData.setRate) return false; o.userData.setRate(BEACON_FAST); return true; };
+  return [
+    B.apply(e, { only: ['finale.beacon'] }), B.worldNow(),
+    B.focus(c => beaconAt(c.stage.lv, c.stage.flags, c.stage.meta), { zoom: TIP_ZOOM }),
+    B.replay(e, 'finale.beacon', SPEED_UP, { begin: fast, finish: o => o.userData.setRate?.(BEACON_FAST) }),
+    B.apply(e), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+// 捷運淹水（約 5.25 s；計畫 17 任務 3 裁決：鏡頭平移跟水升起同時、老闆在船划完前 OWNER_JUMP 秒起跳——吹偏局的終局才在 16 s 內）：
+//   折旗標 → worldNow（站起來）→ 鏡頭到捷運格，同時水（token.floodSheet）從格面下 SHEET_DROP 升上來 FLOOD_RISE 秒（不閃白）→
+//   小船（token.boat）在車站門口出現（零件的 at 是東南岸的終點，先用 0 秒的 move 擺到門口的偏移再露出來），同一刻兩個划船的人閃白坐上船（board）→
+//   船划到東南岸 BOAT_ROW 秒，兩人每幀照船的位置坐在座位上（token.js boatSeat，±0.15；同燈泡 Lv7 坐車頂的 ride 做法）→
+//   船划完前 OWNER_JUMP 秒，珍奶老闆跳上攤車頂（boba.js floodPerch：攤車 SHOP 上方 0.95；攤車被吹走就跳上翻在海裡的那台）→
+//   兩個泳客、老闆的家搬到船上／攤車頂（他們還在劇本手上，名冊不會叫他們走過去）→ 放回日常（就站在家裡）→ 剩下的套用 → 全景停 END_HOLD。
+//   划船的人：設計寫「站長（token.staff 第一位）和一個泳客」——淹水時站長已經換成了泳客（token.js：flooded 時沒有 token.staff），所以是兩個泳客（0 號就是原本的站長）；
+//   有站長的話站長優先（防呆）
+export const FLOOD_RISE = 1.0, BOAT_ROW = 2.5, OWNER_JUMP = 0.5;
+const BOAT_OFF = { dx: BOAT_FROM.x - BOAT_TO.x, dy: BOAT_FROM.y - BOAT_TO.y, dz: BOAT_FROM.z - BOAT_TO.z };
+// 把人擺上船（不在船上的人：閃白換位，同 roof）
+const hop = (c, m, pose) => {
+  c.roster.claim(m); c.roster.setPose(m, { ...pose, walking: false });
+  if (m.holder) c.blink.part(m.holder); else if (m.walker) c.blink.walker(m.walker);
+};
+const board = who => ({
+  kind: 'board', dur: BLINK,
+  start(c) { const list = who(c); if (!list.length) return false; list.forEach((m, i) => hop(c, m, boatSeat(i, BOAT_FROM))); },
+});
+// 划船：move 推船、每幀把人擺回座位（船不在：move.start 回 false，這拍跳過；end 照樣把人放在終點的座位上）
+function row(B, who) {
+  const mv = B.move('token.boat', { from: BOAT_OFF, to: {}, dur: BOAT_ROW });
+  const seat = c => { const o = c.stage.partObject('token.boat'); if (o) who(c).forEach((m, i) => c.roster.setPose(m, { ...boatSeat(i, o.position), walking: false })); };
+  return {
+    kind: 'row', dur: BOAT_ROW,
+    start(c) { if (mv.start(c) === false) return false; seat(c); },
+    step(k, dt, c) { mv.step(k, dt, c); seat(c); },
+    end(c) { mv.end(c); seat(c); },
+  };
+}
+export function floodEpilogue(e, ctx) {
+  const { B } = ctx;
+  const riders = once(c => [...(c.roster.members('token.staff') ?? []).slice(0, 1), ...(c.roster.members('token.swimmers') ?? [])].filter(m => !m.hidden).slice(0, 2));
+  const owner = c => c.roster.members('boba.owner')?.[0] ?? null;
+  return [
+    B.apply(e, { only: [] }), B.worldNow(),
+    B.together([B.focus('token'), B.apply(e, { only: ['token.floodSheet'], blink: false }), B.move('token.floodSheet', { from: { dy: -SHEET_DROP }, to: {}, dur: FLOOD_RISE })]),
+    B.together([B.apply(e, { only: ['token.boat'] }), B.move('token.boat', { from: BOAT_OFF, to: BOAT_OFF, dur: 0 }), board(riders)]),
+    B.together([row(B, riders), later(BOAT_ROW - OWNER_JUMP, OWNER_JUMP, B.jump(owner, c => floodPerch(c.stage.lv, c.stage.flags), OWNER_JUMP))]),
+    B.apply(e, { only: ['token.swimmers', 'boba.owner'] }), B.home(c => [...riders(c), owner(c)].filter(Boolean)),
+    B.apply(e), B.focus('home', { hold: END_HOLD }),
   ];
 }
 

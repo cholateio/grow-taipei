@@ -555,36 +555,43 @@ test('view: epilogue cyber draws finale.car (the token Roadster model in red, fr
 });
 
 // 賽博正解整局瞬間演完（含倒數三回合）、飛彈瞬間演完，尾聲 live（終局回合 1 倍速）：量尾聲自己的秒數
-test('cyber epilogue live: night, black tower blinks in, the car flies in and parks within 4 s, no marquee text, the rats appear on the roof, ends on the overview; ≤ 12 s real', async () => {
+// 計畫 17 任務 3 修正輪 1：終局三個事件照 game.js 演成同一個 live 回合（隕石後面接收尾時不回全景停，收尾第一拍自己回全景）——
+// 收尾從 WIDE 開始，第一拍 focus home 把鏡頭帶回全景，整段都在全景演；收尾 ≤ 12 s、終局 ≤ 22 s
+test('cyber epilogue live (warning + meteor + epilogue in one live turn): night, black tower blinks in, the car flies in and parks within 4 s, no marquee text, the rats appear on the roof, all on the overview; ≤ 12 s real, finale ≤ 22 s', async () => {
   const h = await headlessShow(), { show, run, bubblesLog, worldLog, rig } = h;
   let s = createState(spec);
   for (const st of turnSteps(CYBER_ORDER)) {
     const r = st(s); s = r.state;
     await run([...r.events, { kind: 'settle' }], { instant: true });
   }
-  const [warn, missileEvent, epilogueEvent] = finaleEvents(resolve(s, spec));
-  assert.equal(epilogueEvent?.ending, 'cyber');
-  await run([warn, missileEvent], { finale: true, instant: true });
-  const w0 = worldLog.length, n0 = bubblesLog.length, r0 = rig.log.length, main0 = show.stage.partObject('tower.main');
+  const evs = finaleEvents(resolve(s, spec)), epilogueEvent = evs[2];
+  assert.equal(epilogueEvent?.ending, 'cyber'); assert.equal(evs[1].epilogue, 'cyber', 'the meteor knows an epilogue follows');
+  let w0 = null, n0 = null, r0 = null, main0 = null, epi = null;
   const park = finale.view(LIT, { missile: 'shield', epilogue: 'cyber' }, LIT_META)['finale.car'].park;
-  let darkAt = null, flyAt = null, parkedAt = null, ratsAt = null, maxBubbles = 0;
+  let darkAt = null, flyAt = null, parkedAt = null, ratsAt = null, maxBubbles = 0, homeAt = null;
   const update = show.update.bind(show), dt = 1 / 30;
   const carPos = () => { const o = show.stage.partObject('finale.car'); if (!o?.children[0]) return null; const p = o.children[0].position; return { x: o.position.x + p.x, y: o.position.y + p.y, z: o.position.z + p.z }; };
   const onRoof = () => show.roster.members('rat.pack').every(m => Math.abs(m.pos.y - ROOF_SPOTS[0].y) < 1e-6);
   show.update = (d, t) => {
     update(d, t);
-    const now = show.elapsed;
+    if (epi === null) return;
+    const now = show.elapsed - epi;
+    if (homeAt === null && rig.log.length > r0) homeAt = now;
     if (darkAt === null && show.stage.partObject('tower.main') !== main0) darkAt = now;
     const c = carPos();
     if (c && flyAt === null && dist3(c, park) > 1) flyAt = now;
     if (c && flyAt !== null && parkedAt === null && dist3(c, park) < 1e-6) parkedAt = now;
     if (ratsAt === null && onRoof()) ratsAt = now;
   };
-  await run([epilogueEvent], { finale: true });
+  await run(evs, { finale: true, onMark: e => {
+    if (e !== epilogueEvent) return;
+    epi = show.elapsed; w0 = worldLog.length; n0 = bubblesLog.length; r0 = rig.log.length; main0 = show.stage.partObject('tower.main');
+  } });
   show.update = update;
-  const secs = show.elapsed;
+  const total = show.elapsed, secs = total - epi;
   assert.ok(secs <= 12, `≤ 12 s real (${secs.toFixed(2)})`);
-  console.log(`cyber epilogue: ${secs.toFixed(2)} s real (dark ${darkAt?.toFixed(2)}, fly ${flyAt?.toFixed(2)}, parked ${parkedAt?.toFixed(2)}, rats ${ratsAt?.toFixed(2)})`);
+  assert.ok(total <= 22, `finale ≤ 22 s real (${total.toFixed(2)})`);
+  console.log(`cyber epilogue: ${secs.toFixed(2)} s real, finale ${total.toFixed(2)} s (dark ${darkAt?.toFixed(2)}, fly ${flyAt?.toFixed(2)}, parked ${parkedAt?.toFixed(2)}, rats ${ratsAt?.toFixed(2)})`);
   const w = worldLog.slice(w0).map(([x]) => x);
   assert.ok(w.some(x => x.time === TIMES.night && x.glowScale === NEON_BOOST), 'night, neon up');
   assert.ok(darkAt !== null && darkAt < flyAt, 'the black tower first');
@@ -599,6 +606,9 @@ test('cyber epilogue live: night, black tower blinks in, the car flies in and pa
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
   const cam = rig.log.slice(r0);
   assert.ok(cam.length && cam.every(([k]) => k === 'home'), `the camera stays on the overview (${cam.map(c => c[0]).join(' ')})`);
+  // 隕石停在 WIDE、不回全景停（後面接收尾）：收尾第一拍就回全景，等 FOCUS_BEAT 鏡頭飛到才換黑塔
+  assert.ok(homeAt !== null && homeAt <= 1 / 30 + 1e-6, `back to the overview right away (${homeAt?.toFixed(2)})`);
+  assert.ok(darkAt - homeAt >= beatsMod.FOCUS_BEAT - 1e-6, `the black tower after the camera is home (${(darkAt - homeAt).toFixed(2)} s)`);
   // 跳過：終態一樣（車停好、10 隻在屋頂、螢幕在）
   const skip = await headlessShow();
   let s2 = createState(spec);
@@ -767,7 +777,7 @@ test('blackout epilogue beats: beacon back on (fold the flag), worldNow (pitch d
   assert.equal(beats[4].only, undefined);
   assert.equal(beats[5].target, 'home'); assert.equal(beats[5].dur, 1.5);
 });
-test('flood epilogue beats (≈ 5.25 s): fold + worldNow, the camera pans to the token cell while the sheet rises 1.0 s, the boat blinks in at the door with two riders, rows 2.5 s while the boba owner jumps onto the roof in the last 0.5 s, homes, the overview hold', () => {
+test('flood epilogue beats (≈ 5.25 s): fold + worldNow, the camera pans to the token cell while the sheet rises 1.0 s, the boat blinks in at the door with two riders, rows 2.5 s while the boba owner jumps onto the roof in the last 0.5 s, homes, the overview hold', async () => {
   const B = beatsMod.B, e = { kind: 'epilogue', ending: 'flood', flag: { name: 'epilogue', value: 'flood' } };
   const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
   assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'together', 'together', 'apply', 'home', 'apply', 'focus']);
@@ -782,8 +792,10 @@ test('flood epilogue beats (≈ 5.25 s): fold + worldNow, the camera pans to the
   assert.deepEqual([jump.kind, jump.dur], ['later', 2.5], 'the owner lands as the boat stops'); assert.equal(finale.OWNER_JUMP, 0.5);
   assert.deepEqual(beats[5].only, ['token.swimmers', 'boba.owner']);
   assert.equal(beats[8].target, 'home'); assert.equal(beats[8].dur, 1.5);
-  const total = 1.0 + 0.15 + 2.5 + 1.5;
-  assert.ok(Math.abs(total - 5.15) < 1e-9);
+  // 拍長加起來（平移與水升起同時、老闆在划船裡）：FLOOD_RISE ＋ BLINK ＋ BOAT_ROW ＋ END_HOLD ≈ 5.15 s
+  const { BLINK: blink } = await import('../src/show/blink.js');
+  const total = finale.FLOOD_RISE + blink + finale.BOAT_ROW + beats[8].dur;
+  assert.ok(total <= 5.3, `≈ 5.25 s (${total.toFixed(2)})`);
 });
 
 test('blackout live from EXAMPLE.blackout (whole finale): pitch dark to the end, the beacon on the bent tip blinks twice as fast, nobody lying in the epilogue, invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {

@@ -261,7 +261,7 @@ export const laneParts = lane => {
 const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LANES.slice(0, CAR_KEYS.length), footprint: false, low: false });
 
 // ── 捷運淹水收尾（計畫 17 任務 3，設計 §4；flags.epilogue 'flood'，劇本在 finale.js）──
-// 水淹上來：捷運格整格一片半透明的水（token.floodSheet，kind 'flood'：六角薄板，pointy-top、半徑同格子 HEX_R，厚 SHEET_H，C.glass、不透明度 0.55；
+// 水淹上來：捷運格整格一片半透明的水（token.floodSheet，kind 'flood'：六角薄板，pointy-top、半徑同格子 HEX_R，厚 SHEET_H，FLOOD_COLOR、不透明度 FLOOD_OPACITY（設計原本 C.glass 0.55，修正輪 1 加深）；
 //   設計寫 compound＋box——compound 是不透明的黏土、box 蓋不滿六角又會蓋到隔壁格，改用自己的 builder，一個 mesh）。頂面在格面上 FLOOD_UP，
 //   at 就是升好的位置（劇本從格面下 SHEET_DROP 升上來；跳過、截圖直接是升好的樣子）。
 // 小船（token.boat，鮮奶觀光船同一個 Boat.glb、同色票、h 0.35，船長約 1.5）：from 車站門口 DOOR、划到格子東南岸 BOAT_TO（格心往 60° 方位 1.45：
@@ -269,6 +269,9 @@ const rampSpec = () => ({ kind: 'ramp', at: offset(AT, 0, 0, ROOF_Y), lanes: LAN
 // 船上兩個座位：沿船身 ±BOAT_SEAT（0.15），高在船底上 BOAT_FLOOR——淹水時沒有站長（token.staff 換成了泳客），坐船的是兩個泳客（0 號就是原本的站長）；
 //   收尾之後泳客的家就是這兩個座位（stand、不 rescue）
 export const FLOOD_UP = 0.08, SHEET_H = 0.04, SHEET_DROP = 0.15;
+// 水色（修正輪 1，協調者看截圖：C.glass 0.55 在白天的灰鋪面上看不出淹水）：C.glass 往 C.navy 混 30%、不透明度 FLOOD_OPACITY 0.75——比海水明顯深、偏藍
+const mix3 = (a, b, k) => [16, 8, 0].reduce((c, sh) => c | (Math.round(((a >> sh) & 255) * (1 - k) + ((b >> sh) & 255) * k) << sh), 0);
+export const FLOOD_COLOR = mix3(C.glass, C.navy, 0.3), FLOOD_OPACITY = 0.75;
 const FLOOD_CELL = [0, 1], FLOOD_C = axialToWorld(...FLOOD_CELL), FLOOD_Y = cellTop(FLOOD_CELL) + FLOOD_UP;
 export const BOAT_H = 0.35, BOAT_DRAFT = 0.03, BOAT_SEAT = 0.15, BOAT_FLOOR = 0.06;
 export const BOAT_FROM = { x: DOOR.x, y: FLOOD_Y - BOAT_DRAFT, z: DOOR.z };
@@ -280,7 +283,7 @@ export const boatSeat = (i, p = BOAT_TO) => {
   return { x: p.x + Math.sin(BOAT_YAW) * off, y: p.y + BOAT_FLOOR, z: p.z + Math.cos(BOAT_YAW) * off, yaw: BOAT_YAW };
 };
 const floodParts = () => ({
-  'token.floodSheet': { kind: 'flood', at: { x: FLOOD_C.x, y: FLOOD_Y - SHEET_H / 2, z: FLOOD_C.z }, r: HEX_R, h: SHEET_H, color: C.glass, opacity: 0.55, footprint: false, shadow: false },
+  'token.floodSheet': { kind: 'flood', at: { x: FLOOD_C.x, y: FLOOD_Y - SHEET_H / 2, z: FLOOD_C.z }, r: HEX_R, h: SHEET_H, color: FLOOD_COLOR, opacity: FLOOD_OPACITY, footprint: false, shadow: false },
   'token.boat': { kind: 'glb', at: { ...BOAT_TO }, path: 'quat/ships/Boat.glb', h: BOAT_H, tint: BOAT_TINT, ry: BOAT_YAW + Math.PI, footprint: false },   // Boat.glb 的船頭朝 −z（截圖量的）：轉半圈讓船頭朝划行方向
 });
 

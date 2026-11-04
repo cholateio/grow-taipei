@@ -32,6 +32,7 @@ import { C } from './palette.js';
 import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
 import { floodPerch } from './boba.js';
 import { SHIELD_FAIL_DUR } from './parts.js';
+import { FOCUS_BEAT } from '../show/beats.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
 export { BAD_EPILOGUES } from '../rules/endings.js';
 
@@ -383,12 +384,11 @@ export const script = {
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
   //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
   //   → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
-  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alienEpilogue()（計畫 17 任務 4 接回 dispatch）
+  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。最前面先回全景（隕石停在 WIDE，見下面）。外星尾聲在下面的 alienEpilogue()（計畫 17 任務 4 接回 dispatch）
   epilogue(e, s, ctx) {
     const { B } = ctx;
     // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue，見下面）。
-    // 其餘的壞結局（任務 1）先只套用（之後的任務各自換成自己的劇本）。外星也先只套用：舊的 alien()（下面，≈ 8.8 s）接上去，
-    // pace 的「老鼠跑遠」局（剛好是外星命中局）終局 16.8 s 超過壞結局上限 12 s（tools/pace.mjs，任務 6 才放寬到 16）——任務 4 改成 ≤ 7 s 的災難版再接回來
+    // 其餘的壞結局先只套用（之後的任務各自換成自己的劇本；外星由任務 4 以下面的 alienEpilogue 為底改成災難版）
     if (e.ending === 'blackout') return blackoutEpilogue(e, ctx);
     if (e.ending === 'flood') return floodEpilogue(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
@@ -397,7 +397,9 @@ export const script = {
       begin: (o, c) => { if (!o.userData.fly) return false; o.userData.fly({ speed: c.speed ?? 1 }); return true; },
       finish: o => o.userData.land(),
     });
+    // 計畫 17 任務 3 修正輪 1：隕石後面接收尾時不回全景停（e.epilogue），鏡頭還在 WIDE——第一拍先回全景、停 FOCUS_BEAT 等鏡頭飛到，賽博整段照舊在全景演
     return [
+      B.focus('home', { hold: FOCUS_BEAT }),
       B.world({ time: TIMES.night, glowScale: NEON_BOOST }),
       B.apply(e, { only: ['tower.main', 'tower.show', 'tower.antenna', 'tower.screen'] }),
       fly,

@@ -784,10 +784,13 @@ test('flood epilogue view: a translucent hex sheet over the whole token cell, a 
     assert.ok(s && b, `lv${n}: sheet and boat`);
     assert.equal(s.kind, 'flood'); assert.equal(s.footprint, false); assert.equal(s.shadow, false);
     assert.ok(Math.hypot(s.at.x - c.x, s.at.z - c.z) < 1e-9, 'centred on the token cell');
-    assert.equal(s.r, R); assert.equal(s.h, 0.04); assert.equal(s.color, C.glass); assert.equal(s.opacity, 0.55);
+    // 修正輪 1（協調者看截圖：白天看不出淹水）：不透明度 0.75、顏色 C.glass 往 C.navy 混 30%——比海水明顯深、偏藍
+    assert.equal(s.r, R); assert.equal(s.h, 0.04); assert.equal(s.color, token.FLOOD_COLOR); assert.equal(s.opacity, 0.75);
+    const rgb = c => [(c >> 16) & 255, (c >> 8) & 255, c & 255], g = rgb(C.glass), nv = rgb(C.navy);
+    rgb(token.FLOOD_COLOR).forEach((v, i) => assert.ok(Math.abs(v - Math.round(g[i] * 0.7 + nv[i] * 0.3)) <= 1, `channel ${i}`));
     assert.ok(Math.abs(s.at.y + s.h / 2 - (cellTop(CELL) + token.FLOOD_UP)) < 1e-9 && token.FLOOD_UP === 0.08, 'top face 0.08 over the ground');
     assert.equal(b.kind, 'glb'); assert.equal(b.path, 'quat/ships/Boat.glb'); assert.equal(b.h, 0.35); assert.deepEqual(b.tint, milk.BOAT_TINT); assert.equal(b.footprint, false);
-    assert.ok(Math.abs(b.ry - token.BOAT_YAW) < 1e-9 || Math.abs(b.ry - token.BOAT_YAW - Math.PI) < 1e-9, 'bow along the row');
+    assert.ok(Math.abs(b.ry - (token.BOAT_YAW + Math.PI)) < 1e-9, 'bow along the row (Boat.glb bow is −z: turned half a turn)');
     assert.deepEqual({ x: b.at.x, y: b.at.y, z: b.at.z }, { x: token.BOAT_TO.x, y: token.BOAT_TO.y, z: token.BOAT_TO.z });
     assert.ok(Math.abs(b.at.y - (top + token.FLOOD_UP)) < 0.05, 'floats on the sheet');
     // 起點是車站門口、終點在格子的東南（+x、+z）岸邊：船頭（船長約 1.5）也還在格子裡
@@ -809,14 +812,14 @@ test('flood epilogue view: a translucent hex sheet over the whole token cell, a 
   // 沒淹水就不會是捷運淹水結局；保險起見也不畫
   assert.equal(token.view(L({ token: 3 }), { epilogue: 'flood' })['token.floodSheet'], undefined);
 });
-test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like the cell), C.glass at 0.55, no depth write, no shadow', () => {
+test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like the cell), FLOOD_COLOR at 0.75, no depth write, no shadow', () => {
   const v = token.view(L({ token: 1 }), { flooded: true, epilogue: 'flood' });
   const part = createPartFactory(THREE, { glow: createGlowRegistry(), people: null, assets: { spawn: async () => new THREE.Group() }, builders: token.builders }).build(v['token.floodSheet']);
   const meshes = []; part.object.traverse(o => { if (o.isMesh) meshes.push(o); });
   assert.equal(meshes.length, 1);
   const [m] = meshes, g = m.geometry;
-  assert.ok(m.material.transparent && Math.abs(m.material.opacity - 0.55) < 1e-9 && !m.material.depthWrite);
-  assert.equal(m.material.color.getHex(), C.glass);
+  assert.ok(m.material.transparent && Math.abs(m.material.opacity - 0.75) < 1e-9 && !m.material.depthWrite);
+  assert.equal(m.material.color.getHex(), token.FLOOD_COLOR);
   assert.ok(!m.castShadow && !m.receiveShadow);
   g.computeBoundingBox(); const bb = g.boundingBox;
   assert.ok(Math.abs(bb.max.y - bb.min.y - 0.04) < 1e-6, '0.04 thick');

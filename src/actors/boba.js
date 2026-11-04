@@ -14,7 +14,6 @@ import { bunting } from './bunting.js';
 import { stormy } from './world.js';
 import { BLINK } from '../show/blink.js';
 import { MAIN_CELLS, NEIGHBORS, axialToWorld, cellTop, WATER_Y, R } from '../scene/hex.js';
-import { islanders } from '../show/crowd.js';
 
 export const id = 'boba';
 export const labelY = 1.0;
@@ -281,10 +280,6 @@ const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const owner = c => c.roster.members('boba.owner')[0] ?? null;
 const shown = key => c => c.roster.members(key).filter(m => !m.hidden);
 const tourist = i => c => shown('boba.queue')(c)[i] ?? null;
-// 糖分超標一起 ♥ 的人：主島上在日常裡的人（show/crowd.js islanders，同全島抬頭）——修正批次 max-skip §E 之後島民只剩 101 格一位、
-// 代幣 Lv2 起一位都沒有，只點 landmarks.islanders 的話整段沒人冒泡泡。演到才點名、整段同一份名單
-const sweetTooth = () => { let list = null; return i => c => (list ??= islanders(c).slice(0, ISLANDERS))[i] ?? null; };
-const ISLANDERS = 10;   // 糖分超標時最多這麼多人一起 ♥
 // 推攤車：老闆從攤位北邊約 3.65 的地方出發（捷運站那側的路口），尋路最後一段從夜市西邊轉進來，攤車停在 SHOP 剛好接上。
 // 攤車在他面前 HANDLE 的地方；攤車朝向追著老闆的朝向轉（每秒 TURN 的比例），轉彎時不會瞬間甩到旁邊
 const FROM = offset(AT, -1.0, -3.65), TURN = 12;
@@ -403,13 +398,7 @@ export const script = {
       ];
     },
   },
-  // 糖分超標（物品 v2：珍奶升到 Lv4 時鮮奶 ≤2，旗標事件緊接在 grow 4 後面）：折進旗標、主島上的人一起 ♥
-  fx(e, s, ctx) {
-    if (e.flag?.name !== 'bobaSugar') return null;
-    const { B } = ctx;
-    const who = sweetTooth();
-    return [B.apply(e, { blink: false }), B.together(Array.from({ length: ISLANDERS }, (_, i) => B.bubble(who(i), '♥')))];
-  },
+  // 糖分超標（bobaSugar 旗標的 fx：主島上的人一起 ♥）計畫 17 跟著規則一起拿掉
 };
 // ◆ 關鍵節點（裁決 R11；唯一正解 §5.3）：珍奶 6。修正批次 trim §A：Lv5 不再是 ◆——正解最後一輪 4 → 5、5 → 6（跳級）合成一段，
 // 演 ◆6 世界珍奶節（turn.js jumpPairs；以前兩級都是 ◆、不合成，各演一段 ◆）

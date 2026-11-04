@@ -22,8 +22,6 @@ import { B } from '../src/show/beats.js';
 const RESULTS = enumerate(spec);
 const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const ALIEN = RESULTS.find(r => r.ending.id === 'alien' && r.state.lv.rat === 4).order;   // 外星壞局（列舉裡第一條以「變異鼠稱王」為標題的；修正批次 2：攤車被吹走排在外星前面）
-// 糖分超標：列舉裡第一條立了 bobaSugar 的放法（修正批次 2 之後外星局不一定經過珍奶 4）
-const SUGAR = RESULTS.find(r => r.state.flags.bobaSugar).order;
 const AT = anchorWorld('boba'), CELL = cellOf('boba');
 const near = (a, b, d) => Math.hypot(a.x - b.x, a.z - b.z) < d;
 const PALETTE = new Set(Object.values(C));
@@ -55,7 +53,8 @@ test('boba has something new at every level 1–6: cart, queue, shop, fountain, 
   for (const k of ['isletShop', 'FLAGSHIP', 'TOURIST_SPOTS', 'FERRY_PATH', 'DOCK', 'SAIL', 'seatAt', 'ISLET_SHOP_H']) assert.equal(k in boba, false, `boba.${k} is gone`);
   assert.ok(views[6]['boba.fleet'] && !views[5]['boba.fleet'] && views[6]['boba.yard'].parts.some(p => p.coast), 'Lv6 balloons and fleet');
   assert.ok(!views[5]['boba.yard'].parts.some(p => p.coast), 'no balloons before Lv6');
-  assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7] && boba.script.fx);
+  assert.ok(boba.script.placed && [2, 3, 4, 5, 6].every(n => boba.script.grow[n]) && !boba.script.grow[7]);
+  assert.equal(boba.script.fx, undefined, 'no sugar-rush fx（計畫 17：bobaSugar 拿掉）');
 });
 // 人數預算（使用者 2026-10-26）：人龍 ≤ 4，不再有閒晃的觀光客
 test('people budget: queue of 3 at every level, no strollers anywhere', () => {
@@ -428,27 +427,6 @@ test('Lv3: the owner builds, the shop appears, the queue and the owner move to t
     show.roster.members('boba.queue').forEach((m, i) => assert.ok(near(m.pos, v['boba.queue'].home.spots[i], 0.1), `${order.join('>')} tourist ${i} at the door`));
     assert.ok(near(show.roster.members('boba.owner')[0].pos, boba.ownerSpot(3), 0.1), 'owner by the door');
   }
-});
-// 物品 v2：糖分超標在珍奶 Lv4（唯一正解 Task 1 裁決：鮮奶 ≤4），旗標事件緊接在 grow 4 後面，島民的 ♥ 演在旗標事件（boba 的 fx 劇本）。
-// 放法：求解器列舉裡第一條立了糖分超標的（SUGAR）
-test('Lv4 with low milk is the sugar rush: the people on the main island ♥', async () => {
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
-  let s = engine.createState(spec), e4 = null, rest = [];
-  for (const step of [...SUGAR.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
-    const r = step(s); s = r.state;
-    const i = r.events.findIndex(isBoba(4));
-    if (i >= 0) { await run(r.events.slice(0, i), { instant: true }); e4 = r.events[i]; rest = r.events.slice(i + 1); break; }
-    await run([...r.events, { kind: 'settle' }], { instant: true });
-  }
-  assert.ok(e4, 'boba reaches Lv4'); assert.equal(rest[0]?.flag?.name, 'bobaSugar', 'the sugar flag follows');
-  const n = bubblesLog.length, secs = await run([e4, ...rest, { kind: 'settle' }]);
-  // 修正批次 max-skip §E：島民只剩一位（代幣 Lv2 起沒有），一起 ♥ 的是主島上在日常裡的人（最多 10 位；珍奶 Lv4 本身的 ♥ 是 2 個）
-  const all = bubblesLog.slice(n).filter(b => b.kind === '♥'), hearts = all.length;
-  assert.ok(hearts >= 2 + 5, `${hearts} ♥: the sugar rush has a crowd`);
-  assert.ok(hearts <= 2 + 10, `${hearts} ♥: the sugar rush caps at 10 people (+ the 2 of boba Lv4)`);
-  for (const b of all) assert.ok(MAIN_CELLS.some(c => String(c) === String(cellAt(b.at.x, b.at.z))), `♥ at (${b.at.x.toFixed(2)}, ${b.at.z.toFixed(2)}) on a main-island cell`);
-  assert.ok(secs <= 20, `${secs.toFixed(1)} s`);
-  assert.equal(show.stage.flags.bobaSugar, true);
 });
 // ── 碼頭入口（§13.2）：珍奶格靠海那側、走得到、離每個站位 ≥ 1.5（每一級；正解每一刻的真 footprint）──
 test('the pier entry is in the boba cell by the sea, walkable and ≥ 1.5 from every queue spot at every level', async () => {

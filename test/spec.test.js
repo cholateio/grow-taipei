@@ -70,9 +70,11 @@ test('typhoon checks all fire at placement: blackout, flood, dome flood, dome ra
   assert.ok(!t.onLevel && !t.delay, 'no checks on the later levels');
 });
 // 設計 §3 寫晶片 ≥6；求解器發現全滿的順序裡老鼠到 Lv4 時晶片一定已經 7 或 8，所以門檻改成 8（矽盾測試）
-// 裁決 2026-10-31：珍奶糖分超標放寬到鮮奶 ≤4（附錄的 ≤2 照這張表到不了）
-test('bobaSugar fires at boba Lv4 while milk ≤ 4', () => {
-  assert.deepEqual(ITEMS.boba.onLevel[4], [{ when: maxL('milk', 4), flag: { name: 'bobaSugar' }, story: '全島糖分超標' }]);
+// 計畫 17（2026-11-04）：糖分超標當不了結局（全枚舉一次都沒有），珍奶 Lv4 的旗標拿掉——珍奶沒有任何 onLevel，也沒有規則再插 bobaSugar
+test('no bobaSugar flag: boba has no onLevel, and no rule raises the flag', () => {
+  assert.equal(ITEMS.boba.onLevel, undefined);
+  const acts = Object.values(ITEMS).flatMap(it => [...Object.values(it.onLevel ?? {}).flat(), ...(it.fx ?? []), ...(it.stall ?? [])]);
+  assert.ok(!acts.some(a => a.flag?.name === 'bobaSugar'));
 });
 test('rat Lv4 branches on chip >= 8; the bite is the only placement reaction (milk ≤ 2); no boba knock-over', () => {
   const b = ITEMS.rat.onLevel[4].find(a => a.branch);

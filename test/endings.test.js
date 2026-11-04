@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ORDER, ITEMS } from '../src/rules/spec.js';
-import { missile, satisfied, resolve, ENDINGS } from '../src/rules/endings.js';
+import { missile, satisfied, resolve, ENDINGS, BAD_EPILOGUES } from '../src/rules/endings.js';
 import { createState, place } from '../src/rules/engine.js';
 import * as spec from '../src/rules/spec.js';
 
@@ -32,35 +32,23 @@ test('all max with the cyber branch is cyber, extras still listed; alien is a ba
   assert.equal(resolve(full({ lv: lv({ chip: 4, typhoon: 3 }) }, { ratBranch: 'alien' }), spec).id, 'alien', 'alien titles before the shield');
 });
 test('bad ending priority follows design §4.5: concrete disasters first, deflect and shieldDown last', () => {
-  const s = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true, bobaSugar: true });
+  const s = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true });
   const r = resolve(s, spec);
   assert.equal(r.id, 'blackout'); assert.equal(r.missile, 'deflect');
-  assert.deepEqual(r.extras, ['flood', 'bobaSugar', 'typhoonDeflect', 'shieldDown']);
+  assert.deepEqual(r.extras, ['flood', 'typhoonDeflect', 'shieldDown']);
   const every = full({ lv: lv({ chip: 2, typhoon: 1 }) }, { blackout: true, flooded: true, domeFlood: true, cartBlown: true, domeRats: true, ratBranch: 'alien', milkExpired: true, bobaSugar: true });
-  assert.deepEqual(satisfied(every, spec), ['blackout', 'flood', 'domeFlood', 'cartBlown', 'domeRats', 'alien', 'milkExpired', 'bobaSugar', 'typhoonDeflect', 'shieldDown']);
+  assert.deepEqual(satisfied(every, spec), ['blackout', 'flood', 'domeFlood', 'cartBlown', 'domeRats', 'alien', 'milkExpired', 'typhoonDeflect', 'shieldDown']);
 });
-test('bobaSugar is a flag, so it holds even though milk is placed at the end', () => {
-  const r = resolve(full({ lv: lv({ chip: 5, milk: 4, boba: 3 }) }, { bobaSugar: true }), spec);
-  assert.ok(r.extras.includes('bobaSugar') || r.id === 'bobaSugar');
-});
-// 因果設計 2026-10-28 §3：珍奶長人龍要鮮奶 ≥3（學生排隊），所以「鮮奶還沒放珍奶就升滿」不會再發生；
-// 糖分超標：珍奶到 4 時鮮奶還 ≤4（唯一正解 2026-10-31 裁決，原本 ≤2 照新表到不了）——旗標一插就留到最後，鮮奶之後長上去也不撤
-test('engine sets bobaSugar when boba reaches Lv4 while milk is ≤ 4, and the flag stays', async () => {
-  const { foldEvent } = await import('../src/rules/engine.js');
-  const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
-  let found = 0;
-  for (const order of perms(ORDER)) {
-    let s = createState(spec), view = { lv: s.lv, flags: {} }, at = null;
-    for (const id of order) {
-      const r = place(s, id, spec); s = r.state;
-      for (const e of r.events) { view = foldEvent(view, e); if (e.flag?.name === 'bobaSugar' && at === null) at = { milk: view.lv.milk, boba: view.lv.boba }; }
-    }
-    if (at === null) { assert.ok(!s.flags.bobaSugar); continue; }
-    found++; assert.ok(at.milk <= 4, `${order}: milk ${at.milk} when the sugar flag went up`); assert.equal(at.boba, 4);
-    assert.equal(s.flags.bobaSugar, true, 'the flag stays to the end');
-    if (found >= 200) break;
+// 計畫 17（2026-11-04）：糖分超標全枚舉 40,320 種順序一次都當不了結局（前面一定有別的壞結局），是死規則——
+// 從結局表、satisfied、珍奶 Lv4 的旗標一起拿掉；舊局面就算帶著這個旗標也不算數
+test('bobaSugar is gone: not an ending, satisfied ignores a leftover flag, and no order raises it', () => {
+  assert.equal(ENDINGS.bobaSugar, undefined);
+  assert.deepEqual(satisfied(full({}, { ratBranch: 'cyber', bobaSugar: true }), spec), []);
+  assert.equal(resolve(full({ lv: lv({ chip: 9, typhoon: 3 }) }, { bobaSugar: true }), spec).id, 'tryAgain');
+  for (const r of enumerate(spec)) {
+    assert.ok(!r.state.flags.bobaSugar, `${r.order}: no sugar flag`);
+    assert.ok(!r.satisfied.includes('bobaSugar') && r.ending.id !== 'bobaSugar');
   }
-  assert.ok(found > 0, 'no order raises bobaSugar');
 });
 test('deflect games light both typhoonDeflect and shieldDown, title card is the deflect', () => {
   const s = full({ lv: lv({ chip: 4, typhoon: 2 }) });
@@ -70,8 +58,8 @@ test('deflect games light both typhoonDeflect and shieldDown, title card is the 
 test('nothing satisfied and not all max → tryAgain', () => {
   assert.equal(resolve(full({ lv: lv({ chip: spec.ITEMS.chip.max, typhoon: 3 }) }), spec).id, 'tryAgain');
 });
-test('ENDINGS has twelve entries with Chinese titles; cyber is the only true ending; domeFlood and cartBlown are new', () => {
-  assert.equal(Object.keys(ENDINGS).length, 12);
+test('ENDINGS has eleven entries with Chinese titles; cyber is the only true ending; domeFlood and cartBlown are new', () => {
+  assert.equal(Object.keys(ENDINGS).length, 11);   // 計畫 17：糖分超標拿掉
   // 修正批次 2：颱風放下時珍奶 ≤3 → 攤車被吹到海邊
   assert.deepEqual(ENDINGS.cartBlown, { id: 'cartBlown', title: '珍奶攤被吹走', kind: 'bad', line: '攤車飛到海上，老闆划船去追' });
   assert.equal(ENDINGS.shieldDown.title, '矽盾未就緒'); assert.equal(ENDINGS.cyber.kind, 'true');
@@ -117,14 +105,14 @@ test('the shield only holds at chip 9: chip 8 (tested, not on standby) is shield
   assert.equal(missile(full({ lv: { ...full().lv, chip: 8 } }), spec), 'hit');
   assert.equal(resolve(full({ lv: { ...full().lv, chip: 8 } }, { ratBranch: 'cyber' }), spec).id, 'shieldDown', 'one short of MAX is not a true ending');
   const perms = a => a.length ? a.flatMap((x, i) => perms([...a.slice(0, i), ...a.slice(i + 1)]).map(p => [x, ...p])) : [[]];
-  const s = perms(ORDER).map(playOut).find(st => st.lv.chip === 8 && st.lv.typhoon === 3 && st.flags.ratBranch !== 'alien' && !['blackout', 'flooded', 'domeFlood', 'cartBlown', 'domeRats', 'milkExpired', 'bobaSugar'].some(f => st.flags[f]));
+  const s = perms(ORDER).map(playOut).find(st => st.lv.chip === 8 && st.lv.typhoon === 3 && st.flags.ratBranch !== 'alien' && !['blackout', 'flooded', 'domeFlood', 'cartBlown', 'domeRats', 'milkExpired'].some(f => st.flags[f]));
   assert.ok(s, 'some order stops the chip at 8 with no disaster');
   assert.equal(missile(s, spec), 'hit');
   assert.deepEqual(resolve(s, spec), { id: 'shieldDown', title: '矽盾未就緒', missile: 'hit', extras: [] });
 });
 
-// 最終章（計畫 5 任務 8；選擇帶動升級、因果與離島 2026-10-28 重找）：test/helpers/endings.js 釘住的兩局壞結局——求解器枚舉裡第一個命中、第一個吹偏的順序；
-// 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋隕石（壞結局沒有尾聲）
+// 最終章（計畫 5 任務 8；選擇帶動升級、因果與離島 2026-10-28 重找）：test/helpers/endings.js 釘住的兩局隕石結果——求解器枚舉裡第一個命中、第一個吹偏的順序；
+// 照順序放完、再長 CLOSING_TURNS 輪（最後一輪），終局回合是警告＋隕石；兩局的結局都是捷運淹水，計畫 17 起接它的收尾
 test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned literals)', async () => {
   const { enumerate } = await import('../src/solver/run.js'), { advance } = await import('../src/rules/engine.js');
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js'), { finaleEvents } = await import('../src/game.js');
@@ -133,6 +121,12 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   assert.deepEqual(EXAMPLE, {
     hit: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
     deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon'],
+    blackout: ['milk', 'chip', 'bulb', 'typhoon', 'token', 'rat', 'boba', 'baseball'],
+    flood: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],
+    alien: ['milk', 'chip', 'bulb', 'token', 'baseball', 'boba', 'rat', 'typhoon'],
+    domeFlood: ['milk', 'chip', 'typhoon', 'rat', 'baseball', 'bulb', 'token', 'boba'],
+    cartBlown: ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'],
+    milkExpired: ['milk', 'typhoon', 'chip', 'rat', 'bulb', 'token', 'boba', 'baseball'],
   });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);
@@ -142,9 +136,28 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
     for (let i = 0; i < spec.CLOSING_TURNS; i++) s = advance(s, spec).state;
     const { events, ending } = finaleStep(s);
     assert.equal(ending.missile, outcome); assert.deepEqual(ending, resolve(s, spec));
+    assert.equal(ending.id, 'flood', `${outcome}: the first ${outcome} game floods the metro`);
     assert.deepEqual(events, finaleEvents(ending));
-    assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['warning', undefined], ['missile', outcome]], `${outcome}: warning, then the missile; a bad ending has no epilogue`);
+    assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['warning', undefined], ['missile', outcome], ['epilogue', undefined]], `${outcome}: warning, the missile, then the flood epilogue`);
   }
+  // 計畫 17：每個有收尾的壞結局一局——列舉裡第一個 resolve().id 是它的順序；照順序放完＋最後一輪，resolve 就是它
+  for (const id of BAD_EPILOGUES) {
+    const first = all.find(r => !r.error && r.ending.id === id);
+    assert.deepEqual(EXAMPLE[id], first.order, `${id}: the first ${id} order in the enumeration`);
+    let s = createState(spec);
+    for (const k of EXAMPLE[id]) s = place(s, k, spec).state;
+    for (let i = 0; i < spec.CLOSING_TURNS; i++) s = advance(s, spec).state;
+    assert.equal(resolve(s, spec).id, id, `${EXAMPLE[id].join('>')} → ${id}`);
+    const { events } = finaleStep(s);
+    assert.deepEqual(events.at(-1), { kind: 'epilogue', ending: id, flag: { name: 'epilogue', value: id } }, `${id}: the finale ends on its epilogue`);
+  }
+});
+// 計畫 17：有收尾的壞結局（finale.js 匯出、規則層 endings.js 定義——game.js 只讀規則層）；每一個都是結局表裡的壞結局
+test('BAD_EPILOGUES: six bad endings with an epilogue, every one a bad ending in ENDINGS; finale.js re-exports the same list', async () => {
+  assert.deepEqual(BAD_EPILOGUES, ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired']);
+  for (const id of BAD_EPILOGUES) assert.equal(ENDINGS[id]?.kind, 'bad', id);
+  const finale = await import('../src/actors/finale.js');
+  assert.equal(finale.BAD_EPILOGUES, BAD_EPILOGUES);
 });
 // npm run shot 的 hit／deflect 截圖就是這兩局（package.json 的 shot 清單）
 test('the hit / deflect screenshots play the EXAMPLE orders', async () => {

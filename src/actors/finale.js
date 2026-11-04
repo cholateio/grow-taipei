@@ -2,7 +2,7 @@
 // 修正批次 trim §C（2026-11-01，協調者裁決）：原本是「海的那一頭亮紅光、射一枚飛彈打 101」，容易被讀成兩岸軍事威脅（政治風險），
 // 換成天外隕石——從天上掉下來、沒有方向、沒有國家；三種結果的意思不變。程式識別字沿用 missile（事件、旗標、零件 finale.missile），畫面上看得到的全換掉。
 // 遊戲層（game.js）在第 8 個放完、最後一輪（一般回合）演完之後演一個終局回合：最前面 warning 事件（game.js WARNING，flag alarm = 1），
-// 接 missile 事件（flag missile = shield／deflect／hit），真結局再接 epilogue（flag epilogue = 結局 id）。
+// 接 missile 事件（flag missile = shield／deflect／hit），真結局與有收尾的壞結局（BAD_EPILOGUES，計畫 17）再接 epilogue（flag epilogue = 結局 id）。
 // 旗標只折進舞台（stage.flags，foldEvent 照 e.flag 折），引擎狀態不碰。turn.js 把這三種事件的劇本交給這個模組（script[e.kind]）。
 // 警告（選擇帶動升級 §4；原本倒數 3 的宣告去掉數字）——終局回合一開頭，101 正上方偏北的高空亮起一顆越來越亮的橘紅光點（finale.star，
 // 發光球＋往外拖長的淡光尾）；鏡頭先抬頭看天（全景只框到 101 頭頂上一點、天空整片出畫），再退到 WIDE（島＋101＋上方天空），全島抬頭看、冒「！」、蹲下；
@@ -16,8 +16,8 @@
 //   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
-//   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO），只有 cyber 演尾聲——
-//   外星尾聲在單一正解下到不了。劇本、零件、母艦都留著（之後給圖鑑）；測試只驗 view（finale.test），沒有測試演這段劇本。
+//   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO）；
+//   計畫 17（2026-11-04）壞結局也接收尾（任務 1 先只套用），任務 4 把這段改成災難版接進 script.epilogue（外星局 test/helpers/endings.js EXAMPLE.alien）。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
@@ -28,6 +28,8 @@ import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
 import { roadsterParts } from './token.js';
+// 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
+export { BAD_EPILOGUES } from '../rules/endings.js';
 
 export const id = 'finale';
 
@@ -346,10 +348,11 @@ export const script = {
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
   //   黑塔、燈光秀、天線、螢幕閃白換上 → 紅車飛一趟（replay：套用零件、fly 從海上重飛；跳過時 land 直接停好），
   //   → 機器鼠的家搬上屋頂（apply）、閃白放上站位（roof 拍；屋頂在 101 的 footprint 裡走不上去）→
-  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alien()
+  //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。外星尾聲在下面的 alienEpilogue()（計畫 17 任務 4 接回 dispatch）
   epilogue(e, s, ctx) {
     const { B } = ctx;
-    if (e.ending === 'alien') return alien(e, ctx);
+    // 計畫 17 任務 1：壞結局的收尾先只套用（之後的任務各自換成自己的劇本）。外星也先只套用：舊的 alien()（下面，≈ 8.8 s）接上去，
+    // pace 的「老鼠跑遠」局（剛好是外星命中局）終局 16.8 s 超過壞結局上限 12 s（tools/pace.mjs，任務 6 才放寬到 16）——任務 4 改成 ≤ 7 s 的災難版再接回來
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -366,13 +369,14 @@ export const script = {
   },
 };
 
-// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速；唯一正解下到不了——外星是壞結局、不演尾聲，留給圖鑑，見檔頭）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
+// 外星（設計 §7，≤ 12 秒真實，終局回合 1 倍速；外星是壞結局，計畫 17 任務 4 以這段為底改成災難版再接進 script.epilogue，見檔頭；
+//   匯出給任務 4 與 finale.test——測試從真的外星局 live 演這段）：鏡頭對溫泉格，變異鼠王（名冊 rat.pack 唯一一隻，演到才點名）對天揮手＋「！」→
 //   鏡頭推到石堆島（裁決 R5；focus 的點用 worldToAxial 反算格子，衛星島也算得出格子，點直接交給 rig.focus）→ 降落場閃白（綠光圈換成更亮的圈＋三盞燈、石堆兩隻老鼠閃白拿掉）→ 三台 UFO 不閃白套上、從 7 高降下來 2 秒 →
 //   外星生物閃白 → 回全景停 0.8 → 母艦閃白（塔身、天線、燈光秀；罩子沒變）→ 全島第三隻眼（world 拍只帶 mood，回合收尾的 world 拍照舞台旗標也是 alien）→
 //   老鼠的家搬上碟頂（apply）、閃白放上去（roof 拍：碟頂在 101 的 footprint 上面，走不上去）→ 放回日常 → 剩下的套用（小 UFO 拿掉）→
 //   「♥」→ 全景停 1.5 秒
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-function alien(e, ctx) {
+export function alienEpilogue(e, ctx) {
   const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), kings = c => [king(c)].filter(Boolean);
   return [
     B.focus(SPRING), B.together([B.gesture(king, 'wave', WAVE), B.bubble(king, '！', SHOUT)]),

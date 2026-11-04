@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createGame, WARNING, finaleEvents, TITLE_HOLD } from '../src/game.js';
+import { BAD_EPILOGUES } from '../src/actors/finale.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import * as endings from '../src/rules/endings.js';
@@ -136,11 +137,13 @@ test('reset during the closing turn or the warning: no onFinished, new game play
     assert.equal(await g.pick('milk'), true, when); assert.ok(g.state.lv.milk >= 1); assert.equal(f.ui.levels.milk, g.state.lv.milk);
   }
 });
-test('finaleEvents: warning first; true ending → missile shield + epilogue; chip max but not all max → missile shield only; else missile hit/deflect only', () => {
+test('finaleEvents: warning first; true ending → missile shield + epilogue; a bad ending in BAD_EPILOGUES → missile + its epilogue; chip max but not all max → missile shield only; other bad endings → missile hit/deflect only', () => {
   const missile = m => ({ kind: 'missile', outcome: m, flag: { name: 'missile', value: m } });
   assert.deepEqual(finaleEvents({ id: 'cyber', missile: 'shield' }), [WARNING, missile('shield'), { kind: 'epilogue', ending: 'cyber', flag: { name: 'epilogue', value: 'cyber' } }]);
-  // 唯一正解（2026-10-31 §4.5）：外星改成壞結局，不演母艦尾聲
-  assert.deepEqual(finaleEvents({ id: 'alien', missile: 'shield' }), [WARNING, missile('shield')]);
+  // 計畫 17（2026-11-04）：六個壞結局各自有收尾（finale.js BAD_EPILOGUES）——警告、隕石、收尾三個事件
+  for (const id of BAD_EPILOGUES) for (const m of ['hit', 'deflect']) {
+    assert.deepEqual(finaleEvents({ id, missile: m }), [WARNING, missile(m), { kind: 'epilogue', ending: id, flag: { name: 'epilogue', value: id } }], `${id} (${m})`);
+  }
   // 晶片滿級但不是全 MAX：壞結局（或再接再厲）照樣 shield，沒有尾聲
   const chipMax = { ...engine.createState(spec) }; chipMax.lv = { ...chipMax.lv, chip: spec.ITEMS.chip.max, milk: 1 };
   const r = endings.resolve(chipMax, spec);
@@ -149,6 +152,10 @@ test('finaleEvents: warning first; true ending → missile shield + epilogue; ch
   assert.deepEqual(finaleEvents({ id: 'shieldDown', missile: 'hit' }), [WARNING, missile('hit')]);
   assert.deepEqual(finaleEvents({ id: 'typhoonDeflect', missile: 'deflect' }), [WARNING, missile('deflect')]);
   assert.deepEqual(finaleEvents({ id: 'tryAgain', missile: 'hit' }), [WARNING, missile('hit')]);
+  // 沒有收尾的：矽盾未就緒、大巨蛋鼠災、颱風吹偏、再接再厲只有警告＋隕石
+  for (const id of ['shieldDown', 'domeRats', 'typhoonDeflect', 'tryAgain']) {
+    assert.ok(!BAD_EPILOGUES.includes(id)); assert.deepEqual(finaleEvents({ id, missile: 'hit' }).map(e => e.kind), ['warning', 'missile'], id);
+  }
 });
 test('reset during the finale turn or during hold: no onFinished, new game playable (review focus 1)', async () => {
   for (const when of ['finale', 'hold']) {

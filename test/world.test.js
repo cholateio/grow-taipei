@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { worldEffects, stepWorld } from '../src/actors/world.js';
-import { TIMES } from '../src/scene/daynight.js';
+import { TIMES, sample } from '../src/scene/daynight.js';
 import { lv } from './helpers/actors.js';
 
 test('worldEffects: lamps set the clock, blackout kills the glow at night', () => {
@@ -37,16 +37,36 @@ test('stepWorld eases toward the target: ~98% in one second, snaps when close, n
   assert.equal(stepWorld(to, to, 1 / 60), to, 'settled returns the same object');
 });
 // 最終章 §6、§8：命中全島躺平、外星尾聲第三隻眼——全島效果多一個 mood，stepWorld 不緩動它、原樣切過去
-test('worldEffects.mood: hit → lie, alien epilogue → alien, otherwise normal; stepWorld carries mood through unchanged', () => {
+test('worldEffects.mood: hit without an epilogue → lie, alien epilogue → alien, otherwise normal; stepWorld carries mood through unchanged', () => {
   assert.equal(worldEffects(lv({}), {}).mood, 'normal');
   assert.equal(worldEffects(lv({}), { missile: 'hit' }).mood, 'lie');
   assert.equal(worldEffects(lv({}), { missile: 'shield' }).mood, 'normal');
   assert.equal(worldEffects(lv({}), { missile: 'deflect' }).mood, 'normal');
   assert.equal(worldEffects(lv({}), { missile: 'shield', epilogue: 'alien' }).mood, 'alien');
   assert.equal(worldEffects(lv({}), { missile: 'shield', epilogue: 'cyber' }).mood, 'normal');
+  // 計畫 17：命中之後有收尾的壞結局，收尾裡大家站起來（epilogue 有值就不躺）；外星收尾第三隻眼；沒有收尾的（矽盾未就緒等）躺到最後
+  for (const id of ['blackout', 'flood', 'domeFlood', 'cartBlown', 'milkExpired']) assert.equal(worldEffects(lv({}), { missile: 'hit', epilogue: id }).mood, 'normal', id);
+  assert.equal(worldEffects(lv({}), { missile: 'hit', epilogue: 'alien' }).mood, 'alien');
+  assert.equal(worldEffects(lv({}), { missile: 'deflect', epilogue: 'alien' }).mood, 'alien');
+  assert.equal(worldEffects(lv({}), { missile: 'hit', alarm: 1 }).mood, 'lie', 'no epilogue: lie to the end');
   const from = worldEffects(lv({}), {}), to = worldEffects(lv({}), { missile: 'hit' });
   const w = stepWorld(from, to, 1 / 60);
   assert.notEqual(w, from, 'a mood-only change is not dropped as "same"');
   assert.equal(w.mood, 'lie', 'mood switches at once');
   assert.equal(stepWorld(to, to, 1 / 60), to);
+});
+// 計畫 17：大停電收尾的「漆黑」——比夜晚更黑：天空近黑、環境光（半球光）約夜晚的 0.15 倍、月光一樣壓到 0.15 倍；日、黃昏、夜晚不動
+test('TIMES.pitch (1380) is darker than night: a near-black sky and about 0.15× the night light; day / dusk / night unchanged', () => {
+  assert.deepEqual(TIMES, { day: 600, dusk: 1065, night: 1260, pitch: 1380 });
+  const night = sample(TIMES.night), pitch = sample(TIMES.pitch);
+  const luma = c => (0.2126 * ((c >> 16) & 255) + 0.7152 * ((c >> 8) & 255) + 0.0722 * (c & 255)) / 255;
+  assert.ok(luma(pitch.skyTop) < 0.04 && luma(pitch.horizon) < 0.07, `near-black sky (${luma(pitch.skyTop).toFixed(3)}, ${luma(pitch.horizon).toFixed(3)})`);
+  assert.ok(luma(pitch.skyTop) < luma(night.skyTop) / 3 && luma(pitch.horizon) < luma(night.horizon) / 3, 'much darker than the night sky');
+  assert.ok(Math.abs(pitch.hemiI / night.hemiI - 0.15) < 0.01, `ambient ×${(pitch.hemiI / night.hemiI).toFixed(3)}`);
+  assert.ok(Math.abs(pitch.sunI / night.sunI - 0.15) < 0.01, `moonlight ×${(pitch.sunI / night.sunI).toFixed(3)}`);
+  assert.equal(pitch.night, 1, 'stars and the night glow stay on');
+  assert.ok(luma(pitch.water) < luma(night.water) / 2, 'dark water');
+  // 夜晚到漆黑之間一路變暗（world 的 time 緩動從 1260 走到 1380）
+  let prev = night.hemiI;
+  for (let m = TIMES.night + 10; m <= TIMES.pitch; m += 10) { const x = sample(m); assert.ok(x.hemiI <= prev + 1e-9, `minute ${m}`); prev = x.hemiI; }
 });

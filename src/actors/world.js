@@ -11,8 +11,9 @@ export const stormy = lv => lv.typhoon >= 1 && lv.typhoon <= 2;
 export function worldEffects(lv, flags) {
   const time = flags.blackout || lv.bulb >= 5 ? TIMES.night : lv.bulb >= 3 ? TIMES.dusk : TIMES.day;
   const storm = stormy(lv) ? 1 : 0;
-  // 全島心情（最終章 §6、§8）：隕石命中全島躺平比讚，外星尾聲全島長第三隻眼；app 交給 people.setMood
-  const mood = flags.missile === 'hit' ? 'lie' : flags.epilogue === 'alien' ? 'alien' : 'normal';
+  // 全島心情（最終章 §6、§8）：隕石命中全島躺平比讚，外星收尾全島長第三隻眼；app 交給 people.setMood。
+  // 計畫 17：命中之後接收尾的壞結局（flags.epilogue 有值），收尾裡大家站起來——只有沒收尾的（矽盾未就緒等）躺到最後
+  const mood = flags.epilogue === 'alien' ? 'alien' : flags.missile === 'hit' && !flags.epilogue ? 'lie' : 'normal';
   return { time, peopleVisible: true, glowScale: flags.blackout ? 0 : lv.bulb >= 9 ? NEON_BOOST : 1, storm, rain: storm, mood };
 }
 

@@ -4,7 +4,7 @@ import { isAllMax } from './engine.js';
 
 export const ENDINGS = {
   cyber: { id: 'cyber', title: '賽博龐克台北', kind: 'true', line: '矽盾擋下隕石，飛天跑車停上 101 屋頂' },
-  // 2026-10-31：外星改成壞結局（畫面留著：變異鼠加冕＋UFO、石堆島綠光圈，不演母艦尾聲——標題卡那行也不再提母艦）
+  // 2026-10-31：外星改成壞結局（畫面留著：變異鼠加冕＋UFO、石堆島綠光圈；標題卡那行不提母艦）。計畫 17 起壞結局也接收尾（BAD_EPILOGUES）
   alien: { id: 'alien', title: '變異鼠稱王', kind: 'bad', line: '變異老鼠戴上王冠，石堆島亮起綠光' },
   blackout: { id: 'blackout', title: '大停電', kind: 'bad', line: '全島黑掉，只剩 101 一盞紅燈在閃' },
   flood: { id: 'flood', title: '捷運淹水', kind: 'bad', line: '車站變游泳池，大家划船上班' },
@@ -15,9 +15,13 @@ export const ENDINGS = {
   shieldDown: { id: 'shieldDown', title: '矽盾未就緒', kind: 'bad', line: '101 被撞成 L 形，大家躺平比讚' },
   typhoonDeflect: { id: 'typhoonDeflect', title: '颱風吹偏隕石', kind: 'bad', line: '隕石被吹進北投，變成隕石溫泉' },
   milkExpired: { id: 'milkExpired', title: '鮮奶過期', kind: 'bad', line: '整島泛黃，牛奶箱長腳跑掉了' },
-  bobaSugar: { id: 'bobaSugar', title: '珍奶糖分超標', kind: 'bad', line: '大家圓成一顆球滾來滾去' },
   tryAgain: { id: 'tryAgain', title: '再接再厲', kind: 'neutral', line: '台北還在長大中' },
 };
+
+// 有收尾的壞結局（計畫 17，使用者 2026-11-04：壞結局不再全部停在同一張隕石圖）：終局回合在隕石之後接 epilogue 事件
+// （game.js finaleEvents），劇本在 finale.js script.epilogue。清單放規則層，game.js 只讀規則層；finale.js 原樣再匯出。
+// 矽盾未就緒、大巨蛋鼠災、颱風吹偏、再接再厲沒有收尾
+export const BAD_EPILOGUES = ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired'];
 
 // 隕石（trim §C：原本是飛彈，政治風險換掉；識別字 missile 沿用）：矽盾 MAX → 擋下；否則颱風放了還沒放晴（0 < lv < max：Lv1–2，暴風圈還在島上）→ 吹偏；否則命中（沒放的颱風沒有雲，不算吹偏）
 export function missile(state, spec = defaultSpec) {
@@ -32,7 +36,7 @@ export function satisfied(state, spec = defaultSpec) {
   // 矽盾未就緒 = 晶片沒滿（不管隕石後來怎麼了）；被颱風吹歪時兩格圖鑑都亮
   const checks = [
     ['blackout', f.blackout], ['flood', f.flooded], ['domeFlood', f.domeFlood], ['cartBlown', f.cartBlown], ['domeRats', f.domeRats], ['alien', f.ratBranch === 'alien'],
-    ['milkExpired', f.milkExpired], ['bobaSugar', f.bobaSugar],
+    ['milkExpired', f.milkExpired],
     ['typhoonDeflect', m === 'deflect'], ['shieldDown', m !== 'shield'],
   ];
   return checks.filter(([, ok]) => ok).map(([id]) => id);

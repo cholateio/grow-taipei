@@ -10,13 +10,15 @@ export const KEYFRAMES = [
   [1065, 0x8b8fc4, 0xf7b98f, 0xff9f6a, 1.8, 0xf6d2bc, 0x7d6660, 1.2, 0.3, 0x93a9bd],
   [1140, 0x5a5e9e, 0xd99aa6, 0xff9a7a, 1.3, 0xc0b2e0, 0x655868, 1.35, 0.75, 0x6a7cab],
   [1260, 0x22325f, 0x445488, 0xc0ccff, 1.2, 0x98a8dc, 0x685a6e, 1.9, 1, 0x5a88b2],
+  // 漆黑（計畫 17 大停電收尾，TIMES.pitch）：天空近黑、水面暗、月光與半球光都是夜晚（1260）的 0.15 倍；之後 1440 回到半夜的值（沒人用到 1380 之後）
+  [1380, 0x05070e, 0x0b1020, 0xc0ccff, 0.18, 0x98a8dc, 0x685a6e, 0.285, 1, 0x101a28],
   [1440, 0x1e2c58, 0x3f4f80, 0xb4c2ff, 1.15, 0x94a2d8, 0x64566a, 1.85, 1, 0x5a88b2],
 ];
 const FIELDS = ['skyTop', 'horizon', 'sunColor', 'sunI', 'hemiSky', 'hemiGround', 'hemiI', 'night', 'water'];
 const COLORS = new Set(['skyTop', 'horizon', 'sunColor', 'hemiSky', 'hemiGround', 'water']);
 
-// 開局 10:00；燈泡 Lv3 → 黃昏；燈泡 Lv4／結局 → 夜晚
-export const TIMES = { day: 600, dusk: 1065, night: 1260 };
+// 開局 10:00；燈泡 Lv3 → 黃昏；燈泡 Lv5／結局 → 夜晚；大停電收尾 → 漆黑（計畫 17，比夜晚更黑）
+export const TIMES = { day: 600, dusk: 1065, night: 1260, pitch: 1380 };
 
 const lerp = (a, b, t) => a * (1 - t) + b * t;
 export function lerpColor(a, b, t) {

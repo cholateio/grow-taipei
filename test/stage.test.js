@@ -10,13 +10,13 @@ const { createStage, diffParts, troubleOf, troubleSpot, growsOn, TROUBLE_IN } = 
 const { createBlink, GROW_DUR, GROW_HOLD, BLINK, SHRINK_DUR } = await import('../src/show/blink.js');
 
 const at = { x: 0, y: 0.65, z: 0 };
-// 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色並多一盞發光燈
+// 測試用的假鮮奶模組：lv1 一個箱子、只有 lv2 多 3 個小孩、lv3 箱子換色、大一點（外形變了才會重長）並多一盞發光燈
 // （小孩只在 lv2：placed 之後直接 grow(3) 只換箱子、多一盞燈，分段套用與延後揭露的測試才好算）
 const fakeMilk = {
   id: 'milk', labelY: 1,
   view(lv) {
     const v = {};
-    if (lv.milk >= 1) v['milk.main'] = { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: lv.milk >= 3 ? 0xdb6a41 : 0xfff8f4 }] };
+    if (lv.milk >= 1) v['milk.main'] = { kind: 'compound', at, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: lv.milk >= 3 ? 0.44 : 0.4, color: lv.milk >= 3 ? 0xdb6a41 : 0xfff8f4 }] };
     if (lv.milk === 2) v['milk.kids'] = { kind: 'people', at, n: 3, path: ringPath({ x: 0, z: 0 }, 0.5, 0.65), speed: 0.5 };
     if (lv.milk >= 3) v['milk.lamp'] = { kind: 'compound', at, parts: [{ kind: 'sphere', pos: [0, 1, 0], scale: 0.2, color: 0xfcea8b, glow: 0xfcea8b }] };
     return v;
@@ -101,6 +101,24 @@ test('only buildings grow and nothing glows on commit: footprint false, other ki
   }
   assert.ok(!calls.some(([fn]) => fn === 'part'), 'commit never calls blink.part');
   assert.equal(blink.count, Object.values(cases).filter(([, g]) => g).length, 'only the growing parts are in blink');
+});
+// 2026-11-05 使用者：「只有在建築物外觀發生明顯變化時，才需要有建築物由下往上的動畫」（101 被撞彎、學校＋鐘塔）：
+// 換掉的建築只有形狀變了（shapeKey：拿掉顏色、發光、tint、頭的高度、footprint 這些不改外形的欄位之後不一樣）才長；只換色／換燈／換頭高的原地換掉
+test('a replaced building grows only when its shape changed: colour, glow, tint, labelY and footprint changes swap in place', () => {
+  const box = (extra, part = {}) => ({ kind: 'compound', at, footprint: { r: 0.3 }, parts: [{ kind: 'box', pos: [0, 0.2, 0], scale: 0.4, color: 0xfff8f4, ...part }], ...extra });
+  const campus = (extra, model = {}) => ({ kind: 'glb', at, footprint: { r: 0.3 }, path: 'a.glb', h: 0.8, tint: { x: 1 }, ...model, ...extra });
+  const same = { 'milk.a': [box({}), box({}, { color: 0xdb6a41 })], 'milk.b': [box({}), box({}, { glow: 0xfcea8b })], 'milk.c': [box({ labelY: 1 }), box({ labelY: 1.6 })],
+    'milk.d': [box({}), box({ footprint: { r: 0.5 } })], 'milk.e': [campus({}), campus({}, { tint: { x: 2 }, glow: { w: 1 } })] };
+  const moved = { 'milk.f': [box({}), box({}, { scale: 0.6 })], 'milk.g': [campus({}), campus({}, { h: 1.2 })], 'milk.h': [box({}), { ...box({}), parts: [...box({}).parts, { kind: 'cone', pos: [0, 0.6, 0], scale: 0.2, color: 1 }] }] };
+  const all = { ...same, ...moved };
+  const mod = { id: 'milk', labelY: 1, view: lv => (lv.milk >= 1 ? Object.fromEntries(Object.entries(all).map(([k, pair]) => [k, pair[lv.milk >= 2 ? 1 : 0]])) : {}) };
+  const { stage, blink } = setup([mod]); stage.apply(placed); const calls = spyOn(blink);
+  stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 }, { deferred: true });
+  for (const k of Object.keys(all)) {
+    const o = stage.partObject(k), n = calls.length; stage.commit(k); assert.equal(o.visible, true, `${k} shown`);
+    if (k in moved) assert.deepEqual(calls.slice(n), [['grow', o]], `${k}: the shape changed, it grows`);
+    else { assert.deepEqual(calls.slice(n), [], `${k}: same shape, swapped in place`); assert.equal(o.scale.y, 1); }
+  }
 });
 const drop = { kind: 'fx', item: 'milk', cause: 'typhoon', delta: { target: 'milk', from: 3, to: 1 } };   // 3 → 1：燈拿掉、箱子換回白的
 // 計畫 11 §設計 1：移除的零件不亮，縮下去（blink.shrink，SHRINK_DUR），縮完才拿掉（回原大小再放掉）

@@ -60,6 +60,12 @@ function pullIn(p) {
 // 它們的 at 常在地面或原點、畫在高處，從底部長會變成從地面／水裡升上來。零件 spec 可寫 grow: true／false 蓋過；tagAlong 點綴寫了也不長（跟著主零件，不另外亮）
 const GROW_KINDS = new Set(['compound', 'glb', 'campus']);
 export const growsOn = spec => !spec?.tagAlong && (typeof spec?.grow === 'boolean' ? spec.grow : GROW_KINDS.has(spec?.kind) && spec.footprint !== false);
+// 外形（2026-11-05 使用者：「只有在建築物外觀發生明顯變化時，才需要有建築物由下往上的動畫」——學校＋鐘塔、101 被撞彎）：
+// 零件 spec 拿掉不改外形的欄位（顏色、發光、tint、頭的高度、footprint、標籤）之後的字串。換掉的建築外形一樣（颱風後屋頂換色、
+// 小孩躲回校舍窗戶亮燈、鐘塔蓋好校舍的頭變高……）就原地換掉，不重長
+const PAINT = new Set(['color', 'glow', 'tint', 'labelY', 'label', 'footprint', 'grow']);
+export const shapeKey = spec => JSON.stringify(spec, (k, v) => (PAINT.has(k) ? undefined : v));
+export const reshaped = (prev, next) => !prev || shapeKey(prev) !== shapeKey(next);
 
 export function createStage(THREE, { scene, spec, modules, ctx, roster = null, blink = null }) {
   const builders = Object.assign({}, ...modules.map(m => m.builders ?? {}));
@@ -158,14 +164,15 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   //   新零件是會長的建築（growsOn）才長出來（blink.grow，修正批次 2），其餘直接出現、不亮——
   //   長的建築也不亮（不再 blink.part）：使用者 2026-10-31「閃一下」，30 fps 錄影裡整棟一片白就是這道光（長出來的曲線見 blink.js grow）；
   //   使用者 2026-10-31「建築物還是會閃一下」：鏡頭對著正面時，背面的點綴（圍欄、路燈、煙、離島三段……）換掉也在亮；
-  //   換零件的舊的立刻拿掉（新的矮樁蓋住它）；只拿掉的舊零件縮下去（blink.shrink），縮完才拿掉、不亮
+  //   換零件的舊的立刻拿掉（新的矮樁蓋住它）；只拿掉的舊零件縮下去（blink.shrink），縮完才拿掉、不亮；
+  //   換掉的建築外形沒變（reshaped，只換色／換燈／換頭高）就原地換、不重長（2026-11-05）
   function commit(key, glint = true) {
     const p = pending.get(key); if (!p) return;
     pending.delete(key);
     if (p.fresh) {
       if (p.old) drop(p.old);
       const o = p.fresh.part.object; o.visible = true;
-      if (glint && growsOn(p.fresh.spec)) blink?.grow(o);
+      if (glint && growsOn(p.fresh.spec) && reshaped(p.old?.spec, p.fresh.spec)) blink?.grow(o);
     } else if (glint && blink) {
       dying.add(p.old);
       blink.shrink(p.old.part.object, undefined, () => { if (dying.delete(p.old)) drop(p.old); });

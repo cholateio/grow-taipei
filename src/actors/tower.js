@@ -161,7 +161,8 @@ export function view(lv, flags = {}, meta = {}) {
     ] };
   }
   // 彎過的塔倒下那段伸出底座外（自動 footprint 的包圍盒會變寬、超過 WIDE 就整個不算）：站位照底座 1.6 見方，走路格跟沒彎一樣
-  if (hit) { v['tower.main'].footprint = { x: 0, z: 0, w: 1.6, d: 1.6 }; return v; }
+  // 被撞彎是一瞬間折下去（隕石撞上那一刻），不從矮樁重長（grow false；2026-11-05 使用者「101 被撞彎後又出現建築物由下往上的動畫」）
+  if (hit) { Object.assign(v['tower.main'], { footprint: { x: 0, z: 0, w: 1.6, d: 1.6 }, grow: false }); return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
   if (lv.chip >= 7) {
     // 矽盾天線：塔頂的環＋天線 glb；待命（Lv9）時環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次

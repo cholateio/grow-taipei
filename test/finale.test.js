@@ -287,7 +287,7 @@ import { finaleEvents } from '../src/game.js';
 import { resolve, missile as missileOf } from '../src/rules/endings.js';
 import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
 import { SHIELD } from '../src/actors/parts.js';
-import { HOLD_END, FLIGHT, DEFLECT } from '../src/actors/finale.js';
+import { HOLD_END, FLIGHT, DEFLECT, HIT_HANG, HIT_DROP } from '../src/actors/finale.js';
 
 // 全 MAX（唯一正解：老鼠 4、珍奶 6；修正批次 2：颱風 3，總等級 59）
 const LIT = { milk: 10, baseball: 8, token: 10, rat: 4, boba: 6, typhoon: 3, chip: 9, bulb: 9 }, LIT_META = { total: 59 };
@@ -300,7 +300,7 @@ test('view: missile flag draws finale.missile (the meteor) with outcome and targ
     const v = finale.view(LIT, { alarm: 1, missile: outcome }, LIT_META), m = v['finale.missile'];
     assert.ok(m, outcome); assert.equal(v['finale.star'], undefined, `${outcome}: the star is out`);
     assert.equal(m.kind, 'missile'); assert.equal(m.outcome, outcome); assert.deepEqual(m.from, F);
-    assert.equal(m.footprint, false); assert.equal(m.shadow, false);
+    if (outcome !== 'hit') assert.equal(m.footprint, false); assert.equal(m.shadow, false);
     assert.equal(!!v['finale.splash'], outcome === 'deflect');
   }
   // shield：罩面上、在 101 底座中心到光點那條線上（隕石從天上直直落向 101，撞在罩頂偏北；仰角 > 60°）
@@ -315,6 +315,12 @@ test('view: missile flag draws finale.missile (the meteor) with outcome and targ
   assert.deepEqual(finale.view({}, { missile: 'hit' })['finale.missile'].at, tower.bendPoint('site'));
   assert.deepEqual(finale.view({ ...LIT, chip: 0, bulb: 0, milk: 0 }, { missile: 'hit' }, { total: 10 })['finale.missile'].at, tower.bendPoint('half'));
   assert.ok(tower.bendPoint('half').y < tower.bendPoint('lit').y, 'a half tower is hit lower');
+  // 掉到地上的隕石擋路（2026-11-05）：footprint 是一顆石頭大的圓、在 METEOR_REST（相對 at）；其他結果不擋
+  for (const meta of [LIT_META, { total: 10 }, {}]) {
+    const m = finale.view(meta === LIT_META ? LIT : {}, { missile: 'hit' }, meta)['finale.missile'], R = finale.METEOR_REST;
+    assert.deepEqual(m.footprint, { x: R.x - m.at.x, z: R.z - m.at.z, r: finale.ROCK_R });
+  }
+  for (const o of ['shield', 'deflect']) assert.equal(finale.view(LIT, { missile: o }, LIT_META)['finale.missile'].footprint, false);
   // deflect：溫泉池中心、池面上 0.1；水花是白煙 4 團
   const spring = landmarkWorld('spring'), d = finale.view(LIT, { missile: 'deflect' }, LIT_META);
   assert.deepEqual(d['finale.missile'].at, { x: spring.x, y: spring.y + 0.1, z: spring.z });
@@ -357,7 +363,7 @@ test('meteor look: an irregular dark rock (ico parts, one clay mesh) inside a tr
   p.dispose(); low.dispose();
 });
 
-test('meteor part: built finished (final pose); launch() restarts at STAR_AT and falls steeply (height always dropping), leading with the rock, trail lit; shield → hidden after FLIGHT with one firework; deflect → in the pool after FLIGHT + DEFLECT; hit → lodged at the bend; the trail goes out once it lands', () => {
+test('meteor part: built finished (final pose); launch() restarts at STAR_AT and falls steeply (height always dropping), leading with the rock, trail lit; shield → hidden after FLIGHT with one firework; deflect → in the pool after FLIGHT + DEFLECT; hit → against the west face at the bend, then drops to the ground beside the plinth; the trail goes out once it lands', () => {
   const f = missileFactory(), F = finale.STAR_AT, R = finale.ROCK_R;
   const bodyOf = p => p.object.getObjectByName('body'), trailOf = p => bodyOf(p).getObjectByName('trail');
   const finalOf = outcome => { const p = f.build(finale.view(LIT, { missile: outcome }, LIT_META)['finale.missile']); p.object.updateMatrixWorld(true); return p; };
@@ -372,15 +378,13 @@ test('meteor part: built finished (final pose); launch() restarts at STAR_AT and
       assert.ok(body.visible); assert.equal(trailOf(p).visible, false, `${outcome}: landed, the trail is out`);
       const front = worldOf(p, [0, 0, R]), c = bodyWorld(p);
       if (outcome === 'hit') {
-        // 修正輪 1（審稿 Important 2）：岩石卡在塔的西側面（101 往 +x 倒，西側不會被蓋住）——中心在西面外、離塔面 < ROCK_R（咬進塔面），
-        // 從鏡頭方向（OVERVIEW_DIR 的水平分量）看過去，岩石至少一半在塔身輪廓（方錐台半寬 0.58 的正方形）外
-        const face = T.x - 0.58;
-        assert.ok(c.x < face && face - c.x < R, `hit: lodged against the west face (centre ${(face - c.x).toFixed(2)} out of it, radius ${R})`);
-        assert.ok(Math.abs(c.y - T.y) < 0.5, `hit: at the bend height (${(c.y - T.y).toFixed(2)})`);
-        const hz = Math.hypot(OVERVIEW_DIR.x, OVERVIEW_DIR.z), sx = OVERVIEW_DIR.z / hz, sz = -OVERVIEW_DIR.x / hz;   // 畫面上的左右方向
-        const half = 0.58 * (Math.abs(sx) + Math.abs(sz)), cs = (c.x - T.x) * sx + (c.z - T.z) * sz;
-        const out = Math.max(0, Math.min(cs + R, -half) - (cs - R)) + Math.max(0, (cs + R) - Math.max(cs - R, half));
-        assert.ok(out / (2 * R) >= 0.5, `hit: ${(out / (2 * R) * 100).toFixed(0)}% of the rock outside the tower silhouette from the camera`);
+        // 2026-11-05 使用者「隕石位置怪怪的」（卡在塔的西面、浮在半空）：撞彎之後掉到 101 底座西邊的地上、半埋著——
+        // 中心在底座（1.6 見方）西緣外、離它 < ROCK_R；比地面高、但不到一顆石頭高（一半埋進地裡）；從鏡頭看過去不被塔擋住
+        const G = finale.METEOR_REST, base = TOWER_AT.y, edge = TOWER_AT.x - 0.8;
+        assert.ok(c.x < edge && edge - c.x < R, `hit: on the ground just west of the plinth (centre ${(edge - c.x).toFixed(2)} out of it)`);
+        assert.ok(c.y > base && c.y < base + R, `hit: half buried (centre ${(c.y - base).toFixed(2)} above the ground)`);
+        assert.ok(Math.abs(c.z - TOWER_AT.z) < 0.5, 'hit: beside the tower, not in front of or behind it');
+        assert.ok(dist3(c, G) < 1e-6, 'hit: at METEOR_REST');
       } else {
         assert.ok(dist3(front, T) < 0.5, `deflect: in the pool (${dist3(front, T).toFixed(2)})`);
         assert.ok(c.y > T.y - 0.25, 'deflect: half out of the water');
@@ -408,10 +412,18 @@ test('meteor part: built finished (final pose); launch() restarts at STAR_AT and
       step(p, 0.1); assert.ok(!sameMatrix(p, finalOf('deflect')), 'deflect: still falling after FLIGHT');
       step(p, DEFLECT); assert.ok(sameMatrix(p, finalOf('deflect')), 'deflect: in the pool after FLIGHT + DEFLECT'); assert.equal(trailOf(p).visible, false);
     } else {
-      step(p, 0.1); assert.ok(sameMatrix(p, finalOf('hit')), 'hit: stuck at the bend after FLIGHT'); assert.equal(trailOf(p).visible, false);
+      // 撞上那一刻卡在塔的西面、彎角高度（停 HIT_HANG 秒，塔在這時折下去），再 HIT_DROP 秒掉到地上
+      step(p, 0.1); const c = bodyWorld(p), face = T.x - 0.58;
+      assert.ok(c.x < face && face - c.x < R, `hit: against the west face at impact (centre ${(face - c.x).toFixed(2)} out of it)`);
+      assert.ok(Math.abs(c.y - T.y) < 0.5, `hit: at the bend height at impact (${(c.y - T.y).toFixed(2)})`);
+      assert.equal(trailOf(p).visible, false, 'the trail goes out at impact');
+      assert.ok(!sameMatrix(p, finalOf('hit')), 'hit: not on the ground yet');
+      let last = c.y;
+      for (let u = 0; u < HIT_HANG + HIT_DROP - 0.15; u += 0.1) { step(p, 0.1); const y = bodyWorld(p).y; assert.ok(y <= last + 1e-9, 'hit: only ever falls after the impact'); last = y; }
+      step(p, 0.2); assert.ok(sameMatrix(p, finalOf('hit')), 'hit: on the ground after FLIGHT + HIT_HANG + HIT_DROP'); assert.equal(trailOf(p).visible, false);
     }
     // 2 倍速
-    p.object.userData.launch({ speed: 2 }); step(p, FLIGHT / 2 + 0.05);
+    p.object.userData.launch({ speed: 2 }); step(p, (FLIGHT + HIT_HANG + HIT_DROP) / 2 + 0.05);
     if (outcome === 'hit') assert.ok(sameMatrix(p, finalOf('hit')), 'speed 2 falls twice as fast');
     p.dispose();
   }

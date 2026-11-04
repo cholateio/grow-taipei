@@ -128,6 +128,14 @@ test('view with missile hit: half / full / lit bend at their own height — the 
   assert.deepEqual(tower.body('lit'), tower.body('lit', { bent: false }), 'not bent by default');
 });
 // 工地被命中不彎（沒有塔身可彎）：底座與三角錐留著、吊車拿掉；頭頂照工地；隕石打在底座中段
+// 2026-11-05 使用者：「101 被撞彎後又出現建築物由下往上的動畫」——被撞彎是一瞬間折下去，不從矮樁重長（grow false）；沒撞的塔照舊會長
+test('view with missile hit: the bent tower does not grow up from a stub (grow false); an unhit tower still grows', () => {
+  for (const total of [0, 10, 31, 55]) {
+    const lv = lvOf(total, { chip: 8, bulb: 5 });
+    assert.equal(tower.view(lv, { missile: 'hit' }, { total })['tower.main'].grow, false, `total ${total}: hit → grow false`);
+    assert.equal(tower.view(lv, {}, { total })['tower.main'].grow, undefined, `total ${total}: unhit → grows as a building`);
+  }
+});
 test('view with missile hit at site: nothing bends, the crane is removed, the head stays the site head', () => {
   const lv = lvOf(0, { chip: 7 }), plain = tower.view(lv, {}, { total: 0 }), v = tower.view(lv, { missile: 'hit' }, { total: 0 });
   assert.ok(plain['tower.crane']);

@@ -9,7 +9,7 @@
 // 光點以固定 FLARE_HZ 脈動，隕石落下時熄掉（flags.missile 一設就不畫）。
 // 任務 5：隕石（設計 §6）——光點熄掉、隕石從光點的位置由上往下斜斜落向 101（零件自己演：userData.launch；鏡頭在 WIDE），三種結果：
 //   shield 罩子全亮、隕石撞上罩子碎成一發煙火、全島跳＋♥；deflect 落到 101 旁被風吹偏、邊滾邊掉進北投溫泉、水花、全島？再♪；
-//   hit 砸進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
+//   hit 砸進 101 中段、101 彎成 L（tower.js body bent，一瞬間折下去、不重長）、隕石掉到底座西邊的地上（METEOR_REST）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑、霓虹（燈泡 Lv9 早就開到 NEON_BOOST）→ 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
 //   從海上飛進來繞 101 一圈、停上黑塔屋頂；機器鼠軍團閃白出現在屋頂排一排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
 // 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
@@ -89,6 +89,11 @@ const POOL = { x: SPRING.x, y: SPRING.y + 0.1, z: SPRING.z };
 const SIDESTEP = 1.5;
 // 命中：岩石卡在塔面（方錐台半寬 0.58）外；吹偏：斜 TILT 掉進池裡、前緣在池面下 BURY_POOL（大半露在水面上）
 const TOWER_HALF = 0.58, BURY_POOL = 0.2, TILT = 30 * Math.PI / 180;
+// 命中之後（2026-11-05 使用者「隕石位置怪怪的」：以前一直卡在塔的西面、浮在半空）：撞上那一刻在塔面停 HIT_HANG 秒（塔在這時折下去），
+// 再 HIT_DROP 秒照重力掉到 101 底座（1.6 見方）西緣外的地上、半埋著（中心比地面高 0.45 個半徑），往鏡頭那側 0.2——METEOR_REST（世界座標，不看階段）。
+// 掉下去是零件自己演（劇本的 replay 拍只等 FLIGHT 秒，後面的拍照常走、終局秒數不變）
+export const HIT_HANG = 0.2, HIT_DROP = 0.5;
+export const METEOR_REST = { x: TOWER.x - (0.8 + ROCK_R * 0.6), y: TOWER.y + ROCK_R * 0.45, z: TOWER.z + 0.2 };
 // 煙火：霓虹粉、霓虹藍、黃、珊瑚
 const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 
@@ -164,7 +169,9 @@ export function view(lv, flags = {}, meta = {}) {
     // hit 的彎角照這一階段（tower.js bendPoint：蓋一半彎得低、工地打在底座）
     const stage = stageOfView(lv, meta);
     const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint(stage) : POOL;
-    v['finale.missile'] = { kind: 'missile', at, from: STAR_AT, outcome: o, footprint: false, shadow: false };
+    // 命中：掉到地上的那顆擋路（一顆石頭大的圓，相對 at）
+    const fp = o === 'hit' ? { x: METEOR_REST.x - at.x, z: METEOR_REST.z - at.z, r: ROCK_R } : false;
+    v['finale.missile'] = { kind: 'missile', at, from: STAR_AT, outcome: o, footprint: fp, shadow: false };
     if (o === 'deflect') {
       v['finale.missile'].via = { x: TOWER.x + toStar.hx * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toStar.hz * SIDESTEP };
       // 池邊冒一下水花：白煙 4 團、短（smoke 會一直循環，留到標題卡也無妨）
@@ -184,7 +191,8 @@ export function view(lv, flags = {}, meta = {}) {
 // 隕石的軌跡（純函式）：missilePath(spec) → t => { x, y, z（岩石中心，世界座標）, d（前進方向，單位向量）, spin（繞前進方向滾幾弧度）, visible }。
 // 第一段（0 ≤ t < FLIGHT）：從 from（光點）直線等速落到 to1，前進方向固定、邊落邊滾一圈（TUMBLE）。
 //   shield：to1 = 罩面撞點；之後藏起來（煙火由零件放）。
-//   hit：to1 = 彎角高度、塔的西側面外 ROCK_R × 0.5（咬進塔面；修正輪 1，以前卡在北面被塔身擋住）；之後停在那裡（終態）。
+//   hit：to1 = 彎角高度、塔的西側面外 ROCK_R × 0.5（咬進塔面；修正輪 1，以前卡在北面被塔身擋住）；停 HIT_HANG 秒，
+//   再 HIT_DROP 秒照重力（高度 k²、水平等速）掉到 METEOR_REST、再滾半圈（終態：半埋在底座西邊的地上）。
 //   deflect：to1 = via（塔頂旁）；第二段 DEFLECT 秒：水平等速、高度先被風抬一下再加速往下掉到池裡，方向從落下方向轉到朝下斜 30°、
 //   邊掉邊再滾兩圈；終態前緣在池面下 BURY_POOL。t = Infinity 就是終態（建好即落完）
 const v3 = (x, y, z) => ({ x, y, z });
@@ -212,7 +220,11 @@ export function missilePath(spec) {
   return t => {
     if (t < FLIGHT) return fly(Math.max(0, t) / FLIGHT);
     if (outcome === 'shield') return { ...at, d: end1, spin: 0, visible: false };
-    if (outcome === 'hit') return fly(1);
+    if (outcome === 'hit') {
+      const k = Math.min(1, Math.max(0, t - FLIGHT - HIT_HANG) / HIT_DROP);
+      if (k === 0) return fly(1);
+      return { x: to1.x + (METEOR_REST.x - to1.x) * k, y: to1.y + (METEOR_REST.y - to1.y) * k * k, z: to1.z + (METEOR_REST.z - to1.z) * k, d: end1, spin: TUMBLE + Math.PI * k, visible: true };
+    }
     const u = t - FLIGHT;
     if (u >= DEFLECT) return { ...rest, d: down, spin: 0, visible: true };
     const k = u / DEFLECT, p = mix(to1, rest, k);
@@ -282,7 +294,7 @@ export const builders = {
   },
   // 隕石（trim §C，取代飛彈機身）：Group 在 at（撞點），'body'（照 missilePath 擺、+z 朝前進方向）裡有岩石 compound（'rock'，一個黏土 mesh）、
   // 發光外殼（'shell'）、拖尾（'trail'，落地後熄掉）；shield 多帶一發煙火（parts.js fireworks once，'fireworks'），落完（t ≥ FLIGHT）那一刻放。
-  // 建好即終態（t = Infinity：shield 藏起來、煙火放完；hit 卡在彎角；deflect 落在池裡）——跳過、reduced-motion、截圖、舞台重建零件都直接看到結果。
+  // 建好即終態（t = Infinity：shield 藏起來、煙火放完；hit 半埋在底座西邊的地上；deflect 落在池裡）——跳過、reduced-motion、截圖、舞台重建零件都直接看到結果。
   // object.userData.launch({ speed })：時鐘歸零、從光點重落（劇本的 replay 拍叫；speed 演出倍速）；finish()：跳到終態（跳過）
   missile(THREE, spec, ctx) {
     const object = new THREE.Group(), at = spec.at, path = missilePath(spec), origin = { x: 0, y: 0, z: 0 };
@@ -301,12 +313,13 @@ export const builders = {
     if (fw) { fw.object.name = 'fireworks'; object.add(fw.object); }
     const Z = new THREE.Vector3(0, 0, 1), dir = new THREE.Vector3(), roll = new THREE.Quaternion();
     let t = Infinity, rate = 1, popped = true;
-    const end = FLIGHT + (spec.outcome === 'deflect' ? DEFLECT : 0);   // 軌跡演完（之後 path 回的都是終態）
+    const end = FLIGHT + (spec.outcome === 'deflect' ? DEFLECT : spec.outcome === 'hit' ? HIT_HANG + HIT_DROP : 0);   // 軌跡演完（之後 path 回的都是終態）
+    const lands = spec.outcome === 'hit' ? FLIGHT : end;   // 拖尾熄掉的時刻：命中是撞上塔那一刻（之後是掉下去，不是飛）
     const put = () => {
       const p = path(t);
       body.visible = p.visible; body.position.set(p.x - at.x, p.y - at.y, p.z - at.z);
       body.quaternion.setFromUnitVectors(Z, dir.set(p.d.x, p.d.y, p.d.z)).multiply(roll.setFromAxisAngle(Z, p.spin));
-      trail.visible = t < end;   // 落地（終態）就熄掉
+      trail.visible = t < lands;   // 落地（命中：撞上塔）就熄掉
       if (fw && !popped && t >= FLIGHT) { popped = true; fw.object.userData.burst(); }
     };
     object.userData.launch = ({ speed = 1 } = {}) => { t = 0; rate = speed; popped = false; fw?.object.userData.finish(); put(); };

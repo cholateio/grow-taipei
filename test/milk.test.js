@@ -427,3 +427,29 @@ test('Lv4: the pupils run to the crate and back (every walk in both gathers at K
   assert.equal(milk.KID_RUN, 2.4);
   for (const [k, ws] of walks.entries()) { assert.equal(ws.length, 2, `gather ${k}: two pupils walk`); for (const w of ws) assert.equal(w.speed, milk.KID_RUN, `gather ${k} runs`); }
 });
+
+// ── 計畫 17 任務 5：鮮奶過期收尾（設計 §4 milkExpired）：milk.crate 換成過期版（C.sour 箱體、兩條腿 cylinder 0.05 × 0.3、腳 box），
+// 不擋路；零件的 at 是掉進海裡的終點 CRATE_SEA（劇本從 CRATE 的偏移走到西岸 CRATE_BRINK、再掉下去）
+test('view: the milkExpired epilogue swaps milk.crate for the expired crate (C.sour body, two legs, box feet, no footprint) at CRATE_SEA off the west shore; CRATE_BRINK is the west edge, CRATE_SEA just off it with the box at the waterline', async () => {
+  const { WATER_Y, R } = await import('../src/scene/hex.js');
+  assert.equal(C.sour, 0xb9c45a);
+  for (const n of [1, 4]) {
+    const plain = milk.view(lv({ milk: n }), { milkExpired: true })['milk.crate'], v = milk.view(lv({ milk: n }), { milkExpired: true, epilogue: 'milkExpired' })['milk.crate'];
+    assert.deepEqual(plain.at, milk.CRATE, 'before the epilogue: the usual crate');
+    assert.ok(!plain.parts.some(p => p.color === C.sour));
+    assert.equal(v.kind, 'compound'); assert.equal(v.footprint, false);
+    assert.deepEqual(v.at, milk.CRATE_SEA);
+    assert.ok(v.parts.some(p => p.kind === 'rbox' && p.color === C.sour), 'a sour green body');
+    const legs = v.parts.filter(p => p.kind === 'cylinder');
+    assert.equal(legs.length, 2, 'two legs'); legs.forEach(p => assert.deepEqual([p.scale[0], p.scale[1]], [0.05, 0.3]));
+    assert.equal(v.parts.filter(p => p.kind === 'box' && p.pos[1] < 0.05).length, 2, 'two box feet');
+    assert.ok(Math.min(...v.parts.map(p => p.pos[1] - (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2)) > -1e-9, 'stands on its feet (nothing under the ground)');
+  }
+  // 西岸：CRATE 沿 x 往 −x 走到格邊（CRATE_BRINK 正好在西邊格邊上），再往外掉 0.8 進海裡
+  const west = axialToWorld(-1, 0).x - R * Math.sqrt(3) / 2;
+  assert.equal(milk.CRATE_BRINK.z, milk.CRATE.z); assert.equal(milk.CRATE_BRINK.y, milk.CRATE.y);
+  assert.ok(Math.abs(milk.CRATE_BRINK.x - west) < 0.05, `the brink at the west edge (${milk.CRATE_BRINK.x.toFixed(2)} vs ${west.toFixed(2)})`);
+  assert.ok(cellAt(milk.CRATE_SEA.x, milk.CRATE_SEA.z) === null && milk.CRATE_SEA.x < west - 0.25, 'in the sea, west of the shore');
+  // 掉 0.8（島面到水面）再沉一個腿長 0.3：腿泡在水裡、箱底（腿上 0.3）貼著水面
+  assert.ok(Math.abs(milk.CRATE_SEA.y - (milk.CRATE.y - 0.8 - 0.3)) < 1e-9 && Math.abs(milk.CRATE_SEA.y + 0.3 - WATER_Y) < 0.05, 'dropped 0.8 + the legs, the box floating at the waterline');
+});

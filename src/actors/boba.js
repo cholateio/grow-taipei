@@ -9,7 +9,7 @@
 // 劇本（§6）：一級 ≤ 4.5 秒；◆ Lv6 ≤ 8 秒（最後回全景定格）。正解最後一輪珍奶 4 → 6 跳級：合成一段演 ◆6（turn.js jumpPairs）。
 import { anchorWorld } from './anchors.js';
 import { heldBy } from '../rules/engine.js';
-import { C, offset } from './palette.js';
+import { C, offset, BOAT_TINT } from './palette.js';
 import { bunting } from './bunting.js';
 import { stormy } from './world.js';
 import { BLINK } from '../show/blink.js';
@@ -175,7 +175,7 @@ const tipped = parts => parts.map(p => {
   const [x, y, z] = p.pos, c = Math.cos(TIP), sn = Math.sin(TIP);
   return { ...p, pos: [x * c - y * sn, x * sn + y * c, z], rot: eulerXYZ(mul3(rotXYZ([0, 0, TIP]), rotXYZ(p.rot ?? [0, 0, 0]))) };
 });
-const blownCart = () => ({ kind: 'compound', at: BLOWN, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
+const blownCart = (at = BLOWN) => ({ kind: 'compound', at, labelY: 1.0, footprint: false, parts: tipped(cartParts()) });
 // 被老鼠咬（計畫 14 R30：老鼠 Lv1–2 時放下的珍奶，flags.bitten_boba；老鼠搭上捷運 Lv3 就恢復）：攤車正面（鏡頭那側）右半一個深色缺口、
 // 車前地上兩顆掉出來的珍珠。併在攤車同一個 compound（黏土、不發光：同一個 mesh，不多 draw call）；老鼠咬的劇本在 rat.js（跑到 BITE_SPOT 聞一聞）
 const BITE_PARTS = [
@@ -189,6 +189,22 @@ export const bitten = (lv, flags) => !!heldBy({ lv, flags }, 'boba');
 // 老闆：岸邊（格邊往內 0.5：走路格離格邊 0.35、格點 0.3 一格，0.45 起才走得到）看著海裡的攤車；往南 0.35，不跟立牌（SHOP 東邊 0.50）疊在一起
 const SHORE = { x: CELL.x + APOTHEM - 0.5, z: AT.z + 0.35 };
 export const blownSpot = () => ({ ...SHORE, y: AT.y, yaw: Math.atan2(BLOWN.x - SHORE.x, BLOWN.z - SHORE.z) });
+
+// 珍奶攤被吹走收尾（計畫 17 任務 5，設計 §4 cartBlown）：攤車從 BLOWN 往外海再漂 CART_DRIFT 1.2；一艘小船（boba.boat，捷運淹水同一個 Boat.glb、
+// 同色票、h 0.35，船長約 1.5、寬約 0.82）在岸邊 BOAT_START 閃白出現，老闆沿岸走到 QUAY 跳上船（boatSeat），船往東划向攤車到 BOAT_END。
+// 空間：BLOWN 離捷運環狀線（token.js TRACK，半徑 8.3、高架在島面下 0.25，上面跑列車）只有約 1 m——往東漂 1.2 會讓翻倒的攤車（遮雨棚、杯子招牌往 +x 伸到 1.24、
+// 比高架還高）撞上高架；船往南放會跨到環狀線底下。所以都放在格子東北角外、環狀線內的那片海（離島心 ≤ 7.85）：
+//   攤車往東北（−45°）漂，最遠的杯子離島心約 7.8；船在攤車北邊，從 BOAT_START 朝正東划 0.85 到 BOAT_END，攤車漂過來、船划過去，最後船身北緣離攤車約 0.2；
+//   老闆從岸邊 blownSpot 沿東岸往北走到 QUAY（格子東北角內、走得到的地方）再跳上船（約 1.1）。
+// 全程船身不碰島、不碰攤車（測試逐段檢查）。船底在水面下 0.05（同捷運的船吃水），老闆站在船底上 BOAT_FLOOR、船身中間往船尾 BOAT_SEAT_BACK，面向船頭
+export const CART_DRIFT = 1.2, CART_DIR = -Math.PI / 4;
+export const CART_END = { ...BLOWN, x: BLOWN.x + CART_DRIFT * Math.cos(CART_DIR), z: BLOWN.z + CART_DRIFT * Math.sin(CART_DIR) };
+const BOAT_Y = WATER_Y - 0.05, BOAT_FLOOR = 0.06, BOAT_SEAT_BACK = 0.2;
+export const BOAT_START = { x: BLOWN.x + 0.75, y: BOAT_Y, z: BLOWN.z - 1.8 };
+export const BOAT_END = { x: BOAT_START.x + 0.85, y: BOAT_Y, z: BOAT_START.z };
+export const BOAT_YAW = Math.atan2(BOAT_END.x - BOAT_START.x, BOAT_END.z - BOAT_START.z);
+export const boatSeat = (p = BOAT_END) => ({ x: p.x - Math.sin(BOAT_YAW) * BOAT_SEAT_BACK, y: p.y + BOAT_FLOOR, z: p.z - Math.cos(BOAT_YAW) * BOAT_SEAT_BACK, yaw: BOAT_YAW });
+export const QUAY = { x: CELL.x + APOTHEM - 0.45, y: AT.y, z: BLOWN.z - 1.55 };
 
 // 捷運淹水收尾（計畫 17 任務 3，設計 §4）：水淹上捷運格，老闆跳上攤車頂躲水（finale.js 的劇本 B.jump 到這裡；收尾之後家就在這裡，不 rescue）。
 //   攤車（Lv1–2）：SHOP 上方 FLOOD_PERCH_UP 0.95（設計原文；遮雨棚頂約 0.92）；
@@ -258,7 +274,7 @@ export function view(lv, flags = {}) {
   if (!n) return v;
   const fresh = lv.milk >= 4, storm = stormy(lv), blown = !!flags.cartBlown;
   if (n < 3) {
-    v['boba.main'] = blown ? blownCart() : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: bitten(lv, flags) ? [...cartParts(), ...BITE_PARTS] : cartParts() };
+    v['boba.main'] = blown ? blownCart(flags.epilogue === 'cartBlown' ? CART_END : BLOWN) : { kind: 'compound', at: SHOP, footprint: { w: CART.w, d: CART.d }, parts: bitten(lv, flags) ? [...cartParts(), ...BITE_PARTS] : cartParts() };
   } else {
     const [shop, sign] = n >= 6 ? storefront(SHOP, SHOP_H, BIG_CUP_H, BIG_CUP_INSET) : storefront(SHOP, SHOP_H, CUP_H);
     v['boba.main'] = { ...shop, labelY: SHOP_H + (n >= 6 ? 0.85 : 0.55), footprint: { w: SHOP_W, d: SHOP_W } };   // 標籤在大杯子頂上
@@ -274,6 +290,11 @@ export function view(lv, flags = {}) {
   v['boba.owner'] = { kind: 'roster', at: SHOP, n: 1, accessory: 'apron', home: { kind: 'stand', spots: [blown ? blownSpot() : ownerSpot(n)], fidget: blown ? 'look' : 'wave', rescue: true, entry: PIER[3] } };
   // 捷運淹水收尾（計畫 17 任務 3）：老闆站在攤車頂／屋頂上（floodPerch；不 rescue、不晃）
   if (flags.epilogue === 'flood') v['boba.owner'].home = { kind: 'stand', spots: [floodPerch(lv, flags)], entry: PIER[3] };
+  // 珍奶攤被吹走收尾（計畫 17 任務 5）：小船停在 BOAT_END，老闆站在船上（不 rescue、不晃；at 是終點，劇本從 BOAT_START 的偏移划過來）
+  if (blown && n < 3 && flags.epilogue === 'cartBlown') {
+    v['boba.boat'] = { kind: 'glb', at: { ...BOAT_END }, path: 'quat/ships/Boat.glb', h: 0.35, tint: BOAT_TINT, ry: BOAT_YAW + Math.PI, footprint: false };   // Boat.glb 船頭朝 −z（同 token.boat）
+    v['boba.owner'].home = { kind: 'stand', spots: [boatSeat()], entry: PIER[3] };
+  }
   // 人龍：攤車前／店門口一排（人數預算 ≤ 3）；從碼頭走來
   if (n >= 2) v['boba.queue'] = { kind: 'roster', at: AT, n: QUEUE_MAX, accessory: 'suitcase', shirt: SHIRTS, home: { kind: 'stand', spots: queue(AT, QUEUE_MAX, n >= 3), rescue: true, entry: PIER } };
   // Lv5 外送無人機：店屋頂兩台（修正批次 trim §A：離島的分店、旗艦店、渡船、觀光客全砍，只剩主島這兩台）

@@ -4,6 +4,7 @@ export const C = {
   glass: 0x9cc3bf, cliff: 0xd2b48c, curb: 0xe4d6c3, blue: 0x5a88b2, navy: 0x3f5a8a, skin: 0xf3c9a5, warm: 0xffc777,
   neonPink: 0xff3fa0, neonBlue: 0x3fe0ff, alien: 0x5fcf7a, wood: 0x9c7a4e, white: 0xffffff,
   red: 0xe8322e,   // 跑車紅（尾聲的紅色飛天跑車車身、Roadster 的尾燈條）
+  sour: 0xb9c45a,   // 過期鮮奶（計畫 17 任務 5：鮮奶過期收尾的牛奶箱，黃偏綠）
 };
 // Quaternius Boat.glb 的上色（深色木頭珊瑚、淺色木頭奶油）：鮮奶 Lv10 的觀光船、捷運淹水收尾的小船（計畫 17）共用
 export const BOAT_TINT = { '^DarkWood$': C.coral, '^Wood$': C.cream };

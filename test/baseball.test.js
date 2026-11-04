@@ -495,3 +495,30 @@ test('◆ baseball 8 in the solution, whole game live: ≤ KEY_MAX live (the tra
   assert.ok(live !== null, 'baseball 8 in the solution');
   assert.ok(live <= KEY_MAX, `◆ baseball 8 live ${live.toFixed(2)} s`);
 });
+
+// ── 計畫 17 任務 5：大巨蛋淹水收尾（設計 §4 domeFlood）——收尾時多一條魚 baseball.fish（compound：拉長的橘色球＋小三角尾鰭，不擋路）。
+// 魚從泳池水面跳出一個拋物線、往第一個球員那邊 0.5（fishArc(n)：Lv1 球員站在泳池前緣、Lv2 看台頂、Lv3 巨蛋頂——三種站法各一條）；零件的 at 是落點（劇本從起跳點的偏移跳回 0）
+test('view: the domeFlood epilogue adds baseball.fish (an orange elongated sphere + a small tail fin, no footprint) at the landing spot of fishArc; nothing without the epilogue', () => {
+  for (const n of [1, 2, 3]) {
+    const wet = baseball.view(lv({ baseball: n }), { domeFlood: true }), fish = baseball.view(lv({ baseball: n }), { domeFlood: true, epilogue: 'domeFlood' })['baseball.fish'];
+    assert.equal(wet['baseball.fish'], undefined, `Lv${n}: no fish before the epilogue`);
+    assert.equal(baseball.view(lv({ baseball: n }), { domeFlood: true, epilogue: 'flood' })['baseball.fish'], undefined, `Lv${n}: not in another epilogue`);
+    assert.ok(fish, `Lv${n}: the fish`); assert.equal(fish.kind, 'compound'); assert.equal(fish.footprint, false);
+    const arc = baseball.fishArc(n);
+    assert.ok(Math.hypot(fish.at.x - arc.to.x, fish.at.y - arc.to.y, fish.at.z - arc.to.z) < 1e-9, `Lv${n}: at the landing spot`);
+    const body = fish.parts.find(p => p.kind === 'sphere' && Array.isArray(p.scale) && p.scale[0] === 0.18);
+    assert.ok(body, 'an elongated sphere [0.18, 0.08, 0.08]'); assert.deepEqual(body.scale, [0.18, 0.08, 0.08]); assert.equal(body.color, baseball.FISH_COLOR);
+    assert.ok(fish.parts.some(p => p.kind === 'cone' && p.color === baseball.FISH_COLOR), 'a tail fin');
+    // 跳躍：水平 0.5、往第一個球員那邊（落點比起跳點近）、起跳與落點都在泳池裡、水面上
+    const players = wet['baseball.players'].home.spots, p0 = players[0];
+    assert.ok(Math.abs(Math.hypot(arc.to.x - arc.from.x, arc.to.z - arc.from.z) - 0.5) < 1e-9, `Lv${n}: 0.5 across`);
+    if (n < 3) assert.ok(Math.hypot(arc.to.x - p0.x, arc.to.z - p0.z) < Math.hypot(arc.from.x - p0.x, arc.from.z - p0.z) - 0.4, `Lv${n}: toward the first player`);
+    for (const q of [arc.from, arc.to]) {
+      const dx = (q.x - AT.x) / 1.3, dz = (q.z - AT.z) / 1.15;
+      assert.ok(dx * dx + dz * dz < 1, `Lv${n}: in the pool (${(q.x - AT.x).toFixed(2)}, ${(q.z - AT.z).toFixed(2)})`);
+      if (n >= 3) assert.ok(((q.x - AT.x) / 1.1) ** 2 + ((q.z - AT.z) / 0.95) ** 2 > 1, 'outside the dome');
+      assert.ok(Math.abs(q.y - (AT.y + baseball.POOL_TOP + 0.02)) < 1e-9, 'on the water');
+    }
+    assert.equal(baseball.FISH_UP, 0.9);
+  }
+});

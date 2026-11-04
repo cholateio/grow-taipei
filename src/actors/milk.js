@@ -8,7 +8,7 @@ import { anchorWorld, cellCentre } from './anchors.js';
 import { heldBy } from '../rules/engine.js';
 import { HOME_R } from './landmarks.js';
 import { C, roofColor, rebuilt, offset, BOAT_TINT } from './palette.js';
-import { WATER_Y } from '../scene/hex.js';
+import { WATER_Y, R, axialToWorld } from '../scene/hex.js';
 import { measurePath, locateOnPath } from '../scene/path.js';
 
 export const id = 'milk';
@@ -17,6 +17,12 @@ export const labelY = 1.4;
 const AT = anchorWorld('milk');
 const SPOILED = 0xb9b5b0, SPOILED_BAND = 0x8c8a88;   // 停電後的牛奶箱（灰）
 export const CRATE = offset(AT, -0.95, 0.75);         // 牛奶箱
+// 鮮奶過期收尾（計畫 17 任務 5，設計 §4 milkExpired）：過期的牛奶箱長出腳，沿 x 往西走到格邊（CRATE_BRINK：鮮奶格西邊的格邊——
+// 設計寫「沿 x 往 −2.4」，但 CRATE 離西邊格邊只有 1.2，−2.4 會在海面上走 1.2 m；走到格邊就停），再往外掉進海裡（CRATE_SEA：往外 0.5）。
+// 掉多深：設計的 0.8 是島面到水面（TOP 0.65 → 水面 −0.18）——箱子長了 LEGS 0.3 的腿，只掉 0.8 會站在水面上；再沉一個腿長，腿泡在水裡、箱底貼著水面浮著
+const WEST_EDGE = axialToWorld(-1, 0).x - R * Math.sqrt(3) / 2, LEGS = 0.3;
+export const CRATE_BRINK = { ...CRATE, x: WEST_EDGE };
+export const CRATE_SEA = { x: WEST_EDGE - 0.5, y: CRATE.y - 0.8 - LEGS, z: CRATE.z };
 export const KID_RUN = 2.4;   // 小學生用跑的（Lv4 去喝奶、回操場；同燈泡 Lv4 排隊的 QUEUE_SPEED；一般走路 1.6）
 const PLAY = offset(AT, 0, 0.95);                     // 操場中心
 export const FESTIVAL_HOMES = [[-1, 0], [1, 0], [1, -1]].map(cellCentre);   // 鮮奶節多的三個小孩：鮮奶格、晶片格、溫泉格（裁決 R16）
@@ -121,6 +127,16 @@ const BOAT = offset(AT, -2.8, 0.55, WATER_Y - AT.y - 0.02);
 // 小學生的配件（遊樂場島的小孩也照這張表，satellites.js）：Lv6 棒球帽、Lv7 學士帽、Lv8 白袍、Lv9 起帽子拋掉了
 export const kidAccessory = n => (n >= 9 ? 'none' : n >= 8 ? 'coat' : n >= 7 ? 'mortar' : n >= 6 ? 'cap' : 'none');
 
+// 過期的牛奶箱（計畫 17 任務 5）：箱體偏綠（C.sour）、藍帶照舊，整個墊高 LEGS 0.3——底下兩條腿（cylinder 0.05 × 0.3，沿 z 分開 ±0.12）、
+// 腳是往 −x（走的方向）伸出去的小方塊；一個黏土 mesh
+const expiredCrate = () => [
+  { kind: 'rbox', pos: [0, LEGS + 0.225, 0], scale: 0.45, color: C.sour },
+  { kind: 'box', pos: [0, LEGS + 0.3, 0], scale: [0.47, 0.08, 0.47], color: C.blue },
+  ...[-0.12, 0.12].flatMap(z => [
+    { kind: 'cylinder', pos: [0, LEGS / 2, z], scale: [0.05, LEGS, 0.05], color: C.ink },
+    { kind: 'box', pos: [-0.04, 0.02, z], scale: [0.13, 0.04, 0.08], color: C.coral },
+  ]),
+];
 export function view(lv, flags, meta = {}) {
   const n = lv.milk, at = AT, v = {};
   if (!n) return v;
@@ -134,6 +150,8 @@ export function view(lv, flags, meta = {}) {
       : { kind: 'box', pos: [0, 0.3, 0], scale: [0.47, 0.08, 0.47], color: spoiled ? SPOILED_BAND : C.blue },
     ...(tipped ? [{ kind: 'cylinder', pos: [0.38, 0.01, 0.05], scale: [0.4, 0.02, 0.28], color: C.white, spill: true }] : []),
   ] };
+  // 鮮奶過期收尾：箱子換成過期版（at 是海裡的終點，不擋路；劇本從 CRATE 的偏移走到西岸、掉進海裡，見 finale.js milkExpiredEpilogue）
+  if (flags.epilogue === 'milkExpired') v['milk.crate'] = { kind: 'compound', at: CRATE_SEA, labelY: 1.1, footprint: false, parts: expiredCrate() };
   if (n < 2) return v;
   const home = !!meta.bitten;   // 被老鼠咬的回合：小孩躲回校舍（颱風的躲雨是放下劇本裡的一小段，小孩跟大家一樣躲一下又出來）
   // 校舍：一個零件裡幾棟 glb（builders.campus）；飾邊是屋頂色（颱風重建換色），小孩躲回來時窗戶亮燈

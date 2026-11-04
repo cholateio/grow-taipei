@@ -21,6 +21,8 @@
 //   全島小人躲進建築），UFO 降落 1 秒，母艦一換鼠群和鼠王一起閃白站上碟緣／碟頂，最後走出來才長第三隻眼；整段 ≤ 5.5 s、全景停 ALIEN_END 1.0 秒。
 // 計畫 17 任務 3：大停電（漆黑、只剩 101 塔尖的警示燈 finale.beacon 從慢閃變快閃）與捷運淹水（捷運格淹水、小船載兩個泳客划到東南岸、
 //   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
+// 計畫 17 任務 5：大巨蛋淹水（球員拉竿、一條魚從泳池跳出來）、珍奶攤被吹走（老闆坐小船追漂走的攤車）、鮮奶過期（長腳的牛奶箱走到西岸掉進海裡）的收尾，
+//   見 domeFloodEpilogue、cartBlownEpilogue、milkExpiredEpilogue。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
@@ -31,7 +33,10 @@ import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
 import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
-import { floodPerch } from './boba.js';
+import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as skiffSeat, BLOWN, CART_END, QUAY } from './boba.js';
+import { fishArc, FISH_UP } from './baseball.js';
+import { CRATE, CRATE_BRINK, CRATE_SEA, KIDS } from './milk.js';
+import { WATER_Y } from '../scene/hex.js';
 import { SHIELD_FAIL_DUR } from './parts.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { toDoor } from './typhoon.js';
@@ -166,6 +171,8 @@ export function view(lv, flags = {}, meta = {}) {
       v['finale.splash'] = { kind: 'smoke', at: POOL, n: 4, color: 0xffffff, size: 0.3, rise: 0.6, footprint: false };
     }
   }
+  // 鮮奶過期收尾（計畫 17 任務 5）：牛奶箱掉進西岸外的海裡，那裡冒一下水花（同 finale.splash 的白煙；finale.splash 只在吹偏、留在溫泉池）
+  if (flags.epilogue === 'milkExpired') v['finale.crateSplash'] = { kind: 'smoke', at: { x: CRATE_SEA.x, y: WATER_Y, z: CRATE_SEA.z }, n: 4, color: 0xffffff, size: 0.3, rise: 0.6, footprint: false };
   if (flags.epilogue === 'cyber') v['finale.car'] = carSpec();
   if (flags.epilogue === 'alien') {
     v['finale.ufos'] = { kind: 'compound', at: ROCKS, parts: ufoParts(), footprint: false };
@@ -391,11 +398,15 @@ export const script = {
   //   放回日常（站定在屋頂）→ 剩下的套用 → 全景停 1.5 秒。最前面先回全景（隕石停在 WIDE，見下面）。
   epilogue(e, s, ctx) {
     const { B } = ctx;
-    // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue）；任務 4：變異鼠稱王（alienEpilogue）——都在下面。
+    // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue）；任務 4：變異鼠稱王（alienEpilogue）；
+    // 任務 5：大巨蛋淹水、珍奶攤被吹走、鮮奶過期（domeFloodEpilogue、cartBlownEpilogue、milkExpiredEpilogue）——都在下面。
     // 還沒有自己劇本的壞結局先只套用（之後的任務各自換成自己的劇本）
     if (e.ending === 'blackout') return blackoutEpilogue(e, ctx);
     if (e.ending === 'flood') return floodEpilogue(e, ctx);
     if (e.ending === 'alien') return alienEpilogue(e, ctx);
+    if (e.ending === 'domeFlood') return domeFloodEpilogue(e, ctx);
+    if (e.ending === 'cartBlown') return cartBlownEpilogue(e, ctx);
+    if (e.ending === 'milkExpired') return milkExpiredEpilogue(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -547,6 +558,121 @@ export function floodEpilogue(e, ctx) {
     B.together([B.apply(e, { only: ['token.boat'] }), B.move('token.boat', { from: BOAT_OFF, to: BOAT_OFF, dur: 0 }), board(riders)]),
     B.together([row(B, riders), later(BOAT_ROW - OWNER_JUMP, OWNER_JUMP, B.jump(owner, c => floodPerch(c.stage.lv, c.stage.flags), OWNER_JUMP))]),
     B.apply(e, { only: ['token.swimmers', 'boba.owner'] }), B.home(c => [...riders(c), owner(c)].filter(Boolean)),
+    B.apply(e), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+
+// ── 計畫 17 任務 5：大巨蛋淹水、珍奶攤被吹走、鮮奶過期收尾（設計 §4；終局回合 1 倍速，真實秒數；全枚舉裡這三個結局都沒有吹偏局——
+//   domeFlood、milkExpired 全是隕石命中，cartBlown 命中或擋下（4 局），所以每段 ≤ 7.0 s；live 量到 3.6、5.1、4.5 s）──
+// 第一拍照舊折旗標＋worldNow（命中之後躺平的人站起來）；最後剩下的套用、全景停 END_HOLD。
+// 零件照偏移演（offset，同 B.move：userData.showOffset 記目前的偏移，零件的 at 是演完的位置）；glide 是 move 的曲線版：f(k) 回偏移 { dx, dy, dz }，
+// turn(o, k) 可以順便轉零件；end 一律擺到 f(1)（跳過也是）
+function glide(kind, key, dur, f, turn) {
+  let obj = null, base = null;
+  const put = k => { const o = f(k); obj.position.set(base.x + o.dx, base.y + o.dy, base.z + o.dz); obj.userData.showOffset = o; turn?.(obj, k); };
+  return {
+    kind, dur,
+    start(c) {
+      obj = c.stage.partObject(key); if (!obj) return false;
+      const o = obj.userData.showOffset ?? {};
+      base = { x: obj.position.x - (o.dx ?? 0), y: obj.position.y - (o.dy ?? 0), z: obj.position.z - (o.dz ?? 0) };
+      put(0);
+    },
+    step(k) { put(k); },
+    end() { if (obj) put(1); },
+  };
+}
+const offTo = (p, q) => ({ dx: p.x - q.x, dy: p.y - q.y, dz: p.z - q.z });   // 從 q（零件的 at）看 p 的偏移
+
+// 大巨蛋淹水（約 3.6 s）：鏡頭到球場格，同時第一個球員拉竿（gesture knock，1.0 s）；拉到 KNOCK_LEAD 秒，魚（baseball.fish，不閃白）從泳池水面跳出拋物線
+//   （baseball.js fishArc：水平 0.5 往球員那邊、最高 FISH_UP 0.9，FISH_LEAP 秒；魚頭照拋物線的斜率抬起、落水時擺平）→
+//   第一個球員「♪」、另一個「！」（Lv1 只有一個球員：找球場格 FAN_R 內最近的島民，沒有就只有「♪」）→ 剩下的套用 → 全景停 END_HOLD
+export const KNOCK_LEAD = 0.5, FISH_LEAP = 0.8, FAN_R = 3;
+const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const fishLeap = () => {
+  let arc = null;
+  const f = k => ({ dx: (arc.from.x - arc.to.x) * (1 - k), dy: 4 * FISH_UP * k * (1 - k), dz: (arc.from.z - arc.to.z) * (1 - k) });
+  // 魚頭朝前進方向、照拋物線的斜率抬起（繞水平、垂直於前進方向的軸）；落水（k = 1）擺平
+  const turn = (o, k) => {
+    const L = flat(arc.from, arc.to), ux = (arc.to.x - arc.from.x) / L, uz = (arc.to.z - arc.from.z) / L, slope = 4 * FISH_UP * (1 - 2 * k) / L;
+    if (k >= 1) o.quaternion.set(0, 0, 0, 1); else o.quaternion.setFromAxisAngle({ x: -uz, y: 0, z: ux }, Math.atan(slope));
+  };
+  const g = glide('leap', 'baseball.fish', FISH_LEAP, f, turn), start = g.start;
+  g.start = c => { arc = fishArc(c.stage.lv.baseball); return start(c); };
+  return g;
+};
+export function domeFloodEpilogue(e, ctx) {
+  const { B } = ctx, AT = anchorWorld('baseball');
+  const players = c => (c.roster.members('baseball.players') ?? []).filter(m => !m.hidden);
+  const angler = c => players(c)[0] ?? null;
+  const other = once(c => players(c)[1] ?? islanders(c).filter(m => !m.hidden && flat(m.pos, AT) < FAN_R).sort((a, b) => flat(a.pos, AT) - flat(b.pos, AT))[0] ?? null);
+  return [
+    B.apply(e, { only: [] }), B.worldNow(),
+    B.together([
+      B.focus('baseball'), B.gesture(angler, 'knock'),
+      later(KNOCK_LEAD, FISH_LEAP, B.together([B.apply(e, { only: ['baseball.fish'], blink: false }), fishLeap()])),
+    ]),
+    B.together([B.bubble(angler, '♪', TUNE), B.bubble(other, '！', TUNE)]),
+    B.apply(e), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+
+// 珍奶攤被吹走（約 5 s）：鏡頭到珍奶格東北角外的海（SHORE_SHOT：攤車、船的中間），同時小船（boba.boat）在 BOAT_START 閃白出現
+//   （零件的 at 是終點 BOAT_END，先用 0 秒的 move 擺到起點的偏移）、老闆沿東岸走到 QUAY（boba.js；照一般走路速度，走不到的就停在最近的可走點）→
+//   老闆跳上船（BOAT_HOP 秒，boba.js boatSeat）→
+//   船往東划 CART_ROW 秒，老闆每幀照船的位置站在船上；同時攤車（boba.main，不閃白換成漂遠的 CART_END）從 BLOWN 的偏移往東北漂 1.2（CART_ROW 秒，迎向船）；
+//   划到 SHOUT_AT 秒老闆「！」→ 老闆的家搬到船上 → 放回日常 → 剩下的套用 → 全景停 END_HOLD
+export const BOAT_HOP = 0.5, CART_ROW = 2.0, SHOUT_AT = 1.2;
+export const SHORE_ZOOM = 0.4;   // 比格子特寫（0.6）近：船和攤車都小，在格子東北角外的海上
+const SHORE_SHOT = { x: (SKIFF_FROM.x + CART_END.x) / 2, y: 0.2, z: (SKIFF_FROM.z + BLOWN.z) / 2 };
+const SKIFF_OFF = offTo(SKIFF_FROM, SKIFF_TO);
+function rowSkiff(B, who) {
+  const mv = B.move('boba.boat', { from: SKIFF_OFF, to: {}, dur: CART_ROW });
+  const seat = c => { const o = c.stage.partObject('boba.boat'), m = who(c); if (o && m) c.roster.setPose(m, { ...skiffSeat(o.position), walking: false }); };
+  return {
+    kind: 'row', dur: CART_ROW,
+    start(c) { if (mv.start(c) === false) return false; seat(c); },
+    step(k, dt, c) { mv.step(k, dt, c); seat(c); },
+    end(c) { mv.end(c); seat(c); },
+  };
+}
+export function cartBlownEpilogue(e, ctx) {
+  const { B } = ctx, owner = c => c.roster.members('boba.owner')?.[0] ?? null;
+  return [
+    B.apply(e, { only: [] }), B.worldNow(),
+    B.together([
+      B.focus(SHORE_SHOT, { zoom: SHORE_ZOOM }), B.apply(e, { only: ['boba.boat'] }), B.move('boba.boat', { from: SKIFF_OFF, to: SKIFF_OFF, dur: 0 }),
+      B.walk(owner, c => c.nav.nearestWalkable(QUAY)),
+    ]),
+    B.jump(owner, () => skiffSeat(SKIFF_FROM), BOAT_HOP),
+    B.together([
+      rowSkiff(B, owner), B.apply(e, { only: ['boba.main'], blink: false }), B.move('boba.main', { from: offTo(BLOWN, CART_END), to: {}, dur: CART_ROW }),
+      later(SHOUT_AT, SHOUT, B.bubble(owner, '！', SHOUT)),
+    ]),
+    B.apply(e, { only: ['boba.owner'] }), B.home(c => [owner(c)].filter(Boolean)),
+    B.apply(e), B.focus('home', { hold: END_HOLD }),
+  ];
+}
+
+// 鮮奶過期（約 4.5 s）：鏡頭到鮮奶格，同時 milk.crate 閃白換成過期版（milk.js：箱體 C.sour、兩條腿；零件的 at 是海裡的終點 CRATE_SEA，先用 0 秒的 move 擺回 CRATE）→
+//   閃完兩個小學生轉頭看著箱子、頭上「……」STARE 秒 → 箱子沿 x 走到西岸格邊（CRATE_BRINK，WADDLE 秒，走 WADDLE_STEPS 步、每步顛 WADDLE_BOB）→
+//   往外掉進海裡（CRATE_FALL 秒：水平等速往外、高度加速往下 1.1：島面到水面 0.8 再沉一個腿長，milk.js CRATE_SEA）→ 掉到水面那一刻水花（finale.crateSplash，不閃白）冒出來 → 剩下的套用 → 全景停 END_HOLD
+export const STARE = 0.8, WADDLE = 1.5, CRATE_FALL = 0.5, WADDLE_STEPS = 3, WADDLE_BOB = 0.04;
+const BRINK_OFF = offTo(CRATE_BRINK, CRATE_SEA), CRATE_OFF = offTo(CRATE, CRATE_SEA);
+export function milkExpiredEpilogue(e, ctx) {
+  const { B } = ctx, kid = i => c => c.roster.members('milk.kids')?.[i] ?? null;
+  const walk = glide('waddle', 'milk.crate', WADDLE, k => ({
+    dx: CRATE_OFF.dx + (BRINK_OFF.dx - CRATE_OFF.dx) * k, dy: CRATE_OFF.dy + WADDLE_BOB * Math.abs(Math.sin(Math.PI * WADDLE_STEPS * k)), dz: CRATE_OFF.dz,
+  }));
+  const fall = glide('fall', 'milk.crate', CRATE_FALL, k => ({ dx: BRINK_OFF.dx * (1 - k), dy: BRINK_OFF.dy * (1 - k * k), dz: BRINK_OFF.dz * (1 - k) }));
+  return [
+    B.apply(e, { only: [] }), B.worldNow(),
+    B.together([
+      B.focus('milk'), B.apply(e, { only: ['milk.crate'] }), B.move('milk.crate', { from: CRATE_OFF, to: CRATE_OFF, dur: 0 }),
+      later(BLINK, STARE, B.together(KIDS.flatMap(i => [B.gesture(kid(i), 'look', STARE, { at: CRATE }), B.bubble(kid(i), '……', STARE)]))),
+    ]),
+    walk,
+    B.together([fall, later(CRATE_FALL, 0, B.apply(e, { only: ['finale.crateSplash'], blink: false }))]),
     B.apply(e), B.focus('home', { hold: END_HOLD }),
   ];
 }

@@ -686,3 +686,48 @@ test('flood epilogue: the owner perches on the cart roof (SHOP + 0.95), the shop
     assert.deepEqual(boba.view(lv({ boba: n }), flags)['boba.owner'].home.spots, [flags.cartBlown ? boba.blownSpot() : boba.ownerSpot(n)], 'unchanged without the epilogue');
   }
 });
+
+// ── 計畫 17 任務 5：珍奶攤被吹走收尾（設計 §4 cartBlown）：攤車 boba.main 漂到 CART_END（BLOWN 往外海 1.2）、小船 boba.boat（Boat.glb，同捷運淹水的船）
+// 停在 BOAT_END（從岸邊的 BOAT_START 划過來）、老闆站在船上（boatSeat）——零件的 at 都是收尾演完的位置（劇本從偏移移回 0）
+test('view: the cartBlown epilogue drifts the cart 1.2 further out to sea (north-east, inside the ring track), adds boba.boat (Boat.glb, BOAT_TINT, h 0.35) at BOAT_END and puts the owner on it; the boat never touches the island, the cart or the ring track', async () => {
+  const { BOAT_TINT } = await import('../src/actors/palette.js');
+  const { WATER_Y, R } = await import('../src/scene/hex.js');
+  const L = lv({ boba: 1, milk: 3 }), plain = boba.view(L, { cartBlown: true }), v = boba.view(L, { cartBlown: true, epilogue: 'cartBlown' });
+  assert.equal(plain['boba.boat'], undefined, 'no boat before the epilogue');
+  assert.equal(boba.view(L, { cartBlown: true, epilogue: 'flood' })['boba.boat'], undefined, 'no boat in the flood epilogue');
+  assert.equal(boba.CART_DRIFT, 1.2);
+  assert.ok(Math.abs(Math.hypot(boba.CART_END.x - boba.BLOWN.x, boba.CART_END.z - boba.BLOWN.z) - 1.2) < 1e-9, 'drifts 1.2');
+  const c = axialToWorld(...CELL), out = p => Math.hypot(p.x - c.x, p.z - c.z);
+  assert.ok(out(boba.CART_END) > out(boba.BLOWN) + 0.5, 'further out to sea (away from the boba cell)');
+  const cart = v['boba.main'];
+  assert.ok(near(cart.at, boba.CART_END, 1e-9) && cart.at.y === boba.BLOWN.y, 'the cart at CART_END');
+  assert.deepEqual(cart.parts, plain['boba.main'].parts, 'the same tipped cart');
+  const boat = v['boba.boat'];
+  assert.equal(boat.kind, 'glb'); assert.equal(boat.path, 'quat/ships/Boat.glb'); assert.equal(boat.h, 0.35); assert.deepEqual(boat.tint, BOAT_TINT); assert.equal(boat.footprint, false);
+  assert.ok(near(boat.at, boba.BOAT_END, 1e-9) && boat.at.y < WATER_Y, 'at BOAT_END, in the water');
+  assert.ok(Math.abs(boat.ry - (boba.BOAT_YAW + Math.PI)) < 1e-9, 'bow toward where it rows (Boat.glb bow is −z)');
+  assert.ok(Math.abs(boba.BOAT_YAW - Math.atan2(boba.BOAT_END.x - boba.BOAT_START.x, boba.BOAT_END.z - boba.BOAT_START.z)) < 1e-9);
+  // 船身 1.5 × 0.82（外擴 0.05）、翻倒的攤車包圍盒（BLOWN 起 x −0.45…+1.24、z ±0.3，外擴 0.1）：划船那 2 秒裡逐段（船、攤車一起線性移動）
+  // 船身不在島上、不碰攤車，也都在捷運環狀線（TRACK 半徑 8.3）內側 ≤ 7.85；攤車最遠的杯子 ≤ 7.95（環狀線上有列車經過）
+  const { TRACK } = token;
+  const hull = p => [-1, -0.5, 0, 0.5, 1].flatMap(a => [-1, 0, 1].map(b => ({ x: p.x + Math.sin(boba.BOAT_YAW) * 0.8 * a + Math.cos(boba.BOAT_YAW) * 0.46 * b, z: p.z + Math.cos(boba.BOAT_YAW) * 0.8 * a - Math.sin(boba.BOAT_YAW) * 0.46 * b })));
+  for (let k = 0; k <= 1; k += 0.125) {
+    const b = { x: boba.BOAT_START.x + (boba.BOAT_END.x - boba.BOAT_START.x) * k, z: boba.BOAT_START.z + (boba.BOAT_END.z - boba.BOAT_START.z) * k };
+    const q = { x: boba.BLOWN.x + (boba.CART_END.x - boba.BLOWN.x) * k, z: boba.BLOWN.z + (boba.CART_END.z - boba.BLOWN.z) * k };
+    for (const p of hull(b)) {
+      assert.equal(cellAt(p.x, p.z), null, `k ${k}: hull (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) off the island`);
+      assert.ok(!(p.x > q.x - 0.55 && p.x < q.x + 1.34 && p.z > q.z - 0.4 && p.z < q.z + 0.4), `k ${k}: hull (${p.x.toFixed(2)}, ${p.z.toFixed(2)}) clear of the cart`);
+      assert.ok(Math.hypot(p.x, p.z) < TRACK.radius - 0.45, `k ${k}: inside the ring track`);
+    }
+    assert.ok(Math.hypot(q.x + 1.24, q.z) < TRACK.radius - 0.35, `k ${k}: the cart's cup clear of the ring track`);
+  }
+  // 老闆：岸邊（blownSpot）沿東岸走到 QUAY（走得到），從那裡跳得到船上（< 1.3）；收尾之後家在船上（不 rescue）
+  const home = v['boba.owner'].home;
+  assert.equal(home.rescue, undefined); assert.equal(home.fidget, undefined);
+  assert.deepEqual(home.spots, [boba.boatSeat()]);
+  const s = boba.boatSeat(), s0 = boba.boatSeat(boba.BOAT_START);
+  assert.ok(Math.abs(s.y - (boba.BOAT_END.y + 0.06)) < 1e-9 && Math.abs(s.yaw - boba.BOAT_YAW) < 1e-9, 'on the boat floor, facing the bow');
+  assert.ok(createNav().walkable(boba.QUAY.x, boba.QUAY.z), 'QUAY is walkable');
+  assert.ok(Math.hypot(s0.x - boba.QUAY.x, s0.z - boba.QUAY.z) < 1.3, 'a hop from the quay');
+  assert.ok(R > 0);
+});

@@ -1003,3 +1003,198 @@ test('alien hide beat is capped at RUSH + UFO_FALL: a far-away islander hides wh
   beat.end(ctx);
   assert.ok(m.hidden, 'hidden when the cap runs out');
 });
+
+// ── 計畫 17 任務 5：大巨蛋淹水、珍奶攤被吹走、鮮奶過期收尾（設計 §4；終局回合 1 倍速，真實秒數）──
+// 三個結局在全枚舉裡都沒有吹偏局（domeFlood、milkExpired 全是命中；cartBlown 命中 1414 局、擋下 4 局），所以每段 ≤ 7.0 s；
+// cartBlown 的擋下局也整段量一次（終局 ≤ 16 s）
+import * as baseballMod from '../src/actors/baseball.js';
+import * as milkMod from '../src/actors/milk.js';
+const flatten = bs => bs.flatMap(b => (b.kind === 'together' ? flatten(b.beats) : b.kind === 'later' ? [b, ...flatten([b.beat])] : [b]));
+test('endings reachability: domeFlood and milkExpired only after a hit, cartBlown after a hit or (4 games) a shield — never a deflect', () => {
+  const all = enumerate(spec), by = id => new Set(all.filter(r => r.ending.id === id).map(r => missileOf(r.state, spec)));
+  assert.deepEqual([...by('domeFlood')], ['hit']); assert.deepEqual([...by('milkExpired')], ['hit']);
+  assert.deepEqual([...by('cartBlown')].sort(), ['hit', 'shield']);
+});
+test('domeFlood epilogue beats (≈ 4 s): fold + worldNow, the camera to the ballpark while the first player pulls the rod (knock) and the fish leaps 0.8 s, ♪ + ！, the rest, the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'domeFlood', flag: { name: 'epilogue', value: 'domeFlood' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'together', 'apply', 'focus']);
+  assert.deepEqual(beats[0].only, []); assert.equal(beats[1].effects, undefined, 'worldNow');
+  const [pan, knock, leap] = beats[2].beats;
+  assert.deepEqual([pan.kind, pan.target], ['focus', 'baseball']);
+  assert.deepEqual([knock.kind, knock.dur], ['gesture', 1.0]);
+  assert.equal(leap.kind, 'later'); assert.equal(leap.dur, finale.KNOCK_LEAD + finale.FISH_LEAP); assert.equal(finale.FISH_LEAP, 0.8);
+  const inner = flatten([leap.beat]);
+  assert.deepEqual(inner.find(b => b.kind === 'apply').only, ['baseball.fish']); assert.equal(inner.find(b => b.kind === 'apply').blink, false);
+  assert.deepEqual([inner.find(b => b.kind === 'leap').dur], [0.8]);
+  assert.deepEqual(kinds(beats[3].beats), ['bubble', 'bubble']);
+  assert.equal(beats[5].target, 'home'); assert.equal(beats[5].dur, 1.5);
+});
+test('cartBlown epilogue beats (≈ 5 s): fold + worldNow, the camera to the sea off the east shore while the boat blinks in and the owner walks to the quay, he hops aboard, the boat rows 2.0 s while the cart drifts 1.2 out (2.0 s) and the owner ！, home, the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'cartBlown', flag: { name: 'epilogue', value: 'cartBlown' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'jump', 'together', 'apply', 'home', 'apply', 'focus']);
+  assert.deepEqual(beats[0].only, []);
+  assert.deepEqual(kinds(beats[2].beats), ['focus', 'apply', 'move', 'walk']); assert.deepEqual(beats[2].beats[1].only, ['boba.boat']); assert.equal(beats[2].beats[2].dur, 0);
+  assert.equal(beats[3].dur, finale.BOAT_HOP);
+  const [row, cart, drift, shout] = beats[4].beats;
+  assert.deepEqual([row.kind, row.dur], ['row', 2.0]);
+  assert.deepEqual(cart.only, ['boba.main']); assert.equal(cart.blink, false);
+  assert.deepEqual([drift.kind, drift.dur], ['move', 2.0]);
+  assert.equal(shout.kind, 'later'); assert.equal(shout.beat.kind, 'bubble'); assert.ok(shout.dur <= 2.0);
+  assert.deepEqual(beats[5].only, ['boba.owner']);
+  assert.equal(beats[8].target, 'home'); assert.equal(beats[8].dur, 1.5);
+});
+test('milkExpired epilogue beats (≈ 4.5 s): fold + worldNow, the camera to the milk cell while the expired crate blinks in and the kids stare ……, it waddles to the west shore 1.5 s, falls 0.5 s with a splash, the rest, the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'milkExpired', flag: { name: 'epilogue', value: 'milkExpired' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'waddle', 'together', 'apply', 'focus']);
+  const [pan, crate, put, stare] = beats[2].beats;
+  assert.deepEqual([pan.kind, pan.target], ['focus', 'milk']);
+  assert.deepEqual(crate.only, ['milk.crate']); assert.notEqual(crate.blink, false, 'the crate blinks');
+  assert.deepEqual([put.kind, put.dur], ['move', 0]);
+  assert.equal(stare.kind, 'later'); const st = flatten([stare.beat]);
+  assert.ok(st.filter(b => b.kind === 'gesture').length === 2 && st.filter(b => b.kind === 'bubble').length === 2, 'both kids look and say ……');
+  assert.equal(beats[3].dur, 1.5);
+  const [fall, splash] = beats[4].beats;
+  assert.deepEqual([fall.kind, fall.dur], ['fall', 0.5]);
+  assert.deepEqual(splash.beat.only, ['finale.crateSplash']);
+  assert.equal(beats[6].target, 'home'); assert.equal(beats[6].dur, 1.5);
+});
+test('view: the milkExpired epilogue puts a second splash (finale.crateSplash, white smoke) on the water where the crate falls; finale.splash stays at the pool (deflect only)', () => {
+  const lv0 = { milk: 4, chip: 4, bulb: 4, token: 3, typhoon: 3, rat: 2, boba: 1, baseball: 3 };
+  const v = finale.view(lv0, { alarm: 1, missile: 'hit', epilogue: 'milkExpired' }, {});
+  const s = v['finale.crateSplash'];
+  assert.ok(s); assert.equal(s.kind, 'smoke'); assert.equal(s.footprint, false);
+  assert.ok(Math.hypot(s.at.x - milkMod.CRATE_SEA.x, s.at.z - milkMod.CRATE_SEA.z) < 1e-9 && Math.abs(s.at.y - hexWaterY) < 1e-9, 'at the crate, on the water');
+  assert.equal(v['finale.splash'], undefined);
+  for (const epilogue of [undefined, 'flood', 'domeFlood', 'cartBlown']) assert.equal(finale.view(lv0, { alarm: 1, missile: 'hit', epilogue }, {})['finale.crateSplash'], undefined);
+});
+import { WATER_Y as hexWaterY } from '../src/scene/hex.js';
+
+const flat2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const released = show => assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
+const DOME_LV3 = enumerate(spec).find(r => r.ending.id === 'domeFlood' && r.state.lv.baseball === 3).order;
+const CART_SHIELD = enumerate(spec).find(r => r.ending.id === 'cartBlown' && missileOf(r.state, spec) === 'shield').order;
+test('domeFlood live from EXAMPLE.domeFlood (Lv1, a player in the pool) and the first dome game (Lv3, two on the roof): the fish leaps 0.9 high, 0.5 toward the player and lands; ♪ (and ！ from someone else); nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+  for (const [what, order] of [['Lv1', EXAMPLE.domeFlood], ['Lv3', DOME_LV3]]) {
+    const g = await badGame('domeFlood', order), { show, h } = g, { people, bubblesLog } = h;
+    const lying = [], fish = [];
+    let b0 = null;
+    const res = await liveFinale(g, t => {
+      if (t === null) { b0 = bubblesLog.length; return; }
+      if (t > 0.3 && people.mood === 'lie') lying.push(t);
+      const o = show.stage.partObject('baseball.fish'); if (o?.visible) fish.push({ ...o.position });
+    });
+    console.log(`domeFlood epilogue (${what}): ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (plan 17 task 5)`);
+    assert.ok(res.secs <= 7.0, `${what}: epilogue ≤ 7.0 s (${res.secs.toFixed(2)})`); assert.ok(res.total <= 16, `${what}: finale ≤ 16 s (${res.total.toFixed(2)})`);
+    assert.deepEqual(lying, [], `${what}: nobody lies`); assert.equal(people.mood, 'normal');
+    const arc = baseballMod.fishArc(show.stage.lv.baseball);
+    assert.ok(fish.length > 10, `${what}: the fish is seen`);
+    assert.ok(flat2(fish[0], arc.from) < 0.05 && Math.abs(fish[0].y - arc.from.y) < 0.1, `${what}: jumps out of the water at the take-off spot`);
+    assert.ok(Math.max(...fish.map(p => p.y)) > arc.to.y + 0.85, `${what}: an arc 0.9 high`);
+    assert.ok(dist3(fish.at(-1), arc.to) < 1e-9, `${what}: lands on the water at the landing spot`);
+    assert.equal(show.stage.partObject('baseball.fish').quaternion.w, 1, `${what}: lies flat at the end`);
+    const said = bubblesLog.slice(b0).map(b => b.kind);
+    assert.ok(said.includes('♪'), `${what}: ♪ (${said.join(' ')})`);
+    if (what === 'Lv3') assert.ok(said.includes('！'), `${what}: the other player ！`);
+    if (what === 'Lv3') show.roster.members('baseball.players').forEach(m => assert.ok(m.pos.y > anchorWorld('baseball').y + 0.9, 'still on the dome roof'));
+    released(show);
+  }
+});
+async function cartLive(order) {
+  const g = await badGame('cartBlown', order), { show, h } = g, { people } = h;
+  const lying = [], boat = [], cart = [], seatErr = [];
+  const res = await liveFinale(g, t => {
+    if (t === null) return;
+    if (t > 0.3 && people.mood === 'lie') lying.push(t);
+    const b = show.stage.partObject('boba.boat'), c = show.stage.partObject('boba.main');
+    if (b?.visible) boat.push({ ...b.position });
+    if (c) cart.push({ ...c.position });
+    const [o] = show.roster.members('boba.owner');
+    if (b?.visible && o.mode === 'script' && flat2(b.position, bobaMod.BOAT_START) > 0.05) { const q = bobaMod.boatSeat(b.position); seatErr.push(dist3(o.pos, q)); }
+  });
+  return { ...g, ...res, lying, boat, cart, seatErr };
+}
+const cartEnd = (show, what) => {
+  assert.ok(dist3(show.stage.partObject('boba.boat').position, bobaMod.BOAT_END) < 1e-9, `${what}: the boat at BOAT_END`);
+  assert.ok(dist3(show.stage.partObject('boba.main').position, bobaMod.CART_END) < 1e-9, `${what}: the cart drifted to CART_END`);
+  const [o] = show.roster.members('boba.owner');
+  assert.ok(dist3(o.pos, bobaMod.boatSeat()) < 1e-6, `${what}: the owner on the boat (${o.pos.x.toFixed(2)}, ${o.pos.y.toFixed(2)}, ${o.pos.z.toFixed(2)})`);
+  released(show);
+};
+test('cartBlown live from EXAMPLE.cartBlown (hit) and the first shield game: the boat blinks in off the shore, the owner walks to the quay, hops on and rides it east while the cart drifts ≥ 1.0 further out toward it; ！; nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+  for (const [what, order, outcome] of [['hit', EXAMPLE.cartBlown, 'hit'], ['shield', CART_SHIELD, 'shield']]) {
+    const r = await cartLive(order), { show, h } = r;
+    assert.equal(show.stage.flags.missile, outcome);
+    console.log(`cartBlown epilogue (${what}): ${r.secs.toFixed(2)} s, finale ${r.total.toFixed(2)} s (plan 17 task 5)`);
+    assert.ok(r.secs <= 7.0, `${what}: epilogue ≤ 7.0 s (${r.secs.toFixed(2)})`); assert.ok(r.total <= 16, `${what}: finale ≤ 16 s (${r.total.toFixed(2)})`);
+    assert.deepEqual(r.lying, [], `${what}: nobody lies`); assert.equal(h.people.mood, 'normal');
+    assert.ok(r.boat.length && dist3(r.boat[0], bobaMod.BOAT_START) < 1e-6, `${what}: the boat shows up at the shore (BOAT_START)`);
+    assert.ok(flat2(r.boat.at(-1), r.boat[0]) > 0.8, `${what}: the boat rowed toward the cart`);
+    assert.ok(r.seatErr.length > 20 && Math.max(...r.seatErr) < 1e-6, `${what}: the owner rides aboard while it rows (${r.seatErr.length} frames)`);
+    assert.ok(flat2(r.cart[0], bobaMod.BLOWN) < 1e-6, `${what}: the cart starts where it was blown`);
+    assert.ok(flat2(r.cart.at(-1), r.cart[0]) >= 1.0, `${what}: drifted ≥ 1.0 further out`);
+    assert.ok(h.bubblesLog.some(b => b.kind === '！'), `${what}: ！`);
+    cartEnd(show, what);
+    // 標題卡底下：老闆照樣站在船上
+    const p0 = { ...show.roster.members('boba.owner')[0].pos };
+    for (let i = 0; i < 90; i++) show.update(1 / 30, 5000 + i / 30);
+    assert.ok(dist3(show.roster.members('boba.owner')[0].pos, p0) < 1e-6, `${what}: stays aboard`);
+  }
+});
+const milkEnd = (show, what) => {
+  const crate = show.stage.partObject('milk.crate');
+  assert.ok(dist3(crate.position, milkMod.CRATE_SEA) < 1e-9, `${what}: the crate in the sea`);
+  const spec0 = milkMod.view(show.stage.lv, show.stage.flags)['milk.crate'];
+  assert.equal(spec0.parts.filter(p => p.kind === 'cylinder').length, 2, `${what}: the expired crate (legs)`);
+  const s = show.stage.partObject('finale.crateSplash');
+  assert.ok(s && flat2(s.position, milkMod.CRATE_SEA) < 1e-9, `${what}: splash where it fell`);
+  released(show);
+};
+test('milkExpired live from EXAMPLE.milkExpired: the expired crate blinks in at CRATE, the kids stare ……, it waddles to the west shore, then drops 0.8 into the sea with a splash; nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+  const g = await badGame('milkExpired'), { show, h } = g, { people, bubblesLog } = h;
+  const lying = [], crate = [];
+  let b0 = null, firstSplash = null, swapped = false;
+  const res = await liveFinale(g, t => {
+    if (t === null) { b0 = bubblesLog.length; return; }
+    if (t > 0.3 && people.mood === 'lie') lying.push(t);
+    swapped ||= !!show.stage.flags.epilogue && show.stage.partObject('milk.crate')?.userData.showOffset !== undefined;
+    const o = show.stage.partObject('milk.crate'); if (swapped && o) crate.push({ ...o.position, t });
+    if (firstSplash === null && show.stage.partObject('finale.crateSplash')) firstSplash = crate.at(-1);
+  });
+  console.log(`milkExpired epilogue: ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (plan 17 task 5)`);
+  assert.ok(res.secs <= 7.0, `epilogue ≤ 7.0 s (${res.secs.toFixed(2)})`); assert.ok(res.total <= 16, `finale ≤ 16 s (${res.total.toFixed(2)})`);
+  assert.deepEqual(lying, [], 'nobody lies'); assert.equal(people.mood, 'normal');
+  assert.ok(crate.length && dist3(crate[0], milkMod.CRATE) < 1e-6, 'the expired crate shows up where the crate was');
+  const brink = crate.findIndex(p => dist3(p, milkMod.CRATE_BRINK) < 1e-6);
+  assert.ok(brink > 0, 'walks to the west shore (CRATE_BRINK)');
+  assert.ok(crate.slice(0, brink).every(p => Math.abs(p.z - milkMod.CRATE.z) < 1e-9 && p.y >= milkMod.CRATE.y - 1e-9), 'along x, on the ground (waddling)');
+  assert.ok(crate.slice(1, brink).some(p => p.y > milkMod.CRATE.y + 0.01), 'with a waddle bob');
+  assert.ok(crate.slice(brink).every((p, i, a) => !i || p.y <= a[i - 1].y + 1e-9), 'then only falls');
+  assert.ok(firstSplash && firstSplash.y < milkMod.CRATE.y - 0.5, 'the splash when it reaches the water');
+  const kids = show.roster.members('milk.kids');
+  assert.equal(kids.length, 2);
+  assert.equal(bubblesLog.slice(b0).filter(b => b.kind === '……').length, 2, 'both kids ……');
+  milkEnd(show, 'live');
+});
+test('skip mid-epilogue (domeFlood, cartBlown, milkExpired): the final state at once — fish landed, boat + owner + drifted cart, crate in the sea with the splash; nobody in script mode, nobody lying', async () => {
+  for (const ending of ['domeFlood', 'cartBlown', 'milkExpired']) {
+    for (const frames of [10, 40, 80, 120]) {
+      const g = await badGame(ending), { show, h } = g;
+      await h.run(g.evs.slice(0, 2), { finale: true, instant: true });
+      const p = show.turn([g.evs[2]], { finale: true });
+      for (let i = 0; i < frames; i++) { show.update(1 / 30, i / 30); await Promise.resolve(); }
+      show.skip(); await p;
+      const what = `${ending} skipped after ${frames} frames`;
+      assert.equal(show.stage.flags.epilogue, ending, what);
+      assert.equal(h.worldLog.at(-1)[0].mood, 'normal', `${what}: standing`);
+      if (ending === 'domeFlood') {
+        const o = show.stage.partObject('baseball.fish');
+        assert.ok(o && dist3(o.position, baseballMod.fishArc(show.stage.lv.baseball).to) < 1e-9 && o.quaternion.w === 1, `${what}: the fish landed`);
+        released(show);
+      } else if (ending === 'cartBlown') cartEnd(show, what);
+      else milkEnd(show, what);
+    }
+  }
+});

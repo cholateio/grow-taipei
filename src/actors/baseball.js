@@ -49,6 +49,29 @@ const roofSpots = (at, n) => (n >= 3
   ? [{ ...offset(at, -0.2, 0.05, DOME_H.a), yaw: -Math.PI / 2 }, { ...offset(at, 0.2, 0.05, DOME_H.a), yaw: Math.PI / 2 }]
   : [-1, 1].map(k => ({ ...offset(at, STANDS.x + k * STANDS_W / 4, STANDS.z, STAND_H), yaw: Math.PI })));
 
+// 大巨蛋淹水收尾（計畫 17 任務 5，設計 §4 domeFlood）：第一個球員拉竿，一條魚（baseball.fish）從泳池水面跳出拋物線（高 FISH_UP）、往他那邊 0.5。
+// 泳池（baseball.field）面在錨點上 POOL_TOP；魚身在水面上 0.02。三種站法各一條（相對錨點，[起跳 x, z]、[落點 x, z]）：
+//   Lv1：唯一的球員站在本壘前（players[0]，泳池前緣、面向 +x）——魚從他東邊 0.8 跳到他面前 0.3；
+//   Lv2：站上木看台頂（roofSpots，第一個在 −0.3）——魚從泳池中間往北跳到看台前；
+//   Lv3：巨蛋頂（第一個在 −0.2、面向 −x）——泳池只剩巨蛋外一圈（巨蛋底半寬 1.09），往他那邊會跳進巨蛋：在他面前（西側）那一圈水面上沿 z 跳
+// 魚（compound）：拉長的橘色球 [0.18, 0.08, 0.08]＋尾巴一個壓扁的小圓錐（側看是三角形）＋兩顆墨色小眼睛；整條沿跳的方向（零件沒有轉角：yaw 烤進每個零件）
+export const FISH_UP = 0.9, POOL_TOP = 0.07, FISH_COLOR = 0xf08a3c;
+const FISH_HOPS = { 1: [[0.35, 1.0], [-0.15, 1.0]], 2: [[-0.3, -0.4], [-0.3, -0.9]], 3: [[-1.2, -0.25], [-1.2, 0.25]] };
+export function fishArc(n) {
+  const [[fx, fz], [tx, tz]] = FISH_HOPS[Math.min(3, Math.max(1, n))], y = POOL_TOP + 0.02;
+  return { from: offset(AT, fx, fz, y), to: offset(AT, tx, tz, y), yaw: Math.atan2(tx - fx, tz - fz) };
+}
+// 零件沿局部 +x 擺好，再整條繞 y 轉到跳的方向（three.js Ry(φ) 把 +x 轉到 (cos φ, 0, −sin φ)）
+const fishParts = yaw => {
+  const phi = yaw - Math.PI / 2, c = Math.cos(phi), s = Math.sin(phi);
+  const at = (x, y, z) => [x * c + z * s, y, -x * s + z * c];
+  return [
+    { kind: 'sphere', pos: at(0, 0, 0), scale: [0.18, 0.08, 0.08], rot: [0, phi, 0], color: FISH_COLOR },
+    { kind: 'cone', pos: at(-0.12, 0, 0), scale: [0.09, 0.08, 0.02], rot: [0, phi, -Math.PI / 2], color: FISH_COLOR },
+    ...[-1, 1].map(k => ({ kind: 'sphere', pos: at(0.055, 0.012, k * 0.033), scale: 0.02, color: C.ink })),
+  ];
+};
+
 // 入口點（§13.2）：球員從看台後方的格邊走出來，繞過看台到本壘前——看台正後方的格子北角被看台和兩邊的格邊圍住、走不出去，
 // 所以用看台後方東側的格邊（往中心格的橋頭）。觀眾從捷運站前（月台）走來，四個點沿 x 錯開、往站那側（−x）偏
 const AT = anchorWorld('baseball');
@@ -191,6 +214,8 @@ export function view(lv, flags = {}) {
     // 演唱會起多一個觀眾在巨蛋東北邊的草皮散步（§14.3）；從月台走來
     if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 1, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: LAWN_R, entry: CROWD_ENTRY } };
   }
+  // 大巨蛋淹水收尾：一條魚（at 是落點；劇本從起跳點的偏移跳一個拋物線回來，見 finale.js domeFloodEpilogue）
+  if (flood && flags.epilogue === 'domeFlood') { const arc = fishArc(n); v['baseball.fish'] = { kind: 'compound', at: arc.to, footprint: false, parts: fishParts(arc.yaw) }; }
   // 跨年煙火：巨蛋上空循環放
   // label false：LEVEL UP 不冒在煙火上（高 4，鏡頭拉近巨蛋格時在畫面外；計畫 15 D），照舊冒在巨蛋頭上
   if (n >= 6) v['baseball.fireworks'] = { kind: 'fireworks', at: offset(at, 0, 0, 4), colors: [C.neonPink, C.neonBlue, C.yellow, C.coral], footprint: false, low: false, label: false };

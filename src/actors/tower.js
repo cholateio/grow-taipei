@@ -1,6 +1,6 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級（物品 v2 共 61 級）0–6 工地（吊車會動）、7–28 半成品、29–50 完工、51+ 點燈（選擇帶動升級重取）。
 // 晶片（物品 v2 §4.3）Lv7 塔頂長出矽盾天線（Cyberpunk Kit 天線 glb＋環）、Lv8 矽盾測試（罩子閃三下又收起）、
-// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋隕石）；燈泡 Lv5 做燈光秀。
+// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋隕石）；Lv7–8 隕石警告裡 shieldSpec('fail') 試升失敗；燈泡 Lv5 做燈光秀。
 // 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
 // （紅色飛天跑車停在前緣、機器鼠軍團兩排站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
@@ -165,9 +165,12 @@ export function view(lv, flags = {}, meta = {}) {
     if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
     v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast, ship ? mast.z - DISH_OUT : undefined), parts, pulse, footprint: false };
   }
+  // 矽盾未就緒（計畫 17 任務 2，晶片 7–8）：隕石警告（alarm）裡罩子換 fail 狀態（建好時藏著，finale.js 警告劇本 replay 試升失敗）；
+  // 隕石一落下（missile）就沒有罩子（命中本來就在上面 return 了；吹偏也拿掉，不再回 test）
   if (flags.missile === 'shield') v['tower.shield'] = shieldSpec('full');
-  else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
+  else if (lv.chip >= 7 && flags.alarm) { if (!flags.missile) v['tower.shield'] = shieldSpec('fail'); }
+  else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, low: false, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = lift + 1.0 + (i % 4) * (top - lift - 1.2) / 4;   // 母艦整座抬高 lift
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相

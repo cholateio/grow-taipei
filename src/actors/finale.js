@@ -28,6 +28,7 @@ import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
 import { C } from './palette.js';
 import { roadsterParts } from './token.js';
+import { SHIELD_FAIL_DUR } from './parts.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
 export { BAD_EPILOGUES } from '../rules/endings.js';
 
@@ -307,6 +308,17 @@ const later = (delay, dur, beat) => {
 // 隕石各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹偏的「？」1.0 再「♪」0.8
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
 
+// 試升失敗（計畫 17 任務 2）：tower.shield 套上 fail 狀態（tower.js：alarm、晶片 7–8、還沒落下）並從 0 演 shieldPose('fail')
+// （升到 0.6 倍、閃兩下、縮回藏起來，SHIELD_FAIL_DUR）——跟晶片 Lv8 的矽盾測試同一個零件介面（userData.test／finish）；
+// 同時天線環（tower.antenna）閃白一下（blink.part）。鏡頭停在 WIDE，101 與罩子都在畫面裡。演完零件藏著，隕石落下時 view 就拿掉
+export const FAIL_WAIT = 0.2;
+const blinkPart = key => ({ kind: 'blinkPart', key, dur: 0, start(c) { const o = c.stage.partObject(key); if (!o || !c.blink) return false; c.blink.part(o); } });
+const shieldFail = (B, e) => Object.assign(B.together([
+  B.replay(e, 'tower.shield', SHIELD_FAIL_DUR, {
+    begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
+  }),
+  blinkPart('tower.antenna'),
+]), { name: 'shieldFail' });
 // 抬頭看天：101 頭頂（stage.headOf）與光點的中點，警告時鏡頭先對這裡（光點、警示燈、塔頂都在畫面裡；全景看不到天空）
 export const skyShot = c => { const h = c.stage.headOf('tower'); return { x: (h.x + STAR_AT.x) / 2, y: (h.y + STAR_AT.y) / 2, z: (h.z + STAR_AT.z) / 2 }; };
 export const script = {
@@ -314,11 +326,13 @@ export const script = {
   // 同時鏡頭抬頭看天（skyShot，FOCUS_BEAT 0.8 s）→ 停 SKY_HOLD → 鏡頭退到 WIDE、全島（最多 24 人）轉頭看光點 1.2 s（鏡頭在這段飛過去）→
   // 同一批人頭上一起冒「！」、蹲下護頭（duck）0.8 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 3.2 s）。
   // 「！」等鏡頭到 WIDE 才冒（chain.test 的字在畫面裡不變式：天空鏡頭裡島整座出畫）
+  // 計畫 17 任務 2：晶片 7–8（矽盾還沒好；晶片 9 規則上就是擋下）在全島抬頭之後、「！」之前插一段試升失敗 shieldFail（見下面），再停 FAIL_WAIT
   warning(e, s, ctx) {
-    const { B } = ctx, up = lookUp(B, STAR_AT, LOOK);
+    const { B } = ctx, up = lookUp(B, STAR_AT, LOOK), chip = s.lv?.chip;
+    const fail = chip === 7 || chip === 8 ? [shieldFail(B, e), B.wait(FAIL_WAIT)] : [];
     return [
       B.together([B.apply(e, { only: ['finale.star', 'finale.beacon'] }), B.focus(skyShot, { zoom: SKY_ZOOM })]), B.wait(SKY_HOLD),
-      B.together([B.focus(WIDE, { zoom: WIDE_ZOOM }), ...up.look]), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
+      B.together([B.focus(WIDE, { zoom: WIDE_ZOOM }), ...up.look]), ...fail, B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
     ];
   },
   // 隕石（設計 §6，真實秒數，終局回合 1 倍速）：鏡頭在 WIDE（警告已經停在那裡，這拍 0.8 s 當停頓）→ 光點熄掉 →

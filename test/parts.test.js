@@ -136,7 +136,7 @@ test('fireworks once: bursts for 1.2 s then hides the mesh and stays hidden', ()
 });
 
 // ── 矽盾罩（晶片 Lv8／9、結局）：半球、半透明淡藍、六角格紋（程式產生的貼圖，快取共用），一個 mesh ──
-import { SHIELD, SHIELD_TEST_DUR, shieldPose } from '../src/actors/parts.js';
+import { SHIELD, SHIELD_TEST_DUR, SHIELD_FAIL_DUR, shieldPose } from '../src/actors/parts.js';
 const shieldOf = (f, state, r = 7.6) => f.build({ kind: 'shield', at, r, state });
 const run = (p, secs, fn) => { for (let i = 0; i < secs * 30; i++) { p.update(1 / 30, i / 30); fn?.(i / 30); } };
 test('shield: one transparent basic mesh, single-sided, no depth write, hex-grid texture shared between builds; radius r, centred on at', () => {
@@ -174,6 +174,37 @@ test('shieldPose standby stays a faint outline forever (visible, opacity 0.06–
   assert.ok(Math.max(...ops) - Math.min(...ops) > 0.04, 'it pulses');
   assert.ok(Math.abs(shieldPose('standby', 1) .opacity - shieldPose('standby', 4).opacity) < 1e-9, 'period 3 s');
   assert.ok(shieldPose('full', 2).opacity >= 0.45 && shieldPose('full', 2).visible);
+});
+// 計畫 17 任務 2：矽盾未就緒（晶片 7–8）的隕石警告裡試升失敗——0–0.4 s 升到 0.6 倍大（不透明度 0.35）→ 0.5–0.9 s 閃兩下（0.5 ↔ 0.05，
+// 第二下短、像電力不穩，0.8 起暗著）→ 0.9–1.2 s 縮回 0 → 藏起來；整段 SHIELD_FAIL_DUR 1.3 s
+test('shieldPose fail: rises to 0.6× at opacity 0.35 by 0.4 s, flashes twice 0.5 ↔ 0.05 in 0.5–0.9 s, retracts by 1.2 s and hides; SHIELD_FAIL_DUR 1.3', () => {
+  assert.equal(SHIELD_FAIL_DUR, 1.3);
+  const r = shieldPose('fail', 0.2); assert.ok(r.visible); assert.equal(r.opacity, 0.35); assert.ok(Math.abs(r.scale - 0.3) < 1e-9, `rising (${r.scale})`);
+  assert.ok(shieldPose('fail', 0.1).scale < r.scale && r.scale < shieldPose('fail', 0.35).scale, 'grows');
+  const top = shieldPose('fail', 0.45); assert.ok(Math.abs(top.scale - 0.6) < 1e-9 && top.opacity === 0.35, 'holds 0.6× before the flashes');
+  assert.ok(Math.abs(shieldPose('fail', 0.6).opacity - 0.5) < 1e-9, 'first flash bright 0.5');
+  assert.ok(Math.abs(shieldPose('fail', 0.8).opacity - 0.05) < 0.01, `dim 0.05 by 0.8 (${shieldPose('fail', 0.8).opacity})`);
+  let peaks = 0, prev = 0, rising = false;
+  for (let t = 0.5; t <= 0.9; t += 1 / 240) {
+    const p = shieldPose('fail', t); assert.ok(p.visible && Math.abs(p.scale - 0.6) < 1e-9, 'stays 0.6× while flashing');
+    assert.ok(p.opacity >= 0.05 - 1e-9 && p.opacity <= 0.5 + 1e-9);
+    if (p.opacity > prev + 1e-9) rising = true; else if (rising && p.opacity < prev - 1e-9) { peaks++; rising = false; assert.ok(prev > 0.4, `flash ${peaks} peak ${prev.toFixed(2)}`); }
+    prev = p.opacity;
+  }
+  assert.equal(peaks, 2, 'two flashes');
+  const s = shieldPose('fail', 1.0); assert.ok(s.visible && s.scale > 0.05 && s.scale < 0.6, `shrinking (${s.scale})`);
+  assert.ok(shieldPose('fail', 1.1).scale < s.scale, 'keeps shrinking');
+  for (const t of [1.2, 1.25, 1.3, 2, Infinity]) { const p = shieldPose('fail', t); assert.equal(p.visible, false, `hidden at ${t}`); assert.equal(p.scale, 0); }
+});
+test('shield part, fail state: built already hidden (a rebuild never replays it); test() plays the rise / flashes / retract, hidden after SHIELD_FAIL_DUR', () => {
+  const { f } = setup(), p = shieldOf(f, 'fail'), [m] = p.object.children, scales = [];
+  assert.equal(m.visible, false, 'built hidden'); run(p, 1); assert.equal(m.visible, false, 'stays hidden until the script plays it');
+  p.object.userData.test();
+  run(p, SHIELD_FAIL_DUR + 0.3, () => scales.push(m.visible ? m.scale.x : 0));
+  assert.ok(Math.max(...scales) > 0.55 && Math.max(...scales) <= 0.6 + 1e-9, `rises to 0.6× (${Math.max(...scales)})`);
+  assert.equal(m.visible, false); assert.equal(m.scale.x, 0);
+  p.object.userData.test(); run(p, 0.3); assert.ok(m.visible); p.object.userData.finish(); assert.equal(m.visible, false);
+  p.dispose();
 });
 test('shield part follows shieldPose: a test shield is built already retracted; test() plays the flashes then hides, finish() jumps to the end; standby keeps a scrolling faint outline', () => {
   const { f } = setup(), p = shieldOf(f, 'test'), [m] = p.object.children, ops = [];

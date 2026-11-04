@@ -60,6 +60,19 @@ test('antenna (Cyberpunk Kit glb + ring) appears at chip 7 and pulses from chip 
   assert.equal(tower.view({ ...zero, bulb: 4 }, {})['tower.show'], undefined);
   assert.equal(tower.view({ ...zero, bulb: 5 }, {})['tower.show'].kind, 'lightshow');
 });
+// 計畫 17 任務 2：矽盾未就緒（晶片 7–8）的隕石警告（flags.alarm）裡，罩子是 fail 狀態（劇本 B.replay 演試升失敗）；
+// 隕石一落下（flags.missile）就拿掉；沒有警告時 Lv8 照舊 test、Lv7 沒有罩子；Lv9 照舊 standby（警告裡也是）
+test('view under the meteor warning: chip 7–8 declare a fail dome (alarm, no missile yet), gone once the meteor falls; chip 8 without alarm still test; chip 9 standby', () => {
+  for (const chip of [7, 8]) {
+    const lv = { ...zero, chip }, v = tower.view(lv, { alarm: 1 });
+    assert.deepEqual(v['tower.shield'], tower.shieldSpec('fail'), `chip ${chip}: fail dome during the warning`);
+    for (const missile of ['deflect', 'hit']) assert.equal(tower.view(lv, { alarm: 1, missile })['tower.shield'], undefined, `chip ${chip}: no dome after the meteor (${missile})`);
+  }
+  assert.equal(tower.view({ ...zero, chip: 8 }, {})['tower.shield'].state, 'test', 'chip 8 without alarm: test');
+  assert.equal(tower.view({ ...zero, chip: 7 }, {})['tower.shield'], undefined, 'chip 7 without alarm: no dome');
+  for (const flags of [{}, { alarm: 1 }]) assert.equal(tower.view({ ...zero, chip: 9 }, flags)['tower.shield'].state, 'standby', 'chip 9 standby');
+  for (const chip of [0, 6]) assert.equal(tower.view({ ...zero, chip }, { alarm: 1 })['tower.shield'], undefined, `chip ${chip}: no dome`);
+});
 test('the antenna sits on the spire top of whatever stage the tower is in', () => {
   for (const total of [0, 10, 27, 55]) {
     const v = tower.view(lvOf(total, { chip: 7 }), {}, { total }), top = Math.max(...v['tower.main'].parts.map(p => p.pos[1] + (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2));

@@ -300,7 +300,7 @@ test('view: missile flag draws finale.missile (the meteor) with outcome and targ
     const v = finale.view(LIT, { alarm: 1, missile: outcome }, LIT_META), m = v['finale.missile'];
     assert.ok(m, outcome); assert.equal(v['finale.star'], undefined, `${outcome}: the star is out`);
     assert.equal(m.kind, 'missile'); assert.equal(m.outcome, outcome); assert.deepEqual(m.from, F);
-    if (outcome !== 'hit') assert.equal(m.footprint, false); assert.equal(m.shadow, false);
+    assert.equal(m.footprint, false);  // 命中掉到地上的那顆也不擋路（在夜市和 101 之間的走道上） assert.equal(m.shadow, false);
     assert.equal(!!v['finale.splash'], outcome === 'deflect');
   }
   // shield：罩面上、在 101 底座中心到光點那條線上（隕石從天上直直落向 101，撞在罩頂偏北；仰角 > 60°）
@@ -315,12 +315,7 @@ test('view: missile flag draws finale.missile (the meteor) with outcome and targ
   assert.deepEqual(finale.view({}, { missile: 'hit' })['finale.missile'].at, tower.bendPoint('site'));
   assert.deepEqual(finale.view({ ...LIT, chip: 0, bulb: 0, milk: 0 }, { missile: 'hit' }, { total: 10 })['finale.missile'].at, tower.bendPoint('half'));
   assert.ok(tower.bendPoint('half').y < tower.bendPoint('lit').y, 'a half tower is hit lower');
-  // 掉到地上的隕石擋路（2026-11-05）：footprint 是一顆石頭大的圓、在 METEOR_REST（相對 at）；其他結果不擋
-  for (const meta of [LIT_META, { total: 10 }, {}]) {
-    const m = finale.view(meta === LIT_META ? LIT : {}, { missile: 'hit' }, meta)['finale.missile'], R = finale.METEOR_REST;
-    assert.deepEqual(m.footprint, { x: R.x - m.at.x, z: R.z - m.at.z, r: finale.ROCK_R });
-  }
-  for (const o of ['shield', 'deflect']) assert.equal(finale.view(LIT, { missile: o }, LIT_META)['finale.missile'].footprint, false);
+
   // deflect：溫泉池中心、池面上 0.1；水花是白煙 4 團
   const spring = landmarkWorld('spring'), d = finale.view(LIT, { missile: 'deflect' }, LIT_META);
   assert.deepEqual(d['finale.missile'].at, { x: spring.x, y: spring.y + 0.1, z: spring.z });

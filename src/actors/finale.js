@@ -169,9 +169,8 @@ export function view(lv, flags = {}, meta = {}) {
     // hit 的彎角照這一階段（tower.js bendPoint：蓋一半彎得低、工地打在底座）
     const stage = stageOfView(lv, meta);
     const at = o === 'shield' ? DOME_HIT : o === 'hit' ? bendPoint(stage) : POOL;
-    // 命中：掉到地上的那顆擋路（一顆石頭大的圓，相對 at）
-    const fp = o === 'hit' ? { x: METEOR_REST.x - at.x, z: METEOR_REST.z - at.z, r: ROCK_R } : false;
-    v['finale.missile'] = { kind: 'missile', at, from: STAR_AT, outcome: o, footprint: fp, shadow: false };
+    // 掉到地上的那顆不擋路（footprint false）：METEOR_REST 在夜市攤子和 101 底座之間的走道上，擋了全島回家要繞出中央格（審稿 2026-11-05）
+    v['finale.missile'] = { kind: 'missile', at, from: STAR_AT, outcome: o, footprint: false, shadow: false };
     if (o === 'deflect') {
       v['finale.missile'].via = { x: TOWER.x + toStar.hx * SIDESTEP, y: TOWER.y + towerBody(stage).top, z: TOWER.z + toStar.hz * SIDESTEP };
       // 池邊冒一下水花：白煙 4 團、短（smoke 會一直循環，留到標題卡也無妨）

@@ -52,7 +52,7 @@ test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays �
   for (const e of [{ kind: 'placed', item: 'rat' }, { kind: 'grow', item: 'rat', to: 2 }, { kind: 'grow', item: 'rat', to: 3 }]) await run([e, { kind: 'settle' }], { instant: true });
   assert.equal(ratMode(show.stage.lv, show.stage.flags), 'spring');
   const rats = () => show.roster.members('rat.pack'), bathers = () => show.roster.members('landmarks.bathers');
-  assert.equal(rats().length, 5); assert.equal(bathers().length, 2);
+  assert.equal(rats().length, 2); assert.equal(bathers().length, 2);
   let min = Infinity;
   for (let i = 0; i < 300; i++) {
     show.update(1 / 30, 100 + i / 30);
@@ -61,11 +61,11 @@ test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays �
   assert.ok(min >= 0.25, `closest bather–rat ${min.toFixed(2)}`);
   bathers().forEach((b, i) => { const s = landmarks.view(show.stage.lv, show.stage.flags)['landmarks.bathers'].home.spots[i]; assert.ok(Math.hypot(b.pos.x - s.x, b.pos.z - s.z) < 0.1 && Math.abs(b.pos.y - s.y) < 1e-6, `bather ${i} soaking in the pool`); });
 });
-// 計畫 13 §設計 3：溫泉客（池心半徑 0.3）離泡湯老鼠（rat.js SPRING_SPOTS：池心半徑 0.62、5 隻）的站位每一對都 ≥ 0.25（實測最近 0.37）
+// 計畫 13 §設計 3：溫泉客（池心半徑 0.3）離泡湯老鼠（rat.js SPRING_SPOTS：池心半徑 0.62、2 隻，2026-11-04 起）的站位每一對都 ≥ 0.25
 test('the soaking bathers\' spots keep ≥ 0.25 from every soaking rat spot', async () => {
   const rat = await import('../src/actors/rat.js');
   const rats = rat.view({ ...zero, rat: 3 }, {}, {})['rat.pack'].home.spots, bathers = landmarks.view({ ...zero, rat: 3 }, {})['landmarks.bathers'].home.spots;
-  assert.equal(rats.length, 5);
+  assert.equal(rats.length, 2);
   const min = Math.min(...bathers.flatMap(b => rats.map(r => Math.hypot(b.x - r.x, b.z - r.z))));
   assert.ok(min >= 0.25, `closest ${min.toFixed(3)}`);
 });

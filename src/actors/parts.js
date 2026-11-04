@@ -93,8 +93,10 @@ export function orbitPose(spec, t, start = 'from') {
 }
 
 // ── 矽盾罩（晶片 Lv8／9、結局 §8）：狀態 test 閃三下（不透明度脈衝）再縮回地面藏起來；standby 淡淡常駐、跟 101 每 3 秒一起亮一下；
-// full 全亮（結局擋隕石）。shieldPose 是純函式：t 秒時的 { opacity, scale, visible }
-export const SHIELD = { color: 0xa8e6ff, flashes: 3, period: 0.8, retract: 0.6, test: 0.55, standby: [0.08, 0.2], full: 0.55, pulse: 3 };
+// full 全亮（結局擋隕石）：隕石撞上那一刻建好（t 從撞上算），全亮到 fade[0]、fade[0]–fade[1] 淡到 0 同時微微脹大到 swell 倍，之後藏起來——
+//   擋完隕石罩子就收掉（使用者 2026-11-04：「防護罩在擋完隕石就可以消失了」；煙火在 t 0–1.2 放完前罩子都還在）。
+// shieldPose 是純函式：t 秒時的 { opacity, scale, visible }
+export const SHIELD = { color: 0xa8e6ff, flashes: 3, period: 0.8, retract: 0.6, test: 0.55, standby: [0.08, 0.2], full: 0.55, pulse: 3, fade: [0.8, 1.6], swell: 1.08 };
 export const SHIELD_TEST_DUR = SHIELD.flashes * SHIELD.period + SHIELD.retract;
 // fail（計畫 17 任務 2：晶片 7–8 的隕石警告裡試升失敗）：0–rise 秒從地面長到 scale 倍大（不透明度 opacity）、停到 0.5 →
 // flashes 兩段 [起, 迄]（sin² 亮到 hi 再暗回 lo：第一下 0.2 s、第二下 0.1 s 短一點，像電力不穩）→ 暗著（lo）到 retract[0] →
@@ -121,7 +123,12 @@ export function shieldPose(state, t) {
     if (t < SHIELD_TEST_DUR) return { opacity: 0.04, scale: 1 - ease((t - flash) / SHIELD.retract), visible: true };
     return { opacity: 0, scale: 0, visible: false };
   }
-  if (state === 'full') return { opacity: SHIELD.full, scale: 1, visible: true };
+  if (state === 'full') {
+    const [f0, f1] = SHIELD.fade;
+    if (t < f0) return { opacity: SHIELD.full, scale: 1, visible: true };
+    if (t < f1) { const k = ease((t - f0) / (f1 - f0)); return { opacity: SHIELD.full * (1 - k), scale: 1 + (SHIELD.swell - 1) * k, visible: true }; }
+    return { opacity: 0, scale: SHIELD.swell, visible: false };
+  }
   // standby：跟天線同一個相位（tower.js 的 antenna：(1 + sin(2πt/3)) / 2）
   const [lo, hi] = SHIELD.standby, k = (1 + Math.sin(t * Math.PI * 2 / SHIELD.pulse)) / 2;
   return { opacity: lo + (hi - lo) * k, scale: 1, visible: true };
@@ -339,12 +346,14 @@ export function createPartFactory(THREE, ctx) {
   // test 建好時就是演完的樣子（收起來、藏著）：閃三下由劇本叫 object.userData.test({ speed }) 開演、finish() 跳到收好
   //   （跳過、reduced-motion、舞台重建零件都不會重閃）；speed：演出倍速（現在恆為 1；以前蒙太奇 2，裁決 R15），閃三下跟著快
   // fail（計畫 17 任務 2，隕石警告裡試升失敗）同 test：建好時就藏著，劇本叫 test() 從 0 演 shieldPose('fail')、finish() 跳到藏好
+  // full（結局擋隕石，2026-11-04 起擋完就消失）也一樣：建好時就是演完的樣子（藏著）——跳過、截圖、舞台重建零件都看不到罩子；
+  //   隕石劇本在撞上那一刻套用的同一幀叫 test() 從 0 演（全亮 → 淡掉 → 藏起來，見 shieldPose）
   function shield(spec) {
     const geo = new THREE.SphereGeometry(spec.r, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2), map = hexGrid(THREE).clone();
     map.repeat.set(24, 3.5); map.needsUpdate = true;
     const mat = new THREE.MeshBasicMaterial({ color: SHIELD.color, map, transparent: true, depthWrite: false, side: THREE.FrontSide });
     const mesh = new THREE.Mesh(geo, mat), object = new THREE.Group(); mesh.castShadow = mesh.receiveShadow = false; mesh.renderOrder = 2; object.add(mesh);
-    let t = spec.state === 'test' || spec.state === 'fail' ? Infinity : 0, rate = 1;
+    let t = spec.state === 'test' || spec.state === 'fail' || spec.state === 'full' ? Infinity : 0, rate = 1;
     const put = () => { const p = shieldPose(spec.state, t); mesh.visible = p.visible; mesh.scale.setScalar(p.scale); mat.opacity = p.opacity; };
     object.userData.test = ({ speed = 1 } = {}) => { t = 0; rate = speed; put(); };
     object.userData.finish = () => { t = Infinity; put(); };

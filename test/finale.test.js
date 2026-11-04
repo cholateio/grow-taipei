@@ -441,6 +441,7 @@ test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fa
     assert.ok(crowdSize >= 6, `${outcome}: islanders (${crowdSize})`);
     const n0 = bubblesLog.length, w0 = worldLog.length, r0 = rig.log.length, said = [], main0 = show.stage.partObject('tower.main'), shield0 = show.stage.partObject('tower.shield');
     let launchAt = null, bendAt = null, shieldAt = null, lieAt = null, jumpers = 0, seen = n0, named = null;
+    const domeSeen = [];   // 罩子亮起之後每幀的 [距撞上的秒數, 看得見, 不透明度]（擋完隕石就淡掉藏起來，使用者 2026-11-04）
     const update = show.update.bind(show);
     show.update = (dt, t) => {
       update(dt, t);
@@ -451,6 +452,7 @@ test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fa
       if (named === null && said.some(b => b.kind === '！')) named = Math.min(24, islanders({ roster: show.roster }).length);
       if (bendAt === null && show.stage.partObject('tower.main') !== main0) bendAt = now;
       if (shieldAt === null && show.stage.partObject('tower.shield') !== shield0) shieldAt = now;
+      if (shieldAt !== null) { const d = show.stage.partObject('tower.shield')?.children[0]; domeSeen.push([now - shieldAt, !!d?.visible, d?.material.opacity ?? 0]); }
       if (lieAt === null && worldLog.slice(w0).some(([w]) => w.mood === 'lie')) lieAt = now;
       jumpers = Math.max(jumpers, everyone(show).filter(m => m.walker?.gesture?.kind === 'jump').length);
     };
@@ -467,8 +469,10 @@ test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fa
     const impact = launchAt + FLIGHT + (outcome === 'deflect' ? DEFLECT : 0) - 0.05;
     if (outcome === 'shield') {
       assert.ok(shieldAt >= impact, 'the dome lights up at impact');
-      const dome = show.stage.partObject('tower.shield').children[0];
-      assert.ok(Math.abs(dome.material.opacity - SHIELD.full) < 1e-9, 'the dome stays full');
+      // 煙火（撞上之後 1.2 s 內放完）那段罩子全亮看得見；撞上 SHIELD.fade[1]（1.6 s）之後藏起來
+      const during = domeSeen.filter(([t]) => t < SHIELD.fade[0] - 0.05), after = domeSeen.filter(([t]) => t >= SHIELD.fade[1] + 0.05);
+      assert.ok(during.length && during.every(([, v, op]) => v && Math.abs(op - SHIELD.full) < 1e-9), 'the dome is full during the fireworks');
+      assert.ok(after.length && after.every(([, v]) => !v), `the dome is gone ≥ ${SHIELD.fade[1]} s after impact`);
       assert.equal(of('♥').length, named, 'the same crowd cheers'); assert.ok(of('♥')[0].t >= shieldAt, '♥ after the dome lights up');
       assert.equal(jumpers, named, 'everyone jumps');
     } else if (outcome === 'deflect') {
@@ -601,7 +605,7 @@ test('cyber epilogue live (warning + meteor + epilogue in one live turn): night,
   assert.ok(!bubblesLog.slice(n0).some(b => b.kind && typeof b.kind === 'object' && 'text' in b.kind), 'no marquee text（2026-11-03 拿掉）');
   assert.ok(ratsAt !== null && ratsAt >= parkedAt, 'the rats line up after the car parks');
   const rats = show.roster.members('rat.pack');
-  assert.equal(rats.length, 10);
+  assert.equal(rats.length, 5, 'the army of five (user 2026-11-04)');
   for (const m of rats) assert.ok(dist3(m.pos, ROOF_SPOTS[m.i]) < 1e-6 && m.mode === 'home', `rat ${m.i} on its roof spot`);
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
   const cam = rig.log.slice(r0);
@@ -609,7 +613,7 @@ test('cyber epilogue live (warning + meteor + epilogue in one live turn): night,
   // 隕石停在 WIDE、不回全景停（後面接收尾）：收尾第一拍就回全景，等 FOCUS_BEAT 鏡頭飛到才換黑塔
   assert.ok(homeAt !== null && homeAt <= 1 / 30 + 1e-6, `back to the overview right away (${homeAt?.toFixed(2)})`);
   assert.ok(darkAt - homeAt >= beatsMod.FOCUS_BEAT - 1e-6, `the black tower after the camera is home (${(darkAt - homeAt).toFixed(2)} s)`);
-  // 跳過：終態一樣（車停好、10 隻在屋頂、螢幕在）
+  // 跳過：終態一樣（車停好、5 隻在屋頂、螢幕在）
   const skip = await headlessShow();
   let s2 = createState(spec);
   for (const st of turnSteps(CYBER_ORDER)) { const r = st(s2); s2 = r.state; await skip.run([...r.events, { kind: 'settle' }], { instant: true }); }
@@ -943,7 +947,7 @@ async function alienLive(order) {
 }
 const alienEnd = (show, h, what) => {
   const sw = swarmOf(show);
-  assert.equal(sw.length, 10, `${what}: 10 mutants`);
+  assert.equal(sw.length, 5, `${what}: 5 mutants (user 2026-11-04)`);
   sw.forEach((m, i) => { assert.ok(dist3(m.pos, ratMod.SAUCER_SPOTS[i]) < 1e-6, `${what}: mutant ${i} on the saucer rim (${m.pos.x.toFixed(2)}, ${m.pos.y.toFixed(2)}, ${m.pos.z.toFixed(2)})`); assert.ok(m.dress.eye && !m.dress.crown, 'a mutant'); });
   const [king] = show.roster.members('rat.pack');
   assert.ok(dist3(king.pos, SHIP_SPOT) < 1e-6 && king.dress.crown, `${what}: the crowned king on the saucer top`);
@@ -959,7 +963,7 @@ const alienEnd = (show, h, what) => {
   assert.equal(everyone(show).filter(m => m.hidden).length, 0, `${what}: nobody hidden`);
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, `${what}: nobody in script mode`);
 };
-test('alien live from EXAMPLE.alien (deflect) and the first alien hit game (whole finale as one live turn): the swarm rushes 101 while the islanders hide, all come out with the third eye; mothership, king and 10 mutants on the saucer, UFOs landed; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
+test('alien live from EXAMPLE.alien (deflect) and the first alien hit game (whole finale as one live turn): the swarm rushes 101 while the islanders hide, all come out with the third eye; mothership, king and 5 mutants on the saucer, UFOs landed; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
   for (const [what, order, outcome] of [['deflect', EXAMPLE.alien, 'deflect'], ['hit', ALIEN_HIT, 'hit']]) {
     const r = await alienLive(order), { show, h } = r;
     assert.equal(show.stage.flags.missile, outcome, `${what}: meteor ${outcome}`);

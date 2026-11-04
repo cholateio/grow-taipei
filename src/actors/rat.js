@@ -1,18 +1,19 @@
-// 老鼠（唯一正解 §4.4，max 4）：一隻在巨蛋附近晃（放置反應：鮮奶 ≤2 就咬牛奶箱；撞翻攤車 §5.2 拿掉了）→ 一窩 3 隻（計畫 9 §5）
-// → 搭捷運（列車有了：代幣 ≥4）或泡北投溫泉（窩裡再鑽出兩隻，5 隻）
+// 老鼠（唯一正解 §4.4，max 4）：一隻在巨蛋附近晃（放置反應：鮮奶 ≤2 就咬牛奶箱；撞翻攤車 §5.2 拿掉了）→ 一窩 NEST_N 隻
+// → 搭捷運（列車有了：代幣 ≥4）或泡北投溫泉（同一窩 GROW_TO 隻）
 // → ◆ Lv4 分岔＝最終型態（引擎的 ratBranch；原本的 Lv4 分岔＋Lv5 最終型態併成一級）：
-//   賽博＝機器鼠排隊跟偵防師走到 101 腳下變身、軍團 10 隻繞 101、一隻戴王冠坐在捷運站頂；
+//   賽博＝機器鼠排隊跟偵防師走到 101 腳下變身、軍團 ARMY_N 隻繞 101、一隻戴王冠坐在捷運站頂；
 //   外星（壞結局「變異鼠稱王」）＝變異鼠三眼綠光加冕、石堆島綠光圈（satellites.js）、小 UFO 盤旋。
-// 颱風把老鼠沖進大巨蛋：5 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
+// 颱風把老鼠沖進大巨蛋：GROW_TO 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
 // 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩在舞台結算的 meta.trouble 那棟門口晃（沒有 trouble 才在窩旁）；放下那回合有 trouble 就跑過去聞一聞。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
-// 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 10 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）；
-// 外星收尾是鼠群 rat.swarm 10 隻＋鼠王（rat.pack 一隻），一樣 11 隻。
-// 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 10 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，兩排各 5 隻面向鏡頭），
+// 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 ARMY_N 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）；
+// 外星收尾是鼠群 rat.swarm SWARM_N 隻＋鼠王（rat.pack 一隻）。
+// 數量（使用者 2026-11-04：「老鼠數量整體還是太多，前期兩隻就好，後期也減少」）：1 → 2 → 2 → 5（賽博軍團）／外星鼠群 5；以前 1 → 3 → 5 → 10／10。
+// 最終章 §7 賽博尾聲（flags.epilogue 'cyber'）：同一批 ARMY_N 隻機器鼠的家搬到黑塔的平屋頂（ROOF_SPOTS，一排面向鏡頭），
 // 王冠鼠照舊坐站頂。屋頂在 101 的 footprint 裡、走不上去：finale.js 的尾聲劇本把牠們閃白放上去（不是走上去）。
 // 最終章 §7 外星尾聲（flags.epilogue 'alien'）：變異鼠王的站位搬到 101 母艦的碟頂中心（SHIP_SPOT，面向鏡頭），頭上的小 UFO 不畫
 // （三台大 UFO 取代它，finale.js）；碟頂走不上去，finale.js 的尾聲劇本把牠閃白放上去。唯一正解之後外星是壞結局；
-// 計畫 17 任務 4 壞結局也演收尾（災難版）：多一群 10 隻變異鼠（rat.swarm）站上母艦碟緣（SAUCER_SPOTS）。
+// 計畫 17 任務 4 壞結局也演收尾（災難版）：多一群 SWARM_N 隻變異鼠（rat.swarm）站上母艦碟緣（SAUCER_SPOTS）。
 // 劇本（物品 v2 §6）：一級 ≤ 4.5 秒；◆ Lv4 ≤ 8 秒（回全景定格）。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { CRATE, KIDS } from './milk.js';
@@ -30,13 +31,19 @@ const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWo
 const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時老鼠在這裡晃）
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客泡在池裡（池心半徑 0.3，計畫 13），離牠 0.73，不換位置
-const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的五隻機器鼠從這裡走出來）
-// 補進來的五隻各自的入口（計畫 11 最終修正 #4：以前五隻同一幀從同一點冒出來、一起走，之後彼此疊著 5–20 幀）：園區門口沿 x 排一列、
-// 間距 PARK_STEP（≥ 兩隻的半徑相加 0.26），名冊依序輪流（rat#5 在最西邊、最靠 101，先走在前面）
+const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的機器鼠從這裡走出來）
+// 老鼠數量（使用者 2026-11-04）：一窩 NEST_N、Lv3（泡溫泉、搭車、鼠災）GROW_TO、賽博軍團 ARMY_N、外星收尾的鼠群 SWARM_N。
+// 以前 3／5／10／10（計畫 9 §5 一窩 5 → 3）；現在一窩跟 Lv3 一樣兩隻，Lv3 的劇本不再從窩裡多鑽出來（fill 留著：一窩比 GROW_TO 少時才補）
+export const NEST_N = 2, GROW_TO = 2, ARMY_N = 5, SWARM_N = 5;
+// 園區門口的入口一列（計畫 11 最終修正 #4：以前補進來的同一幀從同一點冒出來、一起走，之後彼此疊著 5–20 幀）：沿 x 排 SWARM_N 個、
+// 間距 PARK_STEP（≥ 兩隻的半徑相加 0.26），由西（最靠 101）往東
 const PARK_STEP = 0.3;
-export const PARK_ENTRIES = [-2, -1, 0, 1, 2].map(k => offset(PARK, k * PARK_STEP, 0));
-// 外星收尾的 10 隻變異鼠（計畫 17 任務 4）也從園區門口出來：同一列再往外（+z，門口外）排一列，十個入口各一隻（兩隻不會在同一點冒出來）
-export const SWARM_ENTRIES = [...PARK_ENTRIES, ...PARK_ENTRIES.map(p => offset(p, 0, PARK_STEP))];
+export const PARK_ENTRIES = Array.from({ length: SWARM_N }, (_, k) => offset(PARK, (k - (SWARM_N - 1) / 2) * PARK_STEP, 0));
+// 賽博軍團的入口（名冊 entry 照 i 輪流）：補進來的 rat#GROW_TO…（ARMY_N − GROW_TO 隻）依序從最西邊的入口出來、先走在前面；
+// 原本就在的幾隻（i < GROW_TO）排在剩下的入口（重新整理頁面、名冊一次生滿時也不會兩隻疊在同一點）
+export const ARMY_ENTRIES = Array.from({ length: ARMY_N }, (_, i) => PARK_ENTRIES[(i - GROW_TO + PARK_ENTRIES.length) % PARK_ENTRIES.length]);
+// 外星收尾的 SWARM_N 隻變異鼠（計畫 17 任務 4）也從園區門口出來：一隻一個入口（兩隻不會在同一點冒出來）
+export const SWARM_ENTRIES = PARK_ENTRIES.slice(0, SWARM_N);
 // 王冠鼠的站位（看 lv.token）：代幣 Lv9 起坐在賽博站前的懸浮月台上（token.js DECK_AT／PLATFORM：招牌右邊、欄杆後面，身體斜斜面向鏡頭）——
 // 站頂平屋頂 Lv10 停滿三台 Roadster 和三條起飛坡道，沒有牠的位子（計畫 8 任務 5 裁決 (a)）；代幣 Lv9 以前（偏離正解的放法，
 // 賽博 Lv4 可能碰上代幣 4–8）沒有月台也沒有坡道，坐大車站圓頂外的簷角
@@ -46,20 +53,21 @@ export const kingSpot = lv => (lv.token >= 9
   ? { ...offset(DECK_AT, KING_DECK.x, KING_DECK.z, PLATFORM.top), yaw: KING_DECK.yaw }
   : { ...offset(STATION, -0.42, 0.32, CORNICE_Y), yaw: 0.6 });
 
-// 黑塔屋頂上的站位（世界座標）：屋頂面高度、兩排各 5 隻（x 間距 0.26 ≥ 名冊的 0.25，不會被 separateStanding 推開），
-// 前排 z +0.1、後排 z −0.26（離後緣的桅杆 0.36）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）
-const ROOF = towerBody('lit', { dark: true }).roof;
-export const ROOF_SPOTS = [0.1, -0.26].flatMap(z => [-0.52, -0.26, 0, 0.26, 0.52].map(x => ({ ...offset(TOWER, x, z, ROOF), yaw: 0 })));
+// 黑塔屋頂上的站位（世界座標）：屋頂面高度、一排 ARMY_N 隻在 z +0.1（x 間距 0.26 ≥ 名冊的 0.25，不會被 separateStanding 推開；
+// 以前 10 隻兩排，後排 z −0.26 拿掉）；前緣 z +0.58 留給停好的紅色飛天跑車（finale.js CAR_PARK）。都面向 +z（鏡頭）
+const ROOF = towerBody('lit', { dark: true }).roof, ROOF_STEP = 0.26;
+export const ROOF_SPOTS = Array.from({ length: ARMY_N }, (_, k) => ({ ...offset(TOWER, (k - (ARMY_N - 1) / 2) * ROOF_STEP, 0.1, ROOF), yaw: 0 }));
 
 // 母艦碟頂中心（世界座標，tower.js shipTop）：外星收尾（計畫 17：壞結局「變異鼠稱王」的收尾）鼠王坐這裡
 export const SHIP_SPOT = { x: TOWER.x, y: shipTop(), z: TOWER.z, yaw: 0 };
 // 外星收尾的變異鼠群（計畫 17 任務 4，名冊 rat.swarm）站在母艦碟緣上（碟頂高度 shipTop）：圍著碟頂中心的鼠王一圈（半徑 SAUCER_R 0.6，
 // 鼠王半徑 0.33＋老鼠 0.13 之外；碟緣半徑 0.8），面朝外；後側 90° 留給天線（tower.js 母艦的桅杆在碟緣後側 z −0.55）——
-// 10 隻排在 ±135° 之間、每隻差 30°（相鄰 0.31 ≥ 名冊的 0.26，不會被 separateStanding 推開）。
+// SWARM_N 隻平均排在 ±SAUCER_ARC（135°）之間（5 隻每隻差 67.5°，相鄰 0.67；以前 10 隻每隻差 30°）。
 // 設計寫「家在 ROOF_SPOTS（黑塔屋頂，同賽博）」：母艦整座抬高 1.0，黑塔屋頂的高度在母艦最上兩節塔身裡面，所以改站碟緣
 export const SAUCER_R = 0.6;
-export const SAUCER_SPOTS = Array.from({ length: 10 }, (_, i) => {
-  const a = (-135 + i * 30) * Math.PI / 180;
+const SAUCER_ARC = 135;
+export const SAUCER_SPOTS = Array.from({ length: SWARM_N }, (_, i) => {
+  const a = (-SAUCER_ARC + i * 2 * SAUCER_ARC / (SWARM_N - 1)) * Math.PI / 180;
   return { x: TOWER.x + Math.sin(a) * SAUCER_R, y: SHIP_SPOT.y, z: TOWER.z + Math.cos(a) * SAUCER_R, yaw: a };
 });
 // 小 UFO 的零件（相對碟心）：銀色碟身＋碟緣＋綠色底光。finale.js 外星尾聲的三台大 UFO 照這個放大 2 倍
@@ -79,14 +87,13 @@ export function ratMode(lv, flags) {
 }
 
 const wander = (at, r) => ({ kind: 'wander', at, r });
-// 一窩 3 隻（計畫 9 §5：5 → 3，巨蛋旁那格太擠）；泡溫泉、搭車、賽博 Lv4、鼠災仍是 5 隻——Lv3 的劇本先從窩裡再鑽出兩隻（GROW_TO）才一起出發
-const NEST_N = 3, GROW_TO = 5;
+// 人數見上面的 NEST_N／GROW_TO／ARMY_N／SWARM_N；Lv3 的劇本先把窩補到 GROW_TO 隻（fill；一窩跟 Lv3 一樣多時不用補）才一起出發
 const pack = (at, n, home, model = {}) => ({ kind: 'roster', at, n, model: { path: RAT, h: 0.2, anim: 'Walk', ...model }, home });
-// 泡溫泉：池子裡圍一圈五個位置，面向池心
-const SPRING_SPOTS = Array.from({ length: 5 }, (_, i) => { const a = i / 5 * Math.PI * 2 + 0.3; return { ...offset(SPRING, Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.1), yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }; });
+// 泡溫泉：池子裡圍一圈 GROW_TO 個位置（兩隻：池子左右兩側），面向池心
+const SPRING_SPOTS = Array.from({ length: GROW_TO }, (_, i) => { const a = i / GROW_TO * Math.PI * 2 + 0.3; return { ...offset(SPRING, Math.cos(a) * 0.62, Math.sin(a) * 0.62, 0.1), yaw: Math.atan2(-Math.cos(a), -Math.sin(a)) }; });
 
 // 名冊入口（§13.2，view 的 home.entry）：補進來的老鼠從哪裡走來。泡溫泉：從窩那邊（溫泉格的格邊離池子都不到 1.5）；
-// 賽博 Lv4 軍團：多的五隻從園區門口走去 101。其他模式用名冊預設（家那格邊上離家最遠的點）
+// 賽博 Lv4 軍團：多的 ARMY_N − GROW_TO 隻從園區門口走去 101。其他模式用名冊預設（家那格邊上離家最遠的點）
 // 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩的家跟著舞台結算的 meta.trouble 走——有出問題的那棟，就在那棟門口
 // （meta.troubleAt，stage.js troubleSpot）附近繞 TROUBLE_R；沒有就在窩旁晃。家換位置時名冊讓牠們走過去（roster.js apply 的 moved，不閃白）
 export const TROUBLE_R = 0.4;
@@ -100,26 +107,26 @@ export function view(lv, flags, meta) {
       'rat.main': { kind: 'compound', at: AT, footprint: { r: 0.2 }, parts: [{ kind: 'rbox', pos: [0, 0.12, 0], scale: [0.35, 0.24, 0.3], color: 0x9a6a3c }, { kind: 'sphere', pos: [0, 0.12, 0.15], scale: [0.12, 0.1, 0.04], color: C.ink }] },
       'rat.pack': pack(AT, NEST_N, daily(meta)),
     };
-    case 'spring': return { 'rat.pack': pack(SPRING, 5, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
-    case 'train': return { 'rat.pack': pack(AT, 5, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
-    // Lv4 最終型態（原本的 Lv5）：機器鼠軍團 10 隻繞 101＋站頂一隻戴王冠（骨架動畫上限 12：10 + 王冠鼠 + 柴犬；石堆小島的兩隻這時不畫）
+    case 'spring': return { 'rat.pack': pack(SPRING, GROW_TO, { kind: 'stand', spots: SPRING_SPOTS, entry: AT }) };
+    case 'train': return { 'rat.pack': pack(AT, GROW_TO, { kind: 'ride', cars: trainCars(lv.token), speed: flags.flooded ? 0 : 0.35 }) };
+    // Lv4 最終型態（原本的 Lv5）：機器鼠軍團 ARMY_N 隻繞 101＋站頂一隻戴王冠（骨架動畫上限 12：ARMY_N + 王冠鼠 + 柴犬；石堆小島的兩隻這時不畫）
     // 賽博尾聲：軍團站上黑塔屋頂（同一個名冊、同一批老鼠，只是家搬了）
     case 'cyber': return {
-      'rat.pack': pack(TOWER, 10, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: PARK_ENTRIES }, { tint: GREY, antenna: true }),
+      'rat.pack': pack(TOWER, ARMY_N, flags.epilogue === 'cyber' ? { kind: 'stand', spots: ROOF_SPOTS } : { ...wander(TOWER, 1.3), entry: ARMY_ENTRIES }, { tint: GREY, antenna: true }),
       'rat.king': { kind: 'king', at: kingSpot(lv), model: { path: RAT, h: 0.2, anim: 'Idle', tint: GREY, antenna: true, crown: true }, footprint: false },
     };
     case 'alien': {
       // Lv4 最終型態（壞結局「變異鼠稱王」）：變異鼠加冕（戴王冠）、頭上盤旋一艘小 UFO；石堆島的綠光圈在 satellites.js
       // 外星收尾（計畫 17 任務 4 災難版）：鼠王的站位搬上母艦碟頂、小 UFO 不畫（同一隻、同一個模型）；
-      // 另外一群 10 隻變異鼠（rat.swarm：綠色發光、三眼、沒有天線、一般大小）從園區門口出來（SWARM_ENTRIES）、家在碟緣上（SAUCER_SPOTS）——
-      // 碟緣在 101 的 footprint 上面走不上去，finale.js 的收尾劇本讓牠們先衝向 101 再閃白上去。骨架：10 + 鼠王 + 柴犬 = 12
+      // 另外一群 SWARM_N 隻變異鼠（rat.swarm：綠色發光、三眼、沒有天線、一般大小）從園區門口出來（SWARM_ENTRIES）、家在碟緣上（SAUCER_SPOTS）——
+      // 碟緣在 101 的 footprint 上面走不上去，finale.js 的收尾劇本讓牠們先衝向 101 再閃白上去。骨架：SWARM_N + 鼠王 + 柴犬
       const ship = flags.epilogue === 'alien';
       const v = { 'rat.pack': pack(MUTANT, 1, { kind: 'stand', spots: [ship ? SHIP_SPOT : { ...MUTANT, yaw: 0 }] }, { h: 0.5, tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true, wave: true, crown: true }) };
-      if (ship) v['rat.swarm'] = pack(TOWER, 10, { kind: 'stand', spots: SAUCER_SPOTS, entry: SWARM_ENTRIES }, { tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true });
+      if (ship) v['rat.swarm'] = pack(TOWER, SWARM_N, { kind: 'stand', spots: SAUCER_SPOTS, entry: SWARM_ENTRIES }, { tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true });
       else v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
       return v;
     }
-    case 'dome': return { 'rat.pack': pack(GATE, 5, wander(GATE, 0.9)) };
+    case 'dome': return { 'rat.pack': pack(GATE, GROW_TO, wander(GATE, 0.9)) };
   }
 }
 
@@ -178,7 +185,7 @@ export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 �
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
 // 搭車至少 CATCH_MIN 秒（含跳上車之後跟車走一小段）：選擇帶動升級之後老鼠放下當回合就 Lv2、下一回合 Lv3，
-// 五隻還在窩邊、離島緣很近，列車最快 1.0 s 就到——不墊這一下整級只有 2.9 s（一級 3–5 s）
+// 一窩還在窩邊、離島緣很近，列車最快 1.0 s 就到——不墊這一下整級只有 2.9 s（一級 3–5 s）
 const CATCH_MIN = 2.1;
 // 分岔（spec.js 老鼠 onLevel 4 的 ratBranch：條件照規則資料編譯，跟引擎同一個判斷，不寫死門檻）。分岔旗標是 grow 之後的 fx 事件才帶來的，
 // grow 4 的劇本先用一個同值的 fx 事件套用（舞台 fold 旗標是冪等的，之後真的 fx 事件再套一次不會變），變身才演得在 LEVEL UP 前面
@@ -207,7 +214,7 @@ const detectiveBubble = (ctx, s) => (s.lv.chip >= 3 ? [ctx.B.focus('home', { hol
 // 搭車時車頭停在窩的方位再往前半列車（列車的中間對著窩）：2026-10-28 列車加大之後間距 0.6 → 0.84，車頭對著窩的話
 //   第五節離窩 3.4 公尺（0.41 rad），最後一隻要跳一大段；置中之後最遠 1.7 公尺
 const centred = cars => NEST_A + (Math.max(1, cars) - 1) / 2 * GAP / TRACK.radius;
-// 搭車（老鼠 Lv3）：五隻跑到窩那側島緣的 spots 上，列車同時趕來（最快 TRAIN_IN 秒，牠們還在跑就照牠們跑到的時間）；
+// 搭車（老鼠 Lv3）：GROW_TO 隻跑到窩那側島緣的 spots 上，列車同時趕來（最快 TRAIN_IN 秒，牠們還在跑就照牠們跑到的時間）；
 // 到站後等最後一隻跑到再一起跳上車頂。拍長在 start 才知道（看牠們現在在哪、列車在哪）
 function catchTrain(B, ids, spots, ctx, at = NEST_A) {
   let inner = null;
@@ -274,7 +281,7 @@ export const script = {
     return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0)];
   },
   grow: {
-    // 一窩：♥ → 閃白鼠窩 → 兩隻從窩邊跑出來（一窩 3 隻）→ 窩旁晃
+    // 一窩：♥ → 閃白鼠窩 → NEST_N − 1 隻從窩邊跑出來（一窩 NEST_N 隻）→ 窩旁晃
     // ♥ 冒在窩上（rat.main 的頭；窩還沒閃出來時退回老鼠格的頭頂，同一點）：老鼠 0 可能正在遠處出問題的那棟門口，
     // 鏡頭平移去的是老鼠格（最終修正：順序 milk,baseball,chip,token,typhoon,bulb,boba,rat 的 ♥ 整段在畫面外）；門口那隻留在原地
     2(e, s, ctx) {
@@ -289,7 +296,7 @@ export const script = {
     },
     3(e, s, ctx) {
       const { B } = ctx, mode = ratMode(s.lv, s.flags), ids = Array.from({ length: GROW_TO }, (_, i) => i);
-      // 搭捷運（列車有了）：五隻 ！ 跑到窩那側的島緣 → 列車趕過來停住 → 一起跳上車頂 → 跟車走（鏡頭對著老鼠窩格）
+      // 搭捷運（列車有了）：GROW_TO 隻 ！ 跑到窩那側的島緣 → 列車趕過來停住 → 一起跳上車頂 → 跟車走（鏡頭對著老鼠窩格）
       // 新家（車頂）先 hold 著：跳上車的那隻 home 就坐好跟車走，還在岸上的不會被名冊瞬移上車
       if (mode === 'train') {
         const wait = once(c => c.nav.slots(NEST_SHORE(c), GROW_TO, 0.3));
@@ -300,7 +307,7 @@ export const script = {
           B.home(RATS), B.together([B.apply(e), B.levelUp('rat')]),   // 窩的其餘零件跟 LEVEL UP 一起閃
         ];
       }
-      // 泡溫泉（列車還沒有）：五隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）
+      // 泡溫泉（列車還沒有）：GROW_TO 隻快跑上台地到池裡 → 池水閃白變綠、一起 ♥（鏡頭對著溫泉格）
       if (mode === 'spring') {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill(),
@@ -316,21 +323,22 @@ export const script = {
     4(e, s, ctx) {
       const { B } = ctx, branch = branchOf(s), ids = Array.from({ length: GROW_TO }, (_, i) => i), r0 = rat(0), flag = branchEvent(branch);
       if (s.flags.domeRats) return null;
-      // 老鼠的名冊先 hold 住、等分岔事件一起套用：從一窩 3 隻跳級上來（2 → 4 合併跳級）時，中間那份「搭車／泡溫泉 5 隻」不套用——
-      // 不然多出來的兩隻會冒出來 0.3 秒又走掉（計畫 9 任務 3 審稿）。變身只套老鼠的名冊（only）：沒有分岔旗標的中間那份 view 裡
+      // 老鼠的名冊先 hold 住、等分岔事件一起套用：從一窩跳級上來（2 → 4 合併跳級）時，中間那份「搭車／泡溫泉」不套用——
+      // 不然那份多出來的會冒出來 0.3 秒又走掉（計畫 9 任務 3 審稿；現在一窩跟 Lv3 一樣多，照樣先 hold 住）。變身只套老鼠的名冊（only）：沒有分岔旗標的中間那份 view 裡
       // 石堆島的老鼠（老鼠 ≥3）會先閃出來再被軍團收掉；王冠鼠、UFO、綠光圈、偵防師、窩這些零件後半才套
       const transform = [B.apply(e, { only: [KEY], hold: [KEY] }), B.apply(flag, { only: [KEY] })];
       // 賽博：偵防師（老鼠在窩裡時他就站在隔壁格盯著）領頭走到 101 腳下，老鼠們排成一列跟著他（每隻晚 FOLLOW 秒出發），他一邊走一邊冒圖框「晶片」
-      //   → 閃白變機器鼠（天線）；軍團補到 10 隻（新的五隻從園區門口走出來、不閃）、石堆小島的兩隻同時收掉（骨架動畫 ≤ 12）
+      //   → 閃白變機器鼠（天線）；軍團補到 ARMY_N 隻（新的 ARMY_N − GROW_TO 隻從園區門口走出來、不閃）、石堆小島的兩隻同時收掉（骨架動畫 ≤ 12）
       //   → 回全景，站頂閃白出現一隻戴王冠的機器鼠 → LEVEL UP。
       // 原本在園區門口變身（偵防師走到園區那側島緣接車）：正解第 9 回合老鼠從窩裡 2 → 4，窩到園區、園區到 101 兩段路一共 13 s，
       //   ◆ 8 s 裝不下；改成直接走到 101 腳下（窩到 101 一段）。鏡頭（§13.1）整段對著 101。
       // 賽博只會從一窩 2 → 4 合併跳級來（晶片 8 要代幣 7，老鼠早就搭上車、晶片 ≥3 就分岔；4 萬局列舉裡 50 局全是從 Lv2）：
       //   搭車來的分支（先等列車停在窩那側）正式演出到不了，只在單獨演一級時出現（約 9 s）
       if (branch === 'cyber') {
-        const foot = once(c => { const sl = c.nav.slots(TOWER, 10, 1.3), from = RATS(c)[0]?.pos ?? AT; return sl.sort((p, q) => Math.hypot(p.x - from.x, p.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z)); });
-        // 從一窩 3 隻直接跳上來（2 → 4 合併跳級）：先 hold 住、缺的兩隻從窩邊鑽出來，五隻一起排隊（不然多的兩隻變身後才從格邊走進來、
-        // 家在橋上的那隻直接冒出來）
+        // 101 腳下一圈 2 × ARMY_N 個點，離出發點近的先給（排隊的 GROW_TO 隻＋偵防師取最近的幾個）
+        const foot = once(c => { const sl = c.nav.slots(TOWER, 2 * ARMY_N, 1.3), from = RATS(c)[0]?.pos ?? AT; return sl.sort((p, q) => Math.hypot(p.x - from.x, p.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z)); });
+        // 從一窩直接跳上來（2 → 4 合併跳級）：先 hold 住、缺的（一窩比 GROW_TO 少時）從窩邊鑽出來，GROW_TO 隻一起排隊
+        // （不然多的變身後才從格邊走進來、家在橋上的那隻直接冒出來）
         const short = ratMode(s.prev.lv, s.prev.flags) === 'nest' ? [B.apply(e, { only: [KEY], hold: [KEY] }), fill()] : [];
         const march = [B.bubble(detective, { icon: 'chip' }, 0.8), B.walk(detective, c => foot(c)[GROW_TO]), ...ids.map(i => B.walk(rat(i), c => foot(c)[i], { delay: FOLLOW * (i + 1) }))];
         // 鏡頭平移跟排隊出發同時（正解：從窩裡出發，不用等車）；搭車來的先對著 101、等列車停在窩那側讓牠們跳下來
@@ -378,7 +386,7 @@ export const script = {
 script.grow[4].key = true;
 
 // 拜訪點（計畫 6 設計 §4）：看老鼠這一級住哪（ratMode）。一隻／鼠窩／搭捷運（窩在車站旁的岸邊等車）→ 鼠窩；泡溫泉、變異鼠 → 溫泉；
-// 賽博（Lv4 軍團繞 101；補進來的五隻從園區門口走過去）→ 園區門口；鼠災 → 巨蛋門口。s 是劇本收到的 { lv, flags }（lv.rat 已是 n）
+// 賽博（Lv4 軍團繞 101；補進來的從園區門口走過去）→ 園區門口；鼠災 → 巨蛋門口。s 是劇本收到的 { lv, flags }（lv.rat 已是 n）
 export function visitSpot(n, s) {
   if (!(n >= 1 && n <= ITEMS.rat.max)) return null;
   switch (ratMode({ ...s.lv, rat: n }, s.flags)) {

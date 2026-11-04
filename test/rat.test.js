@@ -46,10 +46,10 @@ test('rat lv4 without ratBranch falls back to plain rats (review focus 4)', () =
 
 // ── Task 16：老鼠全部改成名冊 rat.pack（§5.1：同一批老鼠上岸、生窩、上車、變身）──
 const MODES = [
-  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 3], [{ rat: 3 }, {}, 5], [{ rat: 3, token: 4 }, {}, 5],
-  [{ rat: 4 }, { ratBranch: 'cyber' }, 10], [{ rat: 4 }, { ratBranch: 'alien' }, 1], [{ rat: 2 }, { domeRats: true }, 5],
+  [{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 2], [{ rat: 3 }, {}, 2], [{ rat: 3, token: 4 }, {}, 2],
+  [{ rat: 4 }, { ratBranch: 'cyber' }, 5], [{ rat: 4 }, { ratBranch: 'alien' }, 1], [{ rat: 2 }, { domeRats: true }, 2],
 ];
-test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 3 at the nest → 5 → 10 at Lv4 cyber), walking anim, h 0.2 except the mutant', () => {
+test('view: every mode is one rat.pack roster of Quaternius rats (n 1 → 2 at the nest → 2 → 5 at Lv4 cyber), walking anim, h 0.2 except the mutant', () => {
   for (const [l, f, n] of MODES) {
     const v = rat.view(lv(l), f), p = v['rat.pack'], what = JSON.stringify([l, f]);
     assert.equal(p.kind, 'roster', what); assert.equal(p.n, n, what);
@@ -62,11 +62,11 @@ test('view: home shapes — one/nest wander by the nest, spring stands in the po
   const one = rat.view(lv({ rat: 1 }), {})['rat.pack'];
   assert.deepEqual(one.home, { kind: 'wander', at: AT, r: 0.7 });
   const nest = rat.view(lv({ rat: 2 }), {});
-  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }); assert.equal(nest['rat.pack'].n, 3, 'a nest of three (plan 9 §5)');
+  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }); assert.equal(nest['rat.pack'].n, 2, 'a nest of two (user 2026-11-04)');
   assert.equal(nest['rat.main'].kind, 'compound'); assert.deepEqual(nest['rat.main'].footprint, { r: 0.2 }, 'nest footprint is a circle (clear of the road on the bridge)');
   assert.equal(rat.view(lv({ rat: 1 }), {})['rat.main'], undefined);
   const spring = rat.view(lv({ rat: 3 }), {})['rat.pack'].home;
-  assert.equal(spring.kind, 'stand'); assert.equal(spring.spots.length, 5);
+  assert.equal(spring.kind, 'stand'); assert.equal(spring.spots.length, 2);
   for (const s of spring.spots) { assert.ok(near(s, SPRING, 0.8)); assert.ok(Math.abs(s.y - (SPRING.y + 0.1)) < 1e-9); }
   assert.deepEqual(rat.view(lv({ rat: 3, token: 4 }), {})['rat.pack'].home, { kind: 'ride', cars: 3, speed: 0.35 });
   assert.deepEqual(rat.view(lv({ rat: 3, token: 5 }), { flooded: true })['rat.pack'].home, { kind: 'ride', cars: 5, speed: 0 });
@@ -88,7 +88,7 @@ test('view: Lv1 / Lv2 homes follow meta.trouble — flooded → in front of the 
   const hq = modOf('chip').visitSpot(2, { lv: wait, flags: {} });
   assert.equal(wm.trouble, 'chip', 'the rat waiting for itself is not trouble');
   const nest = rat.view(wait, {}, wm);
-  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: frontOf(hq, hq.r), r: 0.4 }); assert.equal(nest['rat.pack'].n, 3);
+  assert.deepEqual(nest['rat.pack'].home, { kind: 'wander', at: frontOf(hq, hq.r), r: 0.4 }); assert.equal(nest['rat.pack'].n, 2);
   assert.deepEqual(nest['rat.main'].at, AT, 'the nest itself stays put');
   assert.deepEqual(rat.view(wait, {}, metaOf(wait, {}))['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }, 'no trouble → the nest');
   assert.deepEqual(rat.view(wait, {})['rat.pack'].home, { kind: 'wander', at: AT, r: 0.7 }, 'no meta → the nest');
@@ -102,14 +102,16 @@ test('rat is a 4-level item (single path §4.4) and the transition clamp is gone
   await assert.rejects(import('../src/actors/clamp.js'), 'clamp.js deleted');
 });
 // 唯一正解 §4.4：Lv4 分岔就是最終型態——賽博＝原本 Lv5 的軍團＋王冠鼠，外星＝原本 Lv5 的加冕＋UFO
-test('view: Lv4 cyber is ten grey antenna rats wandering round 101 (the extra five come out of the park gate); Lv4 alien is a big green three-eyed crowned waver with a UFO', () => {
+test('view: Lv4 cyber is five grey antenna rats wandering round 101 (the extra three come out of the park gate); Lv4 alien is a big green three-eyed crowned waver with a UFO', () => {
   const c = rat.view(lv({ rat: 4 }), { ratBranch: 'cyber' })['rat.pack'];
   assert.deepEqual({ ...c.home, entry: undefined }, { kind: 'wander', at: TOWER, r: 1.3, entry: undefined });
-  // 計畫 11 最終修正 #4：補進來的五隻各有自己的入口（園區門口一列，彼此 ≥ 兩隻的半徑相加），不再同一幀從同一點冒出來
+  // 計畫 11 最終修正 #4：每一隻各有自己的入口（園區門口一列，彼此 ≥ 兩隻的半徑相加），不再同一幀從同一點冒出來；
+  // 補進來的 rat#2–4 依序從最西邊（最靠 101）的入口出來
   const park = offset(anchorWorld('chip'), -0.5, 1.2), ent = c.home.entry, rr = 2 * 0.13;
   assert.equal(ent.length, 5); assert.ok(ent.every(p => Math.hypot(p.x - park.x, p.z - park.z) <= 0.7), 'at the park gate');
   for (let a = 0; a < 5; a++) for (let b = a + 1; b < 5; b++) assert.ok(Math.hypot(ent[a].x - ent[b].x, ent[a].z - ent[b].z) >= rr, `entries ${a}|${b} ≥ ${rr}`);
-  assert.equal(c.model.tint.Grey, 0xc0c8d0); assert.ok(c.model.antenna); assert.equal(c.n, 10);
+  assert.ok(ent[2].x < ent[3].x && ent[3].x < ent[4].x && ent[2].x === Math.min(...ent.map(p => p.x)), 'the newcomers come out west to east');
+  assert.equal(c.model.tint.Grey, 0xc0c8d0); assert.ok(c.model.antenna); assert.equal(c.n, 5);
   const a = rat.view(lv({ rat: 4 }), { ratBranch: 'alien' }), m = a['rat.pack'];
   assert.equal(m.model.glow.Grey, 0x5fcf7a); assert.equal(m.model.tint.Grey, 0x5fcf7a); assert.ok(m.model.eye && m.model.wave && m.model.crown);
   assert.equal(m.home.kind, 'stand'); assert.ok(near(m.home.spots[0], SPRING, 1.2));
@@ -143,11 +145,11 @@ test('script: placed, grow 2–4 and fx exist; ◆ Lv4 (branch = final form) is 
 // ── 物品 v2 §4.6（唯一正解 §4.4：分岔＝Lv4 最終型態）：兩條分岔、人數預算、footprint ──
 const { modelExtras } = await import('../src/show/roster.js');
 const GOLDISH = c => ((c >> 16) & 255) > 200 && ((c >> 8) & 255) > 180 && (c & 255) < 160;
-test('cyber Lv4: ten robot rats round 101 and a crowned robot rat at the station (on the hovering deck at token ≥ 9, the dome station cornice before)', async () => {
+test('cyber Lv4: five robot rats round 101 and a crowned robot rat at the station (on the hovering deck at token ≥ 9, the dome station cornice before)', async () => {
   const { DECK_AT, PLATFORM } = await import('../src/actors/token.js');
   for (const token of [7, 8, 9, 10]) {
     const v = rat.view(lv({ rat: 4, chip: 8, token }), { ratBranch: 'cyber' }), k = v['rat.king'], st = anchorWorld('token');
-    assert.equal(v['rat.pack'].n, 10);
+    assert.equal(v['rat.pack'].n, 5);
     assert.equal(k.kind, 'king'); assert.equal(k.footprint, false); assert.equal(k.model.path, RAT); assert.ok(k.model.antenna && k.model.crown);
     assert.ok(modelExtras(k.model, k.model.h).some(x => x.parts.some(p => GOLDISH(p.color))), 'a gold crown');
     assert.deepEqual(k.at, rat.kingSpot(lv({ rat: 4, chip: 8, token })), 'at kingSpot(lv)');
@@ -162,14 +164,14 @@ test('cyber Lv4: ten robot rats round 101 and a crowned robot rat at the station
   }
   for (const [l, f] of [[{ rat: 4 }, { ratBranch: 'alien' }], [{ rat: 3, token: 8 }, {}], [{ rat: 4, token: 8 }, {}]]) assert.equal(rat.view(lv(l), f)['rat.king'], undefined);
 });
-// 最終章 §7 賽博：尾聲時同一批 10 隻機器鼠的家搬到黑塔的平屋頂，兩排各 5 隻面向鏡頭（+z）；王冠鼠照舊坐站頂。
+// 最終章 §7 賽博：尾聲時同一批 5 隻機器鼠的家搬到黑塔的平屋頂，一排面向鏡頭（+z；2026-11-04 以前 10 隻兩排）；王冠鼠照舊坐站頂。
 // 站位彼此 ≥ 0.25（名冊 separateStanding 不推開）、在屋頂面內、離後緣的天線桅杆與前緣停好的紅色飛天車 ≥ 0.2
-test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = tower top), the king stays crowned; skeleton count ≤ 12', async () => {
+test('epilogue cyber: the 5 robot rats stand in one row on the 101 roof (y = tower top), the king stays crowned; skeletons 5 + king (+ shiba)', async () => {
   const tower = await import('../src/actors/tower.js'), finale = await import('../src/actors/finale.js'), { orbitPose } = await import('../src/actors/parts.js');
   const L = lv({ rat: 4, chip: 9, token: 10, bulb: 9 }), plain = rat.view(L, { ratBranch: 'cyber' }), v = rat.view(L, { ratBranch: 'cyber', missile: 'shield', epilogue: 'cyber' });
   const b = tower.body('lit', { dark: true }), deck = b.parts.find(p => p.name === 'deck'), pack = v['rat.pack'];
-  assert.equal(pack.n, 10); assert.deepEqual(pack.model, plain['rat.pack'].model, 'the same robot rats');
-  assert.equal(pack.home.kind, 'stand'); assert.equal(pack.home.spots.length, 10);
+  assert.equal(pack.n, 5); assert.deepEqual(pack.model, plain['rat.pack'].model, 'the same robot rats');
+  assert.equal(pack.home.kind, 'stand'); assert.equal(pack.home.spots.length, 5); assert.deepEqual(pack.home.spots, rat.ROOF_SPOTS);
   assert.deepEqual(v['rat.king'], plain['rat.king'], 'the king stays on the station roof');
   const car = finale.view(L, { missile: 'shield', epilogue: 'cyber' })['finale.car'], { yaw } = orbitPose(car, Infinity), half = car.model.parts[0].scale[2] / 2;   // 同代幣的 Roadster（計畫 8 任務 5）
   const ux = Math.sin(yaw) * half, uz = Math.cos(yaw) * half;
@@ -184,14 +186,15 @@ test('epilogue cyber: the 10 robot rats stand in a row on the 101 roof (y = towe
     for (const o of pack.home.spots.slice(i + 1)) assert.ok(Math.hypot(o.x - s.x, o.z - s.z) >= 0.25, 'spots ≥ 0.25 apart');
     rows.add(s.z.toFixed(3));
   }
-  assert.equal(rows.size, 2, 'two rows of five');
+  assert.equal(rows.size, 1, 'one row of five');
+  assert.ok(pack.home.spots.every(s => Math.abs(s.z - (TOWER.z + 0.1)) < 1e-9), 'the z +0.1 row');
   // 骨架動畫（R18 ≤ 12）：尾聲的畫面（老鼠、衛星島、終局、101 的 view 合起來）裡帶 anim 的模型——名冊的 model.anim、
   // 直接放的 anim（石堆老鼠）——每隻一副骨架；再加開場就在走的柴犬（app.js）一隻
   for (const epilogue of ['cyber', 'alien']) {
     const F = { ratBranch: epilogue, missile: 'shield', epilogue };
     const views = Object.assign({}, ...ALL.filter(m => ['rat', 'satellites', 'finale', 'tower'].includes(m.id)).map(m => m.view(MAXED, F, { total: 61 })));
     const animated = Object.values(views).reduce((n, sp) => n + (sp.model?.anim || sp.anim ? sp.n ?? 1 : 0), 0);
-    assert.ok(animated >= 11, `${epilogue}: the rats are counted (${animated}; alien: 10 mutants + the king, plan 17 task 4)`);
+    assert.equal(animated, 6, `${epilogue}: the rats are counted (${animated}; cyber: 5 robots + the crown rat; alien: 5 mutants + the king)`);
     assert.ok(animated + 1 <= 12, `${epilogue}: skeletons ${animated} + shiba ≤ 12`);
   }
   assert.equal(sat.view(L, { ratBranch: 'cyber', epilogue: 'cyber' })['sat.rocks'], undefined, 'no rocks-islet rats');
@@ -236,26 +239,29 @@ test('epilogue alien: the mutant rat sits crowned on the 101 top (y ≥ tower to
   // 賽博尾聲旗標不影響外星鼠
   assert.deepEqual(rat.view(L, { ratBranch: 'alien', epilogue: 'cyber' }), plain);
 });
-// 計畫 17 任務 4（變異鼠稱王災難版）：外星收尾時另外有一群 10 隻變異鼠（名冊 rat.swarm；鼠王照舊是 rat.pack 唯一一隻）——
+// 計畫 17 任務 4（變異鼠稱王災難版）：外星收尾時另外有一群 5 隻變異鼠（名冊 rat.swarm；鼠王照舊是 rat.pack 唯一一隻；2026-11-04 以前 10 隻）——
 // 綠色發光、三眼、沒有天線、沒有王冠、一般大小（h 0.2）；家是 stand 在母艦碟緣上（SAUCER_SPOTS：碟頂高度 shipTop、圍著碟頂中心的鼠王一圈、
-// 面朝外，後側留給天線），入口是園區門口（PARK_ENTRIES）。沒有收尾、賽博收尾都沒有這一群。骨架：10 + 鼠王 + 柴犬 = 12
-test('epilogue alien: rat.swarm is 10 mutants (C.alien tint + glow, the eye, no antenna, no crown, h 0.2) standing on SAUCER_SPOTS round the king on the saucer rim, entering from SWARM_ENTRIES (the five park-gate entries + a second row outside them); none otherwise', async () => {
+// 面朝外，後側留給天線），入口是園區門口（PARK_ENTRIES，一隻一個）。沒有收尾、賽博收尾都沒有這一群。骨架：5 + 鼠王 + 柴犬 = 7
+test('epilogue alien: rat.swarm is 5 mutants (C.alien tint + glow, the eye, no antenna, no crown, h 0.2) standing on SAUCER_SPOTS round the king on the saucer rim, entering from SWARM_ENTRIES (the five park-gate entries); none otherwise', async () => {
   const tower = await import('../src/actors/tower.js'), { C } = await import('../src/actors/palette.js');
   const L = lv({ rat: 4 });
   for (const missile of ['deflect', 'hit']) {
     const v = rat.view(L, { ratBranch: 'alien', missile, epilogue: 'alien' }), sw = v['rat.swarm'];
     assert.ok(sw, `${missile}: the swarm`);
-    assert.equal(sw.kind, 'roster'); assert.equal(sw.n, 10);
+    assert.equal(sw.kind, 'roster'); assert.equal(sw.n, 5);
     assert.equal(sw.model.path, RAT); assert.equal(sw.model.h, 0.2);
     assert.deepEqual(sw.model.tint, { Grey: C.alien }); assert.deepEqual(sw.model.glow, { Grey: C.alien });
     assert.equal(sw.model.eye, true); assert.ok(!sw.model.antenna && !sw.model.crown, 'no antenna, no crown');
     assert.equal(sw.home.kind, 'stand'); assert.deepEqual(sw.home.spots, rat.SAUCER_SPOTS); assert.deepEqual(sw.home.entry, rat.SWARM_ENTRIES);
-    assert.deepEqual(rat.SWARM_ENTRIES.slice(0, 5), rat.PARK_ENTRIES, 'the park gate (+ a second row outside it: one rat per entry)');
+    assert.deepEqual(rat.SWARM_ENTRIES, rat.PARK_ENTRIES, 'the park gate: one rat per entry'); assert.equal(rat.SWARM_ENTRIES.length, 5);
     rat.SWARM_ENTRIES.forEach((p, i) => rat.SWARM_ENTRIES.slice(i + 1).forEach(q => assert.ok(Math.hypot(p.x - q.x, p.z - q.z) >= 0.26, 'entries apart')));
     assert.equal(v['rat.pack'].n, 1, 'the king stays the only rat.pack');
   }
   const b = tower.body('lit', { ship: true }), rim = b.parts.find(p => p.name === 'rim'), kingR = 0.65 * 0.5;
-  assert.equal(rat.SAUCER_SPOTS.length, 10);
+  assert.equal(rat.SAUCER_SPOTS.length, 5);
+  // 平均排在 ±135° 之間（後側 90° 留給天線）：每隻差 67.5°
+  const ang = rat.SAUCER_SPOTS.map(s => Math.atan2(s.x - TOWER.x, s.z - TOWER.z) * 180 / Math.PI);
+  ang.forEach((a, i) => assert.ok(Math.abs(a - (-135 + i * 67.5)) < 1e-6, `rat ${i} at ${a.toFixed(1)}°`));
   for (const [i, s] of rat.SAUCER_SPOTS.entries()) {
     const r = Math.hypot(s.x - TOWER.x, s.z - TOWER.z);
     assert.ok(Math.abs(s.y - tower.shipTop()) < 1e-9, `rat ${i} on the saucer top (y ${s.y})`);
@@ -278,16 +284,19 @@ test('alien Lv4 (the bad ending 變異鼠稱王): the mutant wears a crown, a sm
   for (const [l, f] of [[{ rat: 3 }, { ratBranch: 'alien' }], [{ rat: 4 }, { ratBranch: 'cyber' }]]) assert.equal(sat.view(lv(l), f)['sat.rocksRing'], undefined);
   assert.ok(sat.view(lv({ rat: 4 }), { ratBranch: 'alien' })['sat.rocks'], 'the two rats on the stones stay (skeletons: 1 + 2 + shiba)');
 });
-// 人數預算：老鼠 1 → 3（一窩，計畫 9 §5）→ 5 → 10＋王冠鼠／1；骨架動畫（名冊老鼠＋王冠鼠＋石堆兩隻）≤ 11（再加柴犬 ≤ 12）
-test('rat budget per level: 1, 3, 5, 10 + the crown rat / 1; animated rats ≤ 11 at every level', () => {
-  const cases = [[{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 3], [{ rat: 3, token: 4 }, {}, 5], [{ rat: 3 }, {}, 5],
-    [{ rat: 4, chip: 8, token: 10 }, { ratBranch: 'cyber' }, 11], [{ rat: 4, chip: 8, token: 7 }, { ratBranch: 'cyber' }, 11], [{ rat: 4 }, { ratBranch: 'alien' }, 1]];
+// 人數預算（使用者 2026-11-04：「老鼠數量整體還是太多，前期兩隻就好，後期也減少」）：老鼠 1 → 2（一窩）→ 2（泡溫泉／搭車／鼠災）→ 5＋王冠鼠／1；
+// 外星收尾鼠群 5（以前 1 → 3 → 5 → 10／10）。骨架動畫（名冊老鼠＋王冠鼠＋石堆兩隻）≤ 11（再加柴犬 ≤ 12）
+test('rat counts per stage (user 2026-11-04): 1 / 2 / 2 / 5 (+ the crown rat), alien 1 + a swarm of 5 at the epilogue; animated rats ≤ 11 at every level', () => {
+  assert.deepEqual([rat.NEST_N, rat.GROW_TO, rat.ARMY_N, rat.SWARM_N], [2, 2, 5, 5]);
+  const cases = [[{ rat: 1 }, {}, 1], [{ rat: 2 }, {}, 2], [{ rat: 3, token: 4 }, {}, 2], [{ rat: 3 }, {}, 2], [{ rat: 3, baseball: 4 }, { domeRats: true }, 2],
+    [{ rat: 4, chip: 8, token: 10 }, { ratBranch: 'cyber' }, 6], [{ rat: 4, chip: 8, token: 7 }, { ratBranch: 'cyber' }, 6], [{ rat: 4 }, { ratBranch: 'alien' }, 1]];
   for (const [l, f, want] of cases) {
     const v = rat.view(lv(l), f), s = sat.view(lv(l), f), what = JSON.stringify([l, f]);
     const n = v['rat.pack'].n + (v['rat.king'] ? 1 : 0);
     assert.equal(n, want, what);
     assert.ok(n + (s['sat.rocks']?.n ?? 0) <= 11, `${what} animated rats ${n + (s['sat.rocks']?.n ?? 0)}`);
   }
+  assert.equal(rat.view(lv({ rat: 4 }), { ratBranch: 'alien', missile: 'hit', epilogue: 'alien' })['rat.swarm'].n, 5, 'the alien swarm');
 });
 test('every rat footprint corner stays inside the rat cell; the king, the UFO and the ring declare no footprint', () => {
   const CELL = cellOf('rat');
@@ -357,12 +366,12 @@ function checkRat({ show, bubblesLog, eventHead }, e, secs, n) {
   if (lvl === 3) {
     assert.equal(rat.view(show.stage.lv, show.stage.flags)['rat.pack'].home.kind, 'ride');
     for (const m of rats) assert.ok(Math.abs(m.pos.y - (TRACK.y + RIDE_Y)) < 1e-6 && Math.abs(Math.hypot(m.pos.x, m.pos.z) - TRACK.radius) < 0.2, `${what} rat ${m.i} on the roof`);
-    for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) assert.ok(Math.hypot(rats[i].pos.x - rats[j].pos.x, rats[i].pos.z - rats[j].pos.z) >= 0.2, `${what} rats ${i}/${j} apart`);
+    for (let i = 0; i < rats.length; i++) for (let j = i + 1; j < rats.length; j++) assert.ok(Math.hypot(rats[i].pos.x - rats[j].pos.x, rats[i].pos.z - rats[j].pos.z) >= 0.2, `${what} rats ${i}/${j} apart`);
     assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'), `${what} ！ and run for the train`);
   }
   if (lvl === 4 && branch === 'cyber') {
     assert.ok(rats.every(m => m.dress.antenna && m.dress.tint.Grey === 0xc0c8d0), `${what} robot rats`);
-    assert.equal(rats.length, 10, `${what} the army of ten`); assert.ok(show.stage.partObject('rat.king'), `${what} crown rat on the station`);
+    assert.equal(rats.length, 5, `${what} the army of five`); assert.ok(show.stage.partObject('rat.king'), `${what} crown rat on the station`);
     assert.ok(!show.stage.partKeys().includes('sat.rocks'), `${what} the rocks-islet rats are gone`);
   }
   if (lvl === 4 && branch === 'alien') {
@@ -423,13 +432,13 @@ test('scripts: every rat level in the solution and the alien order plays in rang
 });
 test('reset releases every rat model', async () => {
   const h = await headlessShow();
-  await liveAt(h, CYBER, isRat(4));   // 賽博 Lv4：十隻機器鼠軍團
-  assert.equal(h.show.roster.members('rat.pack').length, 10);
+  await liveAt(h, CYBER, isRat(4));   // 賽博 Lv4：五隻機器鼠軍團
+  assert.equal(h.show.roster.members('rat.pack').length, 5);
   const holders = h.show.roster.members('rat.pack').map(m => m.holder);
   h.show.reset();
   assert.ok(holders.every(g => h.assets.released.includes(g)), 'every rat holder released'); assert.equal(h.show.roster.group.children.length, 0);
 });
-test('Lv3 train: all five run to the nest-side shore and hop on together while the train is held there', async () => {
+test('Lv3 train: both rats run to the nest-side shore and hop on together while the train is held there', async () => {
   const h = await headlessShow(), { show } = h, update = show.update, boards = [];
   let prev = null;
   show.update = (dt, t) => {
@@ -443,18 +452,17 @@ test('Lv3 train: all five run to the nest-side shore and hop on together while t
   // 改用老鼠自己 2 → 3 的一局（第 5 回合，上一回合沒人出問題、老鼠在窩邊）
   const { e, secs, n } = await liveAt(h, ['milk', 'baseball', 'token', 'rat', 'bulb'], isRat(3));
   checkRat(h, e, secs, n);
-  assert.deepEqual(boards.map(b => b.i).sort(), [0, 1, 2, 3, 4], 'all five board');
-  assert.equal(show.roster.members('rat.pack').length, 5, 'the nest of three plus the two that come out of it (plan 9 §5)');
+  assert.deepEqual(boards.map(b => b.i).sort(), [0, 1], 'both board');
+  assert.equal(show.roster.members('rat.pack').length, 2, 'the nest of two, nobody extra (user 2026-11-04)');
   assert.ok(boards.every(b => b.held), 'each rat lands while the train is held');
   const nest = Math.atan2(AT.z, AT.x);
   assert.ok(boards.every(b => Math.abs(b.a - nest) < 0.35), 'they board by the nest');
 });
-// 計畫 9 任務 4（任務 3 延後的小項）：一窩 3 隻、同一回合 2 → 3 → 4 合併跳級（整份列舉找的放法）的回歸——
-// 外星：3 → 1 直接變，中間不閃出 5 隻（以前 apply 先套 5 隻的溫泉／搭車再收到 1 隻，0.3 s 冒兩隻）；
-// 賽博：補齊的兩隻從窩門口鑽出來（離窩 ≤ 1），五隻再一起走（以前一隻從格邊走進來、一隻直接出現在橋上的家）；
-//   Lv4 就是最終型態（唯一正解 §4.4）：變身之後軍團再補五隻，從園區門口走出來（名冊入口，離園區門口 ≤ 1）。
+// 計畫 9 任務 4（任務 3 延後的小項）：同一回合 2 → 3 → 4 合併跳級（整份列舉找的放法）的回歸——一窩 2 隻（2026-11-04 起，跟 Lv3 一樣多）：
+// 外星：2 → 1 直接變，中間不多冒出老鼠；
+// 賽博：窩裡不用再鑽出來，兩隻一起走；Lv4 就是最終型態（唯一正解 §4.4）：變身之後軍團再補三隻，從園區門口走出來（名冊入口，離園區門口 ≤ 1）。
 // 唯一正解：第 9 回合老鼠就是 2 → 3 → 4 合併跳級（賽博）；外星用列舉裡第一條外星壞局（也是第 9 回合 2 → 4）
-test('nest of 3, merged rat 2 → 4 in one turn: alien goes 3 → 1 with no flash of 5; cyber fills to 5 from the nest door, then 5 more from the park gate', async () => {
+test('nest of 2, merged rat 2 → 4 in one turn: alien goes 2 → 1 with no extra rat; cyber needs no fill at the nest door, then 3 more from the park gate', async () => {
   const cases = [['alien', ALIEN], ['cyber', CYBER]];
   for (const [branch, order] of cases) {
     const h = await headlessShow(), { show, run } = h;
@@ -465,35 +473,35 @@ test('nest of 3, merged rat 2 → 4 in one turn: alien goes 3 → 1 with no flas
       if (before !== 2 || !grows.includes(4)) { await run([...r.events, { kind: 'settle' }], { instant: true }); continue; }
       assert.deepEqual(grows, [3, 4], `${branch}: 2 → 3 → 4 in one turn`); assert.equal(s.flags.ratBranch, branch);
       const pre = new Set(show.roster.members(KEYS[0])), first = new Map(), update = show.update;
-      assert.equal(pre.size, 3, 'a nest of three');
+      assert.equal(pre.size, 2, 'a nest of two');
       let most = 0;
       show.update = (dt, t) => { update(dt, t); const ms = show.roster.members(KEYS[0]); most = Math.max(most, ms.length); for (const m of ms) if (!first.has(m) && !m.hidden) first.set(m, { ...m.pos }); };
       await run([...r.events, { kind: 'settle' }]);
       show.update = update; played = true;
       const fresh = [...first].filter(([m]) => !pre.has(m)).map(([, p]) => p);
       if (branch === 'alien') {
-        assert.equal(most, 3, 'never more than the nest of three on stage');
+        assert.equal(most, 2, 'never more than the nest of two on stage');
         assert.equal(show.roster.members(KEYS[0]).length, 1, 'alien: one rat');
       } else {
-        assert.equal(show.roster.members(KEYS[0]).length, 10, 'cyber: the army of ten');
-        assert.equal(fresh.length, 7, 'two come out to make five, five more join the army');
+        assert.equal(show.roster.members(KEYS[0]).length, 5, 'cyber: the army of five');
+        assert.equal(fresh.length, 3, 'three more join the army');
         const byNest = fresh.filter(p => Math.hypot(p.x - AT.x, p.z - AT.z) <= 1), byPark = fresh.filter(p => Math.hypot(p.x - PARK.x, p.z - PARK.z) <= 1);
-        assert.equal(byNest.length, 2, `two first seen by the nest (${fresh.map(p => `${p.x.toFixed(1)},${p.z.toFixed(1)}`)})`);
-        assert.equal(byPark.length, 5, `five first seen at the park gate (${fresh.map(p => `${p.x.toFixed(1)},${p.z.toFixed(1)}`)})`);
+        assert.equal(byNest.length, 0, `none first seen by the nest (${fresh.map(p => `${p.x.toFixed(1)},${p.z.toFixed(1)}`)})`);
+        assert.equal(byPark.length, 3, `three first seen at the park gate (${fresh.map(p => `${p.x.toFixed(1)},${p.z.toFixed(1)}`)})`);
       }
       break;
     }
     assert.ok(played, `${branch}: the merged turn was found`);
   }
 });
-test('Lv3 spring (no train yet, token < 4): five rats walk up to the hot spring and ♥', async () => {
+test('Lv3 spring (no train yet, token < 4): both rats walk up to the hot spring and ♥', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
   const n = bubblesLog.length, e = { kind: 'grow', item: 'rat', from: 2, to: 3 }, secs = await run([e]);
   assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${secs.toFixed(1)} s`);
-  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 5); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
+  assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 2); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
-  assert.equal(show.roster.members('rat.pack').length, 5, 'the nest of three plus the two that come out of it (plan 9 §5)');
+  assert.equal(show.roster.members('rat.pack').length, 2, 'the nest of two (user 2026-11-04)');
   for (const m of show.roster.members('rat.pack')) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, SPRING, 0.8), 'in the pool'); }
 });
 // 放下老鼠的回合整段 live：咬鮮奶（唯一正解 §5.2：撞翻珍奶攤車拿掉了，放置反應只剩咬）。
@@ -586,7 +594,7 @@ test('typhoon dome rats: after the landing turn the real rats settle by the dome
   const { events } = await liveAt(h, ['milk', 'token', 'baseball', 'rat', 'chip', 'typhoon'], e => e.flag?.name === 'domeRats', { whole: true });
   assert.ok(events.some(e => e.flag?.name === 'domeRats'));
   const rats = show.roster.members('rat.pack'), staff = show.roster.members('baseball.staff');
-  assert.equal(rats.length, 5); assert.equal(staff.length, 2);
+  assert.equal(rats.length, 2); assert.equal(staff.length, 2);
   // 這局老鼠在車頂上（搭捷運）碰上鼠災，回合結束時有的還在半路、在閒晃的停頓裡：多等幾秒（240 → 480 幀）
   for (let i = 0; i < 480; i++) show.update(1 / 30, 200 + i / 30);
   for (const m of rats) { assert.equal(m.mode, 'home'); assert.ok(near(m.pos, GATE, 1.5), `rat ${m.i} by the gate`); }
@@ -606,17 +614,17 @@ test('cyber Lv4: the rocks-islet rats go with the army apply, before LEVEL UP; n
   const lu = bubblesLog.findIndex((b, i) => i >= n && b.text === 'LEVEL UP');
   assert.ok(blinks.length > 0 && blinks.every(k => k <= lu), `no blink after LEVEL UP (${blinks} vs ${lu})`);
 });
-// 審查 Important 2：老鼠排成一列跟著偵防師走（唯一正解：走到 101 腳下）：每隻晚 FOLLOW 秒出發；變身後從園區門口補進來的五隻不算
+// 審查 Important 2：老鼠排成一列跟著偵防師走（唯一正解：走到 101 腳下）：每隻晚 FOLLOW 秒出發；變身後從園區門口補進來的三隻不算
 test('cyber Lv4: the rats set off behind the detective one after another, ≥ 0.12 s apart (FOLLOW 0.15, R17)', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, setPose = show.roster.setPose, starts = new Map();
   let now = 0, icon = false;
   show.update = (dt, t) => { now += dt; icon ||= bubblesLog.some(b => b.kind?.icon === 'chip'); update(dt, t); };
-  show.roster.setPose = (m, p) => { if (icon && m.key === 'rat.pack' && m.i < 5 && p.walking && !starts.has(m)) starts.set(m, now); return setPose(m, p); };
+  show.roster.setPose = (m, p) => { if (icon && m.key === 'rat.pack' && m.i < 2 && p.walking && !starts.has(m)) starts.set(m, now); return setPose(m, p); };
   const { e, secs, n } = await liveAt(h, CYBER, isRat(4));
   checkRat(h, e, secs, n);
   const t = [...starts.values()].sort((a, b) => a - b);
-  assert.equal(t.length, 5);
-  for (let i = 1; i < 5; i++) assert.ok(t[i] - t[i - 1] >= 0.12, `starts ${t.map(x => x.toFixed(2))}`);
+  assert.equal(t.length, 2);
+  for (let i = 1; i < t.length; i++) assert.ok(t[i] - t[i - 1] >= 0.12, `starts ${t.map(x => x.toFixed(2))}`);
 });
 
 // ── 計畫 3.8 Task 7：入口點、鏡頭焦點 ──
@@ -628,7 +636,7 @@ import { B } from '../src/show/beats.js';
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);
 // 老鼠的入口：每一種模式、每一級走得到、離站位 ≥ 1.5（正解與外星壞局每一刻的真 footprint）；第一隻從巨蛋格東南岸外的海裡（LANDING）爬上來
 // （劇本的 spawn，不是名冊入口：上岸點離窩只有 0.4，但牠是從海裡爬上來、再沿岸繞一圈才回窩，不是在窩邊冒出來）；
-// 賽博 Lv4 補的五隻機器鼠從園區門口走去 101
+// 賽博 Lv4 補的三隻機器鼠從園區門口走去 101
 test('rat entries: walkable and ≥ 1.5 from every spot in every mode; the first rat spawns at the landing in the sea off the dome cell; the cyber legion comes out of the park gate', async () => {
   const nav = createNav(), bad = [];
   const modes = [[{ rat: 1 }, {}], [{ rat: 2 }, {}], [{ rat: 3 }, {}], [{ rat: 3, token: 4 }, {}], [{ rat: 4, chip: 3 }, { ratBranch: 'cyber' }], [{ rat: 4, chip: 8, token: 10 }, { ratBranch: 'cyber' }],
@@ -648,7 +656,7 @@ const fakeCtx = () => ({ B, roster: { members: () => [] } });
 const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
 const focusCells = beats => flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, fakeCtx()));
 const grow = (to, l, flags = {}, prev = { lv: lv({ ...l, rat: to - 1 }), flags: {} }) => rat.script.grow[to]({ kind: 'grow', item: 'rat', from: to - 1, to }, { lv: lv({ ...l, rat: to }), flags, prev }, fakeCtx());
-// 鏡頭（§13.1）：搭捷運對著老鼠窩格（五隻在窩那側島緣上車）；賽博 Lv4 對著 101（排隊、變身、軍團）；泡溫泉、外星（溫泉邊）
+// 鏡頭（§13.1）：搭捷運對著老鼠窩格（一窩在窩那側島緣上車）；賽博 Lv4 對著 101（排隊、變身、軍團）；泡溫泉、外星（溫泉邊）
 // 對著溫泉格；◆ Lv4 最後回全景定格。每段劇本第一拍就是自己的 focus（回合不再先補一拍老鼠格）
 test('focus: train Lv3 at the nest; cyber Lv4 101 then the overview; spring / alien at the hot spring (alien Lv4 then the overview)', () => {
   const SPRING_CELL = [1, -1];
@@ -750,7 +758,7 @@ test('live: rats loitering at the lamp door (trouble = bulb) never step onto a b
   let s = engine.createState(spec);
   for (const id of ['milk', 'bulb', 'rat', 'chip']) { const r = engine.place(s, id, spec); s = r.state; await run([...r.events, { kind: 'settle' }]); }
   assert.equal(show.stage.meta.trouble, 'bulb');
-  const rats = show.roster.members('rat.pack'); assert.equal(rats.length, 3);
+  const rats = show.roster.members('rat.pack'); assert.equal(rats.length, 2);
   let t = show.elapsed; const dt = 1 / 30, bridge = new Map(), still = new Map();
   for (let f = 0; f < 30 * 30; f++) {
     show.update(dt, t += dt);

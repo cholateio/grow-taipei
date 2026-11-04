@@ -47,14 +47,14 @@ Quaternius 與 Kenney 舊版套件（space、racing、nature）照材質名上�
 | 燈泡 | 6 | `bulb.substation` | 程式（中心格 101 西邊：水泥台、兩座儲能櫃（指示燈）、變壓器＋三根礙子亮淡藍、矮圍籬）；沒配散熱塔 glb | — | 現有 |
 | 燈泡 | 7 ★◆ | `sat.windmill`（speed 0 → 1）、`sat.lighthouse`、`sat.beam`、`sat.keeper`、`bulb.electrician`（家換到風車島） | 程式：風車塔身＋開關箱在 island.js 的 kit、葉片是 `blades` 演員；燈塔燈室改成不發光的 kit 球（開局暗），演員亮燈。`windturbine_tall.gltf` 沒用（可選；kit 塔身不花 draw call） | — | 現有 |
 | 燈泡 | 8 ★ | `chip.cable` | 晶片的零件（任務 6，零件 kind `cable`）：燈泡 ≥8 鋪好（暗），晶片 ≥6 通電；燈泡不另畫纜線 | — | 現有 |
-| 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`、`bulb.neon.market`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅、夜市屋簷霓虹藍）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）、`Sign_2.glb`（夜市招牌，發粉紅光；換掉 Lv4 的招牌板） | CC0 | 換新 |
+| 燈泡 | 9 ◆ | `bulb.neon.bridges`、`bulb.neon.station`（零件 kind `neon`：燈條 compound＋glb） | 程式燈條（主島 12 座橋與階梯兩側霓虹藍、懸浮月台四邊粉紅）＋`quat/cyberpunk/TV_1.glb`（月台上，Texture_Signs 發藍光）；夜市招牌（Lv4 招牌板、Lv9 `Sign_2.glb`＋屋簷燈條 `bulb.neon.market`）2026-11-04 拿掉 | CC0 | 換新 |
 | 颱風 | 1 ◆ | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈停在 101 旁邊上空＝颱風錨點、全島大雨；珍奶噴泉廣場以上有外送機車在雨中繞（純點綴）；放下那回合全島跑去門口躲一下；淹水、巨蛋淹水、攤車被吹走都在這回合，零件在各物品裡——修正批次 2 颱風三級） | — | 現有 |
 | 颱風 | 2 | `typhoon.main`、`typhoon.rain`、`typhoon.scooter` | 程式（暴風圈還在颱風錨點、雨照下，雲不移站） | — | 現有 |
 | 颱風 | 3 ◆ | `typhoon.rainbow`、`typhoon.park`、`typhoon.levee` | 程式（放晴：彩虹、河濱公園、沿水道的堤防一圈，留老鼠上岸的缺口） | — | 現有 |
 | 老鼠 | 1 | `rat.pack` | `quat/enemies/Rat.glb`（動畫，不併；在舞台結算的 `meta.troubleAt` 那棟門口晃，沒有才在窩旁） | CC0 | 現有 |
-| 老鼠 | 2 | `rat.main`、`rat.pack` | 程式鼠窩＋`quat/enemies/Rat.glb` ×3（同 Lv1，聚到出問題的那棟門口） | CC0 | 現有 |
-| 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb` ×5（搭捷運／泡溫泉） | CC0 | 現有 |
-| 老鼠 | 4 ◆ | `rat.pack`、`rat.king`、`rat.ufo`、`sat.rocksRing` | 分岔＝最終型態（2026-10-31 單一正解：原本的 Lv4 分岔＋Lv5 併成一級）。賽博：機器鼠軍團 10 隻＋站頂戴王冠的機器鼠 = `quat/enemies/Rat.glb`（天線、王冠程式）；外星（壞結局「變異鼠稱王」）：變異鼠三眼綠光加冕、小 UFO、石堆島綠光圈 = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 換新 |
+| 老鼠 | 2 | `rat.main`、`rat.pack` | 程式鼠窩＋`quat/enemies/Rat.glb` ×2（2026-11-04 起；同 Lv1，聚到出問題的那棟門口） | CC0 | 現有 |
+| 老鼠 | 3 | `rat.pack` | `quat/enemies/Rat.glb` ×2（搭捷運／泡溫泉；2026-11-04 起，以前 ×5） | CC0 | 現有 |
+| 老鼠 | 4 ◆ | `rat.pack`、`rat.king`、`rat.ufo`、`sat.rocksRing` | 分岔＝最終型態（2026-10-31 單一正解：原本的 Lv4 分岔＋Lv5 併成一級）。賽博：機器鼠軍團 5 隻（2026-11-04 起，以前 10）＋站頂戴王冠的機器鼠 = `quat/enemies/Rat.glb`（天線、王冠程式）；外星（壞結局「變異鼠稱王」）：變異鼠三眼綠光加冕、小 UFO、石堆島綠光圈 = 程式（Quaternius `Pancake.glb` 3.5 MB 超過單檔上限，沒收） | CC0（Rat.glb；王冠、UFO 是程式） | 換新 |
 | 珍奶 | 1 | `boba.main`、`boba.owner` | 程式（路邊攤車，錨點南邊 0.4：夜市第四攤擋不到） | — | 現有 |
 | 珍奶 | 2 | `boba.queue`、`boba.yard` | 程式名冊（人龍 4 人一排，人數預算）＋程式立牌（鮮奶 ≥4 白底藍字） | — | 現有 |
 | 珍奶 | 3 | `boba.main`、`boba.sign`、`boba.yard` | `quat/buildings/2Story_Sign_Mat.glb`（珍奶店，tint 牆奶油、磚與飾邊木色、招牌珊瑚）＋`kenney/food/cup-tea.glb`（屋頂招牌杯）＋程式遮雨棚、店前磚地 | CC0 | 換新 |

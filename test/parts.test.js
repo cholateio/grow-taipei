@@ -173,7 +173,32 @@ test('shieldPose standby stays a faint outline forever (visible, opacity 0.06–
   assert.ok(Math.min(...ops) >= 0.06 && Math.max(...ops) <= 0.22, `${Math.min(...ops)}–${Math.max(...ops)}`);
   assert.ok(Math.max(...ops) - Math.min(...ops) > 0.04, 'it pulses');
   assert.ok(Math.abs(shieldPose('standby', 1) .opacity - shieldPose('standby', 4).opacity) < 1e-9, 'period 3 s');
-  assert.ok(shieldPose('full', 2).opacity >= 0.45 && shieldPose('full', 2).visible);
+  assert.ok(shieldPose('full', 0.5).opacity >= 0.45 && shieldPose('full', 0.5).visible);
+});
+// 使用者 2026-11-04：「防護罩在擋完隕石就可以消失了」——full 從撞上那一刻（建好）算：0–0.8 s 全亮（煙火在這段放），
+// 0.8–1.6 s 淡到 0、同時微微脹大 1 → 1.08，1.6 s 起藏起來（不畫，draw call 少一個）
+test('shieldPose full: bright (SHIELD.full, scale 1) until 0.8 s, fades to 0 while swelling to 1.08× by 1.6 s, then hidden', () => {
+  assert.deepEqual(SHIELD.fade, [0.8, 1.6]); assert.equal(SHIELD.swell, 1.08);
+  for (let t = 0; t < 0.8; t += 0.05) assert.deepEqual(shieldPose('full', t), { opacity: SHIELD.full, scale: 1, visible: true }, `t ${t.toFixed(2)}`);
+  let prev = shieldPose('full', 0.8);
+  assert.ok(prev.visible && Math.abs(prev.opacity - SHIELD.full) < 1e-9 && Math.abs(prev.scale - 1) < 1e-9, 'continuous at 0.8 s');
+  for (let t = 0.85; t < 1.6; t += 0.05) {
+    const p = shieldPose('full', t);
+    assert.ok(p.visible && p.opacity < prev.opacity && p.scale > prev.scale && p.scale < 1.08, `t ${t.toFixed(2)}: fading and swelling`);
+    prev = p;
+  }
+  assert.ok(prev.opacity < 0.02 && prev.scale > 1.07, 'almost gone just before 1.6 s');
+  for (const t of [1.6, 2, 10, Infinity]) { const p = shieldPose('full', t); assert.equal(p.visible, false, `t ${t}`); assert.equal(p.opacity, 0); }
+});
+// 罩子零件（full）建好時就是演完的樣子（藏著：跳過、截圖、舞台重建都沒有罩子）；隕石劇本叫 test() 才從撞上那一刻演，1.6 s 後自己藏好
+test('shield builder, full: built hidden (the end state); test() plays it from impact — bright, then hidden again 1.6 s later', () => {
+  const { f } = setup(), p = shieldOf(f, 'full'), [m] = p.object.children;
+  assert.equal(m.visible, false, 'built hidden'); run(p, 0.5); assert.equal(m.visible, false, 'stays hidden until played');
+  p.object.userData.test(); assert.ok(m.visible && Math.abs(m.material.opacity - SHIELD.full) < 1e-9, 'bright at impact');
+  run(p, 0.5); assert.ok(m.visible && Math.abs(m.material.opacity - SHIELD.full) < 1e-9, 'still bright at 0.5 s');
+  run(p, 1.2); assert.equal(m.visible, false, 'gone by 1.7 s');
+  p.object.userData.test(); p.object.userData.finish(); assert.equal(m.visible, false, 'finish() jumps to hidden');
+  p.dispose();
 });
 // 計畫 17 任務 2：矽盾未就緒（晶片 7–8）的隕石警告裡試升失敗——0–0.4 s 升到 0.6 倍大（不透明度 0.35）→ 0.5–0.9 s 閃兩下（0.5 ↔ 0.05，
 // 第二下短、像電力不穩，0.8 起暗著）→ 0.9–1.2 s 縮回 0 → 藏起來；整段 SHIELD_FAIL_DUR 1.3 s

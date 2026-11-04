@@ -11,13 +11,13 @@
 //   shield 罩子全亮、隕石撞上罩子碎成一發煙火、全島跳＋♥；deflect 落到 101 旁被風吹偏、邊滾邊掉進北投溫泉、水花、全島？再♪；
 //   hit 砸進 101 中段、101 彎成 L（tower.js body bent）、全島躺平比讚（worldEffects mood 'lie'）。
 // 任務 6：賽博尾聲（設計 §7）——天黑、霓虹（燈泡 Lv9 早就開到 NEON_BOOST）→ 101 閃白換成黑塔＋頂端螢幕（tower.js）→ 第四台飛天車（紅色，finale.car，orbit 零件）
-//   從海上飛進來繞 101 一圈、停上黑塔屋頂；機器鼠軍團閃白出現在屋頂排兩排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
+//   從海上飛進來繞 101 一圈、停上黑塔屋頂；機器鼠軍團閃白出現在屋頂排一排（rat.js ROOF_SPOTS）→ 全景停 1.5 秒。
 // 任務 7：外星尾聲（設計 §7）——鏡頭對溫泉格，變異鼠王對天揮手＋「！」→ 鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外，
 //   16:9 島心 NDC (0.91, −1.08)、直式整座出畫）：綠光圈閃白變降落場（satellites.js）→
 //   三台 UFO（finale.ufos，一個 compound 三個碟）從天上降到降落場 2 秒 → 三個外星生物（finale.aliens）閃白出現在 UFO 和主島之間 →
 //   回全景 → 101 閃白變母艦（tower.js ship）→ 全島小人長出第三隻眼（worldEffects mood 'alien'）→ 變異鼠王閃白坐上碟頂（rat.js SHIP_SPOT）＋「♥」→ 全景停 1.5 秒。
 //   唯一正解（2026-10-31 §4.5）：外星改成壞結局「變異鼠稱王」（畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO）；
-//   計畫 17 任務 4（2026-11-04）：壞結局也演收尾——改成災難版（alienEpilogue）：前面加鼠群變異（10 隻變異鼠 rat.swarm 從園區門口衝向 101、
+//   計畫 17 任務 4（2026-11-04）：壞結局也演收尾——改成災難版（alienEpilogue）：前面加鼠群變異（SWARM_N 隻變異鼠 rat.swarm 從園區門口衝向 101、
 //   全島小人躲進建築），UFO 降落 1 秒，母艦一換鼠群和鼠王一起閃白站上碟緣／碟頂，最後走出來才長第三隻眼；整段 ≤ 5.5 s、全景停 ALIEN_END 1.0 秒。
 // 計畫 17 任務 3：大停電（漆黑、只剩 101 塔尖的警示燈 finale.beacon 從慢閃變快閃）與捷運淹水（捷運格淹水、小船載兩個泳客划到東南岸、
 //   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
@@ -26,7 +26,7 @@
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
-import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, UFO_PARTS, DASH } from './rat.js';
+import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, SWARM_N, UFO_PARTS, DASH } from './rat.js';
 import { island, ROCKS_HOME_A as HOME_A } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
@@ -95,7 +95,7 @@ const FIREWORKS = [C.neonPink, C.neonBlue, C.yellow, C.coral];
 // ── 賽博尾聲（設計 §7）──
 // 紅色飛天跑車：代幣 Lv10 那台 Tesla Roadster 的同一個模型（token.js roadsterParts，車身 C.red；parts.js orbit；?quality=low 不畫，裁決照舊）。
 // 從鏡頭右前方的海上（CAR_FROM）飛進來，在 101 頂上（點燈的塔頂 + 0.6）半徑 1.4 繞一圈，進出圈都在鏡頭那側（phase π/2，+z），
-// 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是兩排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）。
+// 停到黑塔屋頂前緣正中（CAR_PARK_Z；後面是一排機器鼠）；沒有 rest：停好就不再起飛（標題卡前畫面要定住）。
 // 車長 0.54：停好時車頭朝 −x（park.yaw −π/2，就是離圈那一刻的切線方向，下降時不用轉）、側身對鏡頭——順著 z 停的話車尾會伸出屋頂前緣；
 // 落地同代幣那三台：落地前噴氣、四輪著地壓一下回彈（squash）
 const CAR_FROM = { x: 10, y: 3.5, z: 9 }, CAR_ORBIT = { r: 1.4, speed: 2.5, legs: [1.2, 0.8] }, CAR_PARK_Z = 0.58;
@@ -370,13 +370,16 @@ export const script = {
   // 隕石（設計 §6，真實秒數，終局回合 1 倍速）：鏡頭在 WIDE（警告已經停在那裡，這拍 0.8 s 當停頓）→ 光點熄掉 →
   //   隕石從光點的位置由上往下落（replay：套用零件、launch 重落），落到一半全島（最多 24 人，演到才點名、整段同一批人）冒「！」→
   //   結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END（後面接收尾時不停：e.epilogue，計畫 17 任務 3 裁決）。
-  //   shield：罩子切 full（閃白就是那一下亮），隕石撞上罩子碎成煙火；全島原地跳＋♥。
+  //   shield：罩子切 full（閃白就是那一下亮），隕石撞上罩子碎成煙火；全島原地跳＋♥。罩子從撞上算 0.8 s 起淡掉、1.6 s 藏起來（parts.js shieldPose）。
   //   deflect：第二段 DEFLECT 秒被風吹偏、掉進溫泉（同一個 replay 拍裡）→ 水花 → 全島「？」再「♪」。
   //   hit：101 換成彎 L 的塔身、天線／燈光秀／罩子拿掉（閃白）→ 全島躺平（world 拍只帶 mood，app 合進目前的全島效果；
   //   回合收尾的 world 拍照舞台旗標再算一次，一樣是 lie）。
   //   replay 的 finish 只在跳過（ctx.instant）時跳到終態：live 時拍演完零件自己還在演（煙火撞上罩子才放、放 1.2 秒）
   missile(e, s, ctx) {
     const { B } = ctx, o = e.outcome, flight = FLIGHT + (o === 'deflect' ? DEFLECT : 0);
+    // 罩子（full）建好時藏著（parts.js shield）：套用的同一幀從 0 演（全亮 0.8 s → 淡掉 → 1.6 s 藏起來），之後零件自己演完；
+    // 跳過（ctx.instant）不演，終態就是沒有罩子。together 裡排在 apply 後面：apply 先 commit 零件，這拍才拿得到、閃白閃的是亮著的罩子
+    const domeUp = { kind: 'domeUp', dur: 0, start(c) { const d = c.stage.partObject('tower.shield'); if (!c.instant) d?.userData.test?.({ speed: c.speed ?? 1 }); return false; } };
     let list = null;
     const people = c => (list ??= islanders(c).slice(0, CROWD));
     const all = fn => crowd(B, c => people(c).flatMap(fn));
@@ -387,7 +390,7 @@ export const script = {
     const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)]))])];
     // 後面接收尾（e.epilogue，game.js finaleEvents；計畫 17 任務 3 裁決）：不回全景停 HOLD_END——收尾第一拍自己平移鏡頭（終局 ≤ 16 s 的預算）
     const tail = [B.apply(e), B.home(() => list ?? []), ...(e.epilogue ? [] : [B.focus('home', { hold: HOLD_END })])];
-    if (o === 'shield') return [...lead, B.apply(e, { only: ['tower.shield'] }), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
+    if (o === 'shield') return [...lead, B.together([B.apply(e, { only: ['tower.shield'] }), domeUp]), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
     return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）
   },
@@ -429,8 +432,8 @@ export const script = {
 // 協調者裁決：整段 ≤ 5.5 s（外星局約一半是吹偏局，警告＋吹偏的隕石 10.2 s，壞結局終局 ≤ 16 s），所以各段疊著演：
 //   ① 鏡頭到溫泉格，同時鼠王（名冊 rat.pack 唯一一隻，演到才點名）揮手＋「！」WAVE 秒；第一拍先折旗標（apply only []）、
 //      心情先切回站著（world mood normal：命中之後大家躺平；第三隻眼留到最後走出來那一刻，所以不在這裡 worldNow）；
-//   ② 一段：回全景（鏡頭飛 1 s），鼠群（rat.swarm 10 隻）從園區門口（SWARM_ENTRIES）閃白出現、衝向 101 腳下 RUSH 秒（DASH，跑不到的停在半路），
-//      同一刻小 UFO、石堆島的兩隻老鼠縮掉（骨架動畫 ≤ 12：鼠群 10＋鼠王＋柴犬）、主島的小人（crowd.islanders，演到才點名）各自快走到最近的建築門口躲進去
+//   ② 一段：回全景（鏡頭飛 1 s），鼠群（rat.swarm SWARM_N 隻）從園區門口（SWARM_ENTRIES）閃白出現、衝向 101 腳下 RUSH 秒（DASH，跑不到的停在半路），
+//      同一刻小 UFO、石堆島的兩隻老鼠縮掉（骨架動畫 ≤ 12：鼠群 SWARM_N＋鼠王＋柴犬）、主島的小人（crowd.islanders，演到才點名）各自快走到最近的建築門口躲進去
 //      （typhoon.js toDoor，同颱風放下的躲雨；hideBeat 上限 RUSH ＋ UFO_FALL）；
 //      RUSH 秒後鏡頭推到石堆島（裁決 R5：石堆島在全景畫面外）：綠光圈閃白變降落場，三台 UFO 不閃白套上、從 UFO_DROP 高降下 UFO_FALL 秒，
 //      降落前 BLINK 外星生物閃白；
@@ -476,8 +479,8 @@ export const hideBeat = (B, m) => capped(toDoor(B, m), RUSH + UFO_FALL);
 const STORM = ['typhoon.main', 'typhoon.rain', 'typhoon.scooter'];
 export function alienEpilogue(e, ctx) {
   const { B } = ctx, king = once(c => c.roster.members('rat.pack')?.[0]), swarm = c => c.roster.members('rat.swarm') ?? [];
-  // 101 腳下一圈 10 個點，離園區門口近的先給（老鼠 0 從最靠 101 的入口出來）
-  const foot = once(c => { const from = SWARM_ENTRIES[0]; return c.nav.slots(TOWER, 10, 1.3).sort((p, q) => Math.hypot(p.x - from.x, p.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z)); });
+  // 101 腳下一圈 2 × SWARM_N 個點，離園區門口近的先給（老鼠 0 從最靠 101 的入口出來）
+  const foot = once(c => { const from = SWARM_ENTRIES[0]; return c.nav.slots(TOWER, 2 * SWARM_N, 1.3).sort((p, q) => Math.hypot(p.x - from.x, p.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z)); });
   const cast = once(c => islanders(c));
   const drop = B.together([B.apply(e, { only: ['finale.ufos'], blink: false }), B.move('finale.ufos', { from: { dy: UFO_DROP }, to: {}, dur: UFO_FALL })]);
   const comeOut = { kind: 'home', dur: 0, start(c) { for (const m of cast(c) ?? []) c.roster.home(m); c.roster.showAll({ walk: true }); return false; } };

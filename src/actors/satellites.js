@@ -47,7 +47,7 @@ export function view(lv, flags) {
   if (lv.token >= 8 && lv.milk >= 3) {
     v['sat.playground'] = { kind: 'roster', at: at('playground'), n: 2, shirt: C.yellow, accessory: kidAccessory(lv.milk), home: { kind: 'wander', at: at('playground', -0.2, 0.3), r: 0.5 } };
   }
-  // 石堆上的老鼠；賽博最終型態（老鼠 Lv4，10 隻軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
+  // 石堆上的老鼠；賽博最終型態（老鼠 Lv4，軍團）時不畫，守住骨架動畫 ≤ 12；外星尾聲時也不畫（三台大 UFO 降在這裡，finale.js）
   if (lv.rat >= 3 && !(lv.rat >= 4 && flags.ratBranch === 'cyber') && flags.epilogue !== 'alien') v['sat.rocks'] = { kind: 'rats', at: island('rocks'), path: 'quat/enemies/Rat.glb', n: 2, h: 0.14, anim: 'Idle',
     spots: [{ ...at('rocks', -0.4, 0.3, 0.52), yaw: 0.6 }, { ...at('rocks', 0.5, -0.2, 0.44), yaw: -2.2 }] };
   // 外星 Lv4（變異鼠加冕＝最終型態，唯一正解 §4.4）：石堆小島一圈綠光（「變異鼠稱王」壞結局的畫面之一；尾聲的降落場前身）

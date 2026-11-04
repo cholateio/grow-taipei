@@ -830,7 +830,7 @@ test('live: Lv1 / Lv2 rats gather at the trouble building each turn and walk bac
         const rats = () => show.roster.members('rat.pack'), there = () => rats().every(m => m.mode === 'home' && gap(m.pos, goal) <= r0 + 0.35);
         for (let f = 0; f < 30 * 30 && !there(); f++) { show.update(1 / 30, t); t += 1 / 30; }
         assert.ok(there(), `${what}: rats ${rats().map(m => `(${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`).join(' ')} at ${st.meta.trouble ?? 'the nest'} (${goal.x.toFixed(2)}, ${goal.z.toFixed(2)})`);
-        assert.equal(rats().length, mode === 'one' ? 1 : 3, `${what}: the rat budget is unchanged`);
+        assert.equal(rats().length, mode === 'one' ? 1 : 2, `${what}: the rat budget is unchanged`);
         log.at(-1).rats = rats().map(m => ({ ...m.pos }));
       }
       assert.deepEqual([...inv.pops].slice(0, 10), [], `${name}: ${inv.pops.size} pops`);

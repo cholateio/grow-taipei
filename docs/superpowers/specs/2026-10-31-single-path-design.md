@@ -74,7 +74,7 @@
 - `alien` 改成壞結局（kind 'bad'）：標題「變異鼠稱王」，條件 `ratBranch === 'alien'`；畫面就是老鼠 Lv4 外星型態＋石堆島綠光圈＋小 UFO，不演母艦尾聲。
 - 新壞結局 `domeFlood`「大巨蛋淹水」：「球場變游泳池，球員坐在屋頂釣魚」。
 - 新壞結局 `cartBlown`「珍奶攤被吹走」（修正批次 2）：「攤車飛到海上，老闆划船去追」。
-- `satisfied` 的完整順序（標題卡取第一個）：blackout、flood、domeFlood、cartBlown、domeRats、alien、milkExpired、bobaSugar、typhoonDeflect、shieldDown。具體災難排前面，颱風沒放晴（吹歪）與矽盾沒滿排最後。`resolve`：全 MAX 且 ratBranch cyber → cyber；其餘都走 satisfied（全 MAX 且 alien 在求解器下不會發生，程式上就落到 alien 壞結局）。
+- `satisfied` 的完整順序（標題卡取第一個）：blackout、flood、domeFlood、cartBlown、domeRats、alien、milkExpired、typhoonDeflect、shieldDown（bobaSugar 2026-11-04 R35 拿掉）。具體災難排前面，颱風沒放晴（吹歪）與矽盾沒滿排最後。`resolve`：全 MAX 且 ratBranch cyber → cyber；其餘都走 satisfied（全 MAX 且 alien 在求解器下不會發生，程式上就落到 alien 壞結局）。
 
 ## 5. 演出
 

@@ -400,7 +400,7 @@ export const script = {
     const { B } = ctx;
     // 計畫 17：壞結局各自的收尾。任務 3：大停電、捷運淹水（blackoutEpilogue、floodEpilogue）；任務 4：變異鼠稱王（alienEpilogue）；
     // 任務 5：大巨蛋淹水、珍奶攤被吹走、鮮奶過期（domeFloodEpilogue、cartBlownEpilogue、milkExpiredEpilogue）——都在下面。
-    // 還沒有自己劇本的壞結局先只套用（之後的任務各自換成自己的劇本）
+    // 沒有收尾劇本的結局（不在 BAD_EPILOGUES 裡；遊戲層不會發 epilogue 事件）：只套用，安全網
     if (e.ending === 'blackout') return blackoutEpilogue(e, ctx);
     if (e.ending === 'flood') return floodEpilogue(e, ctx);
     if (e.ending === 'alien') return alienEpilogue(e, ctx);

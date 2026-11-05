@@ -80,7 +80,7 @@ const playBoth = () => (played ??= (async () => { const out = []; for (const ord
 
 // 回到 GROW（2026-10-29 設計 §3.2）：晶片 6 是跳級（變電所：燈泡 ≥6），同一回合照 ORDER 晶片排在燈泡前面——正解晶片 6 在燈泡 7、8
 // 之前（第 7 回合；燈泡 7、8 在第 8 回合），電纜跟著晶片那個事件亮著出現。所以不再查「燈泡 8 → 晶片 6」的先後，只查各自照順序
-test('island chain, the solution live: bulb 7 → 8 and chip 6 → 7 → 8 → 9 each in order, the spurs with token 7 (windmill with bulb 7 if earlier), each part in the turn its level arrives', async () => {
+test('island chain, the solution live: bulb 7 → 8 and chip 6 → 7 → 8 → 9 each in order, the spurs with token 7, each part in the turn its level arrives', async () => {
   let jumped8 = false;   // 正解的晶片 Lv8 是跳級的第二級（◆ 照演完整劇本的那個情況真的有量到）
   for (const [n, { turns, grows, jumps }] of (await playBoth()).entries()) {
     const name = SOLUTIONS[n].join('>'), at = (id, lv) => turns.findIndex(t => t.lv[id] >= lv);
@@ -92,12 +92,10 @@ test('island chain, the solution live: bulb 7 → 8 and chip 6 → 7 → 8 → 9
       assert.deepEqual([...own].sort((a, b) => a - b), own, `${name}: ${id} chain events in order ${JSON.stringify(own)}`);
     }
     const before = (k, i) => turns.slice(0, i).every(t => !t.keys.has(k)), from = (k, i) => turns.slice(i).every(t => t.keys.has(k));
-    // 代幣 Lv7：遊樂場島的支線在代幣到 7 的那一回合長出來；風車島的支線在代幣 7、燈泡 7 先到的那一回合（電工搭高鐵過去，支線一定在）
-    const t7 = at('token', 7), b7 = at('bulb', 7), w7 = Math.min(t7, b7);
+    // 代幣 Lv7：兩條支線都在代幣到 7 的那一回合長出來（R39，使用者 2026-11-05：電燈 Lv7 不搭車，不再先鋪風車島那條）
+    const t7 = at('token', 7), b7 = at('bulb', 7);
     assert.ok(t7 >= 0 && grows.includes('token7'), `${name}: token reaches 7`);
-    assert.ok(before('token.spur.playground', t7) && from('token.spur.playground', t7), `${name}: playground spur from turn ${t7 + 1}`);
-    assert.ok(before('token.spur.windmill', w7) && from('token.spur.windmill', w7), `${name}: windmill spur from turn ${w7 + 1}`);
-    assert.ok(turns[b7].lv.token >= 6, `${name}: the HSR carries the electrician (token ${turns[b7].lv.token} at bulb 7)`);
+    for (const k of ['token.spur.playground', 'token.spur.windmill']) assert.ok(before(k, t7) && from(k, t7), `${name}: ${k} from turn ${t7 + 1}`);
     // 燈泡 Lv7：風車轉、燈塔亮、守塔人都在燈泡到 7 的那一回合（之前沒有颱風的回合風車不轉、燈塔暗）
     turns.slice(0, b7).forEach((t, i) => { assert.ok(!t.keys.has('sat.lighthouse') && !t.keys.has('sat.beam') && !t.keeper, `${name} turn ${i + 1}: lighthouse dark`); if (!(t.lv.typhoon >= 1 && t.lv.typhoon <= 2)) assert.equal(t.spin, false, `${name} turn ${i + 1}: windmill still`); });
     turns.slice(b7).forEach((t, i) => assert.ok(t.spin && t.keys.has('sat.lighthouse') && t.keys.has('sat.beam') && t.keeper === 1, `${name} turn ${b7 + i + 1}: windmill turns, lighthouse lit, keeper out`));
@@ -128,8 +126,7 @@ test('island chain, event by event: each chain part first appears with its own e
     // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決：賽博晶片 7 → 8、外星 8 → 9），第一級照樣有自己的 apply
     const key = (id, n) => !!ALL.find(m => m.id === id)?.script?.grow?.[n]?.key;
     const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/), n = +lv; return jumps.has(`${id}${n + 1}`) && !(key(id, n) && key(id, n + 1)) ? `${id}${n + 1}` : tag; };
-    const windmill = grows.indexOf('bulb7') < grows.indexOf('token7') ? 'bulb7' : 'token7';   // 風車島支線：燈泡 Lv7 先到就自己鋪
-    const PARTS = [['token.spur.windmill', windmill], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
+    const PARTS = [['token.spur.windmill', 'token7'],   // 風車島支線只跟代幣 Lv7 走（R39） ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
       ['chip.cable', 'chip6'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));

@@ -24,7 +24,7 @@ export const ROCKS_HOME_A = Math.atan2(-island('rocks').z, -island('rocks').x);
 const RING_D = 2.2;
 const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 
-// 離岸風電（物品 v2 §5）：燈泡 Lv7 電工搭車去風車島按開關之前，風車不轉、燈塔不亮
+// 離岸風電（物品 v2 §5）：燈泡 Lv7 風車島變風電場之前，風車不轉、燈塔不亮（R39，使用者 2026-11-05：電工不再搭車過去）
 export const POWERED = 7;
 export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout;
 // 珍奶 Lv5（外送無人機）：海上的觀光船多兩艘。修正批次 trim §A：小森林島分店、茶屋、觀光客，燈塔島棧橋全砍了，只留海上的船
@@ -33,9 +33,9 @@ const BOBA_BOATS = 5;
 export function view(lv, flags) {
   const v = {}, storm = stormy(lv), on = powered(lv, flags);
   // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）
-  // 離島三段：燈泡 Lv7 起第二支風機（塔身在 sat.windmill.stage1，第一段）的葉片也在這個零件裡（twin = 第二個轉子相對主轉子的位置）——
-  // 同一個 speed／wobble，颱風改速度時只重建這一個零件（第一段不跟著重建、不多閃一次）
-  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? (on ? 6 : 3) : on ? 1 : 0, wobble: storm, ...(lv.bulb >= POWERED ? { twin: TWIN } : {}) };
+  // 離島三段：燈泡 Lv7 起第二、第三支風機（塔身在 sat.windmill.stage1，第一段）的葉片也在這個零件裡（twins = 各轉子相對主轉子的位置）——
+  // 同一個 speed／wobble，颱風改速度時只重建這一個零件（第一段不跟著重建、不多閃一次）。R39（使用者 2026-11-05「風電場」）：第三支 TWIN2
+  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? (on ? 6 : 3) : on ? 1 : 0, wobble: storm, ...(lv.bulb >= POWERED ? { twins: [TWIN, TWIN2] } : {}) };
   if (on) {
     v['sat.lighthouse'] = { kind: 'compound', at: at('lighthouse'), parts: [{ kind: 'sphere', pos: [0, 1.45, 0], scale: 0.38, color: C.yellow, glow: C.yellow }] };
     v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };
@@ -81,11 +81,12 @@ export function view(lv, flags) {
 // 修正批次 trim §A（使用者 2026-11-01「離島珍奶店全砍」）：小森林的分店（sat.forest.shop／sign）與第一段茶屋桌椅、燈塔島第二段棧橋（都只為珍奶 Lv5 存在）
 // 拿掉——燈塔島只剩第一段（燈泡 Lv7 小屋）、小森林只剩第二段（燈泡 Lv9 燈籠串，鍵名照舊 sat.forest.stage2；STAGE 表第一段留 null）。
 // 寶箱島的海鷗是自己的 sat.chest.stage1（不併進寶箱：寶箱開箱時才變）。會動的段：鞦韆（架子＋座位一個 mesh）、旋轉木馬、金幣，
-// 第二支風機的轉子在 sat.windmill 裡（rig：幾組各繞 pivot 動的零件併成一個 mesh）。
+// 第二、第三支風機的轉子在 sat.windmill 裡（rig：幾組各繞 pivot 動的零件併成一個 mesh）。
 // footprint: false（衛星島沒有走路格）；零件位置都相對島心（at = island(kind)）。
 // 每段閃白出現由舞台的 apply 管（那一級的劇本鏡頭在這座島就跟著閃白，否則回合末）。各島已經有的東西與要讓開的站位：
 //   燈塔島：塔身半徑 0.25、守塔人繞 0.6 一圈、東南一棵樹 (0.9, 0.5)
-//   風車島：風機 (0, 0)、開關箱 (0.3, 0.25)、電工散步 (0.5, 0.75) r 0.35、小屋 (-0.7, 0.4)、支線停在東邊 (1.0, 0)、電纜往東南下水
+//   風車島：風機 (0, 0)、開關箱 (0.3, 0.25)、電工散步 (0.5, 0.75) r 0.35、小屋 (-0.7, 0.4)、支線停在東邊 (1.0, 0)、電纜往東南下水；
+//     第一段的第二支風機 (-0.55, -0.9)、第三支 (1.0, -0.6)（R39：支線橋面 |z| ≤ 0.21 的北邊、變電小站西南角 (0.9, -0.84) 的西南）、電池屋 (-1.45, -0.2)
 //   石堆島：四顆石頭（最大的 (-0.4, 0.3)）、兩隻老鼠站在兩顆大石頭頂上、綠光圈半徑 1.1
 //   階梯丘：五層梯田（最上層半徑 0.27、頂 0.9；營區在頂上）
 //   遊樂場島：溜滑梯 (0.3, 0) 往南、樹 (-0.7, 0.3)、小孩繞 (-0.2, 0.3) r 0.5、支線停在西南 (-0.5, 0.87)
@@ -101,7 +102,11 @@ export const STAGE = { lighthouse: [['bulb', 7]], windmill: [['bulb', 7], ['chip
   playground: [['token', 8], ['milk', 10]], forest: [null, ['bulb', 9]], chest: [['baseball', 6]] };
 const reached = (lv, [item, n]) => lv[item] >= n;
 // 第二支風機：塔頂 (-0.55, 1.2, -0.9) 相對島心；轉子在塔頂前 0.1，換成相對主轉子（at('windmill', 0, 0.12, 1.6)）的位置
-const TWIN_HUB = [-0.55, 1.2, -0.9], TWIN = [TWIN_HUB[0], TWIN_HUB[1] - 1.6, TWIN_HUB[2] + 0.1 - 0.12];
+// 第三支（R39，使用者 2026-11-05：電燈 Lv7 風車島變風電場）：東北 (1.0, -0.6)、塔高 1.0、轉子縮 0.7（blades 的 TWIN_SCALE）
+const rel = ([x, y, z]) => [x, y - 1.6, z + 0.1 - 0.12];
+const TWIN_HUB = [-0.55, 1.2, -0.9], TWIN2_HUB = [1.0, 1.0, -0.6];
+export const TWIN = rel(TWIN_HUB), TWIN2 = rel(TWIN2_HUB);
+const TWIN_SCALE = [0.8, 0.7];   // 第二、第三支風機轉子的縮放
 // 寶箱島 1：一隻海鷗停在寶箱蓋上（全 MAX 開箱後蓋子掀起來，改站到箱子東邊的草地上）
 function gull(open) {
   const g = open ? [0.72, 0, 0.42] : [0.3, 0.41, 0.25];
@@ -131,10 +136,13 @@ function stages(lv, flags, on) {
     { kind: 'box', pos: [0.7, 0.09, -0.985], scale: [0.1, 0.18, 0.02], color: C.window },
     { kind: 'cylinder', pos: [0.84, 0.45, -1.2], scale: [0.06, 0.14, 0.06], color: C.wall },
   ]);
-  // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的 twin 轉子；塔身是這個零件的第一個）＋電池屋（西邊，通電時亮一條綠燈）；
+  // 風車島 1：第二支風機的塔身（矮一點，西北；葉片是 sat.windmill 的第一個 twin 轉子；塔身是這個零件的第一個）＋電池屋（西邊，通電時亮一條綠燈）
+  //   ＋第三支風機的塔身（R39，使用者 2026-11-05：再矮一點，東北；葉片是第二個 twin）；
   // 2：變電小站——水泥墊、變壓箱、兩個礙子（霓虹藍，同 chip.cable 的光）
   put('windmill', 0, () => [
     { kind: 'cylinder', pos: [-0.55, 0.6, -0.9], scale: [0.08, 1.2, 0.08], color: C.cream }, { kind: 'sphere', pos: [-0.55, 1.2, -0.86], scale: 0.11, color: C.cream },
+    { kind: 'cylinder', pos: [TWIN2_HUB[0], TWIN2_HUB[1] / 2, TWIN2_HUB[2]], scale: [0.07, TWIN2_HUB[1], 0.07], color: C.cream },
+    { kind: 'sphere', pos: [TWIN2_HUB[0], TWIN2_HUB[1], TWIN2_HUB[2] + 0.04], scale: 0.09, color: C.cream },
     { kind: 'rbox', pos: [-1.45, 0.14, -0.2], scale: [0.36, 0.28, 0.28], color: C.navy },
     { kind: 'box', pos: [-1.45, 0.2, -0.055], scale: [0.26, 0.05, 0.02], color: on ? C.alien : C.window, ...(on ? { glow: C.alien } : {}) },
     { kind: 'box', pos: [-1.45, 0.3, -0.2], scale: [0.38, 0.03, 0.3], color: C.curb },
@@ -242,22 +250,30 @@ function rig(THREE, ctx, object, groups) {
 
 export const builders = {
   rats: ratBuilders.rats,
-  // 風車葉片：三片繞 hub 轉；暴風時整座搖。twin（離島三段，燈泡 Lv7 起）：第二支風機的轉子（縮 0.8）在相對 hub 的 twin 處，同速轉、同樣搖；?quality=low 不畫（塔身那段也不畫）
+  // 風車葉片：三片繞 hub 轉；暴風時整座搖。twins（離島三段，燈泡 Lv7 起）：第二、第三支風機的轉子（縮 TWIN_SCALE）在相對 hub 的各處，同速轉、同樣搖；
+  // ?quality=low 不畫（塔身那段也不畫）。
+  // spinUp(dur)（R39，使用者 2026-11-05：三個轉子從靜止轉起來，不是一換就滿速）：轉速倍率 rate 從 0 在 dur 秒內 smoothstep 到 1；
+  //   建好時 rate = 1（預熱、跳過、截圖都是滿速），劇本那拍才呼叫
   blades(THREE, spec, ctx) {
     const blades = () => [0, 1, 2].map(i => { const a = i * Math.PI * 2 / 3; return { kind: 'box', pos: [Math.sin(a) * 0.38, Math.cos(a) * 0.38, 0], scale: [0.08, 0.75, 0.03], rot: [0, 0, -a], color: C.cream }; });
-    // 搖晃只加在葉片的角度上（轉角 spin + 搖 w）：轉子的 hub 一直在各自的塔頂上，第二支不會繞著第一支的 hub 甩。
-    // 兩個轉子併成一個 mesh（rig）：object.children[0] 是主轉子的 pivot、children[1]（holder，縮 0.8）.children[0] 是第二支的 pivot
-    const object = new THREE.Group(), rotor = new THREE.Group(); object.add(rotor);
-    const twin = spec.twin && ctx.quality !== 'low' ? new THREE.Group() : null, holder = new THREE.Group();
-    if (twin) { holder.position.set(...spec.twin); holder.scale.setScalar(0.8); holder.add(twin); object.add(holder); }
-    const r = rig(THREE, ctx, object, [{ parts: blades(), pivot: rotor }, ...(twin ? [{ parts: blades(), pivot: twin }] : [])]);
-    let spin = 0;
+    // 搖晃只加在葉片的角度上（轉角 spin + 搖 w）：轉子的 hub 一直在各自的塔頂上，twin 不會繞著主轉子的 hub 甩。
+    // 幾個轉子併成一個 mesh（rig，一個 draw call）：object.children[0] 是主轉子的 pivot、children[1 + i]（holder，縮 TWIN_SCALE[i]）.children[0] 是第 i 個 twin 的 pivot
+    const object = new THREE.Group(), rotor = new THREE.Group(); rotor.name = 'rotor'; object.add(rotor);
+    const twins = (ctx.quality !== 'low' ? spec.twins ?? [] : []).map((at, i) => {
+      const holder = new THREE.Group(), pivot = new THREE.Group(); pivot.name = 'rotor';
+      holder.position.set(...at); holder.scale.setScalar(TWIN_SCALE[i]); holder.add(pivot); object.add(holder);
+      return pivot;
+    });
+    const r = rig(THREE, ctx, object, [rotor, ...twins].map(pivot => ({ parts: blades(), pivot })));
+    let spin = 0, rate = 1, ramp = null;
+    object.userData.spinUp = dur => { rate = 0; ramp = dur > 0 ? { t: 0, dur } : null; if (!ramp) rate = 1; };
     return {
       object,
       update(dt, t) {
+        if (ramp) { ramp.t += dt; const k = Math.min(1, ramp.t / ramp.dur); rate = k * k * (3 - 2 * k); if (k >= 1) ramp = null; }
         const w = spec.wobble ? Math.sin(t * 8) * 0.05 : 0;
-        spin -= dt * spec.speed; rotor.rotation.z = spin + w;
-        if (twin) twin.rotation.z = spin + (spec.wobble ? Math.sin(t * 8 + 1) * 0.05 : 0);
+        spin -= dt * spec.speed * rate; rotor.rotation.z = spin + w;
+        twins.forEach((tw, i) => { tw.rotation.z = spin + (spec.wobble ? Math.sin(t * 8 + 1 + i) * 0.05 : 0); });
         if (spec.speed || spec.wobble) r.pose();
       },
       dispose: r.dispose,

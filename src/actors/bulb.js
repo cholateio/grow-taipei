@@ -1,18 +1,17 @@
 // 燈泡（物品 v2 §4.4，max 9）：一盞路燈 → 五個低格的路都有燈、夜市一攤 → 霓虹（粉藍交錯）、傍晚 → 夜市第二攤（招牌板 2026-11-05 拿掉）
-//   → 全島 LED（燈光秀在 101）、夜晚 → 變電所（儲能櫃、變壓器嗡嗡亮）→ ★◆ 離岸風電啟動（電工搭列車到風車島按開關：風車轉、燈塔亮）
+//   → 全島 LED（燈光秀在 101）、夜晚 → 變電所（儲能櫃、變壓器嗡嗡亮）→ ★◆ 離岸風電啟動（風車島變風電場：三支風機轉起來、燈塔亮）
 //   → ★ 海底電纜（晶片的 chip.cable 鋪好；晶片 Lv6 才通電發光）→ ◆ 全島賽博霓虹（橋面、懸浮月台、車站的招牌發光）。
 // 風車與燈塔是衛星島的零件（satellites.js 看燈泡 ≥7）；電纜是晶片的零件（chip.js 看燈泡 ≥8）——燈泡的劇本用 apply 的 only 叫它們出來。
 // 大停電：所有燈熄（view 拿掉發光；app 另外把全島發光歸零）。
-// 電工（計畫 16，使用者 2026-11-03：「拿掉前期的燈泡工人，他亂跑」）：Lv1–6 沒有他；Lv7 才從捷運站門口走出來、搭車去風車島開了風電，
-//   之後就住在風車島上（繞風機腳下的小圈，衛星島的 wander），Lv8 在島上接電纜。
-// 劇本（§6）：一級 3–4.5 秒、Lv1–6 沒有人走路（燈自己亮）；Lv2 燈光沿環掃一圈是燈泡保留的「繞全島一圈」；◆ Lv7、Lv9 6–8 秒、回全景定格。
+// 電工（計畫 16，使用者 2026-11-03：「拿掉前期的燈泡工人，他亂跑」）：Lv1–6 沒有他；Lv7 起住在風車島上（繞風機腳下的小圈，衛星島的 wander；
+//   R39，使用者 2026-11-05：不再搭第二趟車過去——風電場的塔身出現時他就在島上的家），Lv8 在島上接電纜。
+// 劇本（§6）：一級 3–4.5 秒、Lv1–6 沒有人走路（燈自己亮）；Lv2 燈光沿環掃一圈是燈泡保留的「繞全島一圈」；◆ Lv7 4.5–6 秒（R39）、Lv9 6–8 秒、回全景。
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R, MAIN_CELLS, adjacentPairs, edgeMidpoint, SATELLITES, TOP } from '../scene/hex.js';
 import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
-import { BLINK } from '../show/blink.js';
-import { STATION_A, SPUR_BRAKE, FOCUS_BEAT } from '../show/beats.js';
-import { DECK_AT, DOOR as STATION_DOOR, hasTrain, view as tokenView } from './token.js';
+import { FOCUS_BEAT } from '../show/beats.js';
+import { DECK_AT } from './token.js';
 import { C, offset } from './palette.js';
 
 export const id = 'bulb';
@@ -275,7 +274,6 @@ export const builders = {
 // ── 劇本（§8.3）──
 // 角色都是演到那一拍才找（回 null 那拍跳過）；once 找到第一次就記住，整段劇本同一組人。
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
-const el = ctx => () => ctx.roster.members('bulb.electrician')[0] ?? null;
 // Lv8：電工在風車島上才演他的拍（不在島上——例如剛 RESET 還沒到家——那幾拍跳過，不從主島走過海）
 const onIsland = ctx => () => { const m = ctx.roster.members('bulb.electrician')[0]; return m && !cellAt(m.pos.x, m.pos.z) ? m : null; };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -304,64 +302,11 @@ const SWEEP_STEP = 0.25;
 // LEVEL UP 在路燈（中心格）頭上：鏡頭不在中心格就跟 LEVEL UP 一起轉回去（levelUp 1 秒 ≥ focus 拍，不多佔時間）
 const levelUpAtHome = (B, last) => B.together([B.focus(c => (last && sameCell(last(c), HOME_CELL) ? null : HOME_CELL)), B.levelUp('bulb')]);
 
-// ── ★◆ Lv7 離岸風電啟動：電工從捷運站門口走出來、走到站前島緣 → 列車進站停下、他跳上車頂 → 列車慢慢加速、沿環（鏡頭那一側）開到風車島的支線、開進島上
-//   → 他從車頂跳到開關箱前、揮手按開關 → 風車閃白開始轉 → 回全景、燈塔閃白亮起、守塔人出來 → LEVEL UP。全程沒有瞬移 ──
-const JUMP = 0.35, JUMP_ON = 0.45, SWITCH_PUSH = 0.25, DASH = 3.2;   // 跳下車、跳上車頂（離島緣 1.4，慢一點）的秒數、按開關（build 揮一下）的秒數、趕車小跑的速度（一般走路 1.6）
-// 站前島緣（老鼠搭車也在這裡上車）：捷運站對島心方位上、離島心 7 的點拉回走得到的地方
-const SHORE = c => c.nav.nearestWalkable({ x: Math.cos(STATION_A) * 7, z: Math.sin(STATION_A) * 7 });
-// 進站：最快 1.0 秒趕到（他還在走的話等他走到），最多 4.5 倍（beats 的 TRAIN_MAX_BOOST）；車頭剛開過站不到半圈時，倒車比往前繞快就倒車回來。開往支線：最快 0.6 秒、從站上慢慢加速；支線上開快一點（每秒 7 公尺，平常 2.5）
-// （裁決 R17 ◆ ≤ 8 s：進站 1.5 → 1.0、開往支線 1.0 → 0.6、支線車速 4 → 7、按開關 0.6 → 0.25）
-const BOARD_WITHIN = 1.0, BOARD_BACK = Math.PI, RIDE_WITHIN = 0.6, RIDE_SPUR = 7;
-// 車頂座位：第一節車廂、往車尾 0.2（老鼠的 0 號座位在車廂正中，錯開一個身位）
-const SEAT_CAR = 0, SEAT_OFF = -0.2;
-// 搭車那段要有列車在跑（任何在跑的列車都行）。回到 GROW（2026-10-29）時燈泡 7 是 auto，沒放代幣（< 4 沒有環狀線）或淹水停駛時也會長到 7：
-// 建串時就問 token.js 的 hasTrain，沒車改演不搭車的版本（Task 6a 修正輪裁決：見 7 的註解）。
-// 計畫 9 連鎖（2026-10-30）之後燈泡 7 要代幣 ≥5，規則下到不了沒車的 7；退路留著當防呆（設計 §8 R3，bulb.test 用合成狀態驗）。
-// 建串時看得到車、演到時車卻停了（萬一，安全網）：上車那拍（board）start 回 false、整拍跳過；坐車那拍（ride）start 回 false 時
-// 時間軸照樣呼叫 trainStop.end，during 剩下的拍 start → end 跑完——跳下車的 jump.end 把他放到開關箱前（SWITCH_FRONT），不丟錯
-const trainLikely = s => hasTrain(s.lv, s.flags);
-// 電工登場（計畫 16）：hold 住 Lv7 的宣告（日常不從入口補人），從 at 把他生出來（不閃、不佔時間，之後由劇本帶著走）。
-// 他已經在了（舞台早就到 Lv7：合成測試先瞬間演過一次 6 → 7）就不生第二個——這時沒有東西 hold 得住，spawnHeld 會丟錯；劇本照常叫現在這個他
-function enter(B, e, at) {
-  const spawn = B.spawn('bulb.electrician', at), start = spawn.start;
-  spawn.start = c => (c.roster.members('bulb.electrician').length ? false : start(c));
-  return [B.apply(e, { only: ['bulb.electrician'], hold: ['bulb.electrician'] }), spawn];
-}
-// 走到站前 ‖ 列車進站：兩邊同時開始，列車停在站上等他走到（during 先等 wait 秒）再跳上車頂。
-// 拍開始時才知道他要走多久、列車多久到（trainRun 跟 trainStop 同一幀算，數字一樣），所以 together 在 start 才建
-function board(B, who) {
-  let inner = null;
-  return {
-    kind: 'board', dur: c => (inner ? inner.dur(c) : 0),
-    start(c) {
-      const m = who(c); if (!m || !B.trainRuns(c)) return false;
-      // 列車算的是「within 秒內開到、再花煞車時間停穩」：目標先扣掉 SPUR_BRAKE，停穩的時候才剛好是他走到的時候（加速上限照舊 4.5 倍）
-      const walk = B.walk(m, SHORE, { speed: DASH }), wt = walk.estimate(c), within = Math.max(BOARD_WITHIN, wt - SPUR_BRAKE);
-      // 倒車回來和往前繞，哪個比較快進站就走哪個（倒車要先煞車再起步，剛開過頭一點才划算；裁決 R17 ◆ ≤ 8 s）
-      const run = back => B.trainRun(c, STATION_A, { within, back }), back = run(BOARD_BACK).arrive < run(0).arrive ? BOARD_BACK : 0;
-      const wait = Math.max(0, wt - run(back).arrive), seat = cc => B.ridePose(cc, SEAT_CAR, SEAT_OFF);
-      inner = B.together([walk, B.trainStop({ arrive: within, back, stop: wait + JUMP_ON + 0.05, during: [B.wait(wait), B.jump(m, seat, JUMP_ON)] })]);
-      inner.start(c);
-    },
-    step(k, dt, c) { inner.step(k, dt, c); },
-    end(c) { inner?.end(c); inner = null; },
-  };
-}
-// 坐車到風車島：trainStop（支線版、launch）每幀先推列車，再把還坐在車頂上的他擺到座位上；during 第一拍（跳下車）一開始他就不坐了。
-// 列車在島那頭只停 0.1 秒：他一起跳就倒車回環上（跳下車的落點是固定的開關箱前，不跟著車）。
-// 演到時列車停了（安全網，見 trainLikely）：start 回 false，trainStop.end 把 during 跑完、jump.end 把他放到開關箱前
-function ride(B, who, during) {
-  let riding = true;
-  const [off, ...rest] = during, start = off.start;
-  off.start = c => { riding = false; return start(c); };
-  const T = B.trainStop({ spur: 'windmill', launch: true, arrive: RIDE_WITHIN, spurSpeed: RIDE_SPUR, stop: 0.1, during: [off, ...rest] });
-  const begin = T.start, step = T.step;
-  T.start = c => { if (!B.trainRuns(c)) return false; riding = true; return begin(c); };
-  T.step = (k, dt, c) => { step(k, dt, c); const m = riding ? who(c) : null; if (m) c.roster.setPose(m, { ...B.ridePose(c, SEAT_CAR, SEAT_OFF), walking: false }); };
-  return T;
-}
-// 套用的估計長度照真的閃幾個零件算（trainStop 的 during 用估計長度排時間；估短了 LEVEL UP 會被截掉）
-const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK });
+// ── ★◆ Lv7 離岸風電啟動（R39，使用者 2026-11-05：不搭第二趟車，風車島變風電場）──
+// 三個轉子從靜止轉起來：sat.windmill 零件的 userData.spinUp（satellites.js 的 blades），照 finale.js domeUp 的寫法；
+// 拍長是真的 dur（together 等它），零件的 update 吃真實秒數，所以 ramp 用 dur ÷ 演出速度；瞬間演完（跳過）不呼叫——建好就是滿速
+const SPIN_UP = 1.2, HOME_HOLD = 0.8;   // 轉子加速幾秒；回全景停幾秒（鏡頭 1 秒飛回，0.8 秒時已經走完九成多）
+const spinUp = dur => ({ kind: 'spinUp', dur, start(c) { if (!c.instant) c.stage.partObject('sat.windmill')?.userData.spinUp?.(dur / (c.speed ?? 1)); } });
 
 export const script = {
   // 假升級（wait 事件列到電燈，turn.js）：第 1 段平移到中心格、閃白那一份；第 2 段回全景、外圈四格一格一格閃白；
@@ -417,31 +362,20 @@ export const script = {
       const { B } = ctx;
       return [B.focus(HOME_CELL), B.apply(e), B.wait(0.6), B.bubble(B.partHead('bulb.substation', 0.7, ctx), '♪', 0.8), B.wait(0.6), B.levelUp('bulb')];
     },
-    // ★◆ 離岸風電啟動（列車載電工去：有環狀線（代幣 ≥4）、沒淹水就行，高鐵或地鐵都載）：鏡頭到捷運站 → 電工從車站門口走出來（計畫 16：他這一級才登場）、
-    //   走到站前、列車進站，他跳上車頂 → 鏡頭飛去風車島，
-    //   列車沿環開到支線、開進島上 → 他跳到開關箱前按下開關 → 風車閃白開始轉 → 回全景、燈塔與光束閃白、守塔人出來（列車倒回環上）→ LEVEL UP。
-    //   之後他就住在風車島上（島上的小圈）。
-    //   代幣還沒到 7（支線還沒通，選擇帶動升級之後賽博正解就是這樣）：鏡頭飛去風車島的同時風車島那條支線從環上長出去
-    //   （0.8 s，跟代幣 Lv7 一樣；列車從站前開到支線口比它慢，追不上還沒長好的那一段）
-    //   沒有列車在跑（見 trainLikely；Task 6a 修正輪裁決）：不叫他走去搭車——鏡頭飛去風車島的同時他直接生在島上的家（不閃）、
-    //   風車與燈塔跟著套用閃白、回日常、回全景、LEVEL UP。之後的燈泡 8 他就在島上的開關箱旁。
-    //   登場那兩拍（hold、spawn）放進第一拍的 together、排在 focus 後面：turn.js 看劇本第一拍有 focus 就不另外補一次平移（opensOnFocus），
-    //   together 依序 start，生出來之後 board 才找得到他
+    // ★◆ 離岸風電啟動（R39，使用者 2026-11-05：電工不再搭車，風車島變風電場；整段含鏡頭 4.5–6 s，不閃、不急，每一拍之間有停頓）：
+    //   鏡頭飛到風車島 → 第二、第三支塔身與電池屋閃白立起（電工跟著出現在島上的家：名冊鍵不閃、不佔時間，衛星島的人直接生在家）→ 停一下
+    //   → 三個轉子閃白、1.2 s 從靜止轉到通電的轉速 → 回全景（停 HOME_HOLD 等鏡頭拉開）→ 燈塔頂燈與光束同一拍亮、守塔人出來（小屋一起）
+    //   → 停一下 → LEVEL UP（電燈格）。
+    //   燈塔島在主島另一頭（風車島的對面），拉近風車島時在畫面外、電燈格也是——所以先回全景再亮燈塔、打 LEVEL UP（字樣在畫面裡）
     7(e, s, ctx) {
-      if (!trainLikely(s)) { const { B } = ctx, m = el(ctx); return [B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ...enter(B, e, ISLAND_HOME)]), B.apply(e), B.home(m), B.focus('home'), B.levelUp('bulb')]; }
-      const { B } = ctx, m = el(ctx), SPUR = 'token.spur.windmill',
-        prev = s.prev ?? { lv: { ...s.lv, bulb: 6 }, flags: s.flags };   // 劇本單獨建拍（測試）沒有 prev：當作從 Lv6 長上來
-      const lay = tokenView(prev.lv, prev.flags)[SPUR] ? [] : [B.apply(e, { only: [SPUR], blink: false }), B.scaleIn(SPUR, { axis: 'z', dur: 0.8 })];
+      const { B } = ctx;
       return [
-        // 鏡頭飛去站前的同時他從車站門口走出來、出發，列車同時趕來
-        B.together([B.focus(TOKEN_CELL), ...enter(B, e, c => c.nav.nearestWalkable(STATION_DOOR)), board(B, m)]),
-        ...lay.slice(0, 1),
-        B.together([B.focus(WIND, { zoom: ISLAND_ZOOM }), ...lay.slice(1), ride(B, m, [
-          // 按下開關 → 風車閃白開始轉 → 回全景（裁決 R17 ◆ ≤ 8 s：不再停 1 秒等鏡頭，燈塔在鏡頭飛往全景時亮）
-          B.jump(m, () => SWITCH_FRONT, JUMP), B.gesture(m, 'build', SWITCH_PUSH, { at: SWITCH }), applyN(B, e, ['sat.windmill', 'sat.windmill.stage1'], 1),   // 第二支風機與電池屋（離島三段，tagAlong）跟風車同一拍閃白、不多佔時間
-          B.focus('home'),
-          B.home(m), B.together([applyN(B, e, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'sat.lighthouse.stage1'], 2), B.levelUp('bulb')]),
-        ])]),
+        B.focus(WIND, { zoom: ISLAND_ZOOM }),
+        B.apply(e, { only: ['sat.windmill.stage1', 'bulb.electrician'] }), B.wait(0.4),
+        B.together([B.apply(e, { only: ['sat.windmill'] }), spinUp(SPIN_UP)]),
+        B.focus('home', { hold: HOME_HOLD }),
+        B.apply(e, { only: ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'sat.lighthouse.stage1'] }), B.wait(0.3),
+        B.levelUp('bulb'),
       ];
     },
     // ★ 海底電纜（晶片 ≥5）：鏡頭到風車島 → 電工走到開關箱前一敲（接上電纜）→ 電纜閃白鋪好（晶片 <6 還沒通電：暗的）→ ♪ → 回全景看整條電纜 → LEVEL UP

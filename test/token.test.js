@@ -24,22 +24,20 @@ const SOLUTIONS = stats(RESULTS, spec).full.map(r => r.order);   // 唯一正解
 const AT = anchorWorld('token'), TOWER = anchorWorld('tower'), TWO_PI = 2 * Math.PI, CELL = cellOf('token');
 const satC = kind => { const s = SATELLITES.find(x => x.kind === kind); return axialToWorld(s.q, s.r); };
 const satCell = kind => { const c = satC(kind); return worldToAxial(c.x, c.z); };
-// 代幣 Lv7 開往哪座島：燈泡先放（賽博）→ 燈泡 Lv7 先鋪好風車島的支線 → 遊樂場島（裁決 R7）；不然風車島
-// 唯一正解（2026-10-31）：舊的「燈泡先放就是遊樂場島」是兩條正解的捷徑——改成照引擎演：代幣升 7 那一刻燈泡已經 ≥ 7 才是遊樂場島
-//   （到不了代幣 7 回 null）。正解是代幣先放、代幣 7 比燈泡 7 早 → 風車島
-const islandOf7 = order => {
+// 代幣 Lv7 開往哪座島：R39（使用者 2026-11-05：電燈 Lv7 不搭車了）之後一律風車島——支線只跟代幣走，燈泡 Lv7 先到也不會先鋪風車島那條。
+// bulbFirst7(order)：代幣升 7 那一刻燈泡已經 ≥ 7（到不了代幣 7 回 null）。正解是代幣先到 7；燈泡先到的那種局用列舉裡第一條（BULB_FIRST）
+const bulbFirst7 = order => {
   let s = engine.createState(spec), bulb = 0;
   for (const step of [...order.map(id => st => engine.place(st, id, spec)), ...Array.from({ length: spec.CLOSING_TURNS }, () => st => engine.advance(st, spec))]) {
     const r = step(s); s = r.state;
     for (const e of r.events) {
       if (e.item === 'bulb' && (e.kind === 'grow' || e.kind === 'placed')) bulb = e.kind === 'grow' ? e.to : 1;
-      if (e.kind === 'grow' && e.item === 'token' && e.to === 7) return bulb >= 7 ? 'playground' : 'windmill';
+      if (e.kind === 'grow' && e.item === 'token' && e.to === 7) return bulb >= 7;
     }
   }
   return null;
 };
-// 遊樂場島那條（燈泡 Lv7 先鋪好風車島支線）不在正解上：列舉裡第一條代幣到得了 7、而且是遊樂場島的放法
-const PLAYGROUND7 = RESULTS.map(r => r.order).find(o => islandOf7(o) === 'playground');
+const BULB_FIRST = RESULTS.map(r => r.order).find(o => bulbFirst7(o) === true);
 const views = Array.from({ length: 11 }, (_, n) => token.view(L({ token: n }), {}));
 const nonRoster = v => Object.fromEntries(Object.entries(v).filter(([, p]) => p.kind !== 'roster'));
 const PALETTE = new Set(Object.values(C));
@@ -264,7 +262,7 @@ test('orbit headings turn smoothly: ≤ 0.2 rad per frame through ramp → climb
 // ── 劇本（§6：一級 3–5 秒；◆ Lv7 6–8 秒、◆ Lv10 ≤ 5.5 秒（修正批次 trim §B：一台車、定格 0.6）、回全景定格）──
 const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
 // 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
-const want = (to, order) => (to === 7 ? [String(satCell(islandOf7(order))), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
+const want = to => (to === 7 ? [String(satCell('windmill')), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
 test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s whole, ◆ Lv10 ≤ 5.5 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
@@ -281,7 +279,7 @@ test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s 
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('token');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over token`);
-        assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to, order), `${what} camera trail`);
+        assert.deepEqual(focusTrail(h.rig.log, r).map(String), want(to), `${what} camera trail`);
       }
       for (const k of STAFF) for (const m of show.roster.members(k)) assert.equal(m.mode, 'home', `${what} ${k}`);
       assert.equal(show.roster.members('token.staff').length, to >= 2 ? 1 : 0, `${what} staff count`);
@@ -297,7 +295,7 @@ test('Lv8: the camera is back on the token cell before the LEVEL UP (the label n
   assert.ok(i >= 0 && beats[i + 1].kind === 'levelUp' && i + 2 === beats.length, `focus token, then LEVEL UP last (${beats.map(b => b.kind)})`);
   assert.ok(!beats.some(b => b.kind === 'together' && b.beats.some(x => x.kind === 'focus') && b.beats.some(x => x.kind === 'levelUp')), 'no focus + label together');
 });
-test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8 (the playground island once the windmill spur is there, R7)', () => {
+test('scripts: the ◆ levels end on the overview (focus home with a hold) before the LEVEL UP; Lv7 opens on the windmill island at zoom 0.8 (also when bulb 7 came first, R39)', () => {
   for (const n of [7, 10]) {
     const beats = flat(token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n, milk: 5 }), flags: {} }, fakeCtx));
     const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= (n === 10 ? 0.6 : 1.0)),   // 停 ≥ 1.0（裁決 R17：◆ ≤ 8 s，原 ≥ 1.5）；Lv10 ≥ 0.6（trim §B）
@@ -307,11 +305,11 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
   const b7 = token.script.grow[7]({ kind: 'grow', item: 'token', to: 7 }, { lv: L({ token: 7 }), flags: {} }, fakeCtx);
   assert.equal(b7[0].kind, 'focus'); assert.equal(b7[0].dur, 0.8); assert.deepEqual(focusCell(b7[0], fakeCtx), satCell('windmill'));
   assert.ok(flat(b7).some(b => b.kind === 'trainStop'), 'the train rides out on the spur');
-  // 風車島的支線已經在（燈泡 ≥ 7，裁決 R7）：開在遊樂場島、列車開進遊樂場島的支線、只長那一條
+  // R39（使用者 2026-11-05）：燈泡 7 先到也沒有風車島支線——一樣開去風車島、兩條都長
   const prev = { lv: L({ token: 6, bulb: 7 }), flags: {} }, p7 = token.script.grow[7]({ kind: 'grow', item: 'token', to: 7 }, { lv: L({ token: 7, bulb: 7 }), flags: {}, prev }, fakeCtx);
-  assert.deepEqual(focusCell(p7[0], fakeCtx), satCell('playground'));
-  assert.equal(flat(b7).find(b => b.kind === 'trainStop').spur, 'windmill'); assert.equal(flat(p7).find(b => b.kind === 'trainStop').spur, 'playground');
-  assert.deepEqual(flat(p7).filter(b => b.kind === 'scaleIn').length, 1, 'only the playground spur grows');
+  assert.deepEqual(focusCell(p7[0], fakeCtx), satCell('windmill'));
+  assert.equal(flat(b7).find(b => b.kind === 'trainStop').spur, 'windmill'); assert.equal(flat(p7).find(b => b.kind === 'trainStop').spur, 'windmill');
+  assert.deepEqual(flat(p7).filter(b => b.kind === 'scaleIn').length, 2, 'both spurs grow');
   // 兩條都要長：遊樂場島那條排在回全景之後（列車島那頭停站的 during 裡）
   const during = flat(b7).find(b => b.kind === 'trainStop').during, iHome = during.findIndex(b => b.kind === 'focus' && b.target === 'home');
   assert.ok(iHome >= 0 && during.slice(iHome + 1).some(b => b.kind === 'scaleIn'), 'the playground spur grows after the camera is back on the overview');
@@ -358,23 +356,27 @@ async function liveAt(h, order, to) {
   }
   return null;
 }
-// Lv7 live：列車真的開到新支線那頭（車頭離島心 < 1.3）——風車島的支線已經被燈泡 Lv7 鋪好就開進遊樂場島（裁決 R7），不然風車島。
-// 唯一正解（2026-10-31）：正解是風車島；遊樂場島那條改用列舉裡第一條（PLAYGROUND7），兩條都量（舊前提是兩條正解各一條）
-test('Lv7 live: the train rides out to the island of the new spur while the camera is there, then the overview', async () => {
-  assert.deepEqual(SOLUTIONS.map(islandOf7), ['windmill'], 'the solution: the windmill spur');
-  assert.ok(PLAYGROUND7, 'some order grows the playground spur at token 7');
-  for (const order of [...SOLUTIONS, PLAYGROUND7]) {
-    const h = await headlessShow(), { show } = h, kind = islandOf7(order), c = satC(kind), update = show.update;
+// Lv7 live：列車真的開到風車島支線那頭（車頭離島心 < 1.3）。R39（使用者 2026-11-05）：燈泡 Lv7 先到的局（BULB_FIRST）也一樣開去風車島
+test('Lv7 live: the train rides out to the windmill island while the camera is there, then the overview — also when bulb 7 came first (R39)', async () => {
+  assert.deepEqual(SOLUTIONS.map(bulbFirst7), [false], 'the solution: token 7 before bulb 7');
+  assert.ok(BULB_FIRST, 'some order reaches bulb 7 before token 7');
+  for (const order of [...SOLUTIONS, BULB_FIRST]) {
+    const h = await headlessShow(), { show } = h, c = satC('windmill'), update = show.update;
     let near = 0;
     show.update = (dt, t) => { update(dt, t); const o = show.stage.partObject('token.train'); if (o && h.rail.trip) { const p = o.children[0].position; if (Math.hypot(p.x - c.x, p.z - c.z) < 1.3) near++; } };
     const done = !!await liveAt(h, order, 7);
-    assert.ok(done && near >= 15, `${order.join('>')}: head near the ${kind} island for ${near} frames`);
+    assert.ok(done && near >= 15, `${order.join('>')}: head near the windmill island for ${near} frames`);
   }
 });
-// 審稿（計畫 5b 任務 3，裁決 R7）：燈泡 Lv7 先到的那種局（唯一正解之後是 PLAYGROUND7）、風車島支線已經鋪好；代幣 Lv7 只長遊樂場島那條——鏡頭要在遊樂場島，
-// 不能還飛去風車島（新長的支線整段在畫面外）。真的鏡頭 rig（16:9 全景）：支線長出來的每一幀，新長的那條支線的島心投影在 NDC ±0.9 裡
-test('Lv7 live, real camera: the island of every newly grown spur is on screen (NDC ±0.9) while the spur grows, in the solution (windmill) and the playground order', async () => {
-  for (const order of [...SOLUTIONS, PLAYGROUND7]) {
+// R39：電燈 Lv7 不再鋪風車島支線——token.spur.* 只在代幣 ≥ 7
+test('R39: bulb 7 lays no spur; both spurs only from token 7', () => {
+  for (const t of [4, 5, 6]) for (const k of token.SPURS) assert.equal(token.view(L({ bulb: 7, token: t }), {})[`token.spur.${k}`], undefined, `token ${t} ${k}`);
+  for (const k of token.SPURS) assert.ok(token.view(L({ bulb: 7, token: 7 }), {})[`token.spur.${k}`], k);
+});
+// 審稿（計畫 5b 任務 3，裁決 R7）：支線長出來的時候它的島要在畫面裡。真的鏡頭 rig（16:9 全景）：支線長出來的每一幀，
+// 新長的那條支線的島心投影在 NDC ±0.9 裡（正解，與燈泡 Lv7 先到的局 BULB_FIRST——R39 之後兩條也都由代幣 Lv7 長）
+test('Lv7 live, real camera: the island of every newly grown spur is on screen (NDC ±0.9) while the spur grows, in the solution and the bulb-first order', async () => {
+  for (const order of [...SOLUTIONS, BULB_FIRST]) {
     const cam = overviewRig(), h = await headlessShow({ rig: cam.rig }), { show } = h, update = show.update, frames = {}, out = [];
     const ndc = p => { cam.camera.lookAt(cam.controls.target); cam.camera.updateMatrixWorld(); cam.camera.updateProjectionMatrix(); return new THREE.Vector3(p.x, p.y, p.z).project(cam.camera); };
     show.update = (dt, t) => {

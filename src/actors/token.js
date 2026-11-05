@@ -44,7 +44,7 @@ export function trainPose(t, i, { speed = 0.35, trip = null } = {}) {
 
 const pylon = (x, z, top = TRACK.y) => { const base = groundAt(x, z), h = top - base; return { kind: 'cylinder', pos: [x, base + h / 2, z], scale: [0.12, h, 0.12], color: C.curb }; };
 
-// ── 支線（Lv7）：環上離衛星島最近的點往島上架高架。R10：風車島（電工搭車去開風車，燈泡 Lv7）與遊樂場島（Lv8 接駁車、小孩）——燈塔島沒有支線 ──
+// ── 支線（Lv7）：環上離衛星島最近的點往島上架高架。R10：風車島（代幣 Lv7 通車）與遊樂場島（Lv8 接駁車、小孩）——燈塔島沒有支線 ──
 export const SPURS = ['windmill', 'playground'];
 function spurLine(kind) {
   if (!SPURS.includes(kind)) throw new Error(`no spur to ${kind}`);
@@ -217,8 +217,6 @@ export const roadsterParts = color => [
   { kind: 'box', pos: [0, DECK_TOP - 0.011, -CAR_L / 2 - 0.004], scale: [CHASSIS_W, 0.012, 0.008], color: C.red },   // 尾燈條（不發光，計畫 11 §設計 3）
   ...[[-1, 1], [1, 1], [-1, -1], [1, -1]].map(([sx, sz]) => ({ kind: 'cone', pos: [sx * 0.06, RIDE_H - NOZZLE_DROP + NOZZLE_H / 2, sz * 0.08], scale: [0.035, NOZZLE_H, 0.035], color: C.curb })),   // 噴嘴
 ];
-// 環狀線上有列車在跑（view 的 token.train：代幣 ≥4；淹水時 speed 0 停駛）——別的劇本建串時要知道能不能搭車（燈泡 Lv7）就問這個
-export const hasTrain = (lv, flags = {}) => (lv?.token ?? 0) >= 4 && !flags?.flooded;
 export const RAMP_LEN = 0.35, RAMP_ANGLE = 20 * Math.PI / 180;
 // 飛行本身縮短（Task 6a：◆ Lv10 live 8.5 s > 8；不砍全景定格）：繞圈 2.5 → 3.0 rad/s、屋頂＋坡道＋拉高 1.4 → 1.1（坡道 RAMP_T 0.6 照舊）、
 // 下降＋落地 1.0 → 0.8（落地 TOUCH 0.3 照舊）——一趟 4.9 → 4.0 s
@@ -316,10 +314,8 @@ export function view(lv, flags) {
     const origin = { x: 0, y: 0, z: 0 }, parts = [{ kind: 'rail', pos: [0, TRACK.y, 0], scale: TRACK.radius * 2, rot: [Math.PI / 2, 0, 0], color: C.cream }];
     for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + 0.13; parts.push(pylon(Math.cos(a) * TRACK.radius, Math.sin(a) * TRACK.radius)); }
     v['token.track'] = { kind: 'compound', at: origin, parts, footprint: false };
+    // 兩條支線只跟代幣 Lv7 走（R39，使用者 2026-11-05：電燈 Lv7 不再搭車去風車島，支線不因燈泡出現）
     if (n >= 7) for (const kind of SPURS) v[`token.spur.${kind}`] = spur(kind);
-    // 燈泡 Lv7 離岸風電（spec：要高鐵，代幣 ≥6）在代幣通車到離島（Lv7）之前就可能發生（賽博正解第 6 回合）：
-    // 高鐵先把風車島那條支線鋪過去載電工（燈泡 Lv7 劇本裡長出來），遊樂場島的支線照舊等代幣 Lv7
-    else if (lv.bulb >= 7) v['token.spur.windmill'] = spur('windmill');
     // 離島接駁車走遊樂場島的支線（at 在支線起點：從那裡閃白出現）
     // label false：接駁車一直在跑，建零件時量的是支線起點；LEVEL UP 照舊冒在站上（劇本先把鏡頭轉回代幣格，計畫 15 D）
     if (n >= 8) { const path = spurPath('playground'); v['token.shuttle'] = { kind: 'shuttle', at: path[0], path, speed: flags.flooded ? 0 : 1.2, footprint: false, label: false }; }
@@ -463,21 +459,18 @@ export const script = {
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   支線 0.8 秒長完（每秒約 3.7 公尺），比支線車速 SPUR_RUSH 3.5 快一點，列車追不上還沒長好的那一段
-    // 風車島的支線若已經被燈泡 Lv7 鋪好（view 的 lv.bulb ≥ 7），只長還沒有的那條——鏡頭改到遊樂場島、列車開進遊樂場島的支線
-    //   （選擇帶動升級裁決 R7：賽博正解燈泡 Lv7 先到，以前照樣飛去風車島，新長的遊樂場支線整段在畫面外）。
-    // 兩條都要長（外星正解）：風車島那條跟著鏡頭先長；遊樂場島在風車島的對面、拉近時在畫面外，等鏡頭回到全景（遊樂場島在全景裡）才長出來——
+    // 兩條都長（R39，使用者 2026-11-05：支線只跟代幣走，燈泡 Lv7 不再先鋪風車島那條，一律開去風車島）：風車島那條跟著鏡頭先長；
+    //   遊樂場島在風車島的對面、拉近時在畫面外，等鏡頭回到全景（遊樂場島在全景裡）才長出來——
     //   排在列車島那頭停站的 during 裡，回全景 1.0 + 長 0.8 不比列車倒回環上久，整級不變長
     7(e, s, ctx) {
-      const { B } = ctx, prev = s.prev ?? { lv: { ...s.lv, token: 6 }, flags: s.flags }, had = view(prev.lv, prev.flags), keys = SPURS.map(k => `token.spur.${k}`).filter(k => !had[k]);
-      const dest = had['token.spur.windmill'] ? 'playground' : 'windmill', far = 'token.spur.playground';
-      const later = dest === 'windmill' && keys.includes(far) ? [far] : [], now = keys.filter(k => !later.includes(k));
+      const { B } = ctx, now = ['token.spur.windmill'], later = ['token.spur.playground'];
       const grow = k => B.scaleIn(k, { axis: 'z', dur: 0.8 });
       return [
-        B.focus(dest === 'windmill' ? WINDMILL : PLAYGROUND, { zoom: ISLAND_ZOOM }),
+        B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: now, blink: false }),
         // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）；
         //   支線上每秒 3.5 公尺（平常 2.5；計畫 5b 任務 4：列車剛開過支線口時整級 8.4 s，支線來回省 0.7 s）
-        B.together([...now.map(grow), B.trainStop({ spur: dest, stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: SPUR_RUSH, during: [
+        B.together([...now.map(grow), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: SPUR_RUSH, during: [
           B.focus('home', { hold: 1.0 }), ...later.flatMap(k => [B.apply(e, { only: [k], blink: false }), grow(k)]),
         ] })]),
         B.apply(e), B.levelUp('token'),

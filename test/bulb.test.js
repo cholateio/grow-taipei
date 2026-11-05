@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as bulb from '../src/actors/bulb.js';
 import { anchorWorld, landmarkWorld, cellOf } from '../src/actors/anchors.js';
-import { cellAt, cellTop, NEIGHBORS } from '../src/scene/hex.js';
+import { cellAt, cellTop, NEIGHBORS, worldToAxial } from '../src/scene/hex.js';
 import { TIMES } from '../src/scene/daynight.js';
 import { B } from '../src/show/beats.js';
 import { createNav, PAD } from '../src/show/nav.js';
@@ -18,8 +18,6 @@ import { diffParts, troubleSpot, TROUBLE_IN } from '../src/actors/stage.js';
 import { C, offset } from '../src/actors/palette.js';
 import { MAIN_CELLS, adjacentPairs, SATELLITES, axialToWorld, R, RING_R, edgeMidpoint } from '../src/scene/hex.js';
 import { satelliteAt } from '../src/show/nav.js';
-import { trainPose, TRACK, DOOR } from '../src/actors/token.js';
-import { STATION_A, TRAIN_MAX_BOOST } from '../src/show/beats.js';
 import { existsSync } from 'node:fs';
 const heads = s => s.parts.filter(p => p.kind === 'sphere');
 
@@ -277,12 +275,12 @@ function checkBulb({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1, [lo, hi] = BUDGET(to);
   (timing[to] ??= []).push(+secs.toFixed(1));
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
-  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= (to === 7 ? 4.5 : 6) && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = eventHead('bulb');   // 這一級變了的零件頭上（計畫 15 D）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);
   }
-  // 計畫 16：電工 Lv7 才登場（從捷運站走出來搭列車過去，不瞬移），之後住在風車島上；Lv1–6 沒有他
+  // 計畫 16：電工 Lv7 才登場，之後住在風車島上（R39：Lv7 直接出現在島上的家，不搭車）；Lv1–6 沒有他
   const els = show.roster.members('bulb.electrician'); assert.equal(els.length, to >= 7 ? 1 : 0, `${what}: electrician only from Lv7`);
   if (els.length) { assert.equal(els[0].mode, 'home', `${what} electrician home`); assert.ok(onWindmill(els[0].pos), `${what} electrician on the windmill island: ${JSON.stringify(els[0].pos)}`); }
   // 演完沒有人留在劇本手上
@@ -667,7 +665,6 @@ test('no electrician through Lv6; from Lv7 he lives on the windmill island, ring
 });
 
 // ── 劇本：◆ Lv7、Lv9 是關鍵節點（裁決 R11）──
-const fullFlat = bs => bs.flatMap(b => (b.kind === 'together' ? fullFlat(b.beats) : b.kind === 'trainStop' ? [b, ...fullFlat(b.during)] : [b]));
 test('◆ Lv7 and Lv9 are key nodes (R11); the other levels are short scripts', () => {
   assert.equal(bulb.script.grow[7].key, true); assert.equal(bulb.script.grow[9].key, true);
   for (const n of [2, 3, 4, 5, 6, 8]) assert.ok(!bulb.script.grow[n].key, `lv${n}`);
@@ -680,78 +677,49 @@ async function liveFrames(order, pred, onFrame) {
   const r = await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) r0 = h.rig.log.length; return h.run(evs, opts); } }, order, pred);
   return { ...h, ...r, r0 };
 }
-// ★◆ Lv7 離岸風電啟動（計畫 16：電工這一級才登場，從捷運站門口走出來）：電工走到站前 → 坐上列車（車頂）→ 列車開進風車島的支線 → 跳下來按開關（build）→ 風車才開始轉 → 燈塔才亮 → 回全景、LEVEL UP。
-// 全程不瞬移（每幀位移 ≤ 0.6：環上趕路最快 4.5 倍約 0.45／幀）；最後住在風車島上
-test('Lv7 live: the electrician steps out of the station door, rides the train out to the windmill island, flips the switch; only then the blades turn and the lighthouse lights', async () => {
+// R39（使用者 2026-11-05：電燈 Lv7 不搭第二趟車、風車島變風電場）：一段劇本、沒有列車那條線——
+// 鏡頭飛到風車島（zoom 0.8）→ 第二、第三支塔身與電池屋閃白（電工跟它們一起出現在島上的家）→ 停 0.4 → 三個轉子閃白、1.2 s 從靜止轉起來
+// → 回全景 → 燈塔頂燈、光束、守塔人、守塔人小屋同一拍 → 停 0.3 → LEVEL UP（電燈格）
+const WIND_CELL = (() => { const s = SATELLITES[WINDMILL_I], c = axialToWorld(s.q, s.r); return String(worldToAxial(c.x, c.z)); })();
+test('Lv7 script (R39): focus the windmill island, towers, the rotors spin up together, home, the lighthouse beat, LEVEL UP — no train, no boarding', () => {
+  const ctx = { B, roster: { members: () => [] } }, beats = bulb.script.grow[7](E(7), { lv: atLv(7), flags: {} }, ctx);
+  assert.deepEqual(beats.map(b => b.kind), ['focus', 'apply', 'wait', 'together', 'focus', 'apply', 'wait', 'levelUp']);
+  assert.equal(String(focusCell(beats[0], ctx)), WIND_CELL);
+  // 燈塔島在風車島的對面：先回全景（停一下等鏡頭）再亮燈塔、打 LEVEL UP
+  assert.equal(beats[4].target, 'home'); assert.ok(beats[4].dur >= 0.6, 'holds on the overview');
+  assert.deepEqual(beats[1].only, ['sat.windmill.stage1', 'bulb.electrician'], 'the towers, with the electrician already at home on the island');
+  assert.deepEqual(beats[3].beats.map(b => b.kind), ['apply', 'spinUp']); assert.deepEqual(beats[3].beats[0].only, ['sat.windmill']);
+  assert.equal(beats[3].beats[1].dur, 1.2, 'the spin-up is a real 1.2 s beat');
+  assert.deepEqual(beats[5].only, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'sat.lighthouse.stage1']);
+  assert.ok(!flat(beats).some(b => ['trainStop', 'board', 'spawn', 'walk', 'jump', 'gesture'].includes(b.kind)), 'no ride');
+  assert.equal(bulb.script.grow[7].key, true);
+});
+test('Lv7 live (R39): camera on the windmill island, towers before the rotors, the rotors spin up, the lighthouse lit, LEVEL UP on bulb, 4.5 s ≤ whole ≤ KEY_MAX; the electrician never leaves the island; the train never leaves the ring', async () => {
   for (const order of SOLUTIONS) {
-    let prev = null, maxWalk = 0, maxRide = 0, at = 0, rode = 0, station = false, firstBuild = null, firstSpin = null, firstLight = null, rot = null, blades = null, born = null;
+    let at = 0, towers = null, rotors = null, wind0, trip = false, off = [], firstLight = null;
     const what = order.join('>');
-    const { show, secs } = await liveFrames(order, isBulb(7), (h, dt) => {
+    const h = await liveFrames(order, isBulb(7), (hh, dt) => {
       at += dt;
-      const [m] = h.show.roster.members('bulb.electrician'); if (!m) return;
-      born ??= { ...m.pos, door: h.show.nav.nearestWalkable(DOOR), at };
-      // 坐在車頂（主島外、比軌道與島面都高：環上、支線高架上）的那幾幀跟著列車（環上最快 4.5 倍約 0.45／幀）；
-      // 其他時候是走路（≤ 0.15／幀）
-      const riding = !cellAt(m.pos.x, m.pos.z) && m.pos.y > TRACK.y + 0.1;
-      if (prev) { const d = Math.hypot(m.pos.x - prev.x, m.pos.z - prev.z); if (riding && prev.riding) maxRide = Math.max(maxRide, d); else maxWalk = Math.max(maxWalk, d); }
-      prev = { ...m.pos, riding };
-      if (riding) rode++;
-      if (String(cellAt(m.pos.x, m.pos.z)) === '0,1') station = true;
-      if (firstBuild === null && m.walker?.gesture?.kind === 'build') firstBuild = at;
-      const o = h.show.stage.partObject('sat.windmill'), z = o?.visible ? o.children[0].rotation.z : null;
-      if (o !== blades) { blades = o; rot = null; }   // 換速度時零件重建（轉角從 0 起算），換過的那一幀不比
-      // 唯一正解：燈泡 7 在第 8 回合，颱風 Lv1–2 的風本來就吹著風車轉（沒電 3、通電 6，±0.4 的搖晃）——看轉速變成通電的轉速
-      const stormy = h.show.stage.lv.typhoon >= 1 && h.show.stage.lv.typhoon <= 2, fast = stormy ? 4.5 : 0;
-      if (z !== null && rot !== null && Math.abs(z - rot) / dt > fast + 1e-6 && firstSpin === null) firstSpin = at;
-      rot = z;
-      if (firstLight === null && h.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;
+      const o = hh.show.stage.partObject('sat.windmill');
+      if (wind0 === undefined) wind0 = o;
+      if (towers === null && hh.show.stage.partObject('sat.windmill.stage1')?.visible) towers = at;
+      if (rotors === null && o !== wind0 && o?.visible) rotors = at;
+      if (firstLight === null && hh.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;
+      if (hh.rail.trip) trip = true;
+      for (const m of hh.show.roster.members('bulb.electrician')) if (!onWindmill(m.pos)) off.push(`${at.toFixed(2)} s (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
     });
-    assert.ok(born && born.at < 0.1 && Math.hypot(born.x - born.door.x, born.z - born.door.z) < 0.15, `${what}: appears at the station door at once (${born && `${born.x.toFixed(2)}, ${born.z.toFixed(2)} at ${born.at.toFixed(2)} s`})`);
-    assert.ok(station, `${what}: walked into the station cell`);
-    assert.ok(rode > 20, `${what}: rode on the train (${rode} frames)`);
-    assert.ok(maxWalk <= 0.15, `${what}: no teleport off the train (max step ${maxWalk.toFixed(3)})`);
-    assert.ok(maxRide <= 0.5, `${what}: no teleport on the train (max step ${maxRide.toFixed(3)})`);
-    assert.ok(firstBuild !== null && firstSpin !== null && firstSpin > firstBuild, `${what}: blades turn after the switch (${firstBuild}, ${firstSpin})`);
-    // 裁決 R17（◆ ≤ 8 s）：不等鏡頭停好，風車閃白之後燈塔就亮（原 ≥ 0.9 s）
-    assert.ok(firstLight !== null && firstLight >= firstSpin + 0.1, `${what}: lighthouse lights on the way to the overview after the turbine (${firstSpin}, ${firstLight})`);
-    const [m] = show.roster.members('bulb.electrician'); assert.ok(onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
-    assert.ok(show.roster.members('sat.keeper').length === 1, 'the keeper comes with the light');
-    assert.ok(secs <= KEY_MAX, `${what}: ${secs.toFixed(2)} s`);
-  }
-});
-// 最壞的列車位置（審稿第 1 輪）：車頭剛開過站 0.05 rad（倒車回來接他），和剛過倒車上限（要往前繞四分之三圈）——整段 ≤ 10 s
-test('Lv7 with the train badly placed (just left the station / just past the back-up limit): the whole event still ≤ 10 s, no overspeed', async () => {
-  for (const order of SOLUTIONS) for (const behind of [0.05, Math.PI / 2 + 0.05]) {
-    const h = await headlessShow(), update = h.show.update, rates = [];
-    let on = false;
-    h.show.update = (dt, t) => { const o = h.rail.offset; update(dt, t); if (on) rates.push(1 + (h.rail.offset - o) / dt); };
-    await liveAt({ ...h, run: (evs, opts) => { on = !opts?.instant; if (on) h.rail.offset = (STATION_A + behind) / 0.35; return h.run(evs, opts); } }, order, isBulb(7));
-    const what = `${order.join('>')} behind ${behind.toFixed(2)}`;
-    assert.ok(h.show.elapsed <= 10, `${what}: whole event ${h.show.elapsed.toFixed(2)} s`);
-    assert.ok(Math.max(...rates.map(Math.abs)) <= TRAIN_MAX_BOOST + 1e-6, `${what}: max ${Math.max(...rates.map(Math.abs)).toFixed(2)}×`);
-    if (behind < 0.1) assert.ok(rates.some(r => r < -0.5), `${what}: backs up into the station`);
-  }
-});
-// 沒有列車在跑就不演（照規則不會發生）：直接報錯，不讓他從海上瞬移過去
-// Task 6a 修正輪裁決：以前沒列車就丟錯（不讓他從海上瞬移過去）；現在建串時看得到車、演到時車卻停了（萬一），上車那拍自己跳過——
-// 不丟錯，也不瞬移（他沒被拿到劇本手上、位置不動）。建串時就沒車的退路另一個測試量（「no train running」）
-test('Lv7 whose train is gone at beat time skips the boarding: no throw, the electrician is not moved', () => {
-  const m = { pos: { x: 0, y: 0.65, z: 2 }, head: () => m.pos };
-  let claimed = 0;
-  const ctx = { B, roster: { members: k => (k === 'bulb.electrician' ? [m] : []), claim() { claimed++; } }, stage: { partObject: () => null, flags: {} }, nav: { route: (a, b) => [a, b], routeLength: () => 1, nearestWalkable: p => p }, now: 0, rail: { offset: 0 } };
-  const beats = bulb.script.grow[7](E(7), { lv: atLv(7), flags: {} }, ctx), board = fullFlat(beats).find(b => b.kind === 'board');
-  assert.equal(board.start(ctx), false, 'skipped');
-  assert.equal(claimed, 0); assert.deepEqual(m.pos, { x: 0, y: 0.65, z: 2 });
-});
-// 坐車那段列車不超速、不瞬移：環上每幀轉的角度 ≤ 原速 4.5 倍；從站上出發（launch）是慢慢加速的
-test('Lv7: every frame the train moves at most 4.5× normal speed, and it eases out of the station', async () => {
-  for (const order of SOLUTIONS) {
-    const rates = [];
-    await liveFrames(order, isBulb(7), (h, dt) => { const o = h.rail.offset; rates.push([o, dt]); });
-    const r = rates.slice(1).map(([o, dt], i) => 1 + (o - rates[i][0]) / dt);
-    assert.ok(Math.max(...r.map(Math.abs)) <= TRAIN_MAX_BOOST + 1e-6, `${order.join('>')} max ${Math.max(...r).toFixed(2)}×`);
-    // 停站（≈ 0）之後的下一段不是一幀就跳到 4 倍以上
-    for (let i = 1; i < r.length; i++) if (Math.abs(r[i - 1]) < 1e-6 && r[i] > 1e-6) assert.ok(r[i] < 1.5, `${order.join('>')} launch jumps to ${r[i].toFixed(2)}×`);
+    const { show, bubblesLog, n } = h;
+    assert.equal(String(focusTrail(h.rig.log, h.r0)[0]), WIND_CELL, `${what}: the camera opens on the windmill island`);
+    assert.ok(towers !== null && rotors !== null && towers < rotors, `${what}: towers (${towers}) before the rotors (${rotors})`);
+    assert.ok(firstLight !== null && firstLight > rotors, `${what}: the lighthouse after the rotors (${rotors}, ${firstLight})`);
+    assert.equal(trip, false, `${what}: no train trip`);
+    assert.deepEqual(off.slice(0, 5), [], `${what}: the electrician stays on the island`);
+    const [m] = show.roster.members('bulb.electrician'); assert.ok(m && onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);
+    assert.ok(show.stage.partKeys().includes('sat.lighthouse'), `${what}: the lighthouse is up`);
+    assert.equal(show.roster.members('sat.keeper').length, 1, 'the keeper comes with the light');
+    const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('bulb');
+    assert.equal(last?.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what}: LEVEL UP over bulb`);
+    assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `${what}: whole event ${show.elapsed.toFixed(2)} s`);
   }
 });
 // ★ Lv8 海底電纜：鏡頭在風車島、電工在開關箱前一敲（build）→ 電纜閃白鋪好（晶片 < 6：暗的）
@@ -815,75 +783,4 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   const { bad, seen } = await visitSpotsThroughSolutions(bulb, SOLUTIONS, { cells: () => [[0, 0]] });   // 計畫 16 起夜市（Lv4／Lv9 的拜訪點）也在中心格
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 9]);
-});
-
-
-// Task 6a 修正輪（控制者裁決，Critical）：以前 Lv7 劇本在沒列車時直接丟錯，玩家亂放就整局卡死。沒列車演不搭車的版本：
-// 不叫電工，鏡頭到風車島、套用（風車轉、燈塔亮）、回全景、LEVEL UP。
-// 計畫 9 連鎖（2026-10-30，設計 §8 R3）：燈泡 7 要代幣 ≥5，規則下燈泡到 7 一定有列車（show.test 整份列舉驗）——退路程式留著當防呆，
-//   這裡改用合成狀態直接演劇本、不經引擎。
-// 唯一正解（2026-10-31）：淹水鎖代幣 ≤3，列舉 4 萬局裡淹水時燈泡最多 4 級（燈泡 5 要棒球 4／代幣 4，淹水局到不了）——
-//   引擎走不到「淹水＋燈泡 6」，舊前提（EXAMPLE.hit 前 7 回合到燈泡 6、代幣 4）過時。改成：EXAMPLE.hit 8 回合瞬間演完
-//   R38（使用者 2026-11-05）：EXAMPLE.hit 的老鼠早放咬住鮮奶、燈泡只到 3——改老鼠最後放的同型一局（milk,chip,bulb,token,typhoon,boba,baseball,rat：淹水、燈泡 4、代幣 2）
-//   （淹水、燈泡 4、代幣 2、沒有環狀線），再瞬間演合成的燈泡 4 → 5 → 6，之後 live 演一個合成的燈泡 6 → 7
-async function floodedAtBulb6(h) {
-  const { turnSteps } = await import('./helpers/show.js');
-  let s = engine.createState(spec);
-  for (const step of turnSteps(['milk', 'chip', 'bulb', 'token', 'typhoon', 'boba', 'baseball', 'rat']).slice(0, 8)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
-  assert.ok(s.flags.flooded && s.lv.bulb === 4 && s.lv.token === 2, `precondition: flooded, bulb 4, token 2 (${JSON.stringify(s.lv)})`);
-  await h.run([bulbGrow(4, 5), bulbGrow(5, 6), { kind: 'settle' }], { instant: true });
-  s = { ...s, lv: { ...s.lv, bulb: 6 } };
-  assert.deepEqual(h.show.stage.lv, s.lv);
-  return s;
-}
-const bulbGrow = (from, to) => ({ kind: 'grow', item: 'bulb', from, to, story: spec.STORIES.grow.bulb[to] });
-test('bulb Lv7 with no train running (synthetic: flooded, token 2) plays the fallback instead of throwing: the windmill turns, LEVEL UP on bulb', async () => {
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
-  await floodedAtBulb6(h);
-  const n = bubblesLog.length;
-  await run([bulbGrow(6, 7), { kind: 'settle' }]);
-  assert.equal(show.stage.lv.bulb, 7);
-  assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP' && Math.hypot(b.at.x - show.stage.headOf('bulb').x, b.at.z - show.stage.headOf('bulb').z) < 0.3), 'LEVEL UP over bulb');
-  assert.ok(show.stage.partKeys().includes('sat.lighthouse'), 'the lighthouse is up');
-  // 風車真的在轉（不是只有零件在）：再推 6 幀，葉片轉了
-  const blades = () => show.stage.partObject('sat.windmill')?.children[0].rotation.z ?? 0, z0 = blades();
-  for (let f = 0; f < 6; f++) show.update(1 / 30, 900 + f / 30);
-  assert.ok(Math.abs(blades() - z0) > 1e-6, 'the windmill turns');
-  assert.ok(sat.view(show.stage.lv, show.stage.flags)['sat.windmill'].speed > 0, 'turbine speed > 0');
-  // 劇本本身：沒列車就不叫他走去搭車——計畫 16 起他這一級才登場，直接生在島上的家（ISLAND_HOME）、回日常；有列車（代幣 5、沒淹水）就從車站門口走出來搭車
-  const build = (token, flags) => bulb.script.grow[7](bulbGrow(6, 7), { lv: lv({ bulb: 7, token }), flags }, { B, roster: { members: () => [] } }), kinds = (...a) => build(...a).map(b => b.kind);
-  // 第一拍：鏡頭 ‖ hold 住他的宣告 → 生出來（together 依序 start；第一拍有 focus，turn.js 不另外補平移）
-  const FALLBACK = ['together', 'apply', 'home', 'focus', 'levelUp'], opening = (...a) => build(...a)[0].beats.map(b => b.kind);
-  assert.deepEqual(kinds(4, { flooded: true }), FALLBACK, 'flooded: the trains are stopped');
-  assert.deepEqual(kinds(0, {}), FALLBACK, 'no token: no ring line');
-  assert.deepEqual(opening(0, {}), ['focus', 'apply', 'spawn']);
-  const hold = build(0, {})[0].beats[1]; assert.deepEqual(hold.only, ['bulb.electrician']);
-  assert.notDeepEqual(kinds(5, {}), FALLBACK, 'token 5, not flooded: he rides the train');
-  assert.deepEqual(opening(5, {}), ['focus', 'apply', 'spawn', 'board'], 'token 5: the camera, held, spawned at the door, boarding — together');
-});
-// Task 6a 修正輪 2（控制者裁決）：沒車的退路把電工放到風車島上（計畫 16 起他這一級才登場：直接生在島上的家，不從主島換過去），
-// 之後沒合成的燈泡 8 照常演：他在島上的開關箱前一敲、電纜出現。合成狀態同上（設計 §8 R3）：淹水局燈泡 6 之後 live 演合成的 6 → 7、
-// 再一回合合成的 7 → 8（不合成跳級），同一趟查不瞬移、換位置閃白（gameInvariants）
-test('the no-train fallback (synthetic: flooded) puts the electrician straight onto the windmill island; the following unmerged bulb 8 plays the switch beats there', async () => {
-  const { gameInvariants } = await import('./helpers/show.js');
-  const h = await headlessShow(), { show, run, bubblesLog } = h;
-  await floodedAtBulb6(h);
-  const inv = gameInvariants(show);
-  let build = 0, watching = false;
-  const update = show.update;
-  show.update = (dt, t) => { update(dt, t); const [m] = show.roster.members('bulb.electrician'); if (watching && m?.walker?.gesture?.kind === 'build') { build++; assert.ok(onWindmill(m.pos), 'working on the windmill island'); } };
-  inv.label('synthetic bulb 6 → 7');
-  await run([bulbGrow(6, 7), { kind: 'settle' }]);
-  const [m] = show.roster.members('bulb.electrician');
-  assert.ok(m && onWindmill(m.pos), `after the fallback the electrician is on the windmill island (${m && `${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)}`})`);
-  inv.label('synthetic bulb 7 → 8'); watching = true;
-  const n = bubblesLog.length;
-  await run([bulbGrow(7, 8), { kind: 'settle' }]);
-  assert.equal(show.stage.lv.bulb, 8);
-  assert.ok(build > 10, `bulb 8: the switch beats play on the island (${build} build frames)`);
-  assert.ok(show.stage.partKeys().includes('chip.cable'), 'the cable is laid');
-  assert.ok(bubblesLog.slice(n).some(b => b.text === 'LEVEL UP' && Math.hypot(b.at.x - show.stage.headOf('bulb').x, b.at.z - show.stage.headOf('bulb').z) < 0.3), 'LEVEL UP over bulb');
-  assert.deepEqual([...inv.pops].slice(0, 10), [], 'every relocation blinks');
-  assert.deepEqual([...inv.jumps].slice(0, 10), [], 'no silent jumps in daily life');
-  assert.deepEqual([...inv.walls].slice(0, 10), []);
 });

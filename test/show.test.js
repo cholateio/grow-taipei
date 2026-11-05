@@ -550,30 +550,11 @@ for (const how of ['skip', 'reset']) {
 // Task 6a 修正輪（控制者裁決）：劇本永遠不丟錯——沒法照原樣演就演退路（燈泡 Lv7 沒列車那種）。修正輪 2：列舉的前 20 個太像（都是鮮奶、晶片、燈泡開頭），
 // 改成整份列舉每隔 STRIDE 個取一個，加上兩局固定的壞結局。
 // 每回合（放置、最後一輪、終局回合）都瞬間演完（instant：每拍照樣 start → end），沒有一個劇本丟錯，舞台等級跟引擎一樣。
-// 計畫 9 連鎖（2026-10-30，設計 §8 R3）：燈泡 7 要代幣 ≥5，「沒列車就到燈泡 7」在規則下到不了——原本的明確沒車放法
-//   （燈泡、鮮奶、晶片、珍奶、老鼠、棒球、颱風、代幣）與「取樣裡有沒車的局」兩條斷言拿掉，改成整份列舉（引擎層，不演）裡
-//   燈泡到 7 的那一刻（舞台的鏡像：回合開頭疊到那個事件）hasTrain 一定為真；退路程式留著當防呆，由 bulb.test 用合成狀態直接呼叫劇本驗
-test('no script throws: an even stride over the enumeration and EXAMPLE.hit/deflect play every turn (instant) without an error; bulb reaches 7 only with a train running', async () => {
+// R39（使用者 2026-11-05）：燈泡 Lv7 不搭車、只有一段劇本——以前「燈泡到 7 時一定有列車」（hasTrain）那條整份列舉的斷言拿掉了
+test('no script throws: an even stride over the enumeration and EXAMPLE.hit/deflect play every turn (instant) without an error', async () => {
   const { EXAMPLE, finaleStep } = await import('./helpers/endings.js');
-  const { hasTrain } = await import('../src/actors/token.js');
   const all = enumerate(spec), STRIDE = 2000,   // 列舉是 8! = 40320 局，每 2000 個取一個 ≈ 21 局：每局 9 回合都要瞬間演完、跑得完；又散在整份列舉裡（不像前 20 個全是同一種開頭）
    strided = all.filter((_, k) => k % STRIDE === 0).map(r => r.order);
-  // 整份列舉：燈泡 6 → 7（跳級 6 → 8 的第一級也是這個事件；合成的第二級演同一段 ◆，代幣與旗標在兩個事件之間不變）時有列車在跑
-  const noTrain = [];
-  let reached = 0;
-  for (const { order } of all) {
-    let s = engine.createState(spec);
-    for (const [i, step] of turnSteps(order).entries()) {
-      let view = { lv: s.lv, flags: s.flags };
-      const r = step(s); s = r.state;
-      for (const e of r.events) {
-        view = engine.foldEvent(view, e);
-        if (e.kind === 'grow' && e.item === 'bulb' && e.from < 7 && e.to >= 7) { reached++; if (!hasTrain(view.lv, view.flags)) noTrain.push(`${order.join('>')} turn ${i + 1}: token ${view.lv.token}${view.flags.flooded ? ' flooded' : ''}`); }
-      }
-    }
-  }
-  assert.ok(reached > 700, `${reached} games reach bulb 7`);   // 整份列舉：R25 之後 986 條到燈泡 7；計畫 14（雨中放下的燈泡／代幣被鎖）之後 770 條
-  assert.deepEqual(noTrain.slice(0, 5), [], `${noTrain.length} games reach bulb 7 with no train`);
   const orders = [...strided, EXAMPLE.hit, EXAMPLE.deflect];
   const { show, run } = await headlessShow(), bad = [];
   for (const order of orders) {

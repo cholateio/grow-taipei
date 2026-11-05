@@ -156,16 +156,15 @@ test('satellite gates follow the island chain: kids ride the shuttle, the light 
     const v = sat.view(lv({ bulb: b }), {}), on = b >= 7;
     assert.deepEqual([!!v['sat.lighthouse'], !!v['sat.beam'], !!v['sat.keeper'], v['sat.windmill'].speed > 0], [on, on, on, on], `bulb ${b}`);
   }
-  // 計畫 9 連鎖（2026-10-30 設計 §3）：燈泡 7 要代幣 ≥5（電工搭五節車廂的列車去風車島；回到 GROW 時一度是 auto）——
-  // 燈泡到 7 時有列車（代幣 ≥5）但可能還沒通車到離島（代幣 <7），風車島那條支線跟著燈泡 Lv7 鋪（token.view 看 lv.bulb）。
-  // 代幣 4、燈泡 7 在規則下到不了，照舊驗（view 是純函式，退路程式留著當防呆——設計 §8 R3）
+  // 計畫 9 連鎖（2026-10-30 設計 §3）：燈泡 7 要代幣 ≥5。R39（使用者 2026-11-05）：電燈 Lv7 不搭車了——
+  // 風車島那條支線只跟代幣 Lv7 走（token.view 不再看 lv.bulb），燈泡 7、代幣 <7 時沒有支線
   assert.deepEqual(spec.ITEMS.bulb.up[7], { minLevel: ['token', 5] }, 'bulb 7 needs token ≥ 5');
   for (const t of [4, 5, 6, 7]) for (const b of [6, 7]) {
     const tv = token.view(lv({ token: t, bulb: b }), {}, {});
-    assert.equal(!!tv['token.spur.windmill'], t >= 7 || b >= 7, `token ${t} bulb ${b}: the windmill spur stands once the electrician rides it`);
+    assert.equal(!!tv['token.spur.windmill'], t >= 7, `token ${t} bulb ${b}: the windmill spur waits for token 7 (R39)`);
     assert.equal(!!tv['token.spur.playground'], t >= 7, `token ${t} bulb ${b}: the playground spur waits for token 7`);
   }
-  // 落在燈泡 7 以後的跳級只有 6 → 8（晶片 ≥4）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決 2026-10-29），電工照樣搭車去開風電、燈塔亮
+  // 落在燈泡 7 以後的跳級只有 6 → 8（晶片 ≥4）：合成一段演 n−1 的 ◆ Lv7 劇本（協調者裁決 2026-10-29），風車島照樣變風電場、燈塔亮
   assert.deepEqual(Object.keys(spec.ITEMS.bulb.jump ?? {}).filter(n => +n >= 7), ['8'], 'the only jump past bulb 6 is 6 → 8');
   assert.equal((await import('../src/actors/bulb.js')).script.grow[7].key, true, 'bulb 7 is a key level: the merged 6 → 8 plays it');
   for (let b = 0; b <= 6; b++) { const v = sat.view(lv({ boba: b }), {}); assert.ok(!v['sat.forest'] && !v['sat.forest.stage1'], `boba ${b}: nothing of boba on the forest islet (trim §A)`); }
@@ -244,15 +243,43 @@ test('islet stages that move: the swing swings, the carousel turns, the second t
     const a = posesOf(p.object); p.update(0.4, 0.4); const b = posesOf(p.object); p.update(0.5, 0.9);
     assert.equal(a !== b || b !== posesOf(p.object), moves, key); p.dispose();
   }
-  // 第二支風機的轉子是 sat.windmill 的 twin（同一個 speed／wobble；颱風改速度時第一段不重建）：燈泡 Lv7 起才有、通電才轉
-  assert.equal(sat.view(lv({ bulb: 6 }), {})['sat.windmill'].twin, undefined);
-  const twinOf = p => p.object.children[1].children[0];
-  const lit = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']); lit.update(0.5, 0.5); assert.notEqual(twinOf(lit).rotation.z, 0, 'the second rotor turns');
-  const dark = f.build(sat.view(lv({ bulb: 7 }), { blackout: true })['sat.windmill']); dark.update(0.5, 0.5); assert.equal(twinOf(dark).rotation.z, 0, 'blackout: the second rotor stands still like the first');
-  assert.deepEqual(sat.view(lv({ bulb: 7, typhoon: 2 }), {})['sat.windmill.stage1'], sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'], 'the storm does not rebuild the stage-1 tower');
-  // 第二個轉子在第一段的塔頂前面
-  const w = sat.view(lv({ bulb: 7 }), {})['sat.windmill'], top = sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'].parts[0];
-  assert.ok(Math.hypot(w.at.x + w.twin[0] - (sat.island('windmill').x + top.pos[0]), w.at.z + w.twin[2] - (sat.island('windmill').z + top.pos[2] + 0.1)) < 1e-9 && Math.abs(w.at.y + w.twin[1] - (sat.island('windmill').y + 1.2)) < 1e-9, 'twin hub on the stage-1 tower');
+  // 第二、第三支風機的轉子是 sat.windmill 的 twins（同一個 speed／wobble；颱風改速度時第一段不重建）：燈泡 Lv7 起才有、通電才轉
+  assert.equal(sat.view(lv({ bulb: 6 }), {})['sat.windmill'].twins, undefined);
+  const twinOf = (p, i = 0) => p.object.children[1 + i].children[0];
+  const lit = f.build(sat.view(lv({ bulb: 7 }), {})['sat.windmill']); lit.update(0.5, 0.5);
+  for (const i of [0, 1]) assert.notEqual(twinOf(lit, i).rotation.z, 0, `twin ${i} turns`);
+  const dark = f.build(sat.view(lv({ bulb: 7 }), { blackout: true })['sat.windmill']); dark.update(0.5, 0.5);
+  for (const i of [0, 1]) assert.equal(twinOf(dark, i).rotation.z, 0, `blackout: twin ${i} stands still like the first`);
+  assert.deepEqual(sat.view(lv({ bulb: 7, typhoon: 2 }), {})['sat.windmill.stage1'], sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'], 'the storm does not rebuild the stage-1 towers');
+  // 第二、第三個轉子各在第一段一支塔的塔頂前面 0.1（塔頂 = 塔身圓柱的頂：pos.y + scale.y / 2）
+  const w = sat.view(lv({ bulb: 7 }), {})['sat.windmill'], c = sat.island('windmill');
+  const towers = sat.view(lv({ bulb: 7 }), {})['sat.windmill.stage1'].parts.filter(p => p.kind === 'cylinder' && p.scale[1] >= 1);
+  assert.equal(towers.length, 2, 'two stage-1 towers');
+  w.twins.forEach((tw, i) => {
+    const top = towers[i];
+    assert.ok(Math.hypot(w.at.x + tw[0] - (c.x + top.pos[0]), w.at.z + tw[2] - (c.z + top.pos[2] + 0.1)) < 1e-9 && Math.abs(w.at.y + tw[1] - (c.y + top.pos[1] + top.scale[1] / 2)) < 1e-9, `twin ${i} hub on its stage-1 tower`);
+  });
+});
+// R39（使用者 2026-11-05：電燈 Lv7 風車島變風電場）：第三支風機——塔身在第一段（東北，塔高 1.0），轉子是 sat.windmill 的第二個 twin（縮 0.7），
+// 三個轉子併在同一個 rig mesh；spinUp(dur) 把轉速從 0 在 dur 秒內 smoothstep 到滿速（建好時滿速：預熱、跳過、截圖）
+test('R39 wind farm: a third turbine NE on the windmill island, its rotor the second twin; spinUp ramps all three rotors from still to full speed', () => {
+  for (const b of [7, 8, 9]) assert.deepEqual(sat.view(lv({ bulb: b }), {})['sat.windmill'].twins, [sat.TWIN, sat.TWIN2], `bulb ${b}`);
+  const w = sat.view(lv({ bulb: 7 }), {})['sat.windmill'], c = sat.island('windmill');
+  const hub = { x: w.at.x + sat.TWIN2[0] - c.x, z: w.at.z + sat.TWIN2[2] - c.z };
+  assert.ok(hub.x > 0 && hub.z < 0, `TWIN2 in the north-east quadrant (${hub.x.toFixed(2)}, ${hub.z.toFixed(2)})`);
+  const f = builtFactory(), p = f.build(w);
+  let rotors = 0; p.object.traverse(o => { if (o.name === 'rotor') rotors++; }); assert.equal(rotors, 3, 'three rotor pivots');
+  let meshes = 0; p.object.traverse(o => { if (o.isMesh) meshes++; }); assert.equal(meshes, 1, 'one merged mesh (no extra draw call)');
+  assert.equal(typeof p.object.userData.spinUp, 'function');
+  const rotor = p.object.children[0], dt = 1 / 30, step = () => { const z = rotor.rotation.z; p.update(dt, 0); return Math.abs(rotor.rotation.z - z); };
+  const full = step(); assert.ok(full > 0, 'built at full speed');
+  p.object.userData.spinUp(1.2);
+  let t = 0, early = 0;
+  while (t < 0.3 - 1e-9) { early = step(); t += dt; }
+  assert.ok(early < full / 2, `0.3 s into the spin-up: ${early.toFixed(4)} < half of ${full.toFixed(4)}`);
+  while (t < 1.2 + dt) { step(); t += dt; }
+  assert.ok(Math.abs(step() - full) < 1e-9, 'after 1.2 s back at full speed');
+  for (const i of [1, 2]) { const tw = p.object.children[i].children[0], z = tw.rotation.z; p.update(dt, 0); assert.ok(Math.abs(tw.rotation.z - z) > 0, `twin ${i} turns`); }
 });
 
 // 位置：每段零件在自己的島上（離島心 ≤ ISLET_R），離守塔人的圈、小孩、老鼠、電工的站位都 ≥ 0.3；

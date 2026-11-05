@@ -515,7 +515,7 @@ test('Lv3+ lamp heads: one neon colour per stop, neighbours (wrap-around include
 // compound：有黏土零件一個 + 每種發光色一個；neon：compound 那份 + 每個 glb（有 glow 再 +1）；名冊不算
 function drawCalls(v) {
   const compound = parts => (parts.some(x => !x.glow) ? 1 : 0) + new Set(parts.filter(x => x.glow).map(x => x.glow)).size, glb = m => 1 + (m.glow ? 1 : 0);
-  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'neon' ? compound(p.parts) + (p.models ?? []).reduce((a, m) => a + glb(m), 0) : 0), 0);
+  return Object.values(v).reduce((t, p) => t + (p.kind === 'compound' ? compound(p.parts) : p.kind === 'flicker' ? compound(p.parts) + compound(p.lit) : p.kind === 'neon' ? compound(p.parts) + (p.models ?? []).reduce((a, m) => a + glb(m), 0) : 0), 0);
 }
 // ── 假升級（2026-11-05 使用者：「電燈早放也能自己多長一兩級（虛構的級數），主要目的是讓畫面有在動，不一定要動到求解器」）──
 // 電燈 Lv2 起原地等的回合（舞台 meta.idle.bulb：stage.js）多畫一段：等 1 回合補滿中心格另外三個角的路燈、六條邊拉燈串；等 2 回合外圈四格也補滿；
@@ -575,8 +575,15 @@ test('blackout: every lamp-head part (real stops and idle stages) becomes a flic
     assert.ok(!s.parts.some(p => p.glow), `${k}: dark`); assert.ok(s.lit.length && s.lit.every(p => p.glow), `${k}: a lit copy`);
     assert.equal(typeof s.seed, 'number');
   }
-  assert.ok(new Set(LAMPS(v).map(s => s.seed)).size === N_STOPS, 'stops blink out of step');
+  assert.ok(new Set([v['bulb.main'].seed, ...LAMPS(v).map(s => s.seed)]).size === N_STOPS + 1, 'stops (and the first lamp) blink out of step');
   assert.equal(bulb.view(lv({ bulb: 2 }), {}, { idle: { bulb: 2 } })['bulb.lamps.0'].kind, 'compound', 'lit → plain compound');
+  // 第一盞燈（bulb.main）也壞：雨中放下、鎖在 Lv1 的只有這一盞，也要看得出壞了（審稿 2026-11-05）；footprint 照舊
+  for (const n of [1, 2]) {
+    const m = bulb.view(lv({ bulb: n }), { blackout: true })['bulb.main'];
+    assert.equal(m.kind, 'flicker', `lv${n} main`); assert.deepEqual(m.footprint, { r: 0.15 }); assert.ok(!m.parts.some(p => p.glow)); assert.equal(m.lit.length, 1);
+    assert.equal(m.parts.filter(p => p.kind === 'cylinder').length, 1, 'the post stays in the dark copy');
+  }
+  assert.equal(bulb.view(lv({ bulb: 1 }), {})['bulb.main'].kind, 'compound');
 });
 test('flickerOn: two short blinks every FLICKER_PERIOD seconds, phase-shifted by seed; mostly off', () => {
   const { flickerOn, FLICKER_PERIOD } = bulb;
@@ -589,8 +596,12 @@ test('flickerOn: two short blinks every FLICKER_PERIOD seconds, phase-shifted by
 });
 test('flicker part: dark copy always shown, lit copy hidden and shown only while flickerOn', async () => {
   const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
-  const f = createPartFactory(THREE, { glow: createGlowRegistry(), builders: bulb.builders });
-  const s = bulb.view(lv({ bulb: 2 }), { blackout: true })['bulb.lamps.1'], p = f.build(s);
+  const glow = createGlowRegistry(), f = createPartFactory(THREE, { glow, builders: bulb.builders });
+  glow.setNight(1); glow.setScale(0);   // 大停電：world.js glowScale 0 → 登記表裡的發光全歸零（審稿：閃的那份不能跟著歸零）
+  const s = bulb.view(lv({ bulb: 2 }), { blackout: true })['bulb.lamps.1'], before = glow.size, p = f.build(s);
+  assert.equal(glow.size, before, 'the lit copy’s materials are not in the registry');
+  const litMats = []; p.object.children[1].traverse(o => { if (o.isMesh) litMats.push(o.material); });
+  assert.ok(litMats.length && litMats.every(m => m.emissiveIntensity >= bulb.FLICKER_GLOW), 'the lit copy glows on its own, blackout or not');
   assert.deepEqual(p.object.position.toArray(), [s.at.x, s.at.y, s.at.z]);
   const [dark, lit] = p.object.children; assert.equal(dark.visible, true); assert.equal(lit.visible, false);
   let t = 0; const step = dt => { t += dt; p.update(dt, t); };
@@ -609,15 +620,15 @@ test('script.idle: stage 1 pans to the centre cell and applies its part; stage 2
   assert.equal(b1[0].kind, 'focus'); assert.deepEqual(b1[0].target, [0, 0]);
   assert.deepEqual(b1.filter(b => b.kind === 'apply').map(b => b.only), [['bulb.idle.0,0']]);
   const b2 = bulb.script.idle(e, s(1), ctx, e.waits[0]);
-  assert.equal(b2[0].kind, 'focus'); assert.equal(b2[0].target, 'home');
+  assert.equal(b2[0].kind, 'focus'); assert.equal(b2[0].target, 'home'); assert.ok(b2[0].dur >= 0.8, 'the pull-back finishes before the first cell lights up');
   assert.deepEqual(b2.filter(b => b.kind === 'apply').map(b => b.only), IDLE_CELLS.slice(1).map(c => [`bulb.idle.${c}`]));
   assert.deepEqual(bulb.script.idle(e, s(2), ctx, e.waits[0]), []);
   assert.deepEqual(bulb.script.idle(e, { ...s(undefined), flags: { blackout: true } }, ctx, e.waits[0]), [], 'locked: nothing');
   for (const b of [b1, b2]) assert.ok(estimateTurn(b, ctx) <= SCRIPT_MAX, `${estimateTurn(b, ctx)} s`);
 });
-test('bulb draw calls ≤ 24 at every level (blackout included)', () => {
+test('bulb draw calls ≤ 24 at every level (blackout ≤ 34 counting the hidden lit copies of the flicker parts)', () => {
   for (let n = 1; n <= 9; n++) for (const flags of [{}, { blackout: true }]) {
-    const d = drawCalls(bulb.view(atLv(n), flags)); assert.ok(d <= 24, `lv${n} ${JSON.stringify(flags)}: ${d}`);
+    const d = drawCalls(bulb.view(atLv(n), flags)); assert.ok(d <= (flags.blackout ? 34 : 24), `lv${n} ${JSON.stringify(flags)}: ${d}`);
   }
 });
 // ── 不出格（§14.1）：每個 footprint 的角都在它那一格裡 ──

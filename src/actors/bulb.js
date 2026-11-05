@@ -11,7 +11,7 @@ import { axialToWorld, cellAt, cellTop, worldToAxial, RING_R, MAIN_CELLS, adjace
 import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
 import { BLINK } from '../show/blink.js';
-import { STATION_A, SPUR_BRAKE } from '../show/beats.js';
+import { STATION_A, SPUR_BRAKE, FOCUS_BEAT } from '../show/beats.js';
 import { DECK_AT, DOOR as STATION_DOOR, hasTrain, view as tokenView } from './token.js';
 import { C, offset } from './palette.js';
 
@@ -102,6 +102,7 @@ const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 //   第 2 段：外圈四格（有路燈的那四格）也各自補滿。一格一個零件 bulb.idle.<q,r>（墨黑的桿子和線一個 draw call、發光的燈三色三個）。
 //   升到下一級就歸零（零件縮掉；霓虹同一刻點起來）。鎖住（停電）之後不再延伸（不在 wait 裡），燈頭改成壞掉的樣子：flicker 零件偶爾閃一下（flickerOn）
 export const IDLE_MAX = 2, STRING_BULBS = 5, STRING_SAG = 0.15, FLICKER_PERIOD = 4.5;
+export const FLICKER_GLOW = 2.4;   // 閃的那份自己的發光強度（不進登記表：大停電 world.js glowScale 0 會把登記表裡的全歸零，審稿 2026-11-05）
 const STRING_COLORS = [C.yellow, C.neonPink, C.neonBlue];   // 彩燈串三色輪流（直線單色看起來像圍籬，截圖 2026-11-05）
 const IDLE_CORNERS = [30, 150, 270], IDLE_STAGES = [[[0, 0]], [[1, 0], [0, 1], [-1, 1], [-1, 0]]];
 const IDLE_HOLD = 0.6;   // 一段演完停一下
@@ -132,7 +133,7 @@ function idleParts(cell, head, look) {
   return [...posts, ...strings.flat()];
 }
 // 燈頭零件：亮著就是一般 compound；停電就是 flicker（parts 暗的那份、lit 亮的那份，零件自己偶爾把 lit 露出來）
-const lampPart = (at, lit, dark, bright, seed) => (lit ? { kind: 'compound', at, parts: bright, footprint: false } : { kind: 'flicker', at, parts: dark, lit: bright.filter(p => p.glow), seed, footprint: false });
+const lampPart = (at, lit, dark, bright, seed, footprint = false) => (lit ? { kind: 'compound', at, parts: bright, footprint } : { kind: 'flicker', at, parts: dark, lit: bright.filter(p => p.glow), seed, footprint });
 
 // ── 變電所（Lv6）：中心格西北、101 西邊的空地（101 外擴後和它之間留一條走道）。
 // 水泥台上兩座儲能櫃（白櫃、前面一條指示燈）＋一座變壓器（深藍箱、三根礙子），通電時指示燈與礙子亮淡藍（嗡嗡亮）；四角矮圍籬 ──
@@ -201,7 +202,9 @@ export function view(lv, flags = {}, meta = {}) {
   // 燈頭：Lv1–2 暖黃；Lv3 起霓虹，一站一色、沿路粉→藍→黃輪流（一站只有一種發光色 → 一站一個 draw call；
   // 九站繞一圈，兩色輪流的話最後一站和第一站會同色，三色剛好每一對相鄰的站都不同）
   const head = k => glowOf(n >= 3 ? NEON[k % NEON.length] : C.yellow);
-  v['bulb.main'] = { kind: 'compound', at, parts: lamp(0, 0, head(0)), footprint: { r: 0.15 } };
+  // 第一盞（停電也壞：雨中放下、鎖在 Lv1 的只有這一盞；seed 0，各站 1–9，假升級 10 起）
+  const c0 = n >= 3 ? NEON[0] : C.yellow;
+  v['bulb.main'] = lampPart(at, lit, lamp(0, 0, dark(c0)), lamp(0, 0, bright(c0)), 0, { r: 0.15 });
   // 電工 Lv7 起才在（計畫 16）：住在風車島上（衛星島的 wander、沒有入口）；Lv7 的劇本 hold 住這份宣告、從車站門口把他生出來
   if (n >= ISLAND_LV) v['bulb.electrician'] = { kind: 'roster', at: ISLAND_HOME, n: 1, accessory: 'vest', home: { kind: 'wander', at: ISLAND_HOME, r: ISLAND_R } };
   if (n >= 2) {
@@ -210,12 +213,12 @@ export function view(lv, flags = {}, meta = {}) {
     const headColor = k => (n >= 3 ? NEON[k % NEON.length] : C.yellow);
     LAMP_STOPS.forEach((g, k) => {
       const o = LAMP_POINTS[g[0]], heads = look => g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, look(headColor(k + 1))));
-      v[`bulb.lamps.${k}`] = lampPart(o, lit, heads(dark), heads(bright), k);
+      v[`bulb.lamps.${k}`] = lampPart(o, lit, heads(dark), heads(bright), k + 1);
     });
     // 假升級（見 IDLE_STAGES）：等了幾回合就畫幾段；第 1 段的燈頭跟第一盞同色，第 2 段四格照站的輪色
     IDLE_STAGES.slice(0, Math.min(meta?.idle?.bulb ?? 0, IDLE_MAX)).forEach((cells, si) => cells.forEach((cell, ci) => {
       const c = axialToWorld(...cell), parts = look => idleParts(cell, look(headColor(si === 0 ? 0 : ci + 1)), look);
-      v[idleKey(cell)] = lampPart({ x: c.x, y: cellTop(cell), z: c.z }, lit, parts(dark), parts(bright), LAMP_STOPS.length + si * 4 + ci);
+      v[idleKey(cell)] = lampPart({ x: c.x, y: cellTop(cell), z: c.z }, lit, parts(dark), parts(bright), LAMP_STOPS.length + 1 + si * 4 + ci);
     }));
     // 燈籠：Lv2 紅色不亮、Lv3（霓虹、傍晚）起發光；大停電不亮（glowOf）。一攤一串，從路燈桿頂（燈頭底下）拉過去
     const stalls = marketStalls(n), lantern = n >= 3 ? glowOf(C.coral) : { color: C.coral };
@@ -236,10 +239,12 @@ export function view(lv, flags = {}, meta = {}) {
 }
 
 export const builders = {
-  // 壞掉的燈（停電）：暗的那份一直在，亮的那份藏著、flickerOn 的那幾幀露出來（不改材質：亮的是另一份 mesh，發光材質照常登記在 glow）
+  // 壞掉的燈（停電）：暗的那份一直在，亮的那份藏著、flickerOn 的那幾幀露出來（不改材質：亮的是另一份 mesh）。
+  // 亮的那份的發光材質從登記表拿掉、強度固定 FLICKER_GLOW：大停電 glowScale 0 會把登記表裡的全歸零，閃的就看不到了（審稿）
   flicker(THREE, spec, ctx) {
     const object = new THREE.Group(), origin = { x: 0, y: 0, z: 0 };
     const dark = ctx.build({ kind: 'compound', at: origin, parts: spec.parts }), lit = ctx.build({ kind: 'compound', at: origin, parts: spec.lit });
+    for (const m of lit.materials ?? []) { ctx.glow.remove(m); m.emissiveIntensity = FLICKER_GLOW; }
     lit.object.visible = false; object.add(dark.object, lit.object);
     return {
       object, materials: [...(dark.materials ?? []), ...(lit.materials ?? [])],
@@ -357,7 +362,7 @@ export const script = {
     if (n > IDLE_MAX || s.flags?.blackout) return [];
     const cells = IDLE_STAGES[n - 1];
     if (n === 1) return [B.focus(cells[0]), B.apply(e, { only: [idleKey(cells[0])] }), B.wait(IDLE_HOLD)];
-    return [B.focus('home'), ...cells.flatMap(c => [B.apply(e, { only: [idleKey(c)] }), B.wait(SWEEP_STEP)]), B.wait(IDLE_HOLD)];
+    return [B.focus('home', { hold: FOCUS_BEAT }), ...cells.flatMap(c => [B.apply(e, { only: [idleKey(c)] }), B.wait(SWEEP_STEP)]), B.wait(IDLE_HOLD)];
   },
   // 第一盞路燈自己長出來 → 停一下 → 燈頭上 ♪（同鮮奶放下的節奏；計畫 16 起沒有電工走過來敲）
   placed(e, s, ctx) {

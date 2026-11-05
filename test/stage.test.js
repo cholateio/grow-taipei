@@ -314,6 +314,16 @@ test('meta.idle counts the turns an item sat waiting: +1 per wait event listing 
   stage.apply(grow(2)); assert.deepEqual(stage.meta.idle, { chip: 1 }, 'its own grow resets it');
   stage.apply({ kind: 'placed', item: 'chip', to: 1 }); assert.deepEqual(stage.meta.idle, {}, 'placed resets too');
 });
+// 劇本算的段數（bulb.idleOf：回合開始的 meta + 1）要跟舞台折完 wait 事件的數字一樣（差一就會閃白一個不存在的零件、空平移一次）
+test('bulb.idleOf(turn-start meta) equals the stage’s count once the wait event folds in', async () => {
+  const { idleOf } = await import('../src/actors/bulb.js');
+  const { stage } = setup();
+  for (let turn = 1; turn <= 3; turn++) {
+    const planned = idleOf({ meta: stage.meta });
+    stage.apply({ kind: 'wait', item: 'bulb', waits: [{ item: 'bulb', for: ['token'] }] }); stage.apply({ kind: 'settle' });
+    assert.equal(stage.meta.idle.bulb, planned, `turn ${turn}`);
+  }
+});
 test('a rat bite on milk sets meta.bitten through the turn settle; the next turn clears it', () => {
   const { stage } = setup([fakeMilk]);
   stage.apply(placed); stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 });

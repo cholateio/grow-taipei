@@ -22,7 +22,8 @@
 //   n−1 和 n 都是 ◆ 就不合成（Task 6a 修正輪裁決：外星晶片 8 → 9 的矽盾測試）：兩級照一般事件接著演、各自的 ◆ 劇本、各一個 LEVEL UP，起因只在第一級前面。
 // 起因提示（幫手那棟亮一下／彈一下、鏡頭先平移過去）2026-10-31 拿掉了（唯一正解設計 R22，使用者：學校閃了好幾次、連彈一下都不要）：grow 的 via 只給引擎用，演出層不看。
 // 拜訪（幫手走來敲門，計畫 6 設計 §4）2026-10-29 拿掉了（回到 GROW 設計 §4.2）；撲空（計畫 6 設計 §5，走過去低頭嘆氣）2026-10-31 也拿掉了
-//   （唯一正解設計 R10，使用者：看不出意義——失敗的可讀性由颱風（修正批次 2：三級，放下那回合全部檢查、鎖住的反應演給玩家看）、連鎖、老鼠守門口負責）：wait 事件只剩 mark＋不閃白的 apply，不平移、不空拍。
+//   （唯一正解設計 R10，使用者：看不出意義——失敗的可讀性由颱風（修正批次 2：三級，放下那回合全部檢查、鎖住的反應演給玩家看）、連鎖、老鼠守門口負責）：wait 事件只剩 mark＋不閃白的 apply，不平移、不空拍——
+//   除非在等的物品有假升級劇本（script.idle，2026-11-05 使用者「讓畫面有在動」）：第一個回了拍的物品照一般事件演、平移到它那一格。
 // 剛放下的物品連著演（計畫 15 A，使用者 2026-11-02 錄影回報）：引擎的成長掃描照 ORDER 走，剛放下的物品常常等別人全長完才升 Lv2。
 //   建拍前（跳級合成、逐事件折 view 之前）groupPlaced 把它的成長段搬到放下段正後面——只在回合開始的 view 折完放下段之後，
 //   那一級的條件（spec 的 up[to]／jump[to]）就已經成立時才搬（不看 via：via 列的是所有成立的幫手，證明不了這回合有沒有靠中間的升級）。
@@ -192,7 +193,8 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     const prev = jumpSecond.has(i) ? { ...before, lv: { ...before.lv, [e.item]: e.from - 1 } } : before;
     const total = sum(view.lv);
     // settle 的 prevTotal 是上次結算的總等級（101 看的是結算值，不是事件中途的總和）
-    const s = { lv: view.lv, flags: view.flags, prev, total, prevTotal: e.kind === 'settle' ? settled : sum(prev.lv) };
+    // meta：回合開始時舞台的 meta（idle 是上一回合為止的數字；假升級劇本照 +1 算這一回合，bulb.js idleOf）
+    const s = { lv: view.lv, flags: view.flags, prev, total, prevTotal: e.kind === 'settle' ? settled : sum(prev.lv), meta };
     if (e.kind === 'settle') settled = total;
     Object.assign(ctx, { lv: s.lv, flags: s.flags, prev, event: e });
 
@@ -212,9 +214,14 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
       out.push(mark(e), ...beats, B.apply(e));
       return;
     }
-    let beats;
-    if (e.kind === 'wait') beats = [B.apply(e, { blink: false })];
-    else {
+    let beats, idleItem = null;   // idleItem：這個 wait 事件演的是哪個物品的假升級（script.idle，2026-11-05）
+    if (e.kind === 'wait') {
+      for (const w of e.waits ?? []) {
+        const b = mod(w.item)?.script?.idle?.(e, s, ctx, w);
+        if (b?.length) { beats = b; idleItem = w.item; break; }
+      }
+      beats ??= [B.apply(e, { blink: false })];
+    } else {
       const sc = e.kind === 'fx' || e.kind === 'after' ? mod(e.cause)?.script : mod(e.kind === 'settle' ? 'tower' : e.item)?.script;
       const fn = { placed: sc?.placed, grow: keyFn, fx: sc?.fx, after: sc?.fx, stall: sc?.stall, settle: sc?.settle }[e.kind];
       beats = twiced(fn?.(e, s, ctx) ?? (e.kind === 'settle' ? [B.apply(e)] : defaults(e)));
@@ -222,11 +229,11 @@ export function buildTurn(events, { modules, spec, lv, flags, meta, finale = fal
     // 鏡頭：等待事件不補平移（只有不閃白的 apply，沒有東西演）；fx 事件看 e.item、沒有就看 delta 的目標；settle 是 101。
     // 沒有格子的物品（'turn'）不平移、也不算換物品（不空拍）
     const lead = [];
-    if (!finale && e.kind !== 'wait' && shows(beats)) {
+    if (!finale && (e.kind !== 'wait' || idleItem) && shows(beats)) {
       // 鎖住的反應平移到被鎖的那一格（e.item 是造成它的颱風）——除非同一條真的降了級（大停電鮮奶 −1：鏡頭留在鮮奶格演 LEVEL DOWN）；
       // 鮮奶 Lv1 被打（delta 1 → 1，沒真的掉級、沒有 LEVEL DOWN）照樣平移到燈泡那格（第一批審稿 Minor）
       const lockPan = e.kind === 'fx' && e.lock && !(e.delta && e.delta.to < e.delta.from);
-      const item = e.kind === 'settle' ? 'tower' : lockPan ? e.lock : e.item ?? e.delta?.target, cell = cellOf(item);
+      const item = e.kind === 'settle' ? 'tower' : idleItem ?? (lockPan ? e.lock : e.item ?? e.delta?.target), cell = cellOf(item);
       let pan = null;        // 平移到這個事件那一格的拍（null = 鏡頭已經在那一格）
       if (cell) {
         if (lastItem && item !== lastItem) lead.push(B.wait(GAP));

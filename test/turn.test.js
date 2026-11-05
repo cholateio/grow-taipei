@@ -50,6 +50,25 @@ test('default scripts: placed → apply; grow → apply + levelUp; knock-back �
   assert.equal(kinds.filter(k => k === 'apply').length, 2 + 2 + 2 + 2 + 2);
 });
 
+// 假升級（2026-11-05）：wait 事件問每個在等的物品有沒有 script.idle；第一個回了拍的接上（鏡頭照一般事件平移到它那一格、算換物品），
+// 回空陣列／沒有 idle 劇本的照舊只有不閃白的 apply、不平移。劇本拿到 s.meta（回合開始時舞台的 meta：idle 是上一回合為止的數字）
+test('a wait event plays the first waiting item’s script.idle (with a pan to its cell); none or [] → the old silent apply', () => {
+  const seen = [];
+  const bulb = { id: 'bulb', view() {}, script: { idle: (e, s, ctx, w) => { seen.push({ e, s, w }); return s.meta?.idle?.bulb >= 2 ? [] : [ctx.B.apply(e, { only: ['bulb.x'] }), ctx.B.wait(0.5)]; } } };
+  const chip = { id: 'chip', view() {} };
+  const e = { kind: 'wait', item: 'chip', waits: [{ item: 'chip', for: ['bulb'] }, { item: 'bulb', for: ['token'] }] };
+  const st = { ...base([tower, chip, bulb]), meta: { total: 1, idle: { bulb: 1 } } };
+  let kinds = kindsOf(buildTurn([e], st, fakeCtx()));
+  assert.deepEqual(kinds, ['focus', 'apply', 'wait', 'apply', 'home', 'world', 'focus'], 'chip has no idle script, bulb’s beats play after a pan');
+  assert.equal(seen.length, 1); assert.deepEqual(seen[0].w, { item: 'bulb', for: ['token'] }); assert.deepEqual(seen[0].s.meta.idle, { bulb: 1 });
+  kinds = kindsOf(buildTurn([e], { ...st, meta: { total: 1, idle: { bulb: 2 } } }, fakeCtx()));
+  assert.deepEqual(kinds, ['apply', 'apply', 'home', 'world', 'focus'], '[] → silent apply (+ the trailing apply), no pan');
+  assert.equal(buildTurn([e], { ...st, meta: { total: 1, idle: { bulb: 2 } } }, fakeCtx()).find(b => b.kind === 'apply').blink, false);
+  // 等待事件接在別的物品後面：換物品照樣空一拍 GAP
+  const grow = { kind: 'grow', item: 'chip', from: 1, to: 2 };
+  kinds = kindsOf(buildTurn([grow, e], st, fakeCtx()));
+  assert.deepEqual(kinds, ['focus', 'apply', 'levelUp', 'apply', 'wait', 'focus', 'apply', 'wait', 'apply', 'home', 'world', 'focus']);
+});
 test('a module script replaces the default and still gets a trailing apply', () => {
   const seen = [];
   const chip = { id: 'chip', view() {}, script: { grow: { 2: (e, s, ctx) => { seen.push({ e, s, ctx }); return [ctx.B.wait(1)]; } } } };

@@ -81,18 +81,58 @@ function stall([x, z, roof], i) {
 // 紅燈籠串：從第一盞路燈的桿頂拉到一攤的棚頂尖（from、to 相對夜市地標），等距四顆燈籠穿在一條細繩上。
 // 端點直接用桿頂與棚頂的座標算——夜市挪位置時兩端跟著走，不會懸空
 const LANTERNS = 4;
-function lanternString(from, to, look) {
+// 一段細線（墨黑圓柱）從 from 拉到 to
+function wire(from, to) {
   const d = to.map((v, k) => v - from[k]), L = Math.hypot(...d), u = d.map(v => v / L);
-  return [
-    { kind: 'cylinder', pos: from.map((v, k) => v + d[k] / 2), scale: [0.008, L, 0.008], rot: [Math.atan2(u[2], u[1]), 0, -Math.asin(u[0])], color: C.ink },
-    ...Array.from({ length: LANTERNS }, (_, j) => ({ kind: 'sphere', pos: from.map((v, k) => v + d[k] * (j + 1) / (LANTERNS + 1)), scale: 0.07, ...look })),
-  ];
+  return { kind: 'cylinder', pos: from.map((v, k) => v + d[k] / 2), scale: [0.008, L, 0.008], rot: [Math.atan2(u[2], u[1]), 0, -Math.asin(u[0])], color: C.ink };
+}
+function lanternString(from, to, look) {
+  const d = to.map((v, k) => v - from[k]);
+  return [wire(from, to), ...Array.from({ length: LANTERNS }, (_, j) => ({ kind: 'sphere', pos: from.map((v, k) => v + d[k] * (j + 1) / (LANTERNS + 1)), scale: 0.07, ...look }))];
 }
 
 const POST_TOP = 0.5;   // 路燈桿頂（燈頭中心 0.52 的下緣附近）：夜市的燈籠串從這裡拉出去
 const post = (x, z) => ({ kind: 'cylinder', pos: [x, POST_TOP / 2, z], scale: [0.06, POST_TOP, 0.06], color: C.ink });
 const bulbHead = (x, z, head) => ({ kind: 'sphere', pos: [x, 0.52, z], scale: 0.12, ...head });
 const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
+
+// ── 假升級（2026-11-05 使用者：「電燈早放也能自己多長一兩級（虛構的級數），主要目的是讓畫面有在動，不一定要動到求解器」）──
+// 電燈 Lv2 起原地等的回合（舞台 meta.idle.bulb，wait 事件列到它就 +1；stage.js）多畫一段、最多 IDLE_MAX 段，規則、等級徽章都不動、不冒 LEVEL UP：
+//   第 1 段：中心格另外三個角（30°／150°／270°；原本的三盞在 90°／210°／330°）補上路燈、六條邊的桿頂之間拉下垂的彩燈串（STRING_BULBS 顆三色小燈）；
+//   第 2 段：外圈四格（有路燈的那四格）也各自補滿。一格一個零件 bulb.idle.<q,r>（墨黑的桿子和線一個 draw call、發光的燈三色三個）。
+//   升到下一級就歸零（零件縮掉；霓虹同一刻點起來）。鎖住（停電）之後不再延伸（不在 wait 裡），燈頭改成壞掉的樣子：flicker 零件偶爾閃一下（flickerOn）
+export const IDLE_MAX = 2, STRING_BULBS = 5, STRING_SAG = 0.15, FLICKER_PERIOD = 4.5;
+const STRING_COLORS = [C.yellow, C.neonPink, C.neonBlue];   // 彩燈串三色輪流（直線單色看起來像圍籬，截圖 2026-11-05）
+const IDLE_CORNERS = [30, 150, 270], IDLE_STAGES = [[[0, 0]], [[1, 0], [0, 1], [-1, 1], [-1, 0]]];
+const IDLE_HOLD = 0.6;   // 一段演完停一下
+// 這回合的假升級是第幾段：舞台的數字（到上一回合為止）+ 1（turn.js 把回合開始的 meta 放在 s.meta）
+export const idleOf = s => (s.meta?.idle?.bulb ?? 0) + 1;
+const idleKey = cell => `bulb.idle.${cell}`;
+// 壞掉的燈：每 FLICKER_PERIOD 秒閃兩下（0.12 s 亮、0.08 s 暗、0.08 s 亮），各站錯開（seed × 1.3 s）；純函式，零件每幀查
+export function flickerOn(t, seed = 0) {
+  const u = (((t + seed * 1.3) % FLICKER_PERIOD) + FLICKER_PERIOD) % FLICKER_PERIOD;
+  return u < 0.12 || (u > 0.2 && u < 0.28);
+}
+// 彩燈串：from → to 之間一條下垂的線（拋物線，中間垂 STRING_SAG；三段細線折出來）＋ STRING_BULBS 顆小燈掛在線上、三色輪流
+function fairyString(from, to, look) {
+  const at = k => from.map((v, i) => v + (to[i] - v) * k - (i === 1 ? STRING_SAG * 4 * k * (1 - k) : 0));
+  return [
+    ...[0, 1, 2].map(i => wire(at(i / 3), at((i + 1) / 3))),
+    ...Array.from({ length: STRING_BULBS }, (_, j) => ({ kind: 'sphere', pos: at((j + 1) / (STRING_BULBS + 1)), scale: 0.06, ...look(STRING_COLORS[j % STRING_COLORS.length]) })),
+  ];
+}
+// 一格的假升級零件：三根桿、三個燈頭（head）、六條邊的彩燈串（look：顏色 → 亮／暗的外觀）；相對格心
+function idleParts(cell, head, look) {
+  const c = axialToWorld(...cell), corner = deg => ringPoint(cell, deg, LAMP_R), rel = p => [p.x - c.x, p.z - c.z];
+  const posts = IDLE_CORNERS.flatMap(deg => { const [x, z] = rel(corner(deg)); return lamp(x, z, head); });
+  const strings = Array.from({ length: 6 }, (_, i) => {
+    const [ax, az] = rel(corner(30 + 60 * i)), [bx, bz] = rel(corner(30 + 60 * (i + 1)));
+    return fairyString([ax, POST_TOP, az], [bx, POST_TOP, bz], look);
+  });
+  return [...posts, ...strings.flat()];
+}
+// 燈頭零件：亮著就是一般 compound；停電就是 flicker（parts 暗的那份、lit 亮的那份，零件自己偶爾把 lit 露出來）
+const lampPart = (at, lit, dark, bright, seed) => (lit ? { kind: 'compound', at, parts: bright, footprint: false } : { kind: 'flicker', at, parts: dark, lit: bright.filter(p => p.glow), seed, footprint: false });
 
 // ── 變電所（Lv6）：中心格西北、101 西邊的空地（101 外擴後和它之間留一條走道）。
 // 水泥台上兩座儲能櫃（白櫃、前面一條指示燈）＋一座變壓器（深藍箱、三根礙子），通電時指示燈與礙子亮淡藍（嗡嗡亮）；四角矮圍籬 ──
@@ -154,10 +194,10 @@ const deckStrips = glow => [
 const CYBER = { path: p => `quat/cyberpunk/${p}.glb`, tint: { '^Grey$': C.ink, '^LightGrey$': C.navy, '^MetalLight$': C.curb } };
 const sign = (file, pos, h, glow, lit) => ({ path: CYBER.path(file), pos, h, tint: CYBER.tint, ...(lit ? { glow: { '^Texture_Signs$': glow } } : {}) });
 
-export function view(lv, flags = {}) {
+export function view(lv, flags = {}, meta = {}) {
   const n = lv.bulb, at = AT, v = {};
   if (!n) return v;
-  const lit = !flags.blackout, glowOf = c => (lit ? { color: c, glow: c } : { color: C.window });
+  const lit = !flags.blackout, bright = c => ({ color: c, glow: c }), dark = () => ({ color: C.window }), glowOf = c => (lit ? bright(c) : dark(c));
   // 燈頭：Lv1–2 暖黃；Lv3 起霓虹，一站一色、沿路粉→藍→黃輪流（一站只有一種發光色 → 一站一個 draw call；
   // 九站繞一圈，兩色輪流的話最後一站和第一站會同色，三色剛好每一對相鄰的站都不同）
   const head = k => glowOf(n >= 3 ? NEON[k % NEON.length] : C.yellow);
@@ -167,10 +207,16 @@ export function view(lv, flags = {}) {
   if (n >= 2) {
     // 燈桿全部一個零件（同一種材質只花一個 draw call）；燈頭每一站一個零件：Lv2 劇本一站站閃白點亮、大停電一站站熄
     v['bulb.posts'] = { kind: 'compound', at, parts: LAMP_POINTS.map(p => post(p.x - at.x, p.z - at.z)), footprint: false };
+    const headColor = k => (n >= 3 ? NEON[k % NEON.length] : C.yellow);
     LAMP_STOPS.forEach((g, k) => {
-      const o = LAMP_POINTS[g[0]];
-      v[`bulb.lamps.${k}`] = { kind: 'compound', at: o, parts: g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, head(k + 1))), footprint: false };
+      const o = LAMP_POINTS[g[0]], heads = look => g.map(i => bulbHead(LAMP_POINTS[i].x - o.x, LAMP_POINTS[i].z - o.z, look(headColor(k + 1))));
+      v[`bulb.lamps.${k}`] = lampPart(o, lit, heads(dark), heads(bright), k);
     });
+    // 假升級（見 IDLE_STAGES）：等了幾回合就畫幾段；第 1 段的燈頭跟第一盞同色，第 2 段四格照站的輪色
+    IDLE_STAGES.slice(0, Math.min(meta?.idle?.bulb ?? 0, IDLE_MAX)).forEach((cells, si) => cells.forEach((cell, ci) => {
+      const c = axialToWorld(...cell), parts = look => idleParts(cell, look(headColor(si === 0 ? 0 : ci + 1)), look);
+      v[idleKey(cell)] = lampPart({ x: c.x, y: cellTop(cell), z: c.z }, lit, parts(dark), parts(bright), LAMP_STOPS.length + si * 4 + ci);
+    }));
     // 燈籠：Lv2 紅色不亮、Lv3（霓虹、傍晚）起發光；大停電不亮（glowOf）。一攤一串，從路燈桿頂（燈頭底下）拉過去
     const stalls = marketStalls(n), lantern = n >= 3 ? glowOf(C.coral) : { color: C.coral };
     const postTop = [AT.x - MARKET.x, POST_TOP, AT.z - MARKET.z];
@@ -190,6 +236,17 @@ export function view(lv, flags = {}) {
 }
 
 export const builders = {
+  // 壞掉的燈（停電）：暗的那份一直在，亮的那份藏著、flickerOn 的那幾幀露出來（不改材質：亮的是另一份 mesh，發光材質照常登記在 glow）
+  flicker(THREE, spec, ctx) {
+    const object = new THREE.Group(), origin = { x: 0, y: 0, z: 0 };
+    const dark = ctx.build({ kind: 'compound', at: origin, parts: spec.parts }), lit = ctx.build({ kind: 'compound', at: origin, parts: spec.lit });
+    lit.object.visible = false; object.add(dark.object, lit.object);
+    return {
+      object, materials: [...(dark.materials ?? []), ...(lit.materials ?? [])],
+      update(dt, t) { lit.object.visible = flickerOn(t, spec.seed ?? 0); },
+      dispose() { dark.dispose?.(); lit.dispose?.(); },
+    };
+  },
   // 霓虹：一份燈條（compound）＋幾個 glb 招牌併成一個零件（位置相對零件的 at），一起閃白。
   // ?quality=low（手機，裁決 R18 draw call ≤ 150）：燈條不畫，只留招牌
   neon(THREE, spec, ctx) {
@@ -293,6 +350,15 @@ function ride(B, who, during) {
 const applyN = (B, e, only, n) => Object.assign(B.apply(e, { only }), { estimate: () => BLINK });
 
 export const script = {
+  // 假升級（wait 事件列到電燈，turn.js）：第 1 段平移到中心格、閃白那一份；第 2 段回全景、外圈四格一格一格閃白；
+  // 超過 IDLE_MAX、或已經鎖住（停電）回 []（turn.js 照舊不演、不平移）。每段 ≤ SCRIPT_MAX
+  idle(e, s, ctx) {
+    const { B } = ctx, n = idleOf(s);
+    if (n > IDLE_MAX || s.flags?.blackout) return [];
+    const cells = IDLE_STAGES[n - 1];
+    if (n === 1) return [B.focus(cells[0]), B.apply(e, { only: [idleKey(cells[0])] }), B.wait(IDLE_HOLD)];
+    return [B.focus('home'), ...cells.flatMap(c => [B.apply(e, { only: [idleKey(c)] }), B.wait(SWEEP_STEP)]), B.wait(IDLE_HOLD)];
+  },
   // 第一盞路燈自己長出來 → 停一下 → 燈頭上 ♪（同鮮奶放下的節奏；計畫 16 起沒有電工走過來敲）
   placed(e, s, ctx) {
     const { B } = ctx;

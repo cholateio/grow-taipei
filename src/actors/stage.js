@@ -80,7 +80,9 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
   //   total：101 看的總等級（不搭別人的事件跳階）；bitten：老鼠這回合咬了鮮奶（小孩躲回校舍，到下一回合開始）。
   //   （颱風的 landing 拿掉了：躲雨是颱風放下劇本裡的一小段，不是回合狀態——唯一正解修正輪 1）
   //   trouble／troubleAt：這回合出問題的物品與它門口的點（troubleOf／troubleSpot；老鼠 Lv1／Lv2 的家搬到那裡，§5.2）
-  const META0 = { total: 0, bitten: false, trouble: null, troubleAt: null };
+  //   idle[id]：這個物品原地等了幾回合（假升級，2026-11-05 使用者「電燈早放也能自己多長一兩級（虛構的級數）」）——wait 事件列到它就 +1
+  //   （折進去那一刻，同一回合的畫面就多一段）、它自己 grow／placed 歸零；鎖住的不在 wait 裡也不會升，停在最後的數字。view 照這個數字多畫
+  const META0 = { total: 0, bitten: false, trouble: null, troubleAt: null, idle: {} };
   let lv = Object.fromEntries(spec.ORDER.map(id => [id, 0])), flags = {}, meta = META0;
   let waits = null;   // 這回合 wait 事件的 waits（經過 apply 時記下，settle 結算 trouble 後清掉）
   let stale = null;   // 被咬的回合已結算：撐過回合結束畫面，下一回合第一個事件才收（審查：跳過的人也要看得到人躲雨）
@@ -222,7 +224,12 @@ export function createStage(THREE, { scene, spec, modules, ctx, roster = null, b
     if (stale) { meta = { ...meta, ...stale }; stale = null; }
     ({ lv, flags } = foldEvent({ lv, flags }, e));
     if (bitesMilk(e)) meta = { ...meta, bitten: true };
-    if (e.kind === 'wait') waits = e.waits ?? null;
+    if (e.kind === 'wait') {
+      waits = e.waits ?? null;
+      const idle = { ...meta.idle }; for (const w of waits ?? []) idle[w.item] = (idle[w.item] ?? 0) + 1;
+      meta = { ...meta, idle };
+    }
+    if ((e.kind === 'grow' || e.kind === 'placed') && meta.idle[e.item]) { const idle = { ...meta.idle }; delete idle[e.item]; meta = { ...meta, idle }; }
     if (e.kind === 'settle') {
       if (meta.bitten) stale = { bitten: false };
       const trouble = troubleOf(lv, flags, waits, spec);

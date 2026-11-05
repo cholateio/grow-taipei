@@ -258,7 +258,7 @@ test('the typhoon placed event sets no turn state: meta has only total, bitten a
   const { stage } = setup([fakeMilk]);
   stage.apply({ kind: 'placed', item: 'typhoon', to: 1 });
   assert.equal(stage.meta.landing, undefined);
-  stage.apply({ kind: 'settle' }); assert.deepEqual(Object.keys(stage.meta).sort(), ['bitten', 'total', 'trouble', 'troubleAt']);
+  stage.apply({ kind: 'settle' }); assert.deepEqual(Object.keys(stage.meta).sort(), ['bitten', 'idle', 'total', 'trouble', 'troubleAt']);
 });
 
 // 唯一正解 §5.2 老鼠當指標：settle 結算 meta.trouble——照 ORDER 第一個被鎖的（停電→燈泡、淹水→代幣、巨蛋淹水→棒球），
@@ -299,6 +299,21 @@ test('settle folds the wait event of its turn into meta.trouble (+ the spot in f
   stage.apply({ kind: 'settle' }); assert.equal(stage.meta.trouble, null, 'reset forgets the wait event too');
 });
 // 老鼠咬鮮奶（fx、cause rat、鮮奶掉級）：小孩躲一回合，跟颱風登陸一樣撐過回合結束畫面，下一回合第一個事件才收
+// 假升級（2026-11-05 使用者：「電燈早放也能自己多長一兩級（虛構的級數），主要目的是讓畫面有在動，不一定要動到求解器」）：
+// meta.idle[id] = 這個物品原地等了幾回合——wait 事件列到它就 +1（事件折進去那一刻，這回合的畫面就多一段）；它自己升級（grow／placed）就歸零；
+// 鎖住的（停電）不在 wait 裡、也不會升，所以停在最後的數字（壞掉的樣子由 view 照 flags 畫）；settle 不動它
+test('meta.idle counts the turns an item sat waiting: +1 per wait event listing it, reset by its own grow, kept through settle and when it stops waiting', () => {
+  const { stage } = setup();
+  assert.deepEqual(stage.meta.idle, {});
+  stage.apply(placed); assert.deepEqual(stage.meta.idle, {});
+  stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }, { item: 'chip', for: ['bulb'] }] });
+  assert.deepEqual(stage.meta.idle, { milk: 1, chip: 1 }, 'counted as the wait event folds in');
+  stage.apply({ kind: 'settle' }); assert.deepEqual(stage.meta.idle, { milk: 1, chip: 1 }, 'settle keeps it');
+  stage.apply({ kind: 'wait', item: 'milk', waits: [{ item: 'milk', for: ['baseball'] }] }); stage.apply({ kind: 'settle' });
+  assert.deepEqual(stage.meta.idle, { milk: 2, chip: 1 }, 'chip stopped waiting (locked or at max): its count stays');
+  stage.apply(grow(2)); assert.deepEqual(stage.meta.idle, { chip: 1 }, 'its own grow resets it');
+  stage.apply({ kind: 'placed', item: 'chip', to: 1 }); assert.deepEqual(stage.meta.idle, {}, 'placed resets too');
+});
 test('a rat bite on milk sets meta.bitten through the turn settle; the next turn clears it', () => {
   const { stage } = setup([fakeMilk]);
   stage.apply(placed); stage.apply({ kind: 'grow', item: 'milk', from: 1, to: 2 });

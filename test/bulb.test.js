@@ -567,7 +567,7 @@ test('idle draw calls: ≤ 4 per cell (ink + three glow colours), lamps neon-col
   const heads = bulb.view(lv({ bulb: 3, token: 3 }), {}, { idle: { bulb: 1 } })['bulb.idle.0,0'].parts.filter(p => p.kind === 'sphere' && p.scale === 0.12);
   assert.ok(heads.every(h => h.glow && h.glow !== C.yellow), 'neon heads from Lv3');
 });
-// 停電：真的燈頭和假升級的燈頭都換成 flicker 零件——parts 是暗的（沒有 glow）、lit 是亮的那一份，零件自己照 flickerOn 偶爾把 lit 露出來
+// 停電：真的燈頭和假升級的燈頭都換成 flicker 零件——parts 是暗的（沒有 glow）、lit 是亮的那一份，零件自己照 flickerLevel 緩緩把 lit 亮起來
 test('blackout: every lamp-head part (real stops and idle stages) becomes a flicker part with a dark parts list and a lit list; strings stop growing (view is per idle count, the count stays)', () => {
   const v = bulb.view(lv({ bulb: 2 }), { blackout: true }, { idle: { bulb: 2 } });
   for (const k of [...LAMPS(v).map((_, i) => `bulb.lamps.${i}`), ...idleKeys(v)]) {
@@ -585,16 +585,18 @@ test('blackout: every lamp-head part (real stops and idle stages) becomes a flic
   }
   assert.equal(bulb.view(lv({ bulb: 1 }), {})['bulb.main'].kind, 'compound');
 });
-test('flickerOn: two short blinks every FLICKER_PERIOD seconds, phase-shifted by seed; mostly off', () => {
-  const { flickerOn, FLICKER_PERIOD } = bulb;
-  const on = seed => { let k = 0; for (let t = 0; t < FLICKER_PERIOD; t += 0.01) if (flickerOn(t, seed)) k++; return k / (FLICKER_PERIOD / 0.01); };
-  assert.ok(on(0) > 0.02 && on(0) < 0.1, `on fraction ${on(0).toFixed(3)}`);
-  const edges = seed => { let n = 0, prev = false; for (let t = 0; t < FLICKER_PERIOD; t += 0.005) { const o = flickerOn(t, seed); if (o && !prev) n++; prev = o; } return n; };
-  assert.equal(edges(0), 2); assert.equal(edges(3), 2);
-  assert.ok(flickerOn(0.05, 0)); assert.ok(!flickerOn(0.05, 3), 'another seed blinks at another time');
-  assert.equal(flickerOn(FLICKER_PERIOD + 0.05, 0), flickerOn(0.05, 0), 'periodic');
+// 使用者 2026-11-05：畫面不要一直閃…閃現過於快速 → 停電的燈每 7 s 緩緩呼吸一次
+test('flickerLevel: one soft breath per FLICKER_PERIOD (0.5 s up to 1, 0.7 s down to 0, smoothstep), off the rest of the time, seeds phase-shifted', () => {
+  const { flickerLevel, FLICKER_PERIOD, FLICKER_UP, FLICKER_DOWN } = bulb;
+  const samples = seed => Array.from({ length: 700 }, (_, i) => flickerLevel(i * 0.01, seed));
+  const a = samples(0);
+  assert.ok(a.every(v => v >= 0 && v <= 1)); assert.ok(Math.max(...a) > 0.99, 'peaks at 1'); assert.ok(a.filter(v => v === 0).length / a.length > 0.8, 'off > 80% of the period');
+  assert.ok(a.every((v, i) => i === 0 || Math.abs(v - a[i - 1]) < 0.05), 'continuous (no strobe)');
+  assert.ok(Math.abs(flickerLevel(FLICKER_UP, 0) - 1) < 1e-6 && flickerLevel(FLICKER_UP + FLICKER_DOWN, 0) < 1e-6);
+  assert.notEqual(flickerLevel(0.25, 0), flickerLevel(0.25, 3), 'another seed breathes at another time');
+  assert.equal(flickerLevel(FLICKER_PERIOD + 0.25, 0), flickerLevel(0.25, 0), 'periodic');
 });
-test('flicker part: dark copy always shown, lit copy hidden and shown only while flickerOn', async () => {
+test('flicker part: dark copy always shown, lit copy shown and glowing in proportion to flickerLevel', async () => {
   const THREE = await import('../vendor/three/three.module.js'), { createPartFactory } = await import('../src/actors/parts.js'), { createGlowRegistry } = await import('../src/scene/glow.js');
   const glow = createGlowRegistry(), f = createPartFactory(THREE, { glow, builders: bulb.builders });
   glow.setNight(1); glow.setScale(0);   // 大停電：world.js glowScale 0 → 登記表裡的發光全歸零（審稿：閃的那份不能跟著歸零）
@@ -605,8 +607,8 @@ test('flicker part: dark copy always shown, lit copy hidden and shown only while
   assert.deepEqual(p.object.position.toArray(), [s.at.x, s.at.y, s.at.z]);
   const [dark, lit] = p.object.children; assert.equal(dark.visible, true); assert.equal(lit.visible, false);
   let t = 0; const step = dt => { t += dt; p.update(dt, t); };
-  let seen = false; for (let i = 0; i < 200; i++) { step(0.05); if (lit.visible) seen = true; assert.equal(lit.visible, bulb.flickerOn(t, s.seed)); assert.equal(dark.visible, true); }
-  assert.ok(seen, 'it blinked at least once in 10 s');
+  let seen = false; for (let i = 0; i < 200; i++) { step(0.05); const level = bulb.flickerLevel(t, s.seed); if (lit.visible) seen = true; assert.equal(lit.visible, level > 0); assert.ok(litMats.every(m => Math.abs(m.emissiveIntensity - bulb.FLICKER_GLOW * level) < 1e-6)); assert.equal(dark.visible, true); }
+  assert.ok(seen, 'it breathed at least once in 10 s');
   p.dispose();
 });
 // 劇本：wait 事件列到電燈 → script.idle 演這一回合的那一段（idleOf = 舞台的數字 + 1）：第 1 段平移到中心格、閃白那一份；

@@ -100,8 +100,8 @@ const lamp = (x, z, head) => [post(x, z), bulbHead(x, z, head)];
 // 電燈 Lv2 起原地等的回合（舞台 meta.idle.bulb，wait 事件列到它就 +1；stage.js）多畫一段、最多 IDLE_MAX 段，規則、等級徽章都不動、不冒 LEVEL UP：
 //   第 1 段：中心格另外三個角（30°／150°／270°；原本的三盞在 90°／210°／330°）補上路燈、六條邊的桿頂之間拉下垂的彩燈串（STRING_BULBS 顆三色小燈）；
 //   第 2 段：外圈四格（有路燈的那四格）也各自補滿。一格一個零件 bulb.idle.<q,r>（墨黑的桿子和線一個 draw call、發光的燈三色三個）。
-//   升到下一級就歸零（零件縮掉；霓虹同一刻點起來）。鎖住（停電）之後不再延伸（不在 wait 裡），燈頭改成壞掉的樣子：flicker 零件偶爾閃一下（flickerOn）
-export const IDLE_MAX = 2, STRING_BULBS = 5, STRING_SAG = 0.15, FLICKER_PERIOD = 4.5;
+//   升到下一級就歸零（零件縮掉；霓虹同一刻點起來）。鎖住（停電）之後不再延伸（不在 wait 裡），燈頭改成壞掉的樣子：flicker 零件每 FLICKER_PERIOD 秒緩緩呼吸一次（flickerLevel）
+export const IDLE_MAX = 2, STRING_BULBS = 5, STRING_SAG = 0.15, FLICKER_PERIOD = 7, FLICKER_UP = 0.5, FLICKER_DOWN = 0.7;
 export const FLICKER_GLOW = 2.4;   // 閃的那份自己的發光強度（不進登記表：大停電 world.js glowScale 0 會把登記表裡的全歸零，審稿 2026-11-05）
 const STRING_COLORS = [C.yellow, C.neonPink, C.neonBlue];   // 彩燈串三色輪流（直線單色看起來像圍籬，截圖 2026-11-05）
 const IDLE_CORNERS = [30, 150, 270], IDLE_STAGES = [[[0, 0]], [[1, 0], [0, 1], [-1, 1], [-1, 0]]];
@@ -109,10 +109,14 @@ const IDLE_HOLD = 0.6;   // 一段演完停一下
 // 這回合的假升級是第幾段：舞台的數字（到上一回合為止）+ 1（turn.js 把回合開始的 meta 放在 s.meta）
 export const idleOf = s => (s.meta?.idle?.bulb ?? 0) + 1;
 const idleKey = cell => `bulb.idle.${cell}`;
-// 壞掉的燈：每 FLICKER_PERIOD 秒閃兩下（0.12 s 亮、0.08 s 暗、0.08 s 亮），各站錯開（seed × 1.3 s）；純函式，零件每幀查
-export function flickerOn(t, seed = 0) {
+// 壞掉的燈：每 FLICKER_PERIOD 秒緩緩呼吸一次——FLICKER_UP 秒亮到 1、FLICKER_DOWN 秒滑回 0（smoothstep），其餘時間全暗；各站錯開（seed × 1.3 s）
+// 使用者 2026-11-05：畫面不要一直閃…閃現過於快速（原本每 4.5 s 頻閃兩下）。純函式，零件每幀查，回傳 0..1
+const smooth = x => x * x * (3 - 2 * x);
+export function flickerLevel(t, seed = 0) {
   const u = (((t + seed * 1.3) % FLICKER_PERIOD) + FLICKER_PERIOD) % FLICKER_PERIOD;
-  return u < 0.12 || (u > 0.2 && u < 0.28);
+  if (u < FLICKER_UP) return smooth(u / FLICKER_UP);
+  if (u < FLICKER_UP + FLICKER_DOWN) return 1 - smooth((u - FLICKER_UP) / FLICKER_DOWN);
+  return 0;
 }
 // 彩燈串：from → to 之間一條下垂的線（拋物線，中間垂 STRING_SAG；三段細線折出來）＋ STRING_BULBS 顆小燈掛在線上、三色輪流
 function fairyString(from, to, look) {
@@ -239,16 +243,21 @@ export function view(lv, flags = {}, meta = {}) {
 }
 
 export const builders = {
-  // 壞掉的燈（停電）：暗的那份一直在，亮的那份藏著、flickerOn 的那幾幀露出來（不改材質：亮的是另一份 mesh）。
+  // 壞掉的燈（停電）：暗的那份一直在，亮的那份藏著、flickerLevel > 0 的那幾幀露出來、發光強度跟著呼吸（使用者 2026-11-05：閃現過於快速）。
   // 亮的那份的發光材質從登記表拿掉、強度固定 FLICKER_GLOW：大停電 glowScale 0 會把登記表裡的全歸零，閃的就看不到了（審稿）
   flicker(THREE, spec, ctx) {
     const object = new THREE.Group(), origin = { x: 0, y: 0, z: 0 };
     const dark = ctx.build({ kind: 'compound', at: origin, parts: spec.parts }), lit = ctx.build({ kind: 'compound', at: origin, parts: spec.lit });
-    for (const m of lit.materials ?? []) { ctx.glow.remove(m); m.emissiveIntensity = FLICKER_GLOW; }
+    const litMats = lit.materials ?? [];   // ?quality=low 可能是空的
+    for (const m of litMats) { ctx.glow.remove(m); m.emissiveIntensity = FLICKER_GLOW; }
     lit.object.visible = false; object.add(dark.object, lit.object);
     return {
       object, materials: [...(dark.materials ?? []), ...(lit.materials ?? [])],
-      update(dt, t) { lit.object.visible = flickerOn(t, spec.seed ?? 0); },
+      update(dt, t) {
+        const level = flickerLevel(t, spec.seed ?? 0);
+        lit.object.visible = level > 0;
+        for (const m of litMats) m.emissiveIntensity = FLICKER_GLOW * level;
+      },
       dispose() { dark.dispose?.(); lit.dispose?.(); },
     };
   },

@@ -13,7 +13,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
 import { B, STATION_A, TRAIN_MAX_BOOST } from '../src/show/beats.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, ringSweep, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
 const AT = anchorWorld('chip'), CELL = cellOf('chip'), TOWER = anchorWorld('tower');
@@ -458,4 +458,9 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
   const { bad, seen } = await visitSpotsThroughSolutions(chip, SOLUTIONS, { cells: () => [[1, 0]] });
   assert.deepEqual(bad, []);
   assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+});
+
+// R41 修正輪 1：列車在環上的位置是隨機的——繞環 8 個位置各演一次 ◆ Lv7（審稿重播 12 個位置最壞 5.97 s；列車剛好在站前時 3.6 s）：整段 4.5 s ≤ 秒數 ≤ KEY_MAX + 0.3
+test('ring sweep: ◆ Lv7 (the antenna by train) stays within 4.5 s – KEY_MAX + 0.3 wherever the train is on the ring', async () => {
+  for (const r of await ringSweep(SOLUTIONS[0], e => e.kind === 'grow' && e.item === 'chip' && e.to === 7)) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
 });

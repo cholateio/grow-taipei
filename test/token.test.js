@@ -15,7 +15,7 @@ import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { B, STATION_A } from '../src/show/beats.js';
 import { createTimeline } from '../src/show/timeline.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, overviewRig, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, overviewRig, ringSweep, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
 import { lv as L, entryProblems, focusCell, focusTrail, worldPoints, distToCell } from './helpers/actors.js';
 import { createNav, PAD } from '../src/show/nav.js';
 
@@ -263,7 +263,7 @@ test('orbit headings turn smoothly: ≤ 0.2 rad per frame through ramp → climb
 const STAFF = ['token.staff', 'token.swimmers', 'sat.playground'];
 // 鏡頭軌跡（含回合最後的 focus('home')）：Lv7 風車島 → 全景定格 → 全景；Lv8 遊樂場島 → 代幣格（LEVEL UP）→ 全景；Lv10 一開始就回全景
 const want = to => (to === 7 ? [String(satCell('windmill')), 'home', 'home'] : to === 8 ? [String(satCell('playground')), String(CELL), 'home'] : to === 10 ? ['home', 'home', 'home'] : [String(CELL), 'home']);
-test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s whole, ◆ Lv10 ≤ 5.5 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
+test('scripts: every token event in the solution plays 2.5–3.5 s (◆ Lv7 4.5–6 s whole, ◆ Lv10 ≤ 5.5 s whole), ends with LEVEL UP on token, camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -744,7 +744,7 @@ test('fix3 C: Lv5 / Lv6 stop the train at the station front (trainStop at STATIO
 });
 // live（唯一正解，playItem 單獨演）：Lv5、Lv6 一級 3–4.5 s；apply 的那一幀車頭離站前那一點（環上 STATION_A）≤ 0.3、
 // 之後 1.2 s 內沒動（停著換車）、再過 1 s 已經開走（離開那一點 > 0.3）
-test('fix3 C live: Lv5 / Lv6 play 3–4.5 s; at the swap the head car stands at the station front (≤ 0.3), stays put 1.2 s, then pulls away', async () => {
+test('fix3 C live: Lv5 / Lv6 play 2.5–3.5 s; at the swap the head car stands at the station front (≤ 0.3), stays put 1.2 s, then pulls away', async () => {
   const front = token.trainPose(STATION_A / 0.35, 0, { speed: 0.35 });
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run } = h, update = show.update, apply = show.stage.apply, seen = {};
@@ -832,4 +832,12 @@ test('flood sheet part: one hexagonal translucent mesh (6 sides, pointy-top like
   assert.ok(Math.abs(bb.max.y - bb.min.y - 0.04) < 1e-6, '0.04 thick');
   assert.ok(Math.abs(bb.max.z - 2.5) < 1e-6 && Math.abs(bb.max.x - 2.5 * Math.sqrt(3) / 2) < 1e-6, 'a corner at +z, flat sides at ±x (pointy-top)');
   part.dispose();
+});
+
+// R41 修正輪 1：列車跑在真實時鐘上，玩家放下時它在環上哪裡是隨機的——繞環 8 個位置各演一次（審稿重播 12 個位置時 Lv5／6 最壞 3.67 s、Lv7 整段 6.80 s）：
+// Lv5、Lv6 劇本 2.5 s ≤ 秒數 ≤ SCRIPT_MAX + 0.3；◆ Lv7 整段 4.5 s ≤ 秒數 ≤ KEY_MAX + 0.3（pace 的 ⚠ 門檻）
+test('ring sweep: Lv5 / Lv6 (train swap) and ◆ Lv7 (spur run) stay within their caps wherever the train is on the ring', async () => {
+  const g = to => e => e.kind === 'grow' && e.item === 'token' && e.to === to;
+  for (const to of [5, 6]) for (const r of await ringSweep(SOLUTIONS[0], g(to))) assert.ok(r.secs >= 2.5 && r.secs <= SCRIPT_MAX + 0.3, `Lv${to} train at ${r.a.toFixed(2)} rad: ${r.secs.toFixed(2)} s`);
+  for (const r of await ringSweep(SOLUTIONS[0], g(7))) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `◆ Lv7 train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
 });

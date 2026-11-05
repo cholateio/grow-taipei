@@ -405,7 +405,7 @@ function watchWalls(h) {
   return { bad, get frames() { return frames; } };
 }
 
-test('scripts: every rat level in the solution and the alien order plays in range (◆ Lv4 ≤ 8 s both branches), ends with LEVEL UP on the rats, everyone home; rats never walk through buildings', async () => {
+test('scripts: every rat level in the solution and the alien order plays in range (2.5–3.5 s; ◆ Lv4 4.5–6 s both branches), ends with LEVEL UP on the rats, everyone home; rats never walk through buildings', async () => {
   for (const order of BRANCHES) {
     const h = await headlessShow(), { show, run, bubblesLog } = h, walls = watchWalls(h);
     let n = 0;
@@ -546,7 +546,7 @@ test('placed with trouble: the first rat runs from the landing to the front of t
 });
 // 修正批次 2：有 trouble、這回合又要咬鮮奶（鮮奶 ≤2）——上岸直接跑去牛奶箱旁（不先跑去出問題的那棟，再走一趟去咬），咬的那段 ≤ 4.5 s。
 // 放法：鮮奶、晶片、燈泡、代幣、颱風（第 5 回合捷運淹水，trouble 是車站）→ 放老鼠：鮮奶 2 被咬
-test('placed with trouble on a biting turn: the rat runs straight to the milk crate, and the bite plays ≤ 4.5 s', async () => {
+test('placed with trouble on a biting turn: the rat runs straight to the milk crate, and the bite plays ≤ 3.5 s plus its pan / gap', async () => {
   const h = await headlessShow(), { show, run } = h, walls = watchWalls(h);
   let st = engine.createState(spec);
   for (const id of ['milk', 'chip', 'bulb', 'token', 'typhoon']) { const r = engine.place(st, id, spec); st = r.state; await run([...r.events, { kind: 'settle' }], { instant: true }); }
@@ -557,7 +557,7 @@ test('placed with trouble on a biting turn: the rat runs straight to the milk cr
   await run([r.events.find(e => e.kind === 'placed'), bite], { onMark: e => marks.push([e, show.elapsed]) });
   const [m] = show.roster.members('rat.pack'), crate = show.nav.nearestWalkable(offset(milk.CRATE, 0.45, 0.2));
   const k = marks.findIndex(([e]) => e === bite), secs = show.elapsed - marks[k][1];
-  assert.ok(secs <= SCRIPT_MAX + 0.8 + 0.4, `the bite ${secs.toFixed(2)} s (≤ 4.5 plus its pan / gap)`);
+  assert.ok(secs <= SCRIPT_MAX + 0.8 + 0.4, `the bite ${secs.toFixed(2)} s (≤ SCRIPT_MAX plus its pan / gap)`);
   assert.ok(near(m.pos, crate, 0.6), `the rat ends by the crate (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
   assert.deepEqual(walls.bad, []);
 });
@@ -731,7 +731,7 @@ test('alien bad ending: the bathers stay still in the pool while the mutant arri
   assert.ok(drift < 0.05, `the bathers stay on their spots in the pool (drift ${drift.toFixed(3)})`);
 });
 // 審稿（裁決 R15）：Lv3 在整局 live 演出裡（不是單獨演）劇本也 ≤ 4.5 s——唯一正解與外星壞局都是第 9 回合 2 → 4 合併跳級的第一級（只有 mark）
-test('live play, the solution and the alien order: rat Lv3 script ≤ 4.5 s in the real turn', async () => {
+test('live play, the solution and the alien order: rat Lv3 script ≤ 3.5 s in the real turn', async () => {
   const { playLive, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of BRANCHES) {
     const ev = (await playLive(order)).find(x => x.e.kind === 'grow' && x.e.item === 'rat' && x.e.to === 3);
@@ -778,7 +778,7 @@ test('live: rats loitering at the lamp door (trouble = bulb) never step onto a b
 // 計畫 14 Task 4：老鼠咬剛放下的珍奶／鮮奶（R30 的 fx：cause rat、flag bitten_<id>、item 是被咬的）——
 // 一隻老鼠（離它最近的那隻）跑到攤車／牛奶箱旁 → 聞一聞 → ！ → 換成被咬的樣子（攤車缺口＋地上的珍珠／牛奶箱側躺）→ 沒有 LEVEL DOWN；一級 3–4.5 s
 const isBite = id => e => e.kind === 'fx' && e.cause === 'rat' && e.flag?.name === `bitten_${id}`;
-test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, the cart turns bitten; no LEVEL DOWN; 3–4.5 s', async () => {
+test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, the cart turns bitten; no LEVEL DOWN; 2.5–3.5 s', async () => {
   const beats = rat.script.fx({ kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: 'rat' } }, { lv: lv({ rat: 2, boba: 1 }), flags: { bitten_boba: 'rat' } }, { B });
   assert.ok(Array.isArray(beats) && beats.length, 'a bite script');
   // R41（使用者 2026-11-05：後期動畫偏長）：！ 跟換成被咬的樣子同一拍（together：apply、！）
@@ -800,7 +800,7 @@ test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, t
   for (const k of KEYS) for (const r of show.roster.members(k)) assert.equal(r.mode, 'home');
   assert.deepEqual(walls.bad, []);
 });
-test('rat bites the fresh milk (placed after the rat): the rat runs to the crate, sniffs, ！, the crate lies tipped; no LEVEL DOWN; 3–4.5 s', async () => {
+test('rat bites the fresh milk (placed after the rat): the rat runs to the crate, sniffs, ！, the crate lies tipped; no LEVEL DOWN; 2.5–3.5 s', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
   const { e, secs, n } = await liveAt(h, ['rat', 'milk'], isBite('milk'));
   assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
@@ -839,7 +839,7 @@ test('live, a whole game with the boba bitten (rat before boba): no script error
   assert.deepEqual([...inv.pops].slice(0, 10), [], `${inv.pops.size} pops`);
 });
 // 遠的那種：吹歪局（EXAMPLE.deflect）第 6 回合放珍奶，老鼠 Lv2 守在遠處出問題的那棟門口，跑來咬也 ≤ 4.5 s（pace 原本量到 4.9 s）
-test('rat bites the fresh boba from a far trouble door (EXAMPLE.deflect turn 6) within 4.5 s', async () => {
+test('rat bites the fresh boba from a far trouble door (EXAMPLE.deflect turn 6) within 3.5 s', async () => {
   const { EXAMPLE } = await import('./helpers/endings.js');
   const { run, scriptElapsed } = await headlessShow();
   let s = engine.createState(spec), secs = null;

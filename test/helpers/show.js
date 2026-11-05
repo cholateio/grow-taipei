@@ -326,3 +326,30 @@ export function blinkLog(show) {
   show.update = (dt, t) => { snap(); return update(dt, t); };
   return { calls, label(text) { label = text; } };
 }
+
+// R41 修正輪 1：列車跑在真實時鐘上，玩家放下時它在環上哪裡是隨機的——趕列車的劇本（代幣 Lv5–7、棒球 Lv8、晶片 Lv7）最壞的位置決定多長。
+// 照 order 演到第一個 pred 事件（之前的瞬間演），開演前把列車車頭放在環上 k · 2π / n（k = 0..n−1；headless 每次 run 的時鐘從 0 起，
+// 原速每秒 0.35 rad），單獨 live 演那一個事件。回 [{ k, a, e, secs（劇本秒數，不含 focus 拍）, whole（整段 show.elapsed）}]
+export const RING_SPEED = 0.35;
+export async function ringSweep(order, pred, { n = 8, seed = 21 } = {}) {
+  const h = await headlessShow({ seed }), out = [];
+  for (let k = 0; k < n; k++) {
+    h.show.reset();
+    let s = engine.createState(spec), found = null;
+    for (const step of turnSteps(order)) {
+      const r = step(s); s = r.state;
+      for (const e of r.events) {
+        if (pred(e)) {
+          const a = k * 2 * Math.PI / n; h.rail.offset = a / RING_SPEED;
+          const secs = await h.run([solo(e)]); found = { k, a, e, secs, whole: h.show.elapsed }; break;
+        }
+        await h.run([e], { instant: true });
+      }
+      if (found) break;
+      await h.run([{ kind: 'settle' }], { instant: true });
+    }
+    if (!found) throw new Error('event not found');
+    out.push(found);
+  }
+  return out;
+}

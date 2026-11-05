@@ -252,7 +252,7 @@ async function liveAt({ run, bubblesLog, rig }, order, pred, { whole = false } =
 }
 // 物品 v2 §6：一級 3–4.5 s；◆ Lv6 6–8 s（含鏡頭平移與回全景的整段，show.elapsed；唯一正解 §5.3）。修正批次 trim §A：Lv5 不再是 ◆
 const KEY = [6];
-test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s whole), ends with LEVEL UP on boba, everyone home', async () => {
+test('scripts: every boba level in the solution plays 2.5–3.5 s (◆ Lv6 4.5–6 s whole), ends with LEVEL UP on boba, everyone home', async () => {
   const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -280,7 +280,7 @@ test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s
 });
 // Lv2 單獨演一次（照 order 演到上一級，改成 grow 事件單獨演）。修正批次 2 之前正解的 Lv2 是颱風外送（fx 的 delta）帶上去的；
 // 現在外送只給 ≥4，正解的 Lv2 是 grow，這題照舊留著量單獨演的秒數與人龍
-test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: three tourists queue up', async () => {
+test('scripts: the level the typhoon delivery skips (Lv2) also plays 2.5–3.5 s: three tourists queue up', async () => {
   for (const [order, to] of SOLUTIONS.map(o => [o, 2])) {
     const h = await headlessShow();
     let s = engine.createState(spec), done = false;

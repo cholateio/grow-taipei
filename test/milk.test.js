@@ -255,7 +255,7 @@ test('view: kids are a roster declaration; crate and yard are separate parts; sc
   }
   assert.ok(views[10]['milk.truck'].footprint, 'the truck blocks walkers');
 });
-test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 ≤ 10 s), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
+test('scripts: every milk event in the solution plays 2.5–3.5 s (◆ Lv7 / Lv10 4.5–6 s whole), ends with LEVEL UP on milk, and leaves the kids at home', async () => {
   const { show, run, bubblesLog, eventHead } = await headlessShow();
   const timing = {};
   for (const order of SOLUTIONS) {
@@ -323,7 +323,8 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
   for (const n of [7, 10]) {
     const beats = milk.script.grow[n]({ kind: 'grow', item: 'milk', to: n }, { lv: lv({ milk: n }), flags: {} }, fakeCtx);
     const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
-    assert.ok(i > 0 && beats[i].dur >= 0.8, `lv${n} holds on the overview`);   // R41：定格 ≥ 0.8 s（Lv7 0.8、Lv10 1.2） assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
+    // R41：定格 ≥ 0.8 s（Lv7、Lv10 都是 0.8）
+    assert.ok(i > 0 && beats[i].dur >= 0.8, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
   }
 });
 // 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：Lv9 畢業典禮不再回全景、在 101 頭上打「恭喜畢業」——

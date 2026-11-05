@@ -268,8 +268,10 @@ const fan = i => c => fansAll(c)[i] ?? null;
 const ALL_FANS = 6;   // 觀眾最多 5 人＋草皮 1 人
 const cheer = (B, dur = 0.9) => B.together(Array.from({ length: ALL_FANS }, (_, i) => B.bubble(fan(i), '♪', dur)));
 // 列車在巨蛋站最多趕這麼久進站（車頭剛開過不到四分之一圈就倒車回來）、停多久
-// R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；正解 live 7.9 s）：趕路 2.0 → 1.2 s、停 0.6 → 0.4 s（月台出現、兩人下車都在停著的那一刻）
-const STOP_WITHIN = 1.2, STOP_BACK = Math.PI / 2, STOP_FOR = 0.4;
+// R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；正解 live 7.9 s）：趕路 2.0 → 1.2 s、停 0.6 → 0.4 s（月台出現、兩人下車都在停著的那一刻）。
+//   修正輪 1：列車在環上的位置是隨機的，最壞位置由趕路的倍數上限決定（4.5 倍、倒車 π/2 時要 3.3 s）——
+//   上限 STOP_BOOST 6 倍、倒車範圍 2.1 rad（往前最遠與倒車最遠一樣久）：最壞 2.3 s（test/baseball.test.js 繞環 8 個位置量）
+const STOP_WITHIN = 1.2, STOP_BACK = 2.1, STOP_FOR = 0.4, STOP_BOOST = 6, DOME_MIN = 1.9;
 
 export const script = {
   // 閃白沙地 → 第一個球員從看台後方的格邊（入口）進場、走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就閃白出現 → 站到本壘前。
@@ -300,9 +302,10 @@ export const script = {
       const w = once(c => shown('baseball.players')(c).sort((a, b) => dist(a.pos, front(c)) - dist(b.pos, front(c)))[0] ?? nearestIslander(c, front(c)));
       return [
         // 裁決 R17 ◆ ≤ 8 s：泡泡 0.8／0.9 → 0.6／0.7、鐵鎚 1.2 → 0.9、全景停 1.4 → 1.0
-        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.6 s）：快步走過去、鐵鎚 0.9 → 0.7（照樣敲兩下）、全景停 1.0 → 0.8
-        B.bubble(player(0), '……', 0.6), B.bubble(player(0), { icon: 'dome' }, 0.7),
-        B.walk(w, front, { speed: HURRY }), B.gesture(w, 'build', 0.7, { at: AT }), B.gesture(w, 'build', 0.7, { at: AT }), B.apply(e), B.home(w),
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.6 s）：快步走過去、鐵鎚 0.9 → 0.8（照樣敲兩下；動作下限是自然長度的一半）、
+        //   圖框 0.7 → 0.5、全景停 1.0 → 0.8
+        B.bubble(player(0), '……', 0.6), B.bubble(player(0), { icon: 'dome' }, 0.5),
+        B.walk(w, front, { speed: HURRY }), B.gesture(w, 'build', 0.8, { at: AT }), B.gesture(w, 'build', 0.8, { at: AT }), B.apply(e), B.home(w),
         B.focus('home', { hold: 0.8 }), B.levelUp('baseball'),
       ];
     },
@@ -354,9 +357,10 @@ export const script = {
       //   平移和列車一起開始；列車進站停住時月台才出現（月台出現的同一拍，巨蛋上的大棒球、燈塔、三角旗 baseball.deco 也出現，
       //   MAX 要一眼看得出來，修正批次 max-skip §A），接著兩個觀眾下車。原本等平移、月台出現完才叫列車，最多再等 2.0 s
       return [
+        // R41 修正輪 1：列車剛好就在巨蛋站前時整段只有 4.2 s（低於 ◆ 軟下限 4.5）：這一拍至少 DOME_MIN 秒（下車的兩人在月台上站一下）
         B.together([
-          B.focus('baseball'),
-          B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, back: STOP_BACK, stop: STOP_FOR, during: [
+          B.focus('baseball'), B.wait(DOME_MIN),
+          B.trainStop({ at: DOME_STOP, arrive: STOP_WITHIN, boost: STOP_BOOST, back: STOP_BACK, stop: STOP_FOR, during: [
             B.apply(e, { only: ['baseball.platform', 'baseball.deco', 'baseball.riders'], hold: ['baseball.riders'] }), ...sp,
           ] }),
         ]),

@@ -181,9 +181,9 @@ const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
 const MIN_RUN = 1.4;   // 放下那回合跑去出問題那棟的那段最短秒數（見 placed；R41，使用者 2026-11-05：後期動畫偏長，1.5 → 1.4——一級下限 2.5 s）
 const JUMP = 0.5, FOLLOW = 0.15;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）
 export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度；外星收尾的鼠群衝向 101 也用（finale.js）
-// R41（使用者 2026-11-05：後期動畫偏長）：泡溫泉那段衝刺（一級 ≤ 3.5 s：11 公尺 DASH 要 2.6 s）、◆ Lv4 快步——賽博排隊走去 101（ARMY）、
-//   外星走到溫泉邊（MARCH；一般走路 1.6；賽博 3.2 時正解整段掉到 4.5 s 的軟下限以下）、聞一聞（預設 1.5）
-const SPRING_RUN = 5.2, ARMY = 2.8, MARCH = 3.2, SNIFF = 1.0, NIBBLE_RUN = 1.4;
+// R41（使用者 2026-11-05：後期動畫偏長）：◆ Lv4 快步——賽博排隊走去 101（ARMY）、外星走到溫泉邊（MARCH；一般走路 1.6；
+//   賽博 3.2 時正解整段掉到 4.5 s 的軟下限以下）、聞一聞（預設 1.5）。走路最快 DASH（修正輪 1：不像抽搐）
+const ARMY = 2.8, MARCH = 3.2, SNIFF = 1.0, NIBBLE_RUN = 1.4;
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
@@ -235,6 +235,36 @@ function catchTrain(B, ids, spots, ctx, at = NEST_A) {
     end(c) { inner?.end(c); inner = null; },
   };
 }
+// 一起跑的 walks，最後 lead 秒同時開演 then（固定長度的一拍：閃白、♥、LEVEL UP）——R41 修正輪 1（使用者 2026-11-05：後期動畫偏長，
+//   走路最快 DASH）：泡溫泉從窩跑上台地 11 公尺要 2.5 s，跑到再演 ♥／LEVEL UP 一級 3.6 s > 3.5，改成最後一段就開演。
+//   kind 不是 together：turn.js 的 withTwice 不拆它（老鼠 Lv3 不會是跳級的第二級，spec 的 rat.jump 只有 4）
+function arriveWith(B, walks, lead, then) {
+  const run = B.together(walks);
+  let t = 0, w = 0, at = 0, td = 0, d = 0, ran = false, on = false, done = false;
+  // then 的長度要在 start 就給時間軸（拍長 start 時就定了）：子拍的 estimate 或固定 dur 取最長（同 beats.js 的 durOf）
+  const est = (b, c) => (b.beats ? Math.max(0, ...b.beats.map(x => est(x, c))) : b.estimate ? b.estimate(c) : typeof b.dur === 'number' ? b.dur : 0);
+  return {
+    kind: 'arriveWith', beats: [...walks, then], dur: () => d,
+    estimate: c => { const wv = Math.max(0, ...walks.map(x => x.estimate?.(c) ?? 0)); return Math.max(wv, Math.max(0, wv - lead) + est(then, c)); },
+    start(c) {
+      t = 0; on = false; done = false; run.start(c); w = run.dur(); ran = w > 0; if (!ran) run.end(c);
+      at = Math.max(0, w - lead); td = est(then, c); d = Math.max(w, at + td);
+      if (at === 0) begin(c);
+    },
+    step(k, dt, c) {
+      t = k * d;
+      if (ran) { const rk = Math.min(1, t / w); run.step(rk, dt, c); if (rk >= 1) { run.end(c); ran = false; } }
+      if (!on && !done && t >= at) begin(c);
+      if (on) { const tk = Math.min(1, (t - at) / td); then.step?.(tk, dt, c); if (tk >= 1 || k >= 1) { then.end?.(c); on = false; done = true; } }
+    },
+    end(c) { if (ran) run.end(c); ran = false; if (!done) { if (!on) then.start?.(c); then.end?.(c); } on = false; done = true; },
+  };
+  function begin(c) {
+    const shown = then.start?.(c);
+    td = shown === false ? 0 : Math.min(td || Infinity, d - at);   // 實際長度（together 演到 start 才知道），不超過開演時給時間軸的
+    if (td > 0) on = true; else { then.end?.(c); done = true; }
+  }
+}
 function hopOff(B, s, ids, at, centre, r) {
   if (!riding(s)) return [];
   const spots = once(c => c.nav.slots(centre(c), ids.length, r));
@@ -266,9 +296,9 @@ function nibble(e, ctx) {
   const r = once(c => c.roster.nearest(KEY, at));
   return [
     // 聞 1.2 s、！ 0.8 s（預設 1.5／1.2 的話老鼠從遠處出問題的那棟跑來要 4.9 s，一級 ≤ 4.5：吹歪局第 6 回合）
-    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；遠處跑來量到 4.4 s）：聞 1.2 → 0.7、！ 跟換成被咬的樣子同一拍（0.6）；
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；遠處跑來量到 4.4 s）：聞 1.2 → 0.75（動作下限：自然長度的一半）、！ 跟換成被咬的樣子同一拍（0.6）；
     //   跑過去至少 NIBBLE_RUN 秒（近的時候 2.3 s，低於一級下限 2.5；NIBBLE_RUN 1.4 → 2.7 s：同 placed 的 MIN_RUN，人在近處就站著多看一下）
-    B.together([B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(NIBBLE_RUN)]), B.gesture(r, 'sniff', 0.7),
+    B.together([B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(NIBBLE_RUN)]), B.gesture(r, 'sniff', 0.75),
     B.together([B.apply(e, { only: [part] }), B.bubble(r, '！', 0.6)]), B.apply(e), B.home(r),
   ];
 }
@@ -319,9 +349,10 @@ export const script = {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill(),
           // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）。R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；4.1 s）：
-          //   衝刺 SPRING_RUN、♥ 跟 LEVEL UP 同一拍
-          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: SPRING_RUN }))),
-          B.home(RATS), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5)), B.levelUp('rat')]),
+          //   ♥ 跟 LEVEL UP 同一拍，在牠們跑到池邊前 0.4 s 就開演（arriveWith）
+          arriveWith(B, ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH })), 0.4,
+            B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5)), B.levelUp('rat')])),
+          B.home(RATS),
         ];
       }
       return null;   // 鼠災後的老鼠留在巨蛋門口：預設劇本

@@ -62,6 +62,8 @@ export function spurPath(kind) {
 // 回傳 { kind, a, path, lens, total }；trainStop({ spur }) 把列車開到 total 那頭停住再倒回環上
 const DELTA = 0.13;
 export const SPUR_SPEED = 2.5;
+// R41 修正輪 1：◆ Lv7 趕到支線口的倍數上限與倒車範圍（見 Lv7 劇本；最壞位置下往前、倒車一樣久：back ≈ (18 − 0.3 − 0.95 × boost) / 2 × 0.35）
+export const RUSH_BOOST = 6, RUSH_BACK = 2.1, LV7_MIN = 3.75;
 export const SPUR_RUSH = 4.2;   // 代幣 Lv7 ◆ 那一趟的支線車速（計畫 5b 任務 4：◆ ≤ 8 s；R41，使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s：3.5 → 4.2）   // 支線上的車速（每秒公尺），約跟環上一樣
 export function spurTrip(kind) {
   const L = spurLine(kind), b = Math.atan2(L.uz, L.ux), a = b - DELTA, r1 = L.from / Math.cos(DELTA);
@@ -397,18 +399,20 @@ const levelUpAtStation = B => [B.focus('token'), B.levelUp('token')];
 const STATION_A = Math.atan2(AT.z, AT.x);
 // 列車升級（Lv5 五節、Lv6 高鐵；修正批次 fix3 §C）：站務員 ！ 跟列車趕到站前同時演 → 車頭停在站前（STATION_A）停 SWAP_STOP 秒——
 //   停著的那一刻換車（apply），車頭 ♪、站務員 gesture（揮手／跳）→ trainStop 自己讓列車加速開走（SPUR_PULL 0.7 秒），LEVEL UP 跟開走一起演。
-//   一級 ≤ 4.5 秒（裁決 R15）：拍長 = 趕到站前 + 換車 0.15 + ♪ 1.0 + LEVEL UP 1.0。趕路照 trainRun：剛開過站前 π/2 內就倒車回來（倒車要先煞停、
-//   再起步，最慢是 SWAP_IN + 1.25 秒），其餘往前最多 SWAP_BOOST 倍——列車在環上哪裡都 ≤ 2.25 秒到站，整級 ≤ 4.4 秒
 //   （簡報原本的排法 ！ → 停站 → LEVEL UP 一個接一個是 5.4–5.8 秒，超過上限：！ 改跟趕路一起、LEVEL UP 改在停站拍的最後跟開走一起）
-//   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；高鐵 3.9 s）：換車、♪、站務員的動作同一拍（♪ 與動作 0.6 s），趕到站前 SWAP_IN 1.0 → 0.8
-const SWAP_IN = 0.8, SWAP_BOOST = 7.5, SWAP_STOP = 1.2;
+//   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：拍長 = 趕到站前 + max(停 SWAP_STOP 1.2, 換車／♪ 0.7／站務員動作 0.7 同一拍 + LEVEL UP 1.0) = 趕到 + 1.7。
+//   趕路照 trainRun：剛開過站前 π/2 內就倒車回來（先 0.6 秒煞停、再起步：最多約 SWAP_IN + 1.25 秒），其餘往前在 SWAP_IN 秒內趕到、最多 SWAP_BOOST 倍；
+//   環上一圈原速 18 秒——修正輪 1（列車位置是隨機的，最壞的位置決定這一級多長；SWAP_IN 0.8／7.5 倍時最壞 2.1 秒到站、整級 3.7）：
+//   SWAP_IN 0.6、9 倍 → 到站 0.9–1.85 秒，整級 2.6–3.55 秒；列車剛好就在站前時 2.3 s（低於一級下限 2.5）：這一拍至少 SWAP_MIN 秒
+//   （test/token.test.js 繞環 8 個位置量）
+const SWAP_IN = 0.6, SWAP_BOOST = 9, SWAP_STOP = 1.2, SWAP_MIN = 2.6;
 function trainSwap(e, ctx, move) {
   const { B } = ctx, st = staffOf();
   return [
     B.together([
-      B.bubble(st, '！', 0.6),
+      B.bubble(st, '！', 0.6), B.wait(SWAP_MIN),
       B.trainStop({ at: STATION_A, arrive: SWAP_IN, boost: SWAP_BOOST, stop: SWAP_STOP, back: Math.PI / 2, during: [
-        B.together([B.apply(e), B.bubble(B.trainHead(ctx), '♪', 0.6), B.gesture(st, move, 0.6)]), B.levelUp('token'),
+        B.together([B.apply(e), B.bubble(B.trainHead(ctx), '♪', 0.7), B.gesture(st, move, 0.7)]), B.levelUp('token'),
       ] }),
     ]),
     B.home(st),
@@ -476,9 +480,12 @@ export const script = {
         // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）；
         //   支線上每秒 3.5 公尺（平常 2.5；計畫 5b 任務 4：列車剛開過支線口時整級 8.4 s，支線來回省 0.7 s）
         // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.8 s、正解 live 7.8 s）：趕到支線口 2.0 → 1.4 s、剛開過支線口不到半圈就倒車回來
-        //   （back π/2 → π，同晶片 Lv7：列車在支線口前面四分之一圈以外時，往前趕最多 4.5 倍也要 3–4 s）；LEVEL UP 改在列車倒回環上的那段裡、
-        //   跟遊樂場島支線長出來同一拍（全景裡兩個都看得到），不再等列車開回環上才彈
-        B.together([...now.map(grow), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 1.4, back: Math.PI, spurSpeed: SPUR_RUSH, during: [
+        //   （列車在環上的位置是隨機的，最壞的位置決定這一級多長：趕路上限 4.5 → RUSH_BOOST 6 倍、倒車範圍 RUSH_BACK 2.1 rad——
+        //   往前最遠與倒車最遠一樣久，最壞 2.3 s 到支線口；test/token.test.js 繞環 8 個位置量整段 ≤ KEY_MAX + 0.3）；LEVEL UP 改在列車倒回環上的那段裡、
+        //   跟遊樂場島支線長出來同一拍（全景裡兩個都看得到），不再等列車開回環上才彈。
+        //   修正輪 1：趕到支線口 1.4 → 1.0 s（倒車要 arrive + 1.25 s）；列車剛好在支線口附近時整段只有 4.2 s，低於 ◆ 軟下限 4.5——
+        //   這一拍至少 LV7_MIN 秒（多的在全景上停著）
+        B.together([...now.map(grow), B.wait(LV7_MIN), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 1.0, boost: RUSH_BOOST, back: RUSH_BACK, spurSpeed: SPUR_RUSH, during: [
           B.focus('home', { hold: 1.0 }), ...later.map(k => B.apply(e, { only: [k], blink: false })), B.together([...later.map(grow), B.levelUp('token')]),
         ] })]),
         B.apply(e),

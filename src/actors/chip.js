@@ -40,6 +40,7 @@ const WATCH = { ...offset(anchorWorld('token'), 0.3, -1.0), yaw: 0 };
 const NEST = anchorWorld('rat');
 export const NEST_WATCH = { ...offset(NEST, 1.8, -0.55), yaw: Math.atan2(-1.8, 0.55) };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
+const STATION_MIN = 2.2;   // Lv7：鏡頭在站前至少停幾秒（R41 修正輪 1，見 Lv7 劇本）
 
 // ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
 export const MODELS = {
@@ -276,11 +277,13 @@ export const script = {
     //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒。
     //   Task 6a（◆ ≤ 8 s：外星第 8 回合 6 → 7 合成一段 live 9.5 s——兩級的零件一起閃、工程師離 101 比較遠）：剛開過站不到半圈的車倒回來
     //   （同燈泡 Lv7 上車，back = π）、趕路的目標 4 → 2.5 s，鏡頭飛去站前的同時列車就趕來（together；列車最快也要 1 秒多才進站）
-    //   R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；量到 7.1 s）：趕路 2.5 → 1.6 s、停站與一敲 0.6 → 0.4、工程師抱箱子快步走（2.8）
+    //   R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；量到 7.1 s）：趕路 2.5 → 1.6 s、停站與一敲 0.6 → 0.5（動作下限：自然長度的一半；車停著敲完）、
+    //   工程師抱箱子快步走（2.8）；修正輪 1：倒車範圍 π → 2.34 rad（趕路上限照舊 4.5 倍：往前最遠與倒車最遠一樣久，最壞 2.8 s 進站，π 時 3.3 s；
+    //   test/chip.test.js 繞環 8 個位置量）；列車剛好在站前時整段只有 3.6 s（低於 ◆ 軟下限 4.5；繞環量最短 4.0 s）：鏡頭在站前至少停 STATION_MIN 秒
     7(e, s, ctx) {
       const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(FOOT);
       return [
-        B.together([B.focus(TOKEN), B.trainStop({ stop: 0.4, arrive: 1.6, back: Math.PI, during: [B.gesture(staff, 'knock', 0.4)] })]),
+        B.together([B.focus(TOKEN), B.wait(STATION_MIN), B.trainStop({ stop: 0.5, arrive: 1.6, back: 2.34, during: [B.gesture(staff, 'knock', 0.5)] })]),
         B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT, { speed: 2.8 }), B.bubble(e0, { icon: 'chip' }, 0.8)]),
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];

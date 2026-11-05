@@ -287,7 +287,7 @@ function checkBulb({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const held = show.roster.keys().flatMap(k => show.roster.members(k)).filter(m => m.mode === 'script').map(m => m.key);
   assert.deepEqual(held, [], `${what}: nobody left in a script`);
 }
-test('scripts: every bulb level in the solution plays within its budget (3–4.5 s; Lv2 the ring sweep; ◆ Lv7/Lv9 6–8 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
+test('scripts: every bulb level in the solution plays within its budget (2.5–3.5 s; Lv2 the ring sweep ≤ 4.5 s; ◆ Lv7/Lv9 4.5–6 s whole), ends with LEVEL UP on bulb, and leaves everyone at home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) n = bubblesLog.length; return run(evs, opts); };
@@ -362,7 +362,7 @@ function lv4Watch() {
   return w;
 }
 const atSlots = (show, kids) => { const slots = show.nav.slots(bulb.MARKET_FRONT, 2, 0.15); return kids.length === 2 && slots.every(q => kids.some(k => Math.hypot(k.x - q.x, k.z - q.z) < 0.1)); };
-test('Lv4: the two pupils (milk.kids) stand at the queue slots when the second stall opens; no token.* member leaves its cell; 3–4.5 s', async () => {
+test('Lv4: the two pupils (milk.kids) stand at the queue slots when the second stall opens; no token.* member leaves its cell; 2.5–3.5 s', async () => {
   const w = lv4Watch();
   const h = await liveFrames(SOLUTIONS[0], isBulb(4), (hh, _dt) => { if (w.n === 0) w.n = hh.bubblesLog.length; w.frame(hh); });
   assert.equal(h.e.to, 4); assert.ok(h.show.stage.lv.milk >= 3, 'the school is up');
@@ -793,7 +793,7 @@ test('quality low: neon parts drop their strips and keep only the sign models', 
 });
 // 審稿（裁決 R17）：◆ Lv7 在唯一正解整局 live 演出裡（不是單獨演）也 ≤ 8 s（扣掉物品之間的空拍）。
 // 計畫 5b 任務 4（節奏）：Lv5 全島 LED 在真的回合裡也 ≤ 4.5 s——放下當回合就長，電工常在主島另一頭，以前走去 101 腳下要 9 秒（外星第 6 回合 59 s）
-test('live play, the solution: ◆ bulb Lv7 takes ≤ 8 s and Lv5 ≤ 4.5 s (script) in the real turn', async () => {
+test('live play, the solution: ◆ bulb Lv7 takes ≤ 6 s and Lv5 ≤ 3.5 s (script) in the real turn', async () => {
   const { playLive, KEY_MAX, SCRIPT_MAX } = await import('./helpers/show.js');
   for (const order of SOLUTIONS) {
     const evs = await playLive(order), at = to => evs.find(x => x.e.kind === 'grow' && x.e.item === 'bulb' && x.e.to === to);

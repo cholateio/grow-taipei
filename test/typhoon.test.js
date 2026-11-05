@@ -248,7 +248,7 @@ async function playLanding(h, evs, opts = {}) {
   return { reacts, seg, after, hides };
 }
 // 放下的反應（§4.3）：燈泡在場且 ≤2 → 大停電（鎖燈泡、鮮奶 −1）；颱風假。最短的放法（窮舉）：鮮奶 → 燈泡 → 颱風
-test('placement turn with reactions (blackout, real engine) live as one turn: the ◆ landing ≤ 8 s, people hide at the doors and come back out, the blackout lands', async () => {
+test('placement turn with reactions (blackout, real engine) live as one turn: the ◆ landing ≤ 6 s, people hide at the doors and come back out, the blackout lands', async () => {
   const h = await headlessShow();
   const { reacts, seg } = await playLanding(h, await turnWith(h.run, ['milk', 'bulb', 'typhoon'], landing));
   assert.ok(reacts.includes('blackout') && reacts.some(k => k.includes('颱風假')), `reactions ${reacts}`);
@@ -256,7 +256,7 @@ test('placement turn with reactions (blackout, real engine) live as one turn: th
 });
 // 正解的放下回合（第 6 回合）：颱風假；躲一下又出來之後，同一回合的升級照一般事件演——◆ 鮮奶 7（大學）的小孩走去拱門、跳起來
 // 計畫 14：正解的颱風放下回合（第 7 回合）裡的 ◆ 是代幣 7（捷運通車到離島：列車開出去、離島冒出來），不再是鮮奶 7
-test('the solution placement turn live: the ◆ landing ≤ 8 s live; afterwards the turn plays normally (◆ token 7 runs the train to the islets, later grows are not cut to apply + LEVEL UP)', async () => {
+test('the solution placement turn live: the ◆ landing ≤ 6 s live; afterwards the turn plays normally (◆ token 7 runs the train to the islets, later grows are not cut to apply + LEVEL UP)', async () => {
   const h = await headlessShow(), { show } = h, update = show.update;
   let after0 = false, trains = 0;
   show.update = (dt, t) => { const before = h.rail.offset; update(dt, t); if (after0 && h.rail.offset !== before) trains++; };
@@ -499,7 +499,7 @@ test('landing turn with the camera dragged mid-turn: no home before the turn-end
 // 正解整局 live（真的鏡頭 rig）：共用不變式乾淨（不穿牆、不瞬移、換位置閃白、回全景、標籤在畫面裡）；颱風三段（修正批次 2）——◆ 放下與放晴 live ≤ 8 s，
 // Lv2 劇本 ≤ 3 s；第 7 回合（計畫 14 之前第 6 回合）放下之後的事件照常演（修正輪 1：躲雨只是放下劇本裡的一小段，不再整回合 indoors）；
 // 放晴落在第 9 回合（最後一輪）
-test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 ≤ 8 s live, the Lv2 script ≤ 3 s', async () => {
+test('the solution live with the real rig: invariants clean; ◆ placed / Lv3 ≤ 6 s live, the Lv2 script ≤ 3 s', async () => {
   const cam = overviewRig(), { show, run, scriptElapsed } = await headlessShow({ rig: cam.rig }), inv = gameInvariants(show, { cam });
   let s = engine.createState(spec);
   const seg = {};

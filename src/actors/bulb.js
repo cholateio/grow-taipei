@@ -361,7 +361,7 @@ export const script = {
       return [
         // 閃白第二攤的同時一起 ♥（裁決 R15 一級 ≤ 4.5 s）
         B.focus(MARKET_CELL), B.together([...[0, 1].map(i => B.walk(pupil(i), slot(i), { speed: QUEUE_SPEED })), B.wait(QUEUE_MIN)]),
-        B.together([B.apply(e), B.wait(0.4), ...[0, 1].map(i => B.bubble(pupil(i), '♥', 0.4))]),
+        B.together([B.apply(e), B.wait(0.4), ...[0, 1].map(i => B.bubble(pupil(i), '♥', 0.5))]),   // ♥ 0.4 → 0.5（R41 修正輪 1：泡泡下限 0.5 s）
         hurryHome([pupil(0), pupil(1)]), levelUpAtHome(B, () => MARKET_CELL),
       ];
     },

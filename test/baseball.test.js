@@ -14,7 +14,7 @@ import { TRACK, CAR_H, POOL } from '../src/actors/token.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
+import { headlessShow, playItem, entriesThroughSolutions, solo, ringSweep, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 import { B } from '../src/show/beats.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
@@ -208,7 +208,7 @@ function checkBall({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const v = baseball.view(show.stage.lv, show.stage.flags);
   for (const k of ['baseball.players', 'baseball.crowd', 'baseball.riders', 'baseball.lawn']) assert.equal(show.roster.members(k).length, v[k]?.n ?? 0, `${what} ${k}`);
 }
-test('scripts: every baseball level in the solution plays 3–5 s (◆ Lv3/Lv8 6–10 s whole), ends with LEVEL UP on baseball, everyone home', async () => {
+test('scripts: every baseball level in the solution plays 2.5–3.5 s (◆ Lv3/Lv8 4.5–6 s whole), ends with LEVEL UP on baseball, everyone home', async () => {
   const timing = {};
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run, bubblesLog } = h;
@@ -305,8 +305,8 @@ test('Lv4: three fans walk in from the station-side bridge head to the gate arc 
     for (const m of show.roster.members('baseball.crowd')) if (!firsts.has(m)) firsts.set(m, { ...m.pos });
     for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
       if (k === 'rat.pack') continue;
-      // R41（使用者 2026-11-05：後期動畫偏長）：觀眾從橋頭快步走來（baseball.HURRY）——比快步還快才算瞬移
-      const p = last.get(m), v = Math.max(m.speed ?? 1.6, baseball.HURRY) * dt;
+      // R41（使用者 2026-11-05：後期動畫偏長）：觀眾（baseball.crowd）從橋頭快步走來（baseball.HURRY）——他們比快步還快才算瞬移；其他人照自己的走路速度
+      const p = last.get(m), v = (k === 'baseball.crowd' ? Math.max(m.speed ?? 1.6, baseball.HURRY) : m.speed ?? 1.6) * dt;
       if (p && !m.hidden && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > v + 1e-6) bad.push(`${k} ${m.i}`);
       last.set(m, { ...m.pos });
     }
@@ -522,4 +522,9 @@ test('view: the domeFlood epilogue adds baseball.fish (an orange elongated spher
     }
     assert.equal(baseball.FISH_UP, 0.9);
   }
+});
+
+// R41 修正輪 1：列車在環上的位置是隨機的——繞環 8 個位置各演一次 ◆ Lv8（審稿重播 12 個位置最壞 6.43 s）：整段 4.5 s ≤ 秒數 ≤ KEY_MAX + 0.3
+test('ring sweep: ◆ Lv8 (train to the dome station) stays within 4.5 s – KEY_MAX + 0.3 wherever the train is on the ring', async () => {
+  for (const r of await ringSweep(SOLUTIONS[0], e => e.kind === 'grow' && e.item === 'baseball' && e.to === 8)) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
 });

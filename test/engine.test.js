@@ -379,7 +379,7 @@ test('placement check: boba ≤ 1 → the cart is blown away (boba locked, flag 
   assert.ok(!four.events.some(e => e.kind === 'fx' && e.delta?.target === 'boba'), 'no delivery delta');
 });
 // 降級當回合不升級（修正批次 2，使用者：「downgrade 當回合就不要 levelup 了」）：被負向 delta 打到的物品這回合不再長，也不列在等待裡
-test('an item knocked by a negative delta does not grow back that turn (the rat bite: milk 2 → 1 stays 1), and grows the next turn', () => {
+test('an item knocked by a negative delta does not grow back that turn (the rat bite: milk 2 → 1 stays 1); the bitten milk is then held until the rat is Lv3 (R38)', () => {
   // 大停電的鮮奶 −1 2026-11-01 拿掉了（R25），規則裡剩下的負向 delta 是老鼠咬鮮奶（鮮奶 ≤2 時放老鼠）
   const s = place(createState(real), 'milk', real).state;
   assert.equal(s.lv.milk, 2);

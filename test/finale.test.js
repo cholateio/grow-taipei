@@ -1056,16 +1056,15 @@ test('cartBlown epilogue beats (≈ 5 s): fold + worldNow, the camera to the sea
   assert.deepEqual(beats[5].only, ['boba.owner']);
   assert.equal(beats[8].target, 'home'); assert.equal(beats[8].dur, 1.5);
 });
-test('milkExpired epilogue beats (≈ 4.5 s): fold + worldNow, the camera to the milk cell while the expired crate blinks in and the kids stare ……, it waddles to the west shore 1.5 s, falls 0.5 s with a splash, the rest, the overview hold', () => {
+test('milkExpired epilogue beats (≈ 4.5 s): fold + worldNow, the camera to the milk cell while the expired crate blinks in (no pupils: R38), it waddles to the west shore 1.5 s, falls 0.5 s with a splash, the rest, the overview hold', () => {
   const B = beatsMod.B, e = { kind: 'epilogue', ending: 'milkExpired', flag: { name: 'epilogue', value: 'milkExpired' } };
   const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
   assert.deepEqual(kinds(beats), ['apply', 'world', 'together', 'waddle', 'together', 'apply', 'focus']);
-  const [pan, crate, put, stare] = beats[2].beats;
+  const [pan, crate, put] = beats[2].beats;
   assert.deepEqual([pan.kind, pan.target], ['focus', 'milk']);
   assert.deepEqual(crate.only, ['milk.crate']); assert.notEqual(crate.blink, false, 'the crate blinks');
   assert.deepEqual([put.kind, put.dur], ['move', 0]);
-  assert.equal(stare.kind, 'later'); const st = flatten([stare.beat]);
-  assert.ok(st.filter(b => b.kind === 'gesture').length === 2 && st.filter(b => b.kind === 'bubble').length === 2, 'both kids look and say ……');
+  assert.equal(beats[2].beats.length, 3, 'no pupil stare (R38, 使用者 2026-11-05: milkExpired always has milk 1, no school)');
   assert.equal(beats[3].dur, 1.5);
   const [fall, splash] = beats[4].beats;
   assert.deepEqual([fall.kind, fall.dur], ['fall', 0.5]);
@@ -1163,7 +1162,7 @@ const milkEnd = (show, what) => {
   assert.ok(s && flat2(s.position, milkMod.CRATE_SEA) < 1e-9, `${what}: splash where it fell`);
   released(show);
 };
-test('milkExpired live from EXAMPLE.milkExpired: the expired crate blinks in at CRATE, the kids stare ……, it waddles to the west shore, then drops 0.8 into the sea with a splash; nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
+test('milkExpired live from EXAMPLE.milkExpired: the expired crate blinks in at CRATE, it waddles to the west shore, then drops 0.8 into the sea with a splash; nobody lying; invariants clean; epilogue ≤ 7.0 s, finale ≤ 16 s', async () => {
   const g = await badGame('milkExpired'), { show, h } = g, { people, bubblesLog } = h;
   const lying = [], crate = [];
   let b0 = null, firstSplash = null, swapped = false;
@@ -1184,10 +1183,9 @@ test('milkExpired live from EXAMPLE.milkExpired: the expired crate blinks in at 
   assert.ok(crate.slice(1, brink).some(p => p.y > milkMod.CRATE.y + 0.01), 'with a waddle bob');
   assert.ok(crate.slice(brink).every((p, i, a) => !i || p.y <= a[i - 1].y + 1e-9), 'then only falls');
   assert.ok(firstSplash && firstSplash.y < milkMod.CRATE.y - 0.5, 'the splash when it reaches the water');
-  // R38（使用者 2026-11-05）：鮮奶過期現在一定是被老鼠咬住的鮮奶 1（箱子，還沒有學校）——沒有學生，所以沒人 ……（學生在才兩個都 ……）
-  const kids = show.roster.members('milk.kids');
-  assert.equal(kids.length, show.stage.lv.milk >= 3 ? 2 : 0);
-  assert.equal(bubblesLog.slice(b0).filter(b => b.kind === '……').length, kids.length, 'every kid ……');
+  // R38（使用者 2026-11-05）：鮮奶過期現在一定是被老鼠咬住的鮮奶 1（箱子，還沒有學校）——沒有學生，也沒有 ……
+  assert.equal(show.roster.members('milk.kids').length, 0);
+  assert.equal(bubblesLog.slice(b0).filter(b => b.kind === '……').length, 0, 'nobody ……');
   milkEnd(show, 'live');
 });
 test('skip mid-epilogue (domeFlood, cartBlown, milkExpired): the final state at once — fish landed, boat + owner + drifted cart, crate in the sea with the splash; nobody in script mode, nobody lying', async () => {

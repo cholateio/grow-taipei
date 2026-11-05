@@ -35,7 +35,7 @@ import { C } from './palette.js';
 import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
 import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as skiffSeat, BLOWN, CART_END, QUAY } from './boba.js';
 import { fishArc, FISH_UP } from './baseball.js';
-import { CRATE, CRATE_BRINK, CRATE_SEA, KIDS } from './milk.js';
+import { CRATE, CRATE_BRINK, CRATE_SEA } from './milk.js';
 import { WATER_Y } from '../scene/hex.js';
 import { SHIELD_FAIL_DUR } from './parts.js';
 import { FOCUS_BEAT } from '../show/beats.js';
@@ -670,12 +670,12 @@ export function cartBlownEpilogue(e, ctx) {
 }
 
 // 鮮奶過期（約 4.5 s）：鏡頭到鮮奶格，同時 milk.crate 閃白換成過期版（milk.js：箱體 C.sour、兩條腿；零件的 at 是海裡的終點 CRATE_SEA，先用 0 秒的 move 擺回 CRATE）→
-//   閃完兩個小學生轉頭看著箱子、頭上「……」STARE 秒 → 箱子沿 x 走到西岸格邊（CRATE_BRINK，WADDLE 秒，走 WADDLE_STEPS 步、每步顛 WADDLE_BOB）→
+//   （R38，使用者 2026-11-05：鮮奶過期現在一定是被老鼠咬住的鮮奶 1，沒有學校也沒有學生，原本學生轉頭「……」那拍拿掉）閃完 → 箱子沿 x 走到西岸格邊（CRATE_BRINK，WADDLE 秒，走 WADDLE_STEPS 步、每步顛 WADDLE_BOB）→
 //   往外掉進海裡（CRATE_FALL 秒：水平等速往外、高度加速往下 1.1：島面到水面 0.8 再沉一個腿長，milk.js CRATE_SEA）→ 掉到水面那一刻水花（finale.crateSplash，不閃白）冒出來 → 剩下的套用 → 全景停 END_HOLD
-export const STARE = 0.8, WADDLE = 1.5, CRATE_FALL = 0.5, WADDLE_STEPS = 3, WADDLE_BOB = 0.04;
+export const WADDLE = 1.5, CRATE_FALL = 0.5, WADDLE_STEPS = 3, WADDLE_BOB = 0.04;
 const BRINK_OFF = offTo(CRATE_BRINK, CRATE_SEA), CRATE_OFF = offTo(CRATE, CRATE_SEA);
 export function milkExpiredEpilogue(e, ctx) {
-  const { B } = ctx, kid = i => c => c.roster.members('milk.kids')?.[i] ?? null;
+  const { B } = ctx;
   const walk = glide('waddle', 'milk.crate', WADDLE, k => ({
     dx: CRATE_OFF.dx + (BRINK_OFF.dx - CRATE_OFF.dx) * k, dy: CRATE_OFF.dy + WADDLE_BOB * Math.abs(Math.sin(Math.PI * WADDLE_STEPS * k)), dz: CRATE_OFF.dz,
   }));
@@ -684,7 +684,6 @@ export function milkExpiredEpilogue(e, ctx) {
     B.apply(e, { only: [] }), B.worldNow(),
     B.together([
       B.focus('milk'), B.apply(e, { only: ['milk.crate'] }), B.move('milk.crate', { from: CRATE_OFF, to: CRATE_OFF, dur: 0 }),
-      later(BLINK, STARE, B.together(KIDS.flatMap(i => [B.gesture(kid(i), 'look', STARE, { at: CRATE }), B.bubble(kid(i), '……', STARE)]))),
     ]),
     walk,
     B.together([fall, later(CRATE_FALL, 0, B.apply(e, { only: ['finale.crateSplash'], blink: false }))]),

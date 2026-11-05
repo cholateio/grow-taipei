@@ -825,7 +825,7 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
 //   R38（使用者 2026-11-05）：EXAMPLE.hit 的老鼠早放咬住鮮奶、燈泡只到 3——改老鼠最後放的同型一局（milk,chip,bulb,token,typhoon,boba,baseball,rat：淹水、燈泡 4、代幣 2）
 //   （淹水、燈泡 4、代幣 2、沒有環狀線），再瞬間演合成的燈泡 4 → 5 → 6，之後 live 演一個合成的燈泡 6 → 7
 async function floodedAtBulb6(h) {
-  const { turnSteps } = await import('./helpers/show.js'), { EXAMPLE } = await import('./helpers/endings.js');
+  const { turnSteps } = await import('./helpers/show.js');
   let s = engine.createState(spec);
   for (const step of turnSteps(['milk', 'chip', 'bulb', 'token', 'typhoon', 'boba', 'baseball', 'rat']).slice(0, 8)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   assert.ok(s.flags.flooded && s.lv.bulb === 4 && s.lv.token === 2, `precondition: flooded, bulb 4, token 2 (${JSON.stringify(s.lv)})`);

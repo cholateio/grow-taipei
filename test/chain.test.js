@@ -126,7 +126,8 @@ test('island chain, event by event: each chain part first appears with its own e
     // 兩級都是 ◆ 的跳級不合成（Task 6a 修正輪裁決：賽博晶片 7 → 8、外星 8 → 9），第一級照樣有自己的 apply
     const key = (id, n) => !!ALL.find(m => m.id === id)?.script?.grow?.[n]?.key;
     const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/), n = +lv; return jumps.has(`${id}${n + 1}`) && !(key(id, n) && key(id, n + 1)) ? `${id}${n + 1}` : tag; };
-    const PARTS = [['token.spur.windmill', 'token7'],   // 風車島支線只跟代幣 Lv7 走（R39） ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
+    // 風車島支線只跟代幣 Lv7 走（R39，使用者 2026-11-05：電燈 Lv7 不再先鋪）
+    const PARTS = [['token.spur.windmill', 'token7'], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
       ['chip.cable', 'chip6'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));

@@ -12,6 +12,7 @@ import { bridgeDecks } from '../scene/bridge.js';
 import { TIMES } from '../scene/daynight.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { DECK_AT } from './token.js';
+import { windSpeed } from './satellites.js';
 import { C, offset } from './palette.js';
 
 export const id = 'bulb';
@@ -304,9 +305,19 @@ const levelUpAtHome = (B, last) => B.together([B.focus(c => (last && sameCell(la
 
 // ── ★◆ Lv7 離岸風電啟動（R39，使用者 2026-11-05：不搭第二趟車，風車島變風電場）──
 // 三個轉子從靜止轉起來：sat.windmill 零件的 userData.spinUp（satellites.js 的 blades），照 finale.js domeUp 的寫法；
-// 拍長是真的 dur（together 等它），零件的 update 吃真實秒數，所以 ramp 用 dur ÷ 演出速度；瞬間演完（跳過）不呼叫——建好就是滿速
+// 拍長是真的 dur（together 等它），零件的 update 吃真實秒數，所以 ramp 用 dur ÷ 演出速度；瞬間演完（跳過）不呼叫——建好就是滿速。
+// from：從哪個倍率起轉（修正輪 1：唯一正解的燈泡 7 落在颱風 Lv1，風車沒電也被風吹著轉 3、通電 6——從 3 ÷ 6 起轉，不先停下來再加速；
+//   沒颱風時舊轉子是靜止的，from 0）。end：把加速收到滿速（照常演完時本來就到了；跳過時不在真實時間裡繼續加速）
 const SPIN_UP = 1.2, HOME_HOLD = 0.8;   // 轉子加速幾秒；回全景停幾秒（鏡頭 1 秒飛回，0.8 秒時已經走完九成多）
-const spinUp = dur => ({ kind: 'spinUp', dur, start(c) { if (!c.instant) c.stage.partObject('sat.windmill')?.userData.spinUp?.(dur / (c.speed ?? 1)); } });
+const spinUp = (dur, from = 0) => {
+  const blades = c => c.stage.partObject('sat.windmill')?.userData.spinUp;
+  return { kind: 'spinUp', dur, from, start(c) { if (!c.instant) blades(c)?.(dur / (c.speed ?? 1), { from }); }, end(c) { blades(c)?.(0); } };
+};
+// 舊轉速 ÷ 新轉速（劇本單獨建拍沒有 prev：當作從 Lv6 長上來）
+const spinFrom = s => {
+  const prev = s.prev ?? { lv: { ...s.lv, bulb: 6 }, flags: s.flags }, now = windSpeed(s.lv, s.flags);
+  return now > 0 ? Math.min(1, windSpeed(prev.lv, prev.flags) / now) : 1;
+};
 
 export const script = {
   // 假升級（wait 事件列到電燈，turn.js）：第 1 段平移到中心格、閃白那一份；第 2 段回全景、外圈四格一格一格閃白；
@@ -364,7 +375,7 @@ export const script = {
     },
     // ★◆ 離岸風電啟動（R39，使用者 2026-11-05：電工不再搭車，風車島變風電場；整段含鏡頭 4.5–6 s，不閃、不急，每一拍之間有停頓）：
     //   鏡頭飛到風車島 → 第二、第三支塔身與電池屋閃白立起（電工跟著出現在島上的家：名冊鍵不閃、不佔時間，衛星島的人直接生在家）→ 停一下
-    //   → 三個轉子閃白、1.2 s 從靜止轉到通電的轉速 → 回全景（停 HOME_HOLD 等鏡頭拉開）→ 燈塔頂燈與光束同一拍亮、守塔人出來（小屋一起）
+    //   → 三個轉子閃白、1.2 s 從靜止（颱風裡是風吹的轉速）轉到通電的轉速 → 回全景（停 HOME_HOLD 等鏡頭拉開）→ 燈塔頂燈與光束同一拍亮、守塔人出來（小屋一起）
     //   → 停一下 → LEVEL UP（電燈格）。
     //   燈塔島在主島另一頭（風車島的對面），拉近風車島時在畫面外、電燈格也是——所以先回全景再亮燈塔、打 LEVEL UP（字樣在畫面裡）
     7(e, s, ctx) {
@@ -372,7 +383,7 @@ export const script = {
       return [
         B.focus(WIND, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: ['sat.windmill.stage1', 'bulb.electrician'] }), B.wait(0.4),
-        B.together([B.apply(e, { only: ['sat.windmill'] }), spinUp(SPIN_UP)]),
+        B.together([B.apply(e, { only: ['sat.windmill'] }), spinUp(SPIN_UP, spinFrom(s))]),
         B.focus('home', { hold: HOME_HOLD }),
         B.apply(e, { only: ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'sat.lighthouse.stage1'] }), B.wait(0.3),
         B.levelUp('bulb'),

@@ -651,6 +651,9 @@ test('the substation leaves its front walkable and a way round behind it', () =>
 test('no electrician through Lv6; from Lv7 he lives on the windmill island, ringing clear of the tower, the switch box and the house', () => {
   for (let n = 1; n <= 6; n++) assert.equal(bulb.view(atLv(n), {})['bulb.electrician'], undefined, `lv${n}`);
   const s = SATELLITES.find(x => x.kind === 'windmill'), c = axialToWorld(s.q, s.r);
+  // 第一段的塔身：第二支（西北）、第三支（東北，R39 風電場）
+  const towers = sat.view(atLv(7), {})['sat.windmill.stage1'].parts.filter(p => p.kind === 'cylinder' && p.scale[1] >= 1);
+  assert.equal(towers.length, 2);
   for (let n = 7; n <= 9; n++) {
     const el = bulb.view(atLv(n), {})['bulb.electrician'], h = el.home;
     assert.deepEqual([el.kind, el.n, el.accessory, h.kind], ['roster', 1, 'vest', 'wander']);
@@ -660,6 +663,7 @@ test('no electrician through Lv6; from Lv7 he lives on the windmill island, ring
       assert.ok(Math.hypot(rel.x, rel.z) > 0.25, 'clear of the turbine mast'); assert.ok(Math.hypot(rel.x - 0.3, rel.z - 0.25) > 0.15, 'clear of the switch box');
       assert.ok(Math.abs(rel.x + 0.7) > 0.45 || Math.abs(rel.z - 0.4) > 0.4, 'clear of the house');
       assert.ok(rel.x < 0.95 || Math.abs(rel.z) > 0.25, 'clear of the spur deck');
+      for (const t of towers) assert.ok(Math.hypot(rel.x - t.pos[0], rel.z - t.pos[2]) > 0.25, `clear of the stage-1 tower at (${t.pos[0]}, ${t.pos[2]})`);
     }
   }
 });
@@ -689,14 +693,28 @@ test('Lv7 script (R39): focus the windmill island, towers, the rotors spin up to
   assert.equal(beats[4].target, 'home'); assert.ok(beats[4].dur >= 0.6, 'holds on the overview');
   assert.deepEqual(beats[1].only, ['sat.windmill.stage1', 'bulb.electrician'], 'the towers, with the electrician already at home on the island');
   assert.deepEqual(beats[3].beats.map(b => b.kind), ['apply', 'spinUp']); assert.deepEqual(beats[3].beats[0].only, ['sat.windmill']);
-  assert.equal(beats[3].beats[1].dur, 1.2, 'the spin-up is a real 1.2 s beat');
+  assert.equal(beats[3].beats[1].dur, 1.2, 'the spin-up is a real 1.2 s beat'); assert.equal(typeof beats[3].beats[1].end, 'function', 'end snaps the ramp');
+  assert.equal(beats[3].beats[1].from, 0, 'still rotor (no storm): ramps from 0');
   assert.deepEqual(beats[5].only, ['sat.lighthouse', 'sat.beam', 'sat.keeper', 'sat.lighthouse.stage1']);
   assert.ok(!flat(beats).some(b => ['trainStop', 'board', 'spawn', 'walk', 'jump', 'gesture'].includes(b.kind)), 'no ride');
   assert.equal(bulb.script.grow[7].key, true);
 });
+// 修正輪 1：唯一正解的燈泡 7 落在颱風 Lv1——風車沒電也被風吹著轉（3），通電狂轉（6）：從 3 ÷ 6 起轉，不先停下來；
+// 拍的 end 把加速收到滿速（跳過時不在真實時間裡繼續加速）
+test('Lv7 spin-up in the storm starts from the wind speed (from = old ÷ new), and end snaps the rotors to full speed', () => {
+  const spin = st => flat(bulb.script.grow[7](E(7), st, { B, roster: { members: () => [] } })).find(b => b.kind === 'spinUp');
+  const storm = spin({ lv: { ...atLv(7), typhoon: 1 }, flags: {}, prev: { lv: { ...atLv(6), typhoon: 1 }, flags: {} } });
+  assert.equal(storm.from, 0.5);
+  assert.equal(spin({ lv: atLv(7), flags: {}, prev: { lv: atLv(6), flags: {} } }).from, 0);
+  const calls = [], o = { userData: { spinUp: (...a) => calls.push(a) } }, c = { instant: false, speed: 1, stage: { partObject: k => (k === 'sat.windmill' ? o : null) } };
+  storm.start(c); storm.end(c);
+  assert.deepEqual(calls, [[1.2, { from: 0.5 }], [0]]);
+  calls.length = 0; storm.start({ ...c, instant: true }); assert.deepEqual(calls, [], 'instant: no ramp');
+});
 test('Lv7 live (R39): camera on the windmill island, towers before the rotors, the rotors spin up, the lighthouse lit, LEVEL UP on bulb, 4.5 s ≤ whole ≤ KEY_MAX; the electrician never leaves the island; the train never leaves the ring', async () => {
   for (const order of SOLUTIONS) {
-    let at = 0, towers = null, rotors = null, wind0, trip = false, off = [], firstLight = null;
+    let at = 0, towers = null, rotors = null, wind0, trip = false, off = [], firstLight = null, prevZ = null, prevO = null;
+    const before = [], after = [];   // [秒, 每秒轉角]：換零件之前（舊轉子）、之後（新轉子，從換的那一刻起算）
     const what = order.join('>');
     const h = await liveFrames(order, isBulb(7), (hh, dt) => {
       at += dt;
@@ -704,6 +722,9 @@ test('Lv7 live (R39): camera on the windmill island, towers before the rotors, t
       if (wind0 === undefined) wind0 = o;
       if (towers === null && hh.show.stage.partObject('sat.windmill.stage1')?.visible) towers = at;
       if (rotors === null && o !== wind0 && o?.visible) rotors = at;
+      const z = o?.visible ? o.children[0].rotation.z : null;
+      if (z !== null && prevZ !== null && o === prevO) (rotors === null ? before : after).push([rotors === null ? at : at - rotors, Math.abs(z - prevZ) / dt]);
+      prevZ = z; prevO = o;
       if (firstLight === null && hh.show.stage.partObject('sat.lighthouse')?.visible) firstLight = at;
       if (hh.rail.trip) trip = true;
       for (const m of hh.show.roster.members('bulb.electrician')) if (!onWindmill(m.pos)) off.push(`${at.toFixed(2)} s (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
@@ -712,6 +733,14 @@ test('Lv7 live (R39): camera on the windmill island, towers before the rotors, t
     assert.equal(String(focusTrail(h.rig.log, h.r0)[0]), WIND_CELL, `${what}: the camera opens on the windmill island`);
     assert.ok(towers !== null && rotors !== null && towers < rotors, `${what}: towers (${towers}) before the rotors (${rotors})`);
     assert.ok(firstLight !== null && firstLight > rotors, `${what}: the lighthouse after the rotors (${rotors}, ${firstLight})`);
+    // 轉子真的在加速（修正輪 1）：換上新轉子後頭 0.3 s 的平均轉速 < 舊轉速與滿速的中點；不比舊轉速慢（颱風裡不先停下來）；1.3 s 後滿速。
+    // 颱風的搖晃（±0.05 rad、8 rad/s）在 0.3 s 平均裡最多 ±0.35 rad/s
+    const mean = xs => xs.reduce((a, [, w]) => a + w, 0) / xs.length;
+    const full = sat.view(show.stage.lv, show.stage.flags)['sat.windmill'].speed, old = before.length ? mean(before.slice(-10)) : 0;
+    const early = mean(after.filter(([t]) => t <= 0.3)), late = mean(after.filter(([t]) => t >= 1.3 && t <= 1.6));
+    assert.ok(early < old + (full - old) / 2, `${what}: ramp visible (first 0.3 s ${early.toFixed(2)} rad/s, old ${old.toFixed(2)}, full ${full})`);
+    assert.ok(early >= old - 0.4, `${what}: no stall (first 0.3 s ${early.toFixed(2)} rad/s, old ${old.toFixed(2)})`);
+    assert.ok(Math.abs(late - full) < 0.4, `${what}: full speed after the ramp (${late.toFixed(2)} vs ${full})`);
     assert.equal(trip, false, `${what}: no train trip`);
     assert.deepEqual(off.slice(0, 5), [], `${what}: the electrician stays on the island`);
     const [m] = show.roster.members('bulb.electrician'); assert.ok(m && onWindmill(m.pos) && m.mode === 'home', `${what}: lives on the windmill island`);

@@ -27,15 +27,18 @@ const allMax = lv => spec.ORDER.every(id => lv[id] === spec.ITEMS[id].max);
 // 離岸風電（物品 v2 §5）：燈泡 Lv7 風車島變風電場之前，風車不轉、燈塔不亮（R39，使用者 2026-11-05：電工不再搭車過去）
 export const POWERED = 7;
 export const powered = (lv, flags = {}) => lv.bulb >= POWERED && !flags.blackout;
+// 風車的轉速（sat.windmill 的 speed）：通電後慢慢轉（1）；颱風時沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）。
+// 燈泡 Lv7 的 spinUp 拍拿前後兩個轉速算從哪個倍率起轉（R39 修正輪 1：颱風裡已經在轉的風車不先停下來）
+export const windSpeed = (lv, flags = {}) => { const on = powered(lv, flags); return stormy(lv) ? (on ? 6 : 3) : on ? 1 : 0; };
 // 珍奶 Lv5（外送無人機）：海上的觀光船多兩艘。修正批次 trim §A：小森林島分店、茶屋、觀光客，燈塔島棧橋全砍了，只留海上的船
 const BOBA_BOATS = 5;
 
 export function view(lv, flags) {
   const v = {}, storm = stormy(lv), on = powered(lv, flags);
-  // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）
+  // 風車：通電後慢慢轉；颱風時整座搖——沒電也被風吹著轉（3，那是風不是電），通電時狂轉（6）（windSpeed）
   // 離島三段：燈泡 Lv7 起第二、第三支風機（塔身在 sat.windmill.stage1，第一段）的葉片也在這個零件裡（twins = 各轉子相對主轉子的位置）——
   // 同一個 speed／wobble，颱風改速度時只重建這一個零件（第一段不跟著重建、不多閃一次）。R39（使用者 2026-11-05「風電場」）：第三支 TWIN2
-  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: storm ? (on ? 6 : 3) : on ? 1 : 0, wobble: storm, ...(lv.bulb >= POWERED ? { twins: [TWIN, TWIN2] } : {}) };
+  v['sat.windmill'] = { kind: 'blades', at: at('windmill', 0, 0.12, 1.6), speed: windSpeed(lv, flags), wobble: storm, ...(lv.bulb >= POWERED ? { twins: [TWIN, TWIN2] } : {}) };
   if (on) {
     v['sat.lighthouse'] = { kind: 'compound', at: at('lighthouse'), parts: [{ kind: 'sphere', pos: [0, 1.45, 0], scale: 0.38, color: C.yellow, glow: C.yellow }] };
     v['sat.beam'] = { kind: 'beam', at: at('lighthouse', 0, 0, 1.45) };
@@ -252,8 +255,9 @@ export const builders = {
   rats: ratBuilders.rats,
   // 風車葉片：三片繞 hub 轉；暴風時整座搖。twins（離島三段，燈泡 Lv7 起）：第二、第三支風機的轉子（縮 TWIN_SCALE）在相對 hub 的各處，同速轉、同樣搖；
   // ?quality=low 不畫（塔身那段也不畫）。
-  // spinUp(dur)（R39，使用者 2026-11-05：三個轉子從靜止轉起來，不是一換就滿速）：轉速倍率 rate 從 0 在 dur 秒內 smoothstep 到 1；
-  //   建好時 rate = 1（預熱、跳過、截圖都是滿速），劇本那拍才呼叫
+  // spinUp(dur, { from })（R39，使用者 2026-11-05：三個轉子從靜止轉起來，不是一換就滿速）：轉速倍率 rate 從 from（預設 0）在 dur 秒內
+  //   smoothstep 到 1——颱風裡風車本來就被風吹著轉時，劇本給 from = 舊轉速 ÷ 新轉速，不先停下來再轉（修正輪 1）；
+  //   dur ≤ 0 直接滿速（拍的 end：跳過時不在真實時間裡繼續加速）。建好時 rate = 1（預熱、跳過、截圖都是滿速），劇本那拍才呼叫
   blades(THREE, spec, ctx) {
     const blades = () => [0, 1, 2].map(i => { const a = i * Math.PI * 2 / 3; return { kind: 'box', pos: [Math.sin(a) * 0.38, Math.cos(a) * 0.38, 0], scale: [0.08, 0.75, 0.03], rot: [0, 0, -a], color: C.cream }; });
     // 搖晃只加在葉片的角度上（轉角 spin + 搖 w）：轉子的 hub 一直在各自的塔頂上，twin 不會繞著主轉子的 hub 甩。
@@ -266,11 +270,14 @@ export const builders = {
     });
     const r = rig(THREE, ctx, object, [rotor, ...twins].map(pivot => ({ parts: blades(), pivot })));
     let spin = 0, rate = 1, ramp = null;
-    object.userData.spinUp = dur => { rate = 0; ramp = dur > 0 ? { t: 0, dur } : null; if (!ramp) rate = 1; };
+    object.userData.spinUp = (dur, { from = 0 } = {}) => {
+      const r0 = Math.min(1, Math.max(0, from));
+      ramp = dur > 0 && r0 < 1 ? { t: 0, dur, r0 } : null; rate = ramp ? r0 : 1;
+    };
     return {
       object,
       update(dt, t) {
-        if (ramp) { ramp.t += dt; const k = Math.min(1, ramp.t / ramp.dur); rate = k * k * (3 - 2 * k); if (k >= 1) ramp = null; }
+        if (ramp) { ramp.t += dt; const k = Math.min(1, ramp.t / ramp.dur); rate = ramp.r0 + (1 - ramp.r0) * k * k * (3 - 2 * k); if (k >= 1) ramp = null; }
         const w = spec.wobble ? Math.sin(t * 8) * 0.05 : 0;
         spin -= dt * spec.speed * rate; rotor.rotation.z = spin + w;
         twins.forEach((tw, i) => { tw.rotation.z = spin + (spec.wobble ? Math.sin(t * 8 + 1 + i) * 0.05 : 0); });

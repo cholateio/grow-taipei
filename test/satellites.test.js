@@ -280,6 +280,14 @@ test('R39 wind farm: a third turbine NE on the windmill island, its rotor the se
   while (t < 1.2 + dt) { step(); t += dt; }
   assert.ok(Math.abs(step() - full) < 1e-9, 'after 1.2 s back at full speed');
   for (const i of [1, 2]) { const tw = p.object.children[i].children[0], z = tw.rotation.z; p.update(dt, 0); assert.ok(Math.abs(tw.rotation.z - z) > 0, `twin ${i} turns`); }
+  // 修正輪 1：颱風裡本來就在轉（from = 舊轉速 ÷ 新轉速）——從那個倍率起轉，不先停下來；dur 0（拍的 end）直接滿速
+  p.object.userData.spinUp(1.2, { from: 0.5 }); const first = step();
+  assert.ok(first >= full * 0.5 - 1e-9 && first < full * 0.6, `from 0.5: first frame ${first.toFixed(4)} vs full ${full.toFixed(4)}`);
+  p.object.userData.spinUp(0); assert.ok(Math.abs(step() - full) < 1e-9, 'spinUp(0) snaps to full speed');
+  p.object.userData.spinUp(1.2); p.object.userData.spinUp(0); assert.ok(Math.abs(step() - full) < 1e-9, 'a ramp cut short by spinUp(0) is at full speed');
+  // windSpeed 是 sat.windmill.speed 的唯一來源
+  for (const [L, f] of [[lv({}), {}], [lv({ bulb: 7 }), {}], [lv({ bulb: 6, typhoon: 1 }), {}], [lv({ bulb: 7, typhoon: 1 }), {}], [lv({ bulb: 7 }), { blackout: true }]])
+    assert.equal(sat.windSpeed(L, f), sat.view(L, f)['sat.windmill'].speed);
 });
 
 // 位置：每段零件在自己的島上（離島心 ≤ ISLET_R），離守塔人的圈、小孩、老鼠、電工的站位都 ≥ 0.3；

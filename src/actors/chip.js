@@ -202,8 +202,8 @@ const worker = () => c => seen(c, 'chip.worker')[0] ?? null;
 const eng = i => c => seen(c, 'chip.engineers')[i] ?? null;
 const ENGINEERS = c => c.roster.members('chip.engineers');
 const nearestEng = p => once(c => seen(c, 'chip.engineers').sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0] ?? null);
-// 工程師（最多 2 個，裁決 R23）一起轉頭看 p；不在的那拍跳過
-const engineersLook = (B, p, dur = 1.0) => B.together([0, 1].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
+// 工程師（最多 2 個，裁決 R23）一起轉頭看 p；不在的那拍跳過。R41（使用者 2026-11-05：後期動畫偏長）：預設 1.0 → 0.6 s
+const engineersLook = (B, p, dur = 0.6) => B.together([0, 1].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
 // （老鼠那邊的劇本在老鼠 Lv2 成立時也補這一拍，哪邊先成立哪邊演）
 const detective = (ctx, s) => (s.lv.rat >= 2 ? [ctx.B.bubble(c => c.roster.members('chip.detective')[0] ?? null, '！', 0.8)] : []);
@@ -228,17 +228,20 @@ export const script = {
   },
   grow: {
     // 廠房（裁決 R23）：工人走到工地的鏡頭側揮鐵鎚 → 廠房長出來、名冊把工人原地換成外套工程師（閃一下）→ 上班去、LEVEL UP
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；賽博正解量到 4.4 s，工人離工地遠）：走過去加快（2.4，同小學生跑）、
+    //   鐵鎚 1.2 → 0.9、拿掉補下限的 wait 0.2（下限 3 → 2.5 s）
     2(e, s, ctx) {
       const { B } = ctx, w = worker();
       return [
-        B.walk(w, c => frontOf(AT, FRONT_R, c.nav)), B.gesture(w, 'build', 1.2, { at: AT }),
-        B.apply(e), B.wait(0.2), B.home(ENGINEERS), B.levelUp('chip'),   // wait 0.2：計畫 15 B 零件一起長，拍短了，一級 ≥ 3 s
+        B.walk(w, c => frontOf(AT, FRONT_R, c.nav), { speed: 2.4 }), B.gesture(w, 'build', 0.9, { at: AT }),
+        B.apply(e), B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
     // 園區：工程師轉頭看廠房旁的空地 → 閃白三棟玻璃盒、多一個人（名冊從入口補、背景走進來；老鼠 ≥2 時一個變偵防師）→ ♪
     3(e, s, ctx) {
       const { B } = ctx;
       // ♪ 0.9 → 0.7（計畫 5b 任務 4，第 6 回合 ≤ 50 s）；wait 0.1：計畫 15 B 零件一起長，拍短了，一級 ≥ 3 s
+      // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；有偵防師 ！ 時 3.9 s）：轉頭 1.0 → 0.6（engineersLook 預設）；♪ 留 0.7（沒偵防師時 2.6 s，下限 2.5）
       return [engineersLook(B, offset(AT, 0.6, 0)), B.apply(e), B.wait(0.1), ...detective(ctx, s), B.bubble(eng(0), '♪', 0.7), B.home(ENGINEERS), B.levelUp('chip')];
     },
     // 星群總部（鮮奶 ≥4：喝鮮奶長大的人才）：工程師圖框「鮮奶」→ 閃白弧形玻璃總部 → 大家轉頭看、♥
@@ -273,11 +276,12 @@ export const script = {
     //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒。
     //   Task 6a（◆ ≤ 8 s：外星第 8 回合 6 → 7 合成一段 live 9.5 s——兩級的零件一起閃、工程師離 101 比較遠）：剛開過站不到半圈的車倒回來
     //   （同燈泡 Lv7 上車，back = π）、趕路的目標 4 → 2.5 s，鏡頭飛去站前的同時列車就趕來（together；列車最快也要 1 秒多才進站）
+    //   R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；量到 7.1 s）：趕路 2.5 → 1.6 s、停站與一敲 0.6 → 0.4、工程師抱箱子快步走（2.8）
     7(e, s, ctx) {
       const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(FOOT);
       return [
-        B.together([B.focus(TOKEN), B.trainStop({ stop: 0.6, arrive: 2.5, back: Math.PI, during: [B.gesture(staff, 'knock', 0.6)] })]),
-        B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT), B.bubble(e0, { icon: 'chip' }, 0.8)]),
+        B.together([B.focus(TOKEN), B.trainStop({ stop: 0.4, arrive: 1.6, back: Math.PI, during: [B.gesture(staff, 'knock', 0.4)] })]),
+        B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT, { speed: 2.8 }), B.bubble(e0, { icon: 'chip' }, 0.8)]),
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];
     },
@@ -287,13 +291,14 @@ export const script = {
       return [B.focus('home'), B.together([shieldTest(B, e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];
     },
     // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）
-    //   → 全景定格（看一次 101 閃光）→ LEVEL UP
+    //   → 全景定格（看一次 101 閃光）→ LEVEL UP。R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.6 s）：定格 3.2 → 1.8、罩子長起來 1.5 → 1.2
+    //   （天線每 3 秒閃一圈：從套用起 ！、定格、LEVEL UP 還有 3.6 s，照樣看得到一次）
     9(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.focus('home'), B.apply(e, { only: ['tower.shield'], blink: false }), B.scaleIn('tower.shield', { axis: 'y', dur: 1.5 }),
-        B.together([B.apply(e), B.bubble(eng(0), '！', 0.8)]),
-        B.focus('home', { hold: 3.2 }), B.home(ENGINEERS), B.levelUp('chip'),
+        B.focus('home'), B.apply(e, { only: ['tower.shield'], blink: false }), B.scaleIn('tower.shield', { axis: 'y', dur: 1.2 }),
+        B.together([B.apply(e), B.bubble(eng(0), '！', 0.6)]),   // ！ 0.8 → 0.6（R41）
+        B.focus('home', { hold: 1.8 }), B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
   },

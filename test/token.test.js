@@ -273,8 +273,8 @@ test('scripts: every token event in the solution plays 3–5 s (◆ Lv7 6–8 s 
     await playItem(show, tracked, order, 'token', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       const big = to === 7 || to === 10;
-      assert.ok(secs >= 3 && secs <= (big ? KEY_MAX : SCRIPT_EXCEPT[`token ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
-      if (to === 7) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+      assert.ok(secs >= 2.5 && secs <= (big ? KEY_MAX : SCRIPT_EXCEPT[`token ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
+      if (to === 7) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (to === 10) assert.ok(show.elapsed <= 5.5, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s (trim §B ≤ 5.5)`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('token');   // 這一級變了的零件頭上（計畫 15 D）
@@ -312,7 +312,7 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
   assert.deepEqual(flat(p7).filter(b => b.kind === 'scaleIn').length, 2, 'both spurs grow');
   // 兩條都要長：遊樂場島那條排在回全景之後（列車島那頭停站的 during 裡）
   const during = flat(b7).find(b => b.kind === 'trainStop').during, iHome = during.findIndex(b => b.kind === 'focus' && b.target === 'home');
-  assert.ok(iHome >= 0 && during.slice(iHome + 1).some(b => b.kind === 'scaleIn'), 'the playground spur grows after the camera is back on the overview');
+  assert.ok(iHome >= 0 && flat(during.slice(iHome + 1)).some(b => b.kind === 'scaleIn'), 'the playground spur grows after the camera is back on the overview');
 });
 // trainStop 支線版：列車進到支線入口（環上 trip.a）→ 開到風車島那頭停住 → 開回環上；skip 不留行程
 test('trainStop({ spur }) takes the train out to the island end, holds it there, brings it back; end clears the trip', () => {
@@ -733,7 +733,9 @@ test('fix3 C: Lv5 / Lv6 stop the train at the station front (trainStop at STATIO
     assert.ok(stop, `lv${n} has a trainStop`);
     assert.ok(Math.abs(stop.at - STATION_A) < 1e-12, `lv${n} stops at STATION_A (${stop.at})`);
     assert.equal(stop.spur, null, `lv${n} on the ring`);
-    assert.equal(stop.during[0].kind, 'apply', `lv${n} the swap is the first thing while it stands`);
+    // R41：換車跟 ♪、站務員的動作同一拍（together 裡第一個是 apply）
+    const first = stop.during[0].kind === 'together' ? stop.during[0].beats[0] : stop.during[0];
+    assert.equal(first.kind, 'apply', `lv${n} the swap is the first thing while it stands`);
     assert.ok(flat(stop.during).some(b => b.kind === 'bubble') && flat(stop.during).some(b => b.kind === 'levelUp'), `lv${n} ♪ and LEVEL UP while it stands / pulls away`);
     assert.ok(!beats.some(b => b.kind === 'trainDepart'), `lv${n} no trainDepart`);
   }
@@ -756,7 +758,7 @@ test('fix3 C live: Lv5 / Lv6 play 3–4.5 s; at the swap the head car stands at 
     show.update = (dt, t) => { now = t; update(dt, t); if (watch) watch.path.push([now - watch.t0, head()]); };
     await playItem(show, run, order, 'token', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1; if (to !== 5 && to !== 6) return;
-      assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} Lv${to} took ${secs.toFixed(2)} s`);
+      assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `${order.join('>')} Lv${to} took ${secs.toFixed(2)} s`);
       assert.ok(watch?.to === to, `Lv${to} swapped the train`);
       const d0 = Math.hypot(watch.at.x - front.x, watch.at.z - front.z);
       assert.ok(d0 <= 0.3, `Lv${to}: head ${d0.toFixed(3)} from the station front at the swap`);

@@ -12,7 +12,7 @@ import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
 import { lv, worldPoints, distToCell, entryProblems, focusTrail } from './helpers/actors.js';
-import { B, STATION_A, TRAIN_ARRIVE, SPUR_BRAKE, TRAIN_MAX_BOOST } from '../src/show/beats.js';
+import { B, STATION_A, TRAIN_MAX_BOOST } from '../src/show/beats.js';
 import { headlessShow, playItem, entriesThroughSolutions, solo, SCRIPT_MAX, KEY_MAX } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);   // 唯一正解（賽博），從求解器取
@@ -220,7 +220,7 @@ async function liveAt(h, order, pred) {
 const isChip = to => e => e.kind === 'grow' && e.item === 'chip' && e.to === to;
 // 鏡頭軌跡（含回合最後的 focus('home')）
 const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home'], 9: ['home', 'home', 'home'] };
-test('scripts: every chip event in the solution plays 3–5 s (◆ Lv9 6–10 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
+test('scripts: every chip event in the solution plays 2.5–3.5 s (◆ Lv7–9 ≤ 6 s, Lv9 4.5–6 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
   const tracked = (evs, opts) => { if (!opts?.instant) { n = bubblesLog.length; r = h.rig.log.length; } return run(evs, opts); };
@@ -229,9 +229,10 @@ test('scripts: every chip event in the solution plays 3–5 s (◆ Lv9 6–10 s 
     const seen = [];
     await playItem(show, tracked, order, 'chip', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      // Lv7：列車從現在的位置趕來（≤ 4.5 倍、減速進站，不瞬移）最多 4.3 s，加上停站、抱箱子、LEVEL UP，上限放到 7.3 s（審稿第 2 輪）
-      assert.ok(secs >= 3 && secs <= (to === 9 ? KEY_MAX : to === 7 ? TRAIN_ARRIVE + SPUR_BRAKE / 2 + 3 : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
-      if (to === 9) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+      // Lv7：列車從現在的位置趕來（≤ 4.5 倍、減速進站，不瞬移），加上停站、抱箱子、LEVEL UP——R41 之後跟其他 ◆ 一樣 ≤ KEY_MAX（6 s）；
+      //   ◆ Lv8 矽盾測試（罩子閃三下）也是 ◆，上限 KEY_MAX（R41 一般劇本降到 3.5 s 之前它 4.1 s 落在 4.5 內）
+      assert.ok(secs >= 2.5 && secs <= ([7, 8, 9].includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
+      if (to === 9) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('chip');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over chip`);
@@ -247,7 +248,8 @@ test('scripts: every chip event in the solution plays 3–5 s (◆ Lv9 6–10 s 
 test('the ◆ key nodes are Lv7, Lv8 (R6) and Lv9 (R11); the Lv9 standby holds on the overview before the LEVEL UP', () => {
   assert.deepEqual(Object.entries(chip.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [7, 8, 9]);
   const beats = flat(chip.script.grow[9]({ kind: 'grow', item: 'chip', to: 9 }, { lv: at(9), flags: {} }, fakeCtx));
-  const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 2), j = beats.findIndex(b => b.kind === 'levelUp');
+  // R41（使用者 2026-11-05：後期動畫偏長）：定格 ≥ 2 → ≥ 1.8 s
+  const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home' && b.dur >= 1.8), j = beats.findIndex(b => b.kind === 'levelUp');
   assert.ok(i > 0 && j > i, 'holds on the overview before LEVEL UP');
   assert.equal(beats[0].kind, 'focus'); assert.equal(beats[0].target, 'home', 'opens on the overview (the whole dome)');
 });

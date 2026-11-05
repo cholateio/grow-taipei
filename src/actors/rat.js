@@ -178,9 +178,12 @@ const NEST_SHORE = shoreAt(NEST_A), SPRING_SHORE = shoreAt(SPRING_A);
 // 巨蛋格東南岸（水裡）：第一隻老鼠從這裡爬上來（颱風 Lv3 的堤防在這裡留缺口，typhoon.js）
 export const RAT_LANDING = offset(DOME, 2.0, 2.05);
 const SCHOOL_GATE = offset(anchorWorld('milk'), 0, 0.1);
-const MIN_RUN = 1.5;   // 放下那回合跑去出問題那棟的那段最短秒數（見 placed）
+const MIN_RUN = 1.4;   // 放下那回合跑去出問題那棟的那段最短秒數（見 placed；R41，使用者 2026-11-05：後期動畫偏長，1.5 → 1.4——一級下限 2.5 s）
 const JUMP = 0.5, FOLLOW = 0.15;   // 跳一次的秒數、排隊跟著走的出發間隔（裁決 R17：0.3 → 0.15）
 export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 公尺，一級 3–5 秒）的速度；外星收尾的鼠群衝向 101 也用（finale.js）
+// R41（使用者 2026-11-05：後期動畫偏長）：泡溫泉那段衝刺（一級 ≤ 3.5 s：11 公尺 DASH 要 2.6 s）、◆ Lv4 快步——賽博排隊走去 101（ARMY）、
+//   外星走到溫泉邊（MARCH；一般走路 1.6；賽博 3.2 時正解整段掉到 4.5 s 的軟下限以下）、聞一聞（預設 1.5）
+const SPRING_RUN = 5.2, ARMY = 2.8, MARCH = 3.2, SNIFF = 1.0, NIBBLE_RUN = 1.4;
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
@@ -243,10 +246,11 @@ function hopOff(B, s, ids, at, centre, r) {
 function bite(e, ctx) {
   const { B } = ctx, r = once(c => c.roster.nearest(KEY, CRATE)), down = e.delta.to < e.delta.from;
   return [
-    B.walk(r, BITE_AT, { speed: 2.0 }), B.gesture(r, 'sniff'), B.bubble(r, '！'),
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；壞局量到 4.1 s）：跑過去（DASH，同 nibble）、聞 1.5 → 1.0、！ 1.2 → 0.8、小學生 ！ 0.8 → 0.6
+    B.walk(r, BITE_AT, { speed: DASH }), B.gesture(r, 'sniff', SNIFF), B.bubble(r, '！', 0.8),
     // 沒掉級：箱子被撞歪（下一次鮮奶套用重建就回正）；掉級：閃白換成翻倒的箱子
     down ? B.apply(e, { only: ['milk.crate'] }) : B.tilt('milk.crate', { rz: 0.35, dur: 0.3 }),
-    B.together(KIDS.map(i => B.bubble(kid(i), '！', 0.8))),
+    B.together(KIDS.map(i => B.bubble(kid(i), '！', 0.6))),
     B.together(KIDS.map(i => B.walk(kid(i), SCHOOL_GATE))), ...KIDS.map(i => hide(kid(i))),
     B.apply(e), B.home(r), ...(down ? [B.levelUp('milk', { down: true })] : []),
   ];
@@ -262,8 +266,10 @@ function nibble(e, ctx) {
   const r = once(c => c.roster.nearest(KEY, at));
   return [
     // 聞 1.2 s、！ 0.8 s（預設 1.5／1.2 的話老鼠從遠處出問題的那棟跑來要 4.9 s，一級 ≤ 4.5：吹歪局第 6 回合）
-    B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.gesture(r, 'sniff', 1.2), B.bubble(r, '！', 0.8),
-    B.apply(e, { only: [part] }), B.apply(e), B.home(r),
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；遠處跑來量到 4.4 s）：聞 1.2 → 0.7、！ 跟換成被咬的樣子同一拍（0.6）；
+    //   跑過去至少 NIBBLE_RUN 秒（近的時候 2.3 s，低於一級下限 2.5；NIBBLE_RUN 1.4 → 2.7 s：同 placed 的 MIN_RUN，人在近處就站著多看一下）
+    B.together([B.walk(r, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(NIBBLE_RUN)]), B.gesture(r, 'sniff', 0.7),
+    B.together([B.apply(e, { only: [part] }), B.bubble(r, '！', 0.6)]), B.apply(e), B.home(r),
   ];
 }
 export const script = {
@@ -277,8 +283,9 @@ export const script = {
     const ashore = [B.apply(e, { hold: [KEY] }), B.spawn(KEY, RAT_LANDING), B.walk(r0, c => c.nav.nearestWalkable(RAT_LANDING))];   // 從水裡爬上岸
     if (biting) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH })])];
     // 跑過去至少 MIN_RUN 秒（計畫 16：夜市搬到中心格第一盞路燈旁，燈泡 Lv4 出問題時門口離上岸點很近，整段掉到 2.9 s < 3；人在近處就站著多看一下）
-    if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(MIN_RUN)]), B.gesture(r0, 'sniff'), B.home(r0)];
-    return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff'), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.8), B.home(r0)];
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；4.0 s）：聞 1.5 → 1.0（SNIFF）、！ 0.8 → 0.6（…… 留 0.8：沒有 trouble 的那條 2.7 s，下限 2.5）
+    if (at) return [...ashore, B.together([B.focus(at), B.walk(r0, c => c.nav.nearestWalkable(at), { speed: DASH }), B.wait(MIN_RUN)]), B.gesture(r0, 'sniff', SNIFF), B.home(r0)];
+    return [...ashore, B.bubble(r0, '……', 0.8), B.gesture(r0, 'sniff', SNIFF), B.gesture(r0, 'look', { at: DOME }), B.bubble(r0, '！', 0.6), B.home(r0)];
   },
   grow: {
     // 一窩：♥ → 閃白鼠窩 → NEST_N − 1 隻從窩邊跑出來（一窩 NEST_N 隻）→ 窩旁晃
@@ -287,7 +294,7 @@ export const script = {
     2(e, s, ctx) {
       const { B } = ctx, out = Array.from({ length: NEST_N - 1 }, (_, k) => k + 1), door = once(c => c.nav.slots(AT, out.length, 0.3)), spot = once(c => c.nav.slots(AT, out.length, 0.75));
       return [
-        B.bubble(B.partHead('rat.main', labelY, ctx), '♥'), B.apply(e, { only: ['rat.main'] }),
+        B.bubble(B.partHead('rat.main', labelY, ctx), '♥', 0.8), B.apply(e, { only: ['rat.main'] }),   // ♥ 1.2 → 0.8（R41，使用者 2026-11-05：後期動畫偏長）
         B.apply(e, { only: [KEY], hold: [KEY] }),
         B.together(out.map((i, k) => B.spawn(KEY, c => door(c)[k]))),
         B.together(out.map((i, k) => B.walk(rat(i), c => spot(c)[k]))),
@@ -311,9 +318,10 @@ export const script = {
       if (mode === 'spring') {
         return [
           B.focus(SPRING), claim(RATS), B.apply(e, { only: [KEY], hold: [KEY] }), fill(),
-          // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）
-          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: DASH }))), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5))]),
-          B.home(RATS), B.levelUp('rat'),
+          // 快跑固定 DASH（以前蒙太奇倍速時減半；選擇帶動升級拿掉蒙太奇）。R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；4.1 s）：
+          //   衝刺 SPRING_RUN、♥ 跟 LEVEL UP 同一拍
+          B.together(ids.map(i => B.walk(rat(i), SPRING_SPOTS[i], { speed: SPRING_RUN }))),
+          B.home(RATS), B.together([B.apply(e), ...ids.map(i => B.bubble(rat(i), '♥', 0.5)), B.levelUp('rat')]),
         ];
       }
       return null;   // 鼠災後的老鼠留在巨蛋門口：預設劇本
@@ -340,14 +348,15 @@ export const script = {
         // 從一窩直接跳上來（2 → 4 合併跳級）：先 hold 住、缺的（一窩比 GROW_TO 少時）從窩邊鑽出來，GROW_TO 隻一起排隊
         // （不然多的變身後才從格邊走進來、家在橋上的那隻直接冒出來）
         const short = ratMode(s.prev.lv, s.prev.flags) === 'nest' ? [B.apply(e, { only: [KEY], hold: [KEY] }), fill()] : [];
-        const march = [B.bubble(detective, { icon: 'chip' }, 0.8), B.walk(detective, c => foot(c)[GROW_TO]), ...ids.map(i => B.walk(rat(i), c => foot(c)[i], { delay: FOLLOW * (i + 1) }))];
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；7.0 s）：偵防師和老鼠快步走（ARMY）
+        const march = [B.bubble(detective, { icon: 'chip' }, 0.8), B.walk(detective, c => foot(c)[GROW_TO], { speed: ARMY }), ...ids.map(i => B.walk(rat(i), c => foot(c)[i], { delay: FOLLOW * (i + 1), speed: ARMY }))];
         // 鏡頭平移跟排隊出發同時（正解：從窩裡出發，不用等車）；搭車來的先對著 101、等列車停在窩那側讓牠們跳下來
         const open = riding(s) ? [B.together([B.focus('tower'), ...hopOff(B, s, ids, NEST_A, NEST_SHORE, 0.35)]), B.together(march)] : [B.together([...short, B.focus('tower'), ...march])];
         return [
           // 石堆小島的兩隻（搭車來的才有）跟軍團同一次收掉；偵防師的家同時換成跟著老鼠（不然他先走回窩邊）
           ...open, ...transform, B.apply(e, { only: [KEY, 'sat.rocks', 'chip.detective'] }), B.home(c => [...RATS(c), detective(c)].filter(Boolean)),
           // 回全景時站頂的王冠鼠和剩下的零件（窩收掉）一起閃完，LEVEL UP 之後不再閃；王冠鼠的 ！ 跟 LEVEL UP 一起（◆ ≤ 8 s：不另外停）
-          B.together([B.focus('home', { hold: 0.6 }), B.apply(e, { only: ['rat.king'] })]), B.apply(e),
+          B.together([B.focus('home', { hold: 0.5 }), B.apply(e, { only: ['rat.king'] })]), B.apply(e),   // 全景 0.6 → 0.5（R41）
           B.together([B.bubble('rat.king', '！', 0.6), B.levelUp('rat')]),
         ];
       }
@@ -357,18 +366,18 @@ export const script = {
       //   老鼠們先拿到劇本手上——hold 住的新家（搭車）會把還在日常的老鼠直接放上車頂（名冊照待套用的宣告過日常）。
       //   搭車來的（外星壞局約三成）：鏡頭平移跟列車進站同時，跳下車就變身
       //   這一段只 hold 老鼠的名冊、套 UFO（不閃）：其餘零件（窩收掉、石堆島的老鼠）留給後面的 apply 閃
-      const hold = B.apply(e, { only: [KEY], hold: [KEY] }), ufo = B.apply(flag, { only: ['rat.ufo'], blink: false }), down = B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.5 });
+      const hold = B.apply(e, { only: [KEY], hold: [KEY] }), ufo = B.apply(flag, { only: ['rat.ufo'], blink: false }), down = B.move('rat.ufo', { from: { dy: 6 }, to: {}, dur: 1.2 });   // R41：降下 1.5 → 1.2
       const mutate = B.apply(flag, { only: [KEY] });
       // 泡湯客泡在池裡（計畫 13），變異鼠來了也不用讓位（以前站池邊、要先搬到池子北側）。
       // 搭車來的：其餘的老鼠還坐在車頂上跟車走（日常是搭車），分岔旗標一套就不再是搭車的家——跳下車就閃白變身（車頂上的閃白拿掉），
       //   變異鼠再走到溫泉邊、UFO 同時降下
       const open = riding(s)
-        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT), down])]
-        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT), down]), mutate];
+        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT, { speed: MARCH }), down])]
+        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT, { speed: MARCH }), down]), mutate];   // R41：快步走到溫泉邊（MARCH）
       return [
         ...open, B.home(r0),
         // 綠光圈先閃、剩下的零件（窩收掉、石堆島的老鼠）接著閃完，LEVEL UP 之後不再閃
-        B.together([B.focus('home', { hold: 0.6 }), B.apply(e, { only: ['sat.rocksRing'] })]), B.apply(e),
+        B.together([B.focus('home', { hold: 0.5 }), B.apply(e, { only: ['sat.rocksRing'] })]), B.apply(e),   // 全景 0.6 → 0.5（R41）
         B.together([B.bubble(r0, '？', 0.8), B.levelUp('rat')]),
       ];
     },

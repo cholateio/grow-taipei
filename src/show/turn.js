@@ -41,7 +41,8 @@ export const GAP = 0.4;   // 不同物品的事件之間空幾秒（§13.1；裁
 // 鎖住的反應（協調者裁決 2026-10-31）：引擎 fx 事件帶 lock（大停電鎖燈泡、捷運站淹水鎖代幣、大巨蛋淹水鎖棒球）是玩家要看到的事——
 // 平移到被鎖的那一格、閃白套用、等那個物品的名冊走到新站位（arriving 都清掉；球員爬上巨蛋屋頂），最多 LOCK_HOLD 秒；不冒字
 // （鎖不是升降級，標題卡會講災難）。帶 delta 的（大停電的鮮奶 −1）鏡頭照舊在鮮奶格、等完再演鮮奶的 LEVEL DOWN（那是真的降級，字要在畫面裡）
-export const LOCK_HOLD = 2.0;
+// R41（使用者 2026-11-05：後期動畫偏長）2.0 → 1.5
+export const LOCK_HOLD = 1.5;
 // 遊戲層合成的事件（最終章）：劇本在 finale 模組
 const FINALE_KINDS = new Set(['warning', 'missile', 'epilogue']);
 

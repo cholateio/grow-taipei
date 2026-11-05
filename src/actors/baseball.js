@@ -254,8 +254,9 @@ export const builders = {
 // 蓋東西站的鏡頭側距離（§14）：巨蛋橢圓外擴 PAD 後 1.27 × 1.07，鏡頭方向 1.6 站在底座外、門前球員的東邊（跟原本站的巨蛋正前方一樣遠）
 export const FRONT_R = 1.6;
 const BASE_AT = BASES.map(([x, z]) => offset(AT, x, z));
-const RUN_SPEED = 0.7;   // 島民沿壘包慢慢走一圈（約 4 s）
-const TOURIST_SPEED = 2.8;   // 跨年：珍奶的觀光客快步過來看煙火（一般走路 1.6；同燈泡點燈的快走 2.8，一級 3–5 秒）
+const RUN_SPEED = 1.4;   // 島民沿壘包走一圈（0.7 時約 4 s；R41，使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s、例外拿掉 → 1.4，約 2 s）
+const TOURIST_SPEED = 3.2;   // 跨年：珍奶的觀光客快步過來看煙火（一般走路 1.6；同燈泡點燈的快走 2.8，一級 3–5 秒；R41 2.8 → 3.2）
+export const HURRY = 2.4;   // R41（使用者 2026-11-05：後期動畫偏長）：進場、走去蓋巨蛋、觀眾從橋頭走來、下車的觀眾，都快步走（一般 1.6）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const nearestIslander = (c, p) => c.roster.members('landmarks.islanders').filter(m => !m.hidden && cellAt(m.pos.x, m.pos.z)).sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0] ?? null;
@@ -267,7 +268,8 @@ const fan = i => c => fansAll(c)[i] ?? null;
 const ALL_FANS = 6;   // 觀眾最多 5 人＋草皮 1 人
 const cheer = (B, dur = 0.9) => B.together(Array.from({ length: ALL_FANS }, (_, i) => B.bubble(fan(i), '♪', dur)));
 // 列車在巨蛋站最多趕這麼久進站（車頭剛開過不到四分之一圈就倒車回來）、停多久
-const STOP_WITHIN = 2.0, STOP_BACK = Math.PI / 2, STOP_FOR = 0.6;
+// R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；正解 live 7.9 s）：趕路 2.0 → 1.2 s、停 0.6 → 0.4 s（月台出現、兩人下車都在停著的那一刻）
+const STOP_WITHIN = 1.2, STOP_BACK = Math.PI / 2, STOP_FOR = 0.4;
 
 export const script = {
   // 閃白沙地 → 第一個球員從看台後方的格邊（入口）進場、走到本壘 → 沿一壘、二壘、三壘繞回本壘，每走一段那段白線就閃白出現 → 站到本壘前。
@@ -275,7 +277,7 @@ export const script = {
   placed(e, s, ctx) {
     const { B } = ctx, sp = B.spawn('baseball.players', PLAYER_ENTRY[0]), m = () => sp.member;
     return [
-      B.apply(e, { only: ['baseball.main', 'baseball.players'], hold: ['baseball.players'] }), sp, B.walk(m, BASE_AT[0]),
+      B.apply(e, { only: ['baseball.main', 'baseball.players'], hold: ['baseball.players'] }), sp, B.walk(m, BASE_AT[0], { speed: HURRY }),
       ...BASE_AT.map((_, i) => B.together([B.walk(m, BASE_AT[(i + 1) % 4], { speed: RUN_SPEED }), B.apply(e, { only: [`baseball.lines.${i}`] })])),
       B.home(m),
     ];
@@ -298,9 +300,10 @@ export const script = {
       const w = once(c => shown('baseball.players')(c).sort((a, b) => dist(a.pos, front(c)) - dist(b.pos, front(c)))[0] ?? nearestIslander(c, front(c)));
       return [
         // 裁決 R17 ◆ ≤ 8 s：泡泡 0.8／0.9 → 0.6／0.7、鐵鎚 1.2 → 0.9、全景停 1.4 → 1.0
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.6 s）：快步走過去、鐵鎚 0.9 → 0.7（照樣敲兩下）、全景停 1.0 → 0.8
         B.bubble(player(0), '……', 0.6), B.bubble(player(0), { icon: 'dome' }, 0.7),
-        B.walk(w, front), B.gesture(w, 'build', 0.9, { at: AT }), B.gesture(w, 'build', 0.9, { at: AT }), B.apply(e), B.home(w),
-        B.focus('home', { hold: 1.0 }), B.levelUp('baseball'),
+        B.walk(w, front, { speed: HURRY }), B.gesture(w, 'build', 0.7, { at: AT }), B.gesture(w, 'build', 0.7, { at: AT }), B.apply(e), B.home(w),
+        B.focus('home', { hold: 0.8 }), B.levelUp('baseball'),
       ];
     },
     // 開打：三個觀眾從捷運站那座橋的橋頭走來（剛下車）→ 走到門口 → 閃白頂縫透光、一起 ♪
@@ -309,7 +312,8 @@ export const script = {
       const sp = BRIDGE_IN.map(p => B.spawn('baseball.crowd', c => c.nav.nearestWalkable(p)));
       return [
         B.apply(e, { only: ['baseball.crowd'], hold: ['baseball.crowd'] }), ...sp,
-        B.together(sp.map((b, i) => B.walk(() => b.member, spots[i], { delay: i * 0.2 }))),
+        // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：快步走來、錯開 0.2 → 0.1 s
+        B.together(sp.map((b, i) => B.walk(() => b.member, spots[i], { delay: i * 0.1, speed: HURRY }))),
         B.together([B.apply(e), ...[0, 1, 2].map(i => B.bubble(fan(i), '♪', 0.6))]),   // 頂縫閃白的同時 ♪（裁決 R15）
         B.home(shown('baseball.crowd')), B.levelUp('baseball'),
       ];
@@ -317,20 +321,22 @@ export const script = {
     // 演唱會：離門口最近的觀眾走到門口 → 敲 → 閃白應援棒、圓頂飾條發藍光（多的觀眾從月台入口走來）→ 觀眾一起 ♪
     5(e, s, ctx) {
       const { B } = ctx, f = once(c => shown('baseball.crowd')(c).sort((a, b) => dist(a.pos, GATE) - dist(b.pos, GATE))[0] ?? nearestIslander(c, GATE));
-      return [B.walk(f, GATE), B.gesture(f, 'knock', 0.8), B.apply(e), cheer(B), B.home(f), B.levelUp('baseball')];
+      // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：敲 0.8 → 0.6、♪ 0.9 → 0.6
+      return [B.walk(f, GATE), B.gesture(f, 'knock', 0.6), B.apply(e), cheer(B, 0.6), B.home(f), B.levelUp('baseball')];
     },
     // 煙火：珍奶排隊的觀光客裡離巨蛋最近的兩個快步走到巨蛋門口 → 煙火 → 在場的球員、觀眾、觀光客全部 ♪ → 觀光客走回人龍
-    // 鏡頭（§13.1）：先對著珍奶人龍（珍奶格），他們出發就轉到巨蛋格
+    // 鏡頭（§13.1）：先對著珍奶人龍（珍奶格），他們出發就轉到巨蛋格。
+    //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；4.3 s）：先看珍奶格那一拍拿掉（直接看巨蛋格，觀光客從畫面邊走進來）
     6(e, s, ctx) {
       const { B } = ctx, n = 2;   // 人數預算：觀光客 ≤ 2
       const tourists = once(c => shown('boba.queue')(c).sort((a, b) => dist(a.pos, GATE) - dist(b.pos, GATE)).slice(0, n));
       const tourist = i => c => tourists(c)[i] ?? null, slot = i => c => c.nav.slots(GATE, n, 1.2)[i];
       const everyone = c => [...shown('baseball.players')(c), ...fansAll(c), ...tourists(c)];
       return [
-        B.focus('boba'), B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]),
-        // 煙火閃白的同時大家 ♪（裁決 R15 一級 ≤ 4.5 s）
-        B.together([B.apply(e), ...Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪', 0.6))]),
-        B.home(tourists), B.levelUp('baseball'),
+        B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]),
+        // 煙火閃白的同時大家 ♪（裁決 R15 一級 ≤ 4.5 s）；R41（一級 ≤ 3.5 s）：LEVEL UP 也在同一拍彈（字在煙火上方、♪ 在人頭上）
+        B.together([B.apply(e), ...Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪', 0.6)), B.levelUp('baseball')]),
+        B.home(tourists),
       ];
     },
     // 擴建：球員 ！ → 閃白更高的圓頂與 LED 帶（多的兩個觀眾從月台入口走來）→ 觀眾 ♪ → LEVEL UP
@@ -354,9 +360,11 @@ export const script = {
             B.apply(e, { only: ['baseball.platform', 'baseball.deco', 'baseball.riders'], hold: ['baseball.riders'] }), ...sp,
           ] }),
         ]),
-        B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_WAIT[i], { delay: i * 0.2 }))),
-        B.together([B.focus('home', { hold: 1.0 }), cheer(B, 1.0)]),
-        B.apply(e), B.home(shown('baseball.riders')), B.levelUp('baseball'),
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.9 s、正解 live 7.9 s）：下車的觀眾快步走、錯開 0.2 → 0.1 s、
+        //   全景定格與 ♪ 1.0 → 0.8；兩個觀眾走回捷運站（套用）跟 LEVEL UP 同一拍
+        B.together(sp.map((b, i) => B.walk(() => b.member, RIDER_WAIT[i], { delay: i * 0.1, speed: HURRY }))),
+        B.together([B.focus('home', { hold: 0.8 }), cheer(B, 0.8)]),
+        B.home(shown('baseball.riders')), B.together([B.apply(e), B.levelUp('baseball')]),
       ];
     },
   },

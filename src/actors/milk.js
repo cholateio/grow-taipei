@@ -290,23 +290,25 @@ export const script = {
     },
     // 長高、兩層：一起跑去牛奶箱喝奶、各 ♥ → 閃白變高 1.3、校舍加一棟兩層（大家轉頭看）→ 跑回操場（同時 LEVEL UP）。
     // 2026-11-04 兩段都用跑的（KID_RUN）：壞結局（老鼠跑遠）量到 5.3 s（> 4.5）——走到牛奶箱多久看小學生當時站在操場哪裡，用跑的就不隨站位飄
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：♥ 1.0 → 0.6；轉頭看跟閃白同一拍（together）
     4(e, s, ctx) {
       const { B } = ctx;
       return [
         gather(ctx, CRATE, 0.55, { speed: KID_RUN }),
-        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 1.0))),
-        B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'look', { at: offset(AT, 0.75, ROW) }))),
+        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.6))),
+        B.together([B.apply(e), ...KIDS.map(i => B.gesture(kid(ctx, i), 'look', { at: offset(AT, 0.75, ROW) }))]),
         B.together([gather(ctx, PLAY, 0.45, { speed: KID_RUN }), B.levelUp('milk')]),
         B.home(allKids),
       ];
     },
     // 三層、籃球架：籃球架閃白立在操場東緣 → 一個小學生走到籃框前、轉向籃框 → 跳起來（投籃）→ ♪ → 校舍閃白 → LEVEL UP
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：轉向籃框 0.6 → 0.4、♪ 0.8 → 0.5
     5(e, s, ctx) {
       const { B } = ctx, k0 = kid(ctx, 0);
       return [
         B.apply(e, { only: ['milk.yard'] }),
-        B.walk(k0, SHOT), B.gesture(k0, 'look', { at: HOOP }),
-        B.gesture(k0, 'jump'), B.bubble(k0, '♪', 0.8),
+        B.walk(k0, SHOT), B.gesture(k0, 'look', 0.4, { at: HOOP }),
+        B.gesture(k0, 'jump'), B.bubble(k0, '♪', 0.5),
         B.apply(e), B.levelUp('milk'), B.home(k0),
       ];
     },
@@ -323,12 +325,13 @@ export const script = {
     // ◆ 大學：小孩走到拱門校門的位置（少棒隊從巨蛋旁回來）、路上冒圖框「學士帽」→ 閃白：兩翼拉長、拱門、鐘塔移到中間、學士帽
     //   → 跳起來 → 回全景定格 → LEVEL UP
     //   （Task 6a，◆ ≤ 8 s：小孩改成大人體型之後走到拱門要 2.9 s，整段 8.9 s——圖框改在走路時冒（不另佔 1.0 s）、全景定格 2.0 → 1.6；走路不加快）
+    //   R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 7.3 s）：走去拱門改用跑的（KID_RUN，同 Lv4）、全景定格 1.6 → 0.8
     7(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.together([gather(ctx, offset(ARCH, -0.1, 0.55), 0.4), B.bubble(kid(ctx, 0), { icon: 'mortar' }, 1.0)]),
+        B.together([gather(ctx, offset(ARCH, -0.1, 0.55), 0.4, { speed: KID_RUN }), B.bubble(kid(ctx, 0), { icon: 'mortar' }, 1.0)]),
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
-        B.focus('home', { hold: 1.6 }), B.levelUp('milk'), B.home(allKids),
+        B.focus('home', { hold: 0.8 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
     // 研究大樓：左翼閃白換成玻璃研究大樓、大家抬頭看、一個人 ！→ 一個走去校門的 YouBike 站（白袍、車站閃白）♪ → LEVEL UP
@@ -344,14 +347,14 @@ export const script = {
     },
     // 畢業典禮：小孩聚到操場中間 → 跳起來、學士帽從空中落下滿地 → 布條閃白 → LEVEL UP。
     // 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：回全景、101 頭上打「恭喜畢業」、回鮮奶格那三拍拿掉；
-    //   一級剩 2.2 s，布條長出來之後停 0.9 s 再 LEVEL UP（一級 ≥ 3 s，留 0.1 的浮點餘裕）
+    //   一級剩 2.2 s，布條長出來之後停 0.9 s 再 LEVEL UP（一級 ≥ 3 s，留 0.1 的浮點餘裕）；R41（使用者 2026-11-05：後期動畫偏長，下限 2.5 s）0.9 → 0.5
     9(e, s, ctx) {
       const { B } = ctx;
       return [
         gather(ctx, PLAY, 0.35),
         B.apply(e, { only: ['milk.hats', 'milk.kids'], blink: false }),
         B.together([...KIDS.map(i => B.gesture(kid(ctx, i), 'jump')), B.move('milk.hats', { from: { dy: 1.0 }, to: { dy: 0 }, dur: 0.8 })]),
-        B.apply(e), B.wait(0.9), B.levelUp('milk'), B.home(allKids),
+        B.apply(e), B.wait(0.5), B.levelUp('milk'), B.home(allKids),
       ];
     },
     // ◆ 鮮奶節：牛奶車閃白停在牛奶箱旁 → 小孩跑去、各 ♥ → 觀光船、全島的小孩出現（從各格的邊上走進來）、跳起來 → 回全景定格 → LEVEL UP
@@ -362,11 +365,12 @@ export const script = {
         // 只套牛奶車的話名冊要等後面的 apply 才補人，跑去、♥ 整段沒人演（劇本 2.3 s）
         B.apply(e, { only: ['milk.truck', 'milk.kids'] }),
         gather(ctx, offset(TRUCK, 0.8, 0.1), 0.3),
-        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.8))),
+        B.together(KIDS.map(i => B.bubble(kid(ctx, i), '♥', 0.6))),   // R41：♥ 0.8 → 0.6
         B.apply(e), B.together(KIDS.map(i => B.gesture(kid(ctx, i), 'jump'))),
         // 全景定格 2.5 → 1.6（小孩真的跑去之後整段 8.1–8.3 s → 7.0–7.4 s，◆ ≤ 8 s）→ 1.8（裁決 R23 小孩剩兩個，跑去、♥ 變快，整段掉到 6.0 s，◆ 軟下限 6 s）
         //   → 2.0（修正批次 max-skip §E 島民只剩一位之後，唯一正解這一級整段量到 5.93 s，低於軟下限）
-        B.focus('home', { hold: 2.0 }), B.levelUp('milk'), B.home(allKids),
+        //   → 0.8（R41，使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s、軟下限 4.5；整段 6.4 s，最後一輪 live 6.3 s）
+        B.focus('home', { hold: 0.8 }), B.levelUp('milk'), B.home(allKids),
       ];
     },
   },

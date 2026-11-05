@@ -26,7 +26,7 @@ export const MARKET_FRONT = offset(MARKET, 0.5, 0.55);
 const STATION = anchorWorld('token');
 const HOME_CELL = [0, 0], MARKET_CELL = worldToAxial(MARKET.x, MARKET.z), TOKEN_CELL = worldToAxial(STATION.x, STATION.z);   // 鏡頭對的格子：路燈（中心格）、夜市（計畫 16 起也在中心格）、捷運站
 const ISLAND_ZOOM = 0.8;   // 鏡頭到衛星島拉近 0.8（島和支線都要進畫面，同代幣 Lv7）
-const QUEUE_SPEED = 2.4;   // Lv4 小學生快步去夜市排隊（一般走路 1.6；一級 3–4.5 秒）
+const QUEUE_SPEED = 3.4;   // Lv4 小學生快步去夜市排隊（一般走路 1.6；一級 3–4.5 秒）；R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；賽博正解 4.1 s）2.4 → 3.4
 const LAMP_R = RING_R + 0.12;
 export const ISLAND_LV = 7;   // 離岸風電啟動那一級電工才登場，之後住在風車島上
 // 格內方位角 deg 上、離格心 r 的點（y 是格面）
@@ -299,7 +299,8 @@ const hurryHome = who => ({ kind: 'home', dur: 0, start(c) { for (const f of who
 // Lv4 排隊那段至少幾秒（小學生本來就在附近、或沒有人可叫時站著等，一級才不短於 3 秒）
 const QUEUE_MIN = 1.7;
 // Lv2 燈光一站一拍：亮了停 SWEEP_STEP 秒再換下一站（計畫 16 §設計 4 原訂 0.3；九站加夜市、LEVEL UP 劇本 5.6 s，超過 4.5 → 0.25 是設計給的退路）
-const SWEEP_STEP = 0.25;
+//   R41（使用者 2026-11-05：後期動畫偏長；環掃例外 6 → 4.5 s）0.25 → 0.1：閃白本身 0.15 s，一站接一站還是看得出順序（假升級第 2 段也用這個）
+const SWEEP_STEP = 0.1;
 // LEVEL UP 在路燈（中心格）頭上：鏡頭不在中心格就跟 LEVEL UP 一起轉回去（levelUp 1 秒 ≥ focus 拍，不多佔時間）
 const levelUpAtHome = (B, last) => B.together([B.focus(c => (last && sameCell(last(c), HOME_CELL) ? null : HOME_CELL)), B.levelUp('bulb')]);
 
@@ -343,7 +344,8 @@ export const script = {
         ...(k && sameCell(stopCell(k), stopCell(k - 1)) ? [] : [B.focus(stopCell(k))]),
         B.apply(e, { only: [...(k === 0 ? ['bulb.posts'] : []), `bulb.lamps.${k}`] }), B.wait(SWEEP_STEP),
       ]);
-      return [...sweep, B.focus('home'), B.apply(e, { only: ['bulb.market'] }), B.wait(0.4), B.levelUp('bulb')];
+      // 夜市開張後停 0.4 → 0.2（R41，使用者 2026-11-05：後期動畫偏長）
+      return [...sweep, B.focus('home'), B.apply(e, { only: ['bulb.market'] }), B.wait(0.2), B.levelUp('bulb')];
     },
     // 霓虹、傍晚（全島的事，回全景）：全島燈頭同一刻換成霓虹（粉藍黃交錯）、燈籠發光 → 天色淡入傍晚 → LEVEL UP
     3(e, s, ctx) {
@@ -406,10 +408,11 @@ export const script = {
       const { B } = ctx, staff = c => c.roster.members('token.staff').find(m => !m.hidden) ?? null;
       const cheer = c => [...c.roster.members('token.staff'), ...c.roster.members('landmarks.islanders')].filter(m => !m.hidden);
       return [
-        B.focus(TOKEN_CELL), B.bubble(staff, '！', 0.8),
+        B.focus(TOKEN_CELL), B.bubble(staff, '！', 0.6),
         B.apply(e, { only: ['bulb.neon.station'] }),
-        B.together([B.focus('home', { hold: 2.4 }), B.apply(e, { only: ['bulb.neon.bridges', 'sat.forest.stage2'] })]),
-        B.together([0, 1, 2, 3].map(i => B.bubble(c => cheer(c)[i] ?? null, '♪', 1.0))),
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.3 s）：站務員 ！ 0.8 → 0.6、全景定格 2.4 → 1.5（霓虹 1.5 s 內亮完）、♪ 1.0 → 0.6
+        B.together([B.focus('home', { hold: 1.5 }), B.apply(e, { only: ['bulb.neon.bridges', 'sat.forest.stage2'] })]),
+        B.together([0, 1, 2, 3].map(i => B.bubble(c => cheer(c)[i] ?? null, '♪', 0.6))),
         B.levelUp('bulb'),
       ];
     },

@@ -62,7 +62,7 @@ export function spurPath(kind) {
 // 回傳 { kind, a, path, lens, total }；trainStop({ spur }) 把列車開到 total 那頭停住再倒回環上
 const DELTA = 0.13;
 export const SPUR_SPEED = 2.5;
-export const SPUR_RUSH = 3.5;   // 代幣 Lv7 ◆ 那一趟的支線車速（計畫 5b 任務 4：◆ ≤ 8 s）   // 支線上的車速（每秒公尺），約跟環上一樣
+export const SPUR_RUSH = 4.2;   // 代幣 Lv7 ◆ 那一趟的支線車速（計畫 5b 任務 4：◆ ≤ 8 s；R41，使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s：3.5 → 4.2）   // 支線上的車速（每秒公尺），約跟環上一樣
 export function spurTrip(kind) {
   const L = spurLine(kind), b = Math.atan2(L.uz, L.ux), a = b - DELTA, r1 = L.from / Math.cos(DELTA);
   const p0 = { x: Math.cos(a) * L.from, z: Math.sin(a) * L.from }, p1 = { x: L.ux * r1, z: L.uz * r1 }, p2 = { x: L.ux * (r1 + 0.5), z: L.uz * (r1 + 0.5) };
@@ -400,14 +400,15 @@ const STATION_A = Math.atan2(AT.z, AT.x);
 //   一級 ≤ 4.5 秒（裁決 R15）：拍長 = 趕到站前 + 換車 0.15 + ♪ 1.0 + LEVEL UP 1.0。趕路照 trainRun：剛開過站前 π/2 內就倒車回來（倒車要先煞停、
 //   再起步，最慢是 SWAP_IN + 1.25 秒），其餘往前最多 SWAP_BOOST 倍——列車在環上哪裡都 ≤ 2.25 秒到站，整級 ≤ 4.4 秒
 //   （簡報原本的排法 ！ → 停站 → LEVEL UP 一個接一個是 5.4–5.8 秒，超過上限：！ 改跟趕路一起、LEVEL UP 改在停站拍的最後跟開走一起）
-const SWAP_IN = 1.0, SWAP_BOOST = 7.5, SWAP_STOP = 1.2;
+//   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；高鐵 3.9 s）：換車、♪、站務員的動作同一拍（♪ 與動作 0.6 s），趕到站前 SWAP_IN 1.0 → 0.8
+const SWAP_IN = 0.8, SWAP_BOOST = 7.5, SWAP_STOP = 1.2;
 function trainSwap(e, ctx, move) {
   const { B } = ctx, st = staffOf();
   return [
     B.together([
       B.bubble(st, '！', 0.6),
       B.trainStop({ at: STATION_A, arrive: SWAP_IN, boost: SWAP_BOOST, stop: SWAP_STOP, back: Math.PI / 2, during: [
-        B.apply(e), B.together([B.bubble(B.trainHead(ctx), '♪', 0.7), B.gesture(st, move)]), B.levelUp('token'),
+        B.together([B.apply(e), B.bubble(B.trainHead(ctx), '♪', 0.6), B.gesture(st, move, 0.6)]), B.levelUp('token'),
       ] }),
     ]),
     B.home(st),
@@ -425,28 +426,32 @@ export const script = {
   placed(e, s, ctx) {
     const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT));
     // 站牌閃白的同時他就出發；♪ 0.8 → 0.6。代幣格不住島民（人數預算，裁決 R16），人是從鄰格走來的：走路 0.5–4 秒不等，
-    // 走路那段至少 2.5 秒（近的時候在月台前多等一下），整級 3–6 秒（例外表 SCRIPT_EXCEPT 'token 1'）
-    return [B.together([B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45)), B.wait(2.5)]), B.bubble(islander, '♪', 0.6), B.home(islander)];
+    // 走路那段至少 2.5 秒（近的時候在月台前多等一下），整級 3–6 秒（例外表 SCRIPT_EXCEPT 'token 1'）。
+    // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s，例外拿掉）：快步走（2.4）、等的下限 2.5 → 2.0
+    return [B.together([B.apply(e), B.walk(islander, offset(AT, -0.45, 0.45), { speed: 2.4 }), B.wait(2.0)]), B.bubble(islander, '♪', 0.6), B.home(islander)];
   },
   grow: {
     // 小站（裁決 R23）：離車站最近的島民（Lv1 等車的那位）走到崗位 → 售票亭長出來、名冊把他原地換成站長（制服、閃一下）→ ♪ → LEVEL UP
     //   （沒有島民可換時——只演代幣的測試——名冊從站後面的入口補一個站長，♪ 照樣冒在他頭上）
+    //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s，例外 'token 2' 拿掉；單獨演 4.5–5.1 s）：快步走到崗位（2.8）、♪ 0.8 → 0.6
     2(e, s, ctx) {
       const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT)), st = staffOf();
-      return [B.walk(islander, POST), B.apply(e), B.bubble(st, '♪', 0.8), B.levelUp('token'), B.home(st)];
+      return [B.walk(islander, POST, { speed: 2.8 }), B.apply(e), B.bubble(st, '♪', 0.6), B.levelUp('token'), B.home(st)];
     },
     // 大車站：站務員走到站前揮鐵鎚 → 閃白站體與廣場 → ♥ → LEVEL UP
     3(e, s, ctx) {
       const { B } = ctx, st = staffOf();
-      return [B.walk(st, offset(AT, 0.15, 0.75)), B.gesture(st, 'build', 1.2, { at: AT }), B.apply(e), B.bubble(st, '♥', 0.8), B.levelUp('token'), B.home(st)];
+      // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：鐵鎚 1.2 → 0.9、♥ 0.8 → 0.6
+      return [B.walk(st, offset(AT, 0.15, 0.75)), B.gesture(st, 'build', 0.9, { at: AT }), B.apply(e), B.bubble(st, '♥', 0.6), B.levelUp('token'), B.home(st)];
     },
     // 環狀線：站務員圖框「列車」→ 軌道從海面升起 → 3 節通勤車從站後面閃白駛出（站務員揮手）→ LEVEL UP
+    //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；3.8 s）：圖框 0.9 → 0.7、揮手 1.0 → 0.8
     4(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
-        B.bubble(st, { icon: 'train' }, 0.9),
+        B.bubble(st, { icon: 'train' }, 0.7),
         B.apply(e, { only: ['token.track'], blink: false }), B.scaleIn('token.track', { dur: 0.8 }),
-        B.together([B.apply(e), B.trainDepart(), B.gesture(st, 'wave')]),   // 先建好列車（藏著）再改時鐘，列車才在站後面閃白
+        B.together([B.apply(e), B.trainDepart(), B.gesture(st, 'wave', 0.8)]),   // 先建好列車（藏著）再改時鐘，列車才在站後面閃白
         B.levelUp('token'), B.home(st),
       ];
     },
@@ -470,10 +475,13 @@ export const script = {
         B.apply(e, { only: now, blink: false }),
         // ◆ ≤ 8 s（裁決 R17）：全景停 2.0 → 1.0；列車最多 2 秒趕到支線口（上限照舊 4.5 倍；剛開過頭就倒車回來）；
         //   支線上每秒 3.5 公尺（平常 2.5；計畫 5b 任務 4：列車剛開過支線口時整級 8.4 s，支線來回省 0.7 s）
-        B.together([...now.map(grow), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 2.0, back: Math.PI / 2, spurSpeed: SPUR_RUSH, during: [
-          B.focus('home', { hold: 1.0 }), ...later.flatMap(k => [B.apply(e, { only: [k], blink: false }), grow(k)]),
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.8 s、正解 live 7.8 s）：趕到支線口 2.0 → 1.4 s、剛開過支線口不到半圈就倒車回來
+        //   （back π/2 → π，同晶片 Lv7：列車在支線口前面四分之一圈以外時，往前趕最多 4.5 倍也要 3–4 s）；LEVEL UP 改在列車倒回環上的那段裡、
+        //   跟遊樂場島支線長出來同一拍（全景裡兩個都看得到），不再等列車開回環上才彈
+        B.together([...now.map(grow), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 1.4, back: Math.PI, spurSpeed: SPUR_RUSH, during: [
+          B.focus('home', { hold: 1.0 }), ...later.map(k => B.apply(e, { only: [k], blink: false })), B.together([...later.map(grow), B.levelUp('token')]),
         ] })]),
-        B.apply(e), B.levelUp('token'),
+        B.apply(e),
       ];
     },
     // 接駁車：鏡頭到遊樂場島（zoom 0.8）→ 閃白接駁車在支線起點 → 開到島上 → 鮮奶 ≥3（有小學）時兩個小孩下車走到溜滑梯
@@ -495,12 +503,13 @@ export const script = {
     9(e, s, ctx) {
       const { B } = ctx, st = staffOf();
       return [
-        B.together([B.gesture(st, 'look', { at: AT }), B.bubble(st, '！', 0.8)]),
+        B.together([B.gesture(st, 'look', { at: AT }), B.bubble(st, '！', 0.6)]),
         B.apply(e, { only: ['token.main'] }),
         // 同一幀先建好（藏著）、移到地面，再閃白露出來往上浮
-        B.together([B.apply(e, { only: ['token.deck'] }), B.move('token.deck', { from: { dy: -DECK_RISE }, to: 0, dur: 1.0 })]),
-        B.together([B.bubble(st, '♪', 0.8), B.gesture(st, 'jump')]),
-        B.apply(e), B.levelUp('token'), B.home(st),
+        // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：開頭的 ！ 0.8 → 0.6（跟轉頭看一樣長）、浮上來 1.0 → 0.7、♪ 0.8 → 0.6，剩下的零件跟 ♪、跳同一拍
+        B.together([B.apply(e, { only: ['token.deck'] }), B.move('token.deck', { from: { dy: -DECK_RISE }, to: 0, dur: 0.7 })]),
+        B.together([B.bubble(st, '♪', 0.6), B.gesture(st, 'jump'), B.apply(e)]),
+        B.levelUp('token'), B.home(st),
       ];
     },
     // ◆ 飛天車（Tesla Roadster）：回全景 → 車和屋頂斜坡一起出現（不閃白：一出現就是停好的樣子）→ 沿斜坡起飛、繞 101 一圈、

@@ -177,9 +177,10 @@ export const builders = {
 
 // ── 劇本（§5.1：放下與放晴是 ◆、≤ 8 s；Lv2 一級 ≤ 3 s）──
 // 名單、位置都是演到那一拍才查（劇本在回合開始時一次建好，那時還不知道誰在哪）；once 查到第一次就記住，整段同一批人。
-const HURRY = 2.0, HUDDLE = 0.6;   // 趕著躲雨的走路速度；在門裡躲多久才走出來
+const HURRY = 2.0, HUDDLE = 0.4;   // 趕著躲雨的走路速度；在門裡躲多久才走出來（R41，使用者 2026-11-05：後期動畫偏長，0.6 → 0.4）
 const DOOR_MIN = 0.35;   // 算「建築」的 footprint 最小半寬（路燈 0.15、牛奶箱 0.3 不算門）
 const MUTTER = 0.8;      // Lv2：雲鼓一下之後「……」幾秒
+export const FLY_IN = 1.8;   // 放下：暴風雲飄進來幾秒（R41）
 // 鏡頭（§13.1、計畫 3.8 Task 6）：雲在 4–5 單位高，對著地面拉近會把雲切掉——注視點抬到雲和地面中間、zoom 0.8。
 // 放下（躲雨）、雨過天晴是全島的事：雲到了之後回全景（focus('home')）；Lv2 對著雲
 const cloudView = p => ({ x: p.x, y: 2.6, z: p.z }), CLOUD_ZOOM = 0.8;
@@ -229,7 +230,8 @@ export const script = {
     const shelter = crowd(B, c => cast(c).filter(m => m !== guard(c)).map(m => toDoor(B, m)));
     return [
       cloudFocus(B, AT), B.apply(e, { only: ['typhoon.main'], blink: false }),
-      B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: 2.5 }),   // 飄進來 3 → 2.5 s（裁決 R17）
+      // 飄進來 3 → 2.5 s（裁決 R17）→ 1.8 s（R41，使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；壞局離門遠的人多，live 6.6–7.0 s）
+      B.move('typhoon.main', { from: { dx: -6, dy: 0, dz: -5 }, to: 0, dur: FLY_IN }),
       B.focus('home'), B.apply(e, { only: ['typhoon.rain'] }), B.world({ storm: 1, rain: 1 }),
       // ！ 跟放晴的 ♪ 一樣只給主島上的人：衛星島最外圈的人在全景邊上（選擇帶動升級裁決 R6）
       B.together([B.gesture('typhoon.main', 'puff'), crowd(B, c => cast(c).map(m => B.bubble(m, '！', 0.8))), shelter]),

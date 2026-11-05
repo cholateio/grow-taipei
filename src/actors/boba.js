@@ -376,7 +376,8 @@ function departRanks(c, spots) {
 }
 
 // Lv5 劇本看無人機飛幾秒再打 LEVEL UP（2.4 + LEVEL UP 1.0 ≈ 第一台繞完一圈，整段約 4 s；trim §A）
-export const DRONE_WATCH = 2.4;
+//   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）2.4 → 2.2：LEVEL UP 彈的時候第一台還在繞最後一小段
+export const DRONE_WATCH = 2.2;
 // 無人機起飛（不佔時間：繞一圈在背景飛完，一趟 legs 0.6 + 一圈 2π / 2.2 + 0.6 ≈ 4.1 s，第二台晚 0.4 s）
 const launch = () => ({ kind: 'fly', dur: 0, start(c) { DRONE_KEYS.forEach((k, i) => c.stage.partObject(k)?.userData.fly?.({ delay: i * 0.4 })); return false; } });
 export const script = {
@@ -387,7 +388,8 @@ export const script = {
       B.apply(e, { only: ['boba.owner'], hold: ['boba.owner'] }), B.apply(e, { only: ['boba.main'], blink: false }),
       B.together([B.spawn('boba.owner', start), cartIn()]),
       B.together([w, push(w)]),
-      B.apply(e), B.together([B.bubble(owner, '♪', 0.8), B.walk(owner, ownerSpot(1))]), B.home(owner),
+      // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s）：♪ 0.8 → 0.6、快步繞到站位（2.4）
+      B.apply(e), B.together([B.bubble(owner, '♪', 0.6), B.walk(owner, ownerSpot(1), { speed: 2.4 })]), B.home(owner),
     ];
   },
   grow: {
@@ -400,7 +402,8 @@ export const script = {
         // 一個接一個出發，間隔 0.25 → 0.15（裁決 R15）→ 0.1（計畫 6 裁決 R2：拜訪之後第 6 回合 ≤ 60 s）→ QUEUE_DELAY（計畫 11 最終修正 #2：
         //   0.1 s 時三人從碼頭疊成一串走、相距 0.09 m 走了 2.2 s）
         //   出發順序看走路格（departRanks，計畫 16）
-        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: c => rank(c)[k] * QUEUE_DELAY }))),
+        //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；3.5 s 貼著上限）：快步走（2.0；間隔照舊，前後只會拉得更開）
+        B.together(sp.map((b, k) => B.walk(() => b.member, spots[k], { delay: c => rank(c)[k] * QUEUE_DELAY, speed: 2.0 }))),
         B.home(shown('boba.queue')), B.levelUp('boba'),
       ];
     },
@@ -428,12 +431,13 @@ export const script = {
     6(e, s, ctx) {
       const { B } = ctx;
       return [
-        B.bubble(owner, '！', 0.8),
+        // R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.3 s）：！ 0.8 → 0.6、回全景那拍 1.2 → 1.0、全景定格 2.2 → 1.2（♥ 1.0 照舊）
+        B.bubble(owner, '！', 0.6),
         // MAX 的大杯子（boba.sign）跟氣球、拱門、旗串同一拍出現（原本留到最後一拍；拍數不變）
-        B.together([B.focus('home', { hold: 1.2 }), B.apply(e, { only: ['boba.yard', 'boba.sign', 'boba.fleet'] })]),
+        B.together([B.focus('home', { hold: 1.0 }), B.apply(e, { only: ['boba.yard', 'boba.sign', 'boba.fleet'] })]),
         // 全景定格 1.5 → 1.2（修正批次 trim §A：正解裡 4 → 6 合成這一段，前面多了平移到珍奶格、LEVEL UP（當時彈兩次），live 8.1 s 超過 ◆ 8 s）
         //   → 2.2（計畫 15 D：拿掉 101 頭上 1 秒的「世界珍奶節」，單獨演的整段剩 5.3 s < ◆ 6 s；加回 1.5 只到 5.6，2.2 → 單獨 6.3、正解合成 7.2）
-        B.together([B.focus('home', { hold: 2.2 }), ...Array.from({ length: QUEUE_MAX }, (_, i) => B.bubble(tourist(i), '♥', 1.0))]),
+        B.together([B.focus('home', { hold: 1.2 }), ...Array.from({ length: QUEUE_MAX }, (_, i) => B.bubble(tourist(i), '♥', 1.0))]),
         B.apply(e), B.levelUp('boba'),
       ];
     },

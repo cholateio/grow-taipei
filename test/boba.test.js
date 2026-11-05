@@ -261,8 +261,8 @@ test('scripts: every boba level in the solution plays 3–4.5 s (◆ Lv6 6–8 s
     const seen = [];
     await playItem(show, tracked, order, 'boba', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      assert.ok(secs >= 3 && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
-      if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
+      assert.ok(secs >= 2.5 && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
+      if (KEY.includes(to)) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.slice(n).at(-1), hd = h.eventHead('boba');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - hd.x, last.at.y - hd.y, last.at.z - hd.z) < 0.3, `${what} LEVEL UP over boba`);
@@ -302,7 +302,7 @@ test('scripts: the level the typhoon delivery skips (Lv2) also plays 3–4.5 s: 
         };
         const secs = await h.run([{ kind: 'grow', item: 'boba', from: to - 1, to }]);
         h.show.update = update;
-        assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${order.join('>')} lv${to} took ${secs.toFixed(2)} s`);
+        assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `${order.join('>')} lv${to} took ${secs.toFixed(2)} s`);
         assert.ok(close >= 0.64, `queue ${who} came within ${close.toFixed(2)} × (ra + rb)`);
         assert.equal(h.show.roster.members('boba.queue').length, 3);
         done = true; break;
@@ -358,7 +358,7 @@ test('Lv5 live: the camera stays on the boba cell, the drones appear on the roof
     show.update = (dt, t) => { update(dt, t); if (live) { const y = show.stage.partObject('boba.drones.0')?.children[0]?.position.y; if (y != null) ys.push(y); } };
     const { r, n, secs } = await liveAt(h, order, isBoba(5));
     const what = order.join('>');
-    assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${what}: ${secs.toFixed(2)} s`);
+    assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `${what}: ${secs.toFixed(2)} s`);
     assert.ok(Math.max(...ys) - Math.min(...ys) > 0.3, `${what}: a drone takes off`);
     const trail = focusTrail(h.rig.log, r).map(String);
     assert.deepEqual([...new Set(trail)].filter(t => t !== 'home'), [String(CELL)], `${what}: camera only on the boba cell (${trail})`);

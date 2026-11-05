@@ -229,7 +229,7 @@ test('grow 2 sweeps the light round the ring: focus the stop\'s cell (no re-pan 
   assert.deepEqual(beats.slice(0, home).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), sweepCells());
   assert.deepEqual(beats.slice(home).map(b => b.kind), ['focus', 'apply', 'wait', 'levelUp']);
   const waits = beats.filter(b => b.kind === 'wait').map(b => b.dur);
-  assert.ok(waits.slice(0, N_STOPS).every(w => w === waits[0] && w <= 0.3), `one beat per stop (${waits[0]} s)`); assert.equal(waits.at(-1), 0.4);
+  assert.ok(waits.slice(0, N_STOPS).every(w => w === waits[0] && w <= 0.3), `one beat per stop (${waits[0]} s)`); assert.equal(waits.at(-1), 0.2);   // R41：夜市開張後停 0.4 → 0.2
 });
 // 計畫 9 任務 4（任務 3 延後的小項）：Lv4 去夜市排隊的兩個人照走路的路長挑；走不到的人（route 只回起點，路長 0）不算，不會排第一
 // 計畫 16 修正輪 1（協調者裁決）：排隊的是鮮奶的兩個小學生（milk.kids，「夜市開第二攤，小學生來排隊」）——不叫站務員
@@ -268,14 +268,14 @@ async function liveAt({ run, bubblesLog }, order, pred, tail = []) {
 const isBulb = to => e => e.kind === 'grow' && e.item === 'bulb' && e.to === to;
 // 物品 v2 §6：一級 3–4.5 s；Lv2 燈光沿環掃一圈 ≤ SCRIPT_EXCEPT（計畫 16：一站一拍，九站）；
 // ◆ Lv7（離岸風電）、Lv9（全島霓虹）6–10 s——含鏡頭平移與回全景的整段（show.elapsed，裁決 R8）
-const KEY = [7, 9], BUDGET = to => (to === 2 ? [3, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [3, KEY_MAX] : [3, SCRIPT_MAX]);
+const KEY = [7, 9], BUDGET = to => (to === 2 ? [2.5, SCRIPT_EXCEPT['bulb 2']] : KEY.includes(to) ? [2.5, KEY_MAX] : [2.5, SCRIPT_MAX]);
 const WINDMILL_I = SATELLITES.findIndex(x => x.kind === 'windmill');
 const onWindmill = p => !cellAt(p.x, p.z) && satelliteAt(p) === WINDMILL_I;
 function checkBulb({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const what = `${e.kind} ${e.to ?? ''}`, to = e.kind === 'grow' ? e.to : 1, [lo, hi] = BUDGET(to);
   (timing[to] ??= []).push(+secs.toFixed(1));
   assert.ok(secs >= lo && secs <= hi, `${what} took ${secs.toFixed(1)}s`);
-  if (KEY.includes(to)) assert.ok(show.elapsed >= (to === 7 ? 4.5 : 6) && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = eventHead('bulb');   // 這一級變了的零件頭上（計畫 15 D）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over bulb`);
@@ -341,7 +341,7 @@ test('placed, Lv2, Lv3, Lv5, Lv6 live: no roster member is ever in a script whil
     const busy = new Set();
     const { secs } = await liveFrames(order, pred, hh => { for (const k of hh.show.roster.keys()) for (const m of hh.show.roster.members(k)) if (m.mode === 'script') busy.add(k); });
     assert.deepEqual([...busy], [], `${name}: ${[...busy]} in a script`);
-    assert.ok(secs >= 3 && secs <= (name === 'lv2' ? SCRIPT_EXCEPT['bulb 2'] : SCRIPT_MAX), `${name} ${secs.toFixed(2)} s`);
+    assert.ok(secs >= 2.5 && secs <= (name === 'lv2' ? SCRIPT_EXCEPT['bulb 2'] : SCRIPT_MAX), `${name} ${secs.toFixed(2)} s`);
   }
 });
 // 計畫 16 修正輪 1：「夜市開第二攤，小學生來排隊」——燈泡 Lv4 要鮮奶 ≥3（小學和兩個小學生一定在）。第二攤開張（♥ 冒出來）那一刻
@@ -371,7 +371,7 @@ test('Lv4: the two pupils (milk.kids) stand at the queue slots when the second s
   assert.equal(h.bubblesLog.slice(h.n).filter(b => b.kind === '♥').length, 2);
   assert.ok(h.bubblesLog.slice(h.n).some(b => b.text === 'LEVEL UP'), 'LEVEL UP');
   assert.ok(h.show.roster.members('milk.kids').every(m => m.mode === 'home'), 'the pupils go back to their day');
-  assert.ok(h.secs >= 3 && h.secs <= SCRIPT_MAX, `${h.secs.toFixed(2)} s`);
+  assert.ok(h.secs >= 2.5 && h.secs <= SCRIPT_MAX, `${h.secs.toFixed(2)} s`);
 });
 test('Lv4 in the real turn (bad endings: milk 3, bulb 4, token 3 in one turn): the pupils queue and are back at school by the end of the turn, no token.* member leaves its cell', async () => {
   // R38（使用者 2026-11-05）：老鼠早放會咬住鮮奶，EXAMPLE 兩局的鮮奶到不了 3——改用老鼠最後放的壞結局局（flood／hit、flood／deflect）

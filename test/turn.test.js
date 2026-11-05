@@ -407,7 +407,7 @@ test('a wait event plays only its mark and an apply without a blink: no pan, no 
 // 帶 delta 的（大停電：鮮奶 −1）照舊在鮮奶格演 LEVEL DOWN（鮮奶真的降級），等待插在字之前。其他只有旗標的 fx 照舊 0 秒
 test('a lock fx pans to the locked item, applies with a blink and holds until its roster has arrived (≤ LOCK_HOLD), with no label; other flag fx stay instant', () => {
   const { LOCK_HOLD } = turnModule;
-  assert.equal(LOCK_HOLD, 2.0);
+  assert.equal(LOCK_HOLD, 1.5);   // R41（使用者 2026-11-05：後期動畫偏長）2.0 → 1.5
   const flood = { kind: 'fx', item: 'typhoon', cause: 'typhoon', lock: 'baseball', flag: { name: 'domeFlood', value: true } };
   const raw = buildTurn([flood], base([tower]), fakeCtx()), seg = between(raw, 0);
   assert.deepEqual(seg.map(b => b.kind), ['focus', 'apply', 'hold', 'apply']);

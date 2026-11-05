@@ -141,7 +141,7 @@ test('view: dome-rat staff are a helmeted roster of 2 following the rats; the mi
 test('beats: placed flies in, pours (storm 1, rain 1) and sends the crowd to the doors without a LEVEL UP; Lv2 puffs and mutters …… then LEVEL UP; Lv3 stops the storm', () => {
   const s = n => ({ lv: lv({ typhoon: n }), flags: {} });
   const placed = flat(typhoon.script.placed(placedE, s(1), fakeCtx()));
-  assert.ok(placed.some(b => b.kind === 'move' && b.dur === 2.5), 'flies in');
+  assert.ok(placed.some(b => b.kind === 'move' && b.dur === typhoon.FLY_IN && typhoon.FLY_IN === 1.8), 'flies in');   // R41：2.5 → 1.8 s
   assert.ok(placed.some(b => b.kind === 'world' && b.effects?.storm === 1 && b.effects?.rain === 1), 'storm 1, rain 1');
   assert.ok(placed.filter(b => b.kind === 'crowd').length >= 2, '！ and the door walks are crowd beats');
   assert.ok(!placed.some(b => b.kind === 'levelUp'), 'a placed event never shows LEVEL UP');

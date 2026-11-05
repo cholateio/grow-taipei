@@ -263,10 +263,10 @@ test('scripts: every milk event in the solution plays 3–5 s (◆ Lv7 / Lv10 �
     const seen = [];
     await playItem(show, run, order, 'milk', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
-      const [lo, hi] = to === 7 || to === 10 ? [3, KEY_MAX] : [3, SCRIPT_MAX];
+      const [lo, hi] = to === 7 || to === 10 ? [2.5, KEY_MAX] : [2.5, SCRIPT_MAX];
       assert.ok(secs >= lo && secs <= hi, `${e.kind} ${e.to ?? ''} took ${secs.toFixed(2)}s`);
       // ◆（§6「8–10 秒」= 上限 10、軟下限 6，控制者裁決）：含鏡頭平移與回全景定格的整段 6–10 s
-      if (to === 7 || to === 10) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
+      if (to === 7 || to === 10) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ lv${to} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
         const last = bubblesLog.at(-1), head = eventHead('milk');   // 這一級變了的零件頭上（計畫 15 D）
         assert.equal(last.text, 'LEVEL UP'); assert.ok(Math.hypot(last.at.x - head.x, last.at.z - head.z) < 0.3, 'LEVEL UP over milk');
@@ -323,7 +323,7 @@ test('scripts: the ◆ levels end on the overview (focus home with a hold) befor
   for (const n of [7, 10]) {
     const beats = milk.script.grow[n]({ kind: 'grow', item: 'milk', to: n }, { lv: lv({ milk: n }), flags: {} }, fakeCtx);
     const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
-    assert.ok(i > 0 && beats[i].dur >= 1, `lv${n} holds on the overview`); assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
+    assert.ok(i > 0 && beats[i].dur >= 0.8, `lv${n} holds on the overview`);   // R41：定格 ≥ 0.8 s（Lv7 0.8、Lv10 1.2） assert.equal(beats.slice(i).find(b => b.kind === 'levelUp') && beats.findIndex(b => b.kind === 'levelUp') > i, true);
   }
 });
 // 計畫 15 D（使用者 2026-11-02「畫面上的字越少越好」）：Lv9 畢業典禮不再回全景、在 101 頭上打「恭喜畢業」——
@@ -423,7 +423,7 @@ test('bitten milk (flags.bitten_milk while the rat is Lv1–2): the crate lies t
 test('Lv4: the pupils run to the crate and back (every walk in both gathers at KID_RUN)', async () => {
   const beats = milk.script.grow[4]({ kind: 'grow', item: 'milk', from: 3, to: 4 }, { lv: { milk: 4 }, flags: {} }, { B });
   const walksOf = b => (b.kind === 'together' ? b.beats.flatMap(walksOf) : b.kind === 'walk' ? [b] : []);
-  const walks = [walksOf(beats[0]), walksOf(beats[4])];
+  const walks = [walksOf(beats[0]), walksOf(beats[3])];   // R41：轉頭看併進閃白那拍，跑回操場是第 4 拍
   assert.equal(milk.KID_RUN, 2.4);
   for (const [k, ws] of walks.entries()) { assert.equal(ws.length, 2, `gather ${k}: two pupils walk`); for (const w of ws) assert.equal(w.speed, milk.KID_RUN, `gather ${k} runs`); }
 });

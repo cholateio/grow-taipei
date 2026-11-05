@@ -354,8 +354,8 @@ async function liveAt({ run, bubblesLog }, order, pred, { whole = false } = {}) 
 const KEY_LV = [4];
 function checkRat({ show, bubblesLog, eventHead }, e, secs, n) {
   const lvl = e.kind === 'grow' ? e.to : 1, branch = show.stage.flags.ratBranch, what = `${e.kind} ${lvl} ${branch ?? ''}`;
-  assert.ok(secs >= 3 && secs <= (KEY_LV.includes(lvl) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
-  if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
+  assert.ok(secs >= 2.5 && secs <= (KEY_LV.includes(lvl) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
+  if (KEY_LV.includes(lvl)) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = eventHead('rat');   // 這一級變了的零件頭上（計畫 15 D：◆ Lv4 是站頂的王冠鼠）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over rat`);
@@ -498,7 +498,7 @@ test('Lv3 spring (no train yet, token < 4): both rats walk up to the hot spring 
   const h = await headlessShow(), { show, run, bubblesLog } = h;
   await run([{ kind: 'placed', item: 'rat', to: 1 }, { kind: 'grow', item: 'rat', from: 1, to: 2 }, { kind: 'settle' }], { instant: true });
   const n = bubblesLog.length, e = { kind: 'grow', item: 'rat', from: 2, to: 3 }, secs = await run([e]);
-  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `${secs.toFixed(1)} s`);
+  assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `${secs.toFixed(1)} s`);
   assert.ok(bubblesLog.slice(n).filter(b => b.kind === '♥').length >= 2); assert.equal(bubblesLog.at(-1).text, 'LEVEL UP');
   for (let i = 0; i < 300; i++) show.update(1 / 30, 100 + i / 30);
   assert.equal(show.roster.members('rat.pack').length, 2, 'the nest of two (user 2026-11-04)');
@@ -781,12 +781,15 @@ const isBite = id => e => e.kind === 'fx' && e.cause === 'rat' && e.flag?.name =
 test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, the cart turns bitten; no LEVEL DOWN; 3–4.5 s', async () => {
   const beats = rat.script.fx({ kind: 'fx', item: 'boba', cause: 'rat', flag: { name: 'bitten_boba', value: 'rat' } }, { lv: lv({ rat: 2, boba: 1 }), flags: { bitten_boba: 'rat' } }, { B });
   assert.ok(Array.isArray(beats) && beats.length, 'a bite script');
-  assert.deepEqual(beats.map(b => b.kind).slice(0, 3), ['walk', 'gesture', 'bubble']);
+  // R41（使用者 2026-11-05：後期動畫偏長）：！ 跟換成被咬的樣子同一拍（together：apply、！）
+  //   跑過去那拍有最短秒數（together：walk、wait）
+  assert.deepEqual(beats.map(b => b.kind).slice(0, 3), ['together', 'gesture', 'together']);
+  assert.deepEqual(beats[0].beats.map(b => b.kind), ['walk', 'wait']); assert.deepEqual(beats[2].beats.map(b => b.kind), ['apply', 'bubble']);
   assert.ok(!beats.some(b => b.kind === 'levelUp'), 'no LEVEL DOWN');
   assert.deepEqual(rat.CART_BITE, boba.BITE_SPOT, 'the rat stands where boba.js put the bite');
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
   const { e, secs, n } = await liveAt(h, ['milk', 'baseball', 'rat', 'boba'], isBite('boba'));
-  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+  assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
   assert.equal(e.item, 'boba');
   const P = boba.view(show.stage.lv, show.stage.flags)['boba.main'].parts;
   assert.equal(P.length, boba.view(lv({ boba: 1 }), {})['boba.main'].parts.length + 3, 'the bitten cart (gap + pearls)');
@@ -800,7 +803,7 @@ test('rat bites the fresh boba: the nearest rat runs to the cart, sniffs, ！, t
 test('rat bites the fresh milk (placed after the rat): the rat runs to the crate, sniffs, ！, the crate lies tipped; no LEVEL DOWN; 3–4.5 s', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h, walls = watchWalls(h);
   const { e, secs, n } = await liveAt(h, ['rat', 'milk'], isBite('milk'));
-  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+  assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
   assert.equal(e.item, 'milk');
   assert.ok(milk.view(show.stage.lv, show.stage.flags, show.stage.meta)['milk.crate'].parts.some(p => p.spill), 'the crate lies tipped');
   assert.ok(bubblesLog.slice(n).some(b => b.kind === '！'));
@@ -851,5 +854,5 @@ test('rat bites the fresh boba from a far trouble door (EXAMPLE.deflect turn 6) 
     break;
   }
   assert.ok(secs !== null, 'the deflect game bites the boba');
-  assert.ok(secs >= 3 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
+  assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
 });

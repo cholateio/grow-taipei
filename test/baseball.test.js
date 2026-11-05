@@ -197,9 +197,9 @@ function checkBall({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
   (timing[to] ??= []).push(+secs.toFixed(1));
   // 唯一正解：棒球 6（跨年煙火）在第 6 回合、珍奶第 7 回合才放——沒有珍奶觀光客來看，只剩煙火與 ♪（≥ 2 s）；有觀光客的那段由下面的 Lv6 測試驗
-  const lo = to === 6 && !show.roster.members('boba.queue').length ? 2 : 3;
+  const lo = to === 6 && !show.roster.members('boba.queue').length ? 2 : 2.5;
   assert.ok(secs >= lo && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
-  if (KEY.includes(to)) assert.ok(show.elapsed >= 6 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
+  if (KEY.includes(to)) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
     const last = bubblesLog.slice(n).at(-1), h = eventHead('baseball');   // 這一級變了的零件頭上（計畫 15 D）
     assert.equal(last?.text, 'LEVEL UP', what); assert.ok(Math.hypot(last.at.x - h.x, last.at.y - h.y, last.at.z - h.z) < 0.3, `${what} LEVEL UP over baseball`);
@@ -243,7 +243,7 @@ test('◆ Lv3 and Lv8 are the key nodes and end on the overview before the LEVEL
   for (const n of [3, 8]) {
     const beats = flat(baseball.script.grow[n]({ kind: 'grow', item: 'baseball', to: n }, { lv: lv({ baseball: n }), flags: {} }, ctx));
     const i = beats.findIndex(b => b.kind === 'focus' && b.target === 'home');
-    assert.ok(i > 0 && beats[i].dur >= 1 && beats.at(-1).kind === 'levelUp', `lv${n}`);
+    assert.ok(i > 0 && beats[i].dur >= 0.8 && beats.at(-1).kind === 'levelUp', `lv${n}`);   // R41：全景定格 1.0 → 0.8
   }
 });
 // 人數預算（裁決 R16）：球場格不住島民——跑壘的是 Lv1 的第一個球員，從看台後方的入口進場
@@ -305,7 +305,8 @@ test('Lv4: three fans walk in from the station-side bridge head to the gate arc 
     for (const m of show.roster.members('baseball.crowd')) if (!firsts.has(m)) firsts.set(m, { ...m.pos });
     for (const k of show.roster.keys()) for (const m of show.roster.members(k)) {
       if (k === 'rat.pack') continue;
-      const p = last.get(m), v = (m.speed ?? 1.6) * dt;
+      // R41（使用者 2026-11-05：後期動畫偏長）：觀眾從橋頭快步走來（baseball.HURRY）——比快步還快才算瞬移
+      const p = last.get(m), v = Math.max(m.speed ?? 1.6, baseball.HURRY) * dt;
       if (p && !m.hidden && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > v + 1e-6) bad.push(`${k} ${m.i}`);
       last.set(m, { ...m.pos });
     }
@@ -336,11 +337,11 @@ test('Lv5: the fan nearest the gate knocks there; the extra fan and the lawn fan
   const lawn = baseball.view(show.stage.lv, show.stage.flags)['baseball.lawn'].home;
   for (const m of show.roster.members('baseball.lawn')) { assert.ok(near(m.pos, lawn.at, lawn.r + 0.3)); assert.ok(!show.nav.inFootprint(m.pos.x, m.pos.z)); }
 });
-// Lv6：珍奶的觀光客（≤ 2）走到巨蛋門口 → 煙火 → ♪ → 走回人龍；鏡頭先對珍奶格、再轉巨蛋格
-test('Lv6: two boba tourists come to the gate for the fireworks and walk back; the camera starts on the queue', async () => {
+// Lv6：珍奶的觀光客（≤ 2）走到巨蛋門口 → 煙火 → ♪ → 走回人龍；鏡頭直接到巨蛋格（R41 拿掉先看珍奶格那一拍）
+test('Lv6: two boba tourists come to the gate for the fireworks and walk back; the camera goes straight to the dome', async () => {
   const ctx = { B, roster: { members: () => [] } }, flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : [b]));
   const beats = baseball.script.grow[6]({ kind: 'grow', item: 'baseball', to: 6 }, { lv: lv({ baseball: 6 }), flags: {} }, ctx);
-  assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), [cellOf('boba'), CELL]);
+  assert.deepEqual(flat(beats).filter(b => b.kind === 'focus').map(b => focusCell(b, ctx)), [CELL]);
   const h = await headlessShow(), { show } = h, update = show.update, closest = new Map();
   let live = false;
   const run = h.run; h.run = (evs, o) => { live = !o?.instant; return run(evs, o); };
@@ -370,13 +371,13 @@ test('◆ Lv8 live: the train stops at the dome station, two riders step off whi
       clock = c;
       for (const m of show.roster.members('baseball.riders')) {
         if (!firsts.has(m)) firsts.set(m, { ...m.pos, head: (c * 0.35) % (2 * Math.PI) });
-        const p = last.get(m); if (p && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 1.6 * 1.05 * dt + 1e-6) bad.push(m.i); last.set(m, { ...m.pos });
+        const p = last.get(m); if (p && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > baseball.HURRY * 1.05 * dt + 1e-6) bad.push(m.i); last.set(m, { ...m.pos });   // R41：下車的觀眾快步走
       }
     };
     const { r } = await liveAt(h, order, isBall(8));
     const what = order.join('>');
     assert.equal(firsts.size, 2, what);
-    assert.ok(waited !== null && left !== null && left >= waited + 1.0, `${what}: the two fans leave after the riders are at the gate and the overview hold (${waited}, ${left})`);
+    assert.ok(waited !== null && left !== null && left >= waited + 0.8, `${what}: the two fans leave after the riders are at the gate and the overview hold (${waited}, ${left})`);   // R41：定格 1.0 → 0.8
     for (const p of firsts.values()) {
       assert.ok(baseball.RIDE_OFF.some(q => near(p, q, 0.05)), `${what}: steps off at the platform`); assert.ok(p.stopped, `${what}: while the train stands`);
       const d = Math.atan2(Math.sin(p.head - baseball.DOME_STOP), Math.cos(p.head - baseball.DOME_STOP)); assert.ok(Math.abs(d) < 0.02, `${what}: train head at the dome stop (${d.toFixed(3)})`);

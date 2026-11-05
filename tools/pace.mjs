@@ -2,10 +2,10 @@
 //   npm run pace              印表
 //   node tools/pace.mjs --verbose   多印每回合每個事件的秒數（mark 拍之間的 elapsed 差值；括號裡是劇本秒數）
 //   node tools/pace.mjs --check     任一放置回合或最後一輪 < 4 s 或超過那回合的上限、終局超過上限就列出並 exit 1；
-//                                   放置回合裡非關鍵劇本 > 4.5 s、◆ 關鍵事件 > 8 s 超過 0.3 s 以上只印 ⚠（live 秒數跟日常的人在哪有關；硬門檻是各物品測試）
+//                                   放置回合裡非關鍵劇本 > 3.5 s、◆ 關鍵事件 > 6 s（R41，使用者 2026-11-05：後期動畫偏長；原 4.5／8）超過 0.3 s 以上只印 ⚠（live 秒數跟日常的人在哪有關；硬門檻是各物品測試）
 // 放置回合上限（裁決 R17；計畫 6 設計 §6 50 → 60）：60 + 8 × max(0, ◆ 個數 − 1)——一回合三個 ◆ 最多 76 s；◆ 個數看 mark 的 info.key
 // 劇本秒數 = 不含鏡頭 focus 拍的秒數（跟各物品測試的 secs 同一把尺，helpers/show.js 的 scriptElapsed）再扣掉 turn.js 補的空拍（mark 的 info.gap）；
-// ◆ 關鍵劇本（info.key）與 101 跳階（settle）不受 4.5 s 限，只印出來
+// ◆ 關鍵劇本（info.key）與 101 跳階（settle）不受 3.5 s 限，只印出來
 // 拜訪（計畫 6 設計 §4）2026-10-29 回到 GROW 時拿掉了（設計 §4.2）、撲空（計畫 6 設計 §5）2026-10-31 也拿掉了（唯一正解設計 R10）：沒有這兩種段可量
 // 最終章（選擇帶動升級 2026-10-28 §6，取代計畫 5 的倒數三回合）：最後一輪是一般回合，門檻跟放置回合一樣（4 s 起，60 + 8 × max(0, ◆ − 1)），
 //   列名「最後一輪」；之後演終局回合（警告＋隕石＋真結局尾聲，finale: true）一列「終局 x/22 s」，
@@ -21,8 +21,8 @@ import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 import { ENDINGS } from '../src/rules/endings.js';
 
 // §13.6：鏡頭平移與空拍每回合多 6–10 s，門檻 45 → 50；計畫 6 設計 §6：拜訪每回合最多加十幾秒，50 → 60（拜訪 2026-10-29 拿掉了、起因提示 2026-10-31 拿掉了，上限留著當餘裕）；裁決 R15（物品 v2）：MIN 8 → 4（第一回合只有一段短劇本）；
-// 放置回合（與最後一輪）的非關鍵劇本 ≤ 4.5 s
-const MIN = 4, MAX = 60, KEY_EXTRA = 8, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 4.5 s 與只有走路的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
+// 放置回合（與最後一輪）的非關鍵劇本 ≤ 3.5 s（R41）
+const MIN = 4, MAX = 60, KEY_EXTRA = 8, WARN_OVER = 0.3;   // WARN_OVER：劇本超過上限多於這麼多秒才印 ⚠（審稿：live 的抖動在這以內）   // 非關鍵劇本 SCRIPT_MAX 3.5 s（R41）與燈泡 Lv2 環掃的例外 SCRIPT_EXCEPT 跟各物品測試共用（test/helpers/show.js）
 // 終局回合（選擇帶動升級 §6）：真結局（警告＋隕石＋尾聲）≤ 22 s、壞結局（警告＋隕石，有收尾的再加收尾）≤ 16 s（計畫 17 任務 3：從 12 放寬；EXAMPLE.hit／deflect 都是捷運淹水局）；
 // FINAL_BEFORE：計畫 5 的最終章（倒數三回合＋終局，外星／賽博），對照用
 const FINALE_MAX = 22, BAD_FINALE_MAX = 16, FINAL_BEFORE = { alien: 70.9, cyber: 67.0 };

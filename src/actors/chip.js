@@ -230,11 +230,12 @@ export const script = {
   grow: {
     // 廠房（裁決 R23）：工人走到工地的鏡頭側揮鐵鎚 → 廠房長出來、名冊把工人原地換成外套工程師（閃一下）→ 上班去、LEVEL UP
     // R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s；賽博正解量到 4.4 s，工人離工地遠）：走過去加快（2.4，同小學生跑）、
-    //   鐵鎚 1.2 → 0.9、拿掉補下限的 wait 0.2（下限 3 → 2.5 s）
+    //   鐵鎚 1.2 → 0.9、拿掉補下限的 wait 0.2（下限 3 → 2.5 s）。最終審稿：工人就在工地旁時（正解第 5 回合）整級 2.4 s < 2.5——
+    //   走過去那拍至少 0.6 s（之後鐵鎚、閃白、LEVEL UP 共 2.05 s）
     2(e, s, ctx) {
       const { B } = ctx, w = worker();
       return [
-        B.walk(w, c => frontOf(AT, FRONT_R, c.nav), { speed: 2.4 }), B.gesture(w, 'build', 0.9, { at: AT }),
+        B.together([B.walk(w, c => frontOf(AT, FRONT_R, c.nav), { speed: 2.4 }), B.wait(0.6)]), B.gesture(w, 'build', 0.9, { at: AT }),
         B.apply(e), B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },

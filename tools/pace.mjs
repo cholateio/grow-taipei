@@ -16,7 +16,7 @@
 import * as spec from '../src/rules/spec.js';
 import { createState, place, advance } from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
-import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX } from '../test/helpers/show.js';
+import { headlessShow, SCRIPT_MAX, SCRIPT_EXCEPT, KEY_MAX, SCRIPT_MIN, KEY_MIN } from '../test/helpers/show.js';
 import { EXAMPLE, finaleStep } from '../test/helpers/endings.js';
 import { ENDINGS } from '../src/rules/endings.js';
 
@@ -64,13 +64,21 @@ async function playOrder(order, head0, finaleMax) {
     if (secs < floor || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < floor ? `< ${floor}` : `> ${cap}，◆ ${keys} 個`}）`);
     // 每個非關鍵劇本 ≤ SCRIPT_MAX、◆ ≤ KEY_MAX——live 秒數看日常裡的人在哪，會差半秒上下，只印警告（⚠，不算失敗）；
     // 劇本本身的上限由各物品測試單獨量（test/*.test.js 的 SCRIPT_MAX／KEY_MAX）。回合秒數超過上限才算失敗
+    // R41 最終審稿：下限也在真的回合裡量（各物品測試只單獨演 playItem，日常裡的人、列車在哪會讓劇本變短）——放下／升級的非關鍵劇本 < SCRIPT_MIN、
+    //   ◆ live < KEY_MIN，同樣差 WARN_OVER 以上才印 ⚠。跳級的第一級（mark 的 info.skipped，只有 mark）不量。
+    //   下限的例外（R41 之前就這麼短，不是這一輪的回歸，最終審稿點名留著）：◆ 晶片 8（矽盾測試 4.1 s）、◆ 颱風 3（放晴 4.1 s）、
+    //   放下老鼠接著咬鮮奶的那一回合（放下劇本只演爬上岸、跑到牛奶箱 1.7 s，聞、！ 在咬的 fx 裡）
+    const bites = r.events.some(x => x.kind === 'fx' && x.cause === 'rat' && x.delta?.target === 'milk');
+    const floorExempt = (e, key) => (key && ['chip 8', 'typhoon 3'].includes(`${e.item} ${e.to}`)) || (e.kind === 'placed' && e.item === 'rat' && bites);
     marks.forEach(([e, , , info], j) => {
       const script = span(j)[1];
       const cap = SCRIPT_EXCEPT[`${e.item} ${e.kind === 'placed' ? 1 : e.to}`] ?? SCRIPT_MAX;
       if (!info?.key && e.kind !== 'settle' && script > cap + WARN_OVER) warnings.push(`${head0} ${what} ${label(e)} 劇本 ${s1(script)} s（> ${cap}）`);
+      if (!info?.key && !info?.skipped && (e.kind === 'placed' || e.kind === 'grow') && !floorExempt(e, false) && script < SCRIPT_MIN - WARN_OVER) warnings.push(`${head0} ${what} ${label(e)} 劇本 ${s1(script)} s（< ${SCRIPT_MIN}）`);
       // ◆ 關鍵事件 live ≤ KEY_MAX（裁決 R17）：事件秒數（含鏡頭平移）扣掉物品之間的空拍
       const live = span(j)[0] - (info?.gap ?? 0);
       if (info?.key && live > KEY_MAX + WARN_OVER) warnings.push(`${head0} ${what} ◆${label(e)} ${s1(live)} s（> ${KEY_MAX}）`);
+      if (info?.key && !floorExempt(e, true) && live < KEY_MIN - WARN_OVER) warnings.push(`${head0} ${what} ◆${label(e)} ${s1(live)} s（< ${KEY_MIN}）`);
     });
     if (verbose) {
       // 每個事件的秒數 = 下一個 mark（最後一個用回合結束）減自己的 mark

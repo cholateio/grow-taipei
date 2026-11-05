@@ -184,6 +184,8 @@ export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 �
 // R41（使用者 2026-11-05：後期動畫偏長）：◆ Lv4 快步——賽博排隊走去 101（ARMY）、外星走到溫泉邊（MARCH；一般走路 1.6；
 //   賽博 3.2 時正解整段掉到 4.5 s 的軟下限以下）、聞一聞（預設 1.5）。走路最快 DASH（修正輪 1：不像抽搐）
 const ARMY = 2.8, MARCH = 3.2, SNIFF = 1.0, NIBBLE_RUN = 1.4;
+// ◆ Lv4 外星：走到溫泉邊那拍至少幾秒（R41 最終審稿：老鼠跑遠那局搭車來、跳下車就在溫泉旁，整段 4.1 s < ◆ 軟下限 4.5；搭車、從窩來兩條都用）
+const MUTANT_MIN = 3.0;
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
 // （裁決 R15 一級 ≤ 4.5 s：落地 0.2 → 0.05；R17：最多趕 1.3 → 1.0 秒）
 const TRAIN_IN = 1.0, TRAIN_BACK = Math.PI, HOLD = JUMP + 0.05;
@@ -403,8 +405,8 @@ export const script = {
       // 搭車來的：其餘的老鼠還坐在車頂上跟車走（日常是搭車），分岔旗標一套就不再是搭車的家——跳下車就閃白變身（車頂上的閃白拿掉），
       //   變異鼠再走到溫泉邊、UFO 同時降下
       const open = riding(s)
-        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT, { speed: MARCH }), down])]
-        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT, { speed: MARCH }), down]), mutate];   // R41：快步走到溫泉邊（MARCH）
+        ? [B.together([B.focus(SPRING), ...hopOff(B, s, [0], SPRING_A, SPRING_SHORE, 0.1)]), hold, mutate, ufo, B.together([B.walk(r0, MUTANT, { speed: MARCH }), down, B.wait(MUTANT_MIN)])]
+        : [B.together([claim(RATS), hold, ufo, B.focus(SPRING), B.walk(r0, MUTANT, { speed: MARCH }), down, B.wait(MUTANT_MIN)]), mutate];   // R41：快步走到溫泉邊（MARCH）
       return [
         ...open, B.home(r0),
         // 綠光圈先閃、剩下的零件（窩收掉、石堆島的老鼠）接著閃完，LEVEL UP 之後不再閃

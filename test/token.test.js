@@ -841,3 +841,11 @@ test('ring sweep: Lv5 / Lv6 (train swap) and ◆ Lv7 (spur run) stay within thei
   for (const to of [5, 6]) for (const r of await ringSweep(SOLUTIONS[0], g(to))) assert.ok(r.secs >= 2.5 && r.secs <= SCRIPT_MAX + 0.3, `Lv${to} train at ${r.a.toFixed(2)} rad: ${r.secs.toFixed(2)} s`);
   for (const r of await ringSweep(SOLUTIONS[0], g(7))) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `◆ Lv7 train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
 });
+
+// R41 最終審稿：真的回合裡下限也要守（playItem 單獨演量不到）——正解第 3 回合代幣 Lv2：島民剛走到月台就換站長，走路很短，
+//   pace 量到 2.2 s。整局 live（pace 的量法），Lv2 劇本 ≥ 2.5 s
+test('Lv2 in the real turn (the islander is already at the platform): script ≥ 2.5 s', async () => {
+  const { playLive } = await import('./helpers/show.js');
+  const ev = (await playLive(SOLUTIONS[0])).find(x => x.e.kind === 'grow' && x.e.item === 'token' && x.e.to === 2);
+  assert.ok(ev && ev.script >= 2.5 && ev.script <= SCRIPT_MAX, `turn ${ev?.turn}: Lv2 ${ev?.script.toFixed(2)} s`);
+});

@@ -196,8 +196,8 @@ const KEY = [3, 8];
 function checkBall({ show, bubblesLog, eventHead }, e, secs, n, timing) {
   const to = e.kind === 'grow' ? e.to : 1, what = `${e.kind} ${to}`;
   (timing[to] ??= []).push(+secs.toFixed(1));
-  // 唯一正解：棒球 6（跨年煙火）在第 6 回合、珍奶第 7 回合才放——沒有珍奶觀光客來看，只剩煙火與 ♪（≥ 2 s）；有觀光客的那段由下面的 Lv6 測試驗
-  const lo = to === 6 && !show.roster.members('boba.queue').length ? 2 : 2.5;
+  // 唯一正解：棒球 6（跨年煙火）在第 6 回合、珍奶第 7 回合才放——沒有珍奶觀光客來看，只剩煙火與 ♪；有觀光客的那段由下面的 Lv6 測試驗
+  const lo = 2.5;   // R41 最終審稿：沒有珍奶觀光客的那一段也守一級下限 2.5 s（以前 2 s）
   assert.ok(secs >= lo && secs <= (KEY.includes(to) ? KEY_MAX : SCRIPT_EXCEPT[`baseball ${to}`] ?? SCRIPT_MAX), `${what} took ${secs.toFixed(2)} s`);
   if (KEY.includes(to)) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)} s`);
   if (e.kind === 'grow') {
@@ -527,4 +527,12 @@ test('view: the domeFlood epilogue adds baseball.fish (an orange elongated spher
 // R41 修正輪 1：列車在環上的位置是隨機的——繞環 8 個位置各演一次 ◆ Lv8（審稿重播 12 個位置最壞 6.43 s）：整段 4.5 s ≤ 秒數 ≤ KEY_MAX + 0.3
 test('ring sweep: ◆ Lv8 (train to the dome station) stays within 4.5 s – KEY_MAX + 0.3 wherever the train is on the ring', async () => {
   for (const r of await ringSweep(SOLUTIONS[0], e => e.kind === 'grow' && e.item === 'baseball' && e.to === 8)) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
+});
+
+// R41 最終審稿：珍奶攤被吹走那局（EXAMPLE.cartBlown）第 8 回合棒球 Lv6：攤車被吹走、沒有觀光客走來，只剩煙火、♪、LEVEL UP，
+//   pace 量到 1.9 s。整局 live，Lv6 劇本 ≥ 2.5 s
+test('Lv6 in the real turn with no boba tourists (EXAMPLE.cartBlown): script ≥ 2.5 s', async () => {
+  const { playLive } = await import('./helpers/show.js'), { EXAMPLE } = await import('./helpers/endings.js');
+  const ev = (await playLive(EXAMPLE.cartBlown)).find(x => x.e.kind === 'grow' && x.e.item === 'baseball' && x.e.to === 6);
+  assert.ok(ev && ev.script >= 2.5 && ev.script <= SCRIPT_MAX, `turn ${ev?.turn}: Lv6 ${ev?.script.toFixed(2)} s`);
 });

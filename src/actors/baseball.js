@@ -257,6 +257,7 @@ const BASE_AT = BASES.map(([x, z]) => offset(AT, x, z));
 const RUN_SPEED = 1.4;   // 島民沿壘包走一圈（0.7 時約 4 s；R41，使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s、例外拿掉 → 1.4，約 2 s）
 const TOURIST_SPEED = 3.2;   // 跨年：珍奶的觀光客快步過來看煙火（一般走路 1.6；同燈泡點燈的快走 2.8，一級 3–5 秒；R41 2.8 → 3.2）
 export const HURRY = 2.4;   // R41（使用者 2026-11-05：後期動畫偏長）：進場、走去蓋巨蛋、觀眾從橋頭走來、下車的觀眾，都快步走（一般 1.6）
+const FIREWORKS_MIN = 1.6;   // Lv6：煙火之前那拍至少幾秒（R41 最終審稿；之後煙火、♪、LEVEL UP 同一拍 1.0 s，整級 ≥ 2.6）
 const once = fn => { let m = null; return c => (m ??= fn(c) ?? null); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const nearestIslander = (c, p) => c.roster.members('landmarks.islanders').filter(m => !m.hidden && cellAt(m.pos.x, m.pos.z)).sort((a, b) => dist(a.pos, p) - dist(b.pos, p))[0] ?? null;
@@ -336,7 +337,8 @@ export const script = {
       const tourist = i => c => tourists(c)[i] ?? null, slot = i => c => c.nav.slots(GATE, n, 1.2)[i];
       const everyone = c => [...shown('baseball.players')(c), ...fansAll(c), ...tourists(c)];
       return [
-        B.together([B.focus('baseball'), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]),
+        // 最終審稿：沒有觀光客可叫（攤車被吹走、還沒有人龍）時這一拍只剩鏡頭平移，整級 1.9 s——至少 FIREWORKS_MIN 秒（看著巨蛋等煙火）
+        B.together([B.focus('baseball'), B.wait(FIREWORKS_MIN), ...Array.from({ length: n }, (_, i) => B.walk(tourist(i), slot(i), { speed: TOURIST_SPEED }))]),
         // 煙火閃白的同時大家 ♪（裁決 R15 一級 ≤ 4.5 s）；R41（一級 ≤ 3.5 s）：LEVEL UP 也在同一拍彈（字在煙火上方、♪ 在人頭上）
         B.together([B.apply(e), ...Array.from({ length: 2 + ALL_FANS + n }, (_, i) => B.bubble(c => everyone(c)[i] ?? null, '♪', 0.6)), B.levelUp('baseball')]),
         B.home(tourists),

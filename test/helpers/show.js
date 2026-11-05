@@ -23,6 +23,8 @@ export const SCRIPT_MAX = 3.5, SCRIPT_EXCEPT = { 'bulb 2': 4.5 };
 // 裁決 R17：◆ 關鍵劇本 live 6–8 s（原 6–10，裁決 R8）；R41（使用者 2026-11-05：後期動畫偏長）4.5–6 s——
 //   單獨演的整段（含鏡頭平移、回全景，show.elapsed）≤ KEY_MAX
 export const KEY_MAX = 6;
+// R41 下限（各物品測試的 secs ≥ 2.5、◆ show.elapsed ≥ 4.5；tools/pace.mjs 在真的回合裡也量，低於下限印 ⚠）
+export const SCRIPT_MIN = 2.5, KEY_MIN = 4.5;
 
 // seed：名冊與走路格的亂數種子，同一個種子每次演出的秒數一模一樣
 // rig：換成真的鏡頭 rig（測試鏡頭最後停在哪）；run 每幀也推它

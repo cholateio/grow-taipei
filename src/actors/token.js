@@ -406,6 +406,7 @@ const STATION_A = Math.atan2(AT.z, AT.x);
 //   SWAP_IN 0.6、9 倍 → 到站 0.9–1.85 秒，整級 2.6–3.55 秒；列車剛好就在站前時 2.3 s（低於一級下限 2.5）：這一拍至少 SWAP_MIN 秒
 //   （test/token.test.js 繞環 8 個位置量）
 const SWAP_IN = 0.6, SWAP_BOOST = 9, SWAP_STOP = 1.2, SWAP_MIN = 2.6;
+const POST_MIN = 0.9;   // Lv2：島民走到崗位那拍至少幾秒（R41 最終審稿，見 Lv2 劇本；之後 ♪ 0.6、LEVEL UP 1.0，整級 ≥ 2.65）
 function trainSwap(e, ctx, move) {
   const { B } = ctx, st = staffOf();
   return [
@@ -437,10 +438,11 @@ export const script = {
   grow: {
     // 小站（裁決 R23）：離車站最近的島民（Lv1 等車的那位）走到崗位 → 售票亭長出來、名冊把他原地換成站長（制服、閃一下）→ ♪ → LEVEL UP
     //   （沒有島民可換時——只演代幣的測試——名冊從站後面的入口補一個站長，♪ 照樣冒在他頭上）
-    //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s，例外 'token 2' 拿掉；單獨演 4.5–5.1 s）：快步走到崗位（2.8）、♪ 0.8 → 0.6
+    //   R41（使用者 2026-11-05：後期動畫偏長，一級 ≤ 3.5 s，例外 'token 2' 拿掉；單獨演 4.5–5.1 s）：快步走到崗位（2.8）、♪ 0.8 → 0.6。
+    //   最終審稿：正解第 3 回合島民剛在月台前等車（放下那段），走到崗位很短，整級 2.2 s < 下限 2.5——走過去那拍至少 POST_MIN 秒
     2(e, s, ctx) {
       const { B } = ctx, islander = once(c => c.roster.nearest('landmarks.islanders', AT)), st = staffOf();
-      return [B.walk(islander, POST, { speed: 2.8 }), B.apply(e), B.bubble(st, '♪', 0.6), B.levelUp('token'), B.home(st)];
+      return [B.together([B.walk(islander, POST, { speed: 2.8 }), B.wait(POST_MIN)]), B.apply(e), B.bubble(st, '♪', 0.6), B.levelUp('token'), B.home(st)];
     },
     // 大車站：站務員走到站前揮鐵鎚 → 閃白站體與廣場 → ♥ → LEVEL UP
     3(e, s, ctx) {
@@ -467,13 +469,15 @@ export const script = {
     6: (e, s, ctx) => trainSwap(e, ctx, 'jump'),
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
-    //   支線 0.8 秒長完（每秒約 3.7 公尺），比支線車速 SPUR_RUSH 3.5 快一點，列車追不上還沒長好的那一段
+    //   風車島的支線（約 2.96 公尺）0.6 秒長完、每秒約 4.9 公尺；列車在支線上照 smoothstep 緩起緩停（SPUR_RUSH 4.2 → 開出去 0.70 秒，
+    //   最快每秒 6.3 公尺），就算列車一到入口就開進去（arrive 0），車頭在第 u 秒的位置 2.96 × ease(u / 0.70) 也一直 ≤ 長好的 2.96 × u / 0.6
+    //   （3x − 2x² 最大 1.125 ≤ 0.70 / 0.6 = 1.17）——列車追不上還沒長好的那一段（R41 最終審稿：SPUR_RUSH 3.5 → 4.2 之後 0.8 秒長就追得上，改 0.6）
     // 兩條都長（R39，使用者 2026-11-05：支線只跟代幣走，燈泡 Lv7 不再先鋪風車島那條，一律開去風車島）：風車島那條跟著鏡頭先長；
     //   遊樂場島在風車島的對面、拉近時在畫面外，等鏡頭回到全景（遊樂場島在全景裡）才長出來——
     //   排在列車島那頭停站的 during 裡，回全景 1.0 + 長 0.8 不比列車倒回環上久，整級不變長
     7(e, s, ctx) {
       const { B } = ctx, now = ['token.spur.windmill'], later = ['token.spur.playground'];
-      const grow = k => B.scaleIn(k, { axis: 'z', dur: 0.8 });
+      const grow = (k, dur = 0.8) => B.scaleIn(k, { axis: 'z', dur });
       return [
         B.focus(WINDMILL, { zoom: ISLAND_ZOOM }),
         B.apply(e, { only: now, blink: false }),
@@ -485,8 +489,8 @@ export const script = {
         //   跟遊樂場島支線長出來同一拍（全景裡兩個都看得到），不再等列車開回環上才彈。
         //   修正輪 1：趕到支線口 1.4 → 1.0 s（倒車要 arrive + 1.25 s）；列車剛好在支線口附近時整段只有 4.2 s，低於 ◆ 軟下限 4.5——
         //   這一拍至少 LV7_MIN 秒（多的在全景上停著）
-        B.together([...now.map(grow), B.wait(LV7_MIN), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 1.0, boost: RUSH_BOOST, back: RUSH_BACK, spurSpeed: SPUR_RUSH, during: [
-          B.focus('home', { hold: 1.0 }), ...later.map(k => B.apply(e, { only: [k], blink: false })), B.together([...later.map(grow), B.levelUp('token')]),
+        B.together([...now.map(k => grow(k, 0.6)), B.wait(LV7_MIN), B.trainStop({ spur: 'windmill', stop: 0.2, arrive: 1.0, boost: RUSH_BOOST, back: RUSH_BACK, spurSpeed: SPUR_RUSH, during: [
+          B.focus('home', { hold: 1.0 }), ...later.map(k => B.apply(e, { only: [k], blink: false })), B.together([...later.map(k => grow(k)), B.levelUp('token')]),
         ] })]),
         B.apply(e),
       ];

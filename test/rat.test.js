@@ -856,3 +856,11 @@ test('rat bites the fresh boba from a far trouble door (EXAMPLE.deflect turn 6) 
   assert.ok(secs !== null, 'the deflect game bites the boba');
   assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `the bite ${secs.toFixed(2)} s`);
 });
+
+// R41 最終審稿：◆ 下限也在真的回合裡守——老鼠跑遠那局（tools/pace.mjs 的 FAR_TROUBLE）最後一輪外星 Lv4：變異鼠就在溫泉旁，走路很短，
+//   pace 量到整段 4.1 s（◆ 軟下限 4.5）。整局 live，◆ Lv4 live（扣掉空拍）≥ 4.5 s、≤ KEY_MAX
+test('◆ Lv4 alien in the real turn (the mutant starts by the spring, FAR_TROUBLE order): live ≥ 4.5 s', async () => {
+  const { playLive } = await import('./helpers/show.js');
+  const ev = (await playLive(['typhoon', 'milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'rat'])).find(x => x.e.kind === 'grow' && x.e.item === 'rat' && x.e.to === 4);
+  assert.ok(ev && ev.key && ev.live >= 4.5 && ev.live <= KEY_MAX, `turn ${ev?.turn}: ◆ Lv4 ${ev?.live.toFixed(2)} s`);
+});

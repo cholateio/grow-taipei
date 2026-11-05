@@ -464,3 +464,10 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
 test('ring sweep: ◆ Lv7 (the antenna by train) stays within 4.5 s – KEY_MAX + 0.3 wherever the train is on the ring', async () => {
   for (const r of await ringSweep(SOLUTIONS[0], e => e.kind === 'grow' && e.item === 'chip' && e.to === 7)) assert.ok(r.whole >= 4.5 && r.whole <= KEY_MAX + 0.3, `train at ${r.a.toFixed(2)} rad: whole ${r.whole.toFixed(2)} s`);
 });
+
+// R41 最終審稿：真的回合裡下限也要守——正解第 5 回合晶片 Lv2：工人就在工地旁，走路很短，pace 量到 2.4 s。整局 live，Lv2 劇本 ≥ 2.5 s
+test('Lv2 in the real turn (the worker is already by the site): script ≥ 2.5 s', async () => {
+  const { playLive } = await import('./helpers/show.js');
+  const ev = (await playLive(SOLUTIONS[0])).find(x => x.e.kind === 'grow' && x.e.item === 'chip' && x.e.to === 2);
+  assert.ok(ev && ev.script >= 2.5 && ev.script <= SCRIPT_MAX, `turn ${ev?.turn}: Lv2 ${ev?.script.toFixed(2)} s`);
+});

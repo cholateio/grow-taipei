@@ -58,7 +58,10 @@ async function playOrder(order, head0, finaleMax) {
     // 放置回合與最後一輪同一套門檻（選擇帶動升級 §6：最後一輪就是一般回合）
     const keys = marks.filter(m => m[3]?.key).length, cap = MAX + KEY_EXTRA * Math.max(0, keys - 1);
     cells.push(`${head} ${s1(secs)}/${cap} s ◆ ${keys}`);
-    if (secs < MIN || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < MIN ? `< ${MIN}` : `> ${cap}，◆ ${keys} 個`}）`);
+    // R38（使用者 2026-11-05）：咬住的鮮奶停著，有的壞結局局第 8 個放完就沒東西可長——最後一輪可以是 0 s 的空回合（合法），
+    //   所以下限 MIN 只管放置回合；最後一輪的下限是 0，上限 cap 照舊
+    const floor = kind === 'place' ? MIN : 0;
+    if (secs < floor || secs > cap) failures.push(`${head0} ${what} ${s1(secs)} s（${secs < floor ? `< ${floor}` : `> ${cap}，◆ ${keys} 個`}）`);
     // 每個非關鍵劇本 ≤ SCRIPT_MAX、◆ ≤ KEY_MAX——live 秒數看日常裡的人在哪，會差半秒上下，只印警告（⚠，不算失敗）；
     // 劇本本身的上限由各物品測試單獨量（test/*.test.js 的 SCRIPT_MAX／KEY_MAX）。回合秒數超過上限才算失敗
     marks.forEach(([e, , , info], j) => {

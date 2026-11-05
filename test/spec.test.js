@@ -82,6 +82,7 @@ test('rat Lv4 branches on chip >= 8; the bite is the only placement reaction (mi
   assert.equal(ITEMS.rat.fx.length, 1, 'only the bite');
   assert.deepEqual(ITEMS.rat.fx[0].when, { and: [pres('milk'), maxL('milk', 2)] });
   assert.deepEqual(ITEMS.rat.fx[0].delta, { target: 'milk', by: -1 });
+  assert.equal(ITEMS.rat.fx[0].bite, true, 'the knock also bites: milk held until the rat boards the metro (R38)');
   assert.ok(!ITEMS.rat.onLevel[2], 'no more bite at rat Lv2');
 });
 test('every item has a placed story and a story per level', () => {

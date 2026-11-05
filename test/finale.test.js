@@ -1184,9 +1184,10 @@ test('milkExpired live from EXAMPLE.milkExpired: the expired crate blinks in at 
   assert.ok(crate.slice(1, brink).some(p => p.y > milkMod.CRATE.y + 0.01), 'with a waddle bob');
   assert.ok(crate.slice(brink).every((p, i, a) => !i || p.y <= a[i - 1].y + 1e-9), 'then only falls');
   assert.ok(firstSplash && firstSplash.y < milkMod.CRATE.y - 0.5, 'the splash when it reaches the water');
+  // R38（使用者 2026-11-05）：鮮奶過期現在一定是被老鼠咬住的鮮奶 1（箱子，還沒有學校）——沒有學生，所以沒人 ……（學生在才兩個都 ……）
   const kids = show.roster.members('milk.kids');
-  assert.equal(kids.length, 2);
-  assert.equal(bubblesLog.slice(b0).filter(b => b.kind === '……').length, 2, 'both kids ……');
+  assert.equal(kids.length, show.stage.lv.milk >= 3 ? 2 : 0);
+  assert.equal(bubblesLog.slice(b0).filter(b => b.kind === '……').length, kids.length, 'every kid ……');
   milkEnd(show, 'live');
 });
 test('skip mid-epilogue (domeFlood, cartBlown, milkExpired): the final state at once — fish landed, boat + owner + drifted cart, crate in the sea with the splash; nobody in script mode, nobody lying', async () => {

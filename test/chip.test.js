@@ -280,9 +280,10 @@ test('live, the solution: after chip 2 the one engineer is the former worker (sa
 // 唯一正解晶片 Lv3 時老鼠還沒放：另找一局老鼠先生窩、晶片才長到 3
 test('grow 3 with rats ≥2: one engineer turns detective (glass) and says ！', async () => {
   const h = await headlessShow(), { show, bubblesLog } = h;
-  // 唯一正解（2026-10-31）：晶片 3 要燈泡 ≥3（燈泡 3 要代幣在場）——鮮奶、晶片、老鼠、燈泡、代幣：第 3 回合老鼠生窩（鮮奶 ≥2），
+  // R38（使用者 2026-11-05）：老鼠先放咬住鮮奶 2、老鼠 Lv2 要鮮奶 ≥2 就卡住——改鮮奶、晶片、棒球（鮮奶 3 不被咬）、代幣、老鼠（Lv2）、燈泡——最後一步燈泡 3、晶片 3 時老鼠已經 2。
+  // 舊（2026-10-31）：晶片 3 要燈泡 ≥3（燈泡 3 要代幣在場）——鮮奶、晶片、老鼠、燈泡、代幣：第 3 回合老鼠生窩（鮮奶 ≥2），
   // 第 5 回合代幣放下、燈泡 3、晶片 3（一級一級長，不是跳級）時老鼠還在窩裡（老鼠 3 要代幣 ≥4）
-  const { n } = await liveAt(h, ['milk', 'chip', 'rat', 'bulb', 'token'], isChip(3));
+  const { n } = await liveAt(h, ['milk', 'chip', 'baseball', 'token', 'rat', 'bulb'], isChip(3));
   assert.ok(show.stage.lv.rat >= 2);
   const [d] = show.roster.members('chip.detective'); assert.equal(d?.walker.accessory, 'glass');
   assert.equal(show.roster.members('chip.engineers').length, 1);   // 2 個穿外套的，一個變偵防師（裁決 R23）

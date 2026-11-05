@@ -756,7 +756,8 @@ test('live: rats loitering at the lamp door (trouble = bulb) never step onto a b
   const { cellAt } = await import('../src/scene/hex.js');
   const { show, run } = await headlessShow({ seed: 21 });
   let s = engine.createState(spec);
-  for (const id of ['milk', 'bulb', 'rat', 'chip']) { const r = engine.place(s, id, spec); s = r.state; await run([...r.events, { kind: 'settle' }]); }
+  // R38（使用者 2026-11-05）：老鼠在鮮奶 2 時放下會咬住鮮奶、鮮奶成了出問題的那棟——改先蓋棒球（鮮奶 3 不被咬），老鼠 Lv2 守在路燈門口
+  for (const id of ['milk', 'bulb', 'baseball', 'rat']) { const r = engine.place(s, id, spec); s = r.state; await run([...r.events, { kind: 'settle' }]); }
   assert.equal(show.stage.meta.trouble, 'bulb');
   const rats = show.roster.members('rat.pack'); assert.equal(rats.length, 2);
   let t = show.elapsed; const dt = 1 / 30, bridge = new Map(), still = new Map();

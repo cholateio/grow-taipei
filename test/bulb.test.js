@@ -376,8 +376,8 @@ test('Lv4: the two pupils (milk.kids) stand at the queue slots when the second s
   assert.ok(h.secs >= 3 && h.secs <= SCRIPT_MAX, `${h.secs.toFixed(2)} s`);
 });
 test('Lv4 in the real turn (bad endings: milk 3, bulb 4, token 3 in one turn): the pupils queue and are back at school by the end of the turn, no token.* member leaves its cell', async () => {
-  const { EXAMPLE } = await import('./helpers/endings.js');
-  for (const order of [EXAMPLE.deflect, EXAMPLE.hit]) {
+  // R38（使用者 2026-11-05）：老鼠早放會咬住鮮奶，EXAMPLE 兩局的鮮奶到不了 3——改用老鼠最後放的壞結局局（flood／hit、flood／deflect）
+  for (const order of [['milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'typhoon', 'rat'], ['milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'rat', 'typhoon']]) {
     const h = await headlessShow(), w = lv4Watch(), update = h.show.update;
     let s = engine.createState(spec), found = false;
     for (const step of turnSteps(order)) {
@@ -822,11 +822,12 @@ test('visitSpot(n, s) for every level 1..max: on the main island cell of the ite
 //   這裡改用合成狀態直接演劇本、不經引擎。
 // 唯一正解（2026-10-31）：淹水鎖代幣 ≤3，列舉 4 萬局裡淹水時燈泡最多 4 級（燈泡 5 要棒球 4／代幣 4，淹水局到不了）——
 //   引擎走不到「淹水＋燈泡 6」，舊前提（EXAMPLE.hit 前 7 回合到燈泡 6、代幣 4）過時。改成：EXAMPLE.hit 8 回合瞬間演完
+//   R38（使用者 2026-11-05）：EXAMPLE.hit 的老鼠早放咬住鮮奶、燈泡只到 3——改老鼠最後放的同型一局（milk,chip,bulb,token,typhoon,boba,baseball,rat：淹水、燈泡 4、代幣 2）
 //   （淹水、燈泡 4、代幣 2、沒有環狀線），再瞬間演合成的燈泡 4 → 5 → 6，之後 live 演一個合成的燈泡 6 → 7
 async function floodedAtBulb6(h) {
   const { turnSteps } = await import('./helpers/show.js'), { EXAMPLE } = await import('./helpers/endings.js');
   let s = engine.createState(spec);
-  for (const step of turnSteps(EXAMPLE.hit).slice(0, 8)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
+  for (const step of turnSteps(['milk', 'chip', 'bulb', 'token', 'typhoon', 'boba', 'baseball', 'rat']).slice(0, 8)) { const r = step(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   assert.ok(s.flags.flooded && s.lv.bulb === 4 && s.lv.token === 2, `precondition: flooded, bulb 4, token 2 (${JSON.stringify(s.lv)})`);
   await h.run([bulbGrow(4, 5), bulbGrow(5, 6), { kind: 'settle' }], { instant: true });
   s = { ...s, lv: { ...s.lv, bulb: 6 } };

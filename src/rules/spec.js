@@ -97,8 +97,10 @@ export const ITEMS = {
     // 修正輪 1：故事句放在這裡（引擎不寫死文字）；放下那一刻老鼠照當下狀態這回合就會搭上捷運的不咬（engine leavesNow）
     bite: { while: and(min('rat', 1), max('rat', 2)), targets: ['milk', 'boba'], story: { milk: '老鼠咬了剛開的鮮奶', boba: '老鼠咬了剛開的珍奶' } },
     // 放下時鮮奶還是牛奶箱／早餐店（≤2）就咬一口；鮮奶蓋了學校就沒得咬
+    // bite: true——咬過的鮮奶停在被咬的級數，直到老鼠搭上捷運（沿用 bite.while / heldBy）。
+    // 使用者 2026-11-05「牛奶被老鼠喝過後下回合會自己恢復不合理」
     fx: [
-      { when: and(present('milk'), max('milk', 2)), delta: { target: 'milk', by: -1 }, story: '老鼠咬破鮮奶箱' },
+      { when: and(present('milk'), max('milk', 2)), delta: { target: 'milk', by: -1 }, bite: true, story: '老鼠咬破鮮奶箱' },
     ],
     onLevel: {
       4: [

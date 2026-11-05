@@ -388,15 +388,18 @@ test('an item knocked by a negative delta does not grow back that turn (the rat 
   assert.equal(r.state.lv.milk, 1, 'stays at 1 this turn');
   assert.ok(!r.events.some(e => e.kind === 'grow' && e.item === 'milk'), 'no LEVEL UP after the LEVEL DOWN');
   assert.ok(!r.events.some(e => e.kind === 'wait' && e.waits.some(w => w.item === 'milk')), 'not listed as waiting either');
+  // R38（使用者 2026-11-05）：咬過的鮮奶停著，等老鼠搭上捷運（Lv3）才長；老鼠 Lv3 後下一回合長回 2
   const next = place(r.state, 'baseball', real);
-  assert.ok(next.events.some(e => e.kind === 'grow' && e.item === 'milk' && e.from === 1 && e.to === 2), 'grows the next turn');
+  assert.ok(!next.events.some(e => e.kind === 'grow' && e.item === 'milk'), 'bitten: held, does not grow next turn');
+  const freed = advance({ ...r.state, lv: { ...r.state.lv, rat: 3 } }, real);
+  assert.ok(freed.events.some(e => e.kind === 'grow' && e.item === 'milk' && e.from === 1 && e.to === 2), 'grows once the rat is on the metro');
 });
 test('rat placed while milk ≤ 2 bites milk −1; placed later it does not', () => {
   const s = place(createState(real), 'milk', real).state;    // 鮮奶放下當回合就到 2（早餐店）；沒有棒球就蓋不了小學
   const r = place(s, 'rat', real);
   const bite = r.events.find(e => e.kind === 'fx' && e.delta?.target === 'milk');
   assert.deepEqual(bite.delta, { target: 'milk', from: 2, to: 1 }); assert.equal(r.state.lv.milk, 1, 'bitten to 1 and stays there this turn (修正批次 2)');
-  assert.equal(advance(r.state, real).state.lv.milk, 2, 'grows back the next turn');
+  assert.equal(advance(r.state, real).state.lv.milk, 1, 'R38 (使用者 2026-11-05): bitten milk is held, no regrow next turn');
   assert.equal(r.state.lv.rat, 1, 'the rat Lv2 needs milk ≥ 2: the bitten milk stays 1 this turn, so the rat waits');
   let t = place(createState(real), 'milk', real).state; t = place(t, 'baseball', real).state;   // 鮮奶 3（小學，沙地球場當操場）
   const late = place(t, 'rat', real);
@@ -665,14 +668,14 @@ test('R30 rat: a bitten item scanned before the rat still grows in the turn the 
   assert.deepEqual(free.events.filter(e => e.kind === 'grow').map(e => `${e.item}${e.to}`), ['r3', 'm2'], 'm is skipped in the first pass, grows in the second');
   assert.equal(free.state.flags.bitten_m, 'r', 'the flag stays for the show (value: who bit it)');
 });
-test('R30 rat: placed after the rat reached Lv3 nothing is bitten; the old rat-placement bite (milk ≤ 2 → −1) is unchanged and sets no bitten flag', () => {
+test('R30 rat: placed after the rat reached Lv3 nothing is bitten; the rat-placement bite (milk ≤ 2 → −1) now also sets bitten_milk (R38)', () => {
   const { r, s } = turnEvents(['milk', 'baseball', 'token', 'rat', 'chip', 'boba']);
   assert.ok(s.lv.rat >= 3);
   assert.ok(!r.events.some(e => e.cause === 'rat' && e.flag?.name?.startsWith('bitten_')), 'no bite (the rat Lv4 branch is also a rat fx)'); assert.ok(!s.flags.bitten_boba);
   assert.equal(s.lv.boba, 2, 'grows as usual');
   const old = turnEvents(['milk', 'rat']);
   assert.deepEqual(old.r.events.find(e => e.cause === 'rat').delta, { target: 'milk', from: 2, to: 1 });
-  assert.ok(!old.s.flags.bitten_milk, 'the milk was there first: no blocking bite');
+  assert.equal(old.s.flags.bitten_milk, 'rat', 'R38 (使用者 2026-11-05): the knocked milk is bitten, held until the rat is Lv3');
   for (const item of ['chip', 'bulb', 'token', 'baseball']) {
     const t = turnEvents(['milk', 'rat', item]);
     assert.ok(!t.r.events.some(e => e.cause === 'rat'), `${item} is not bitten`);
@@ -741,4 +744,16 @@ test('R30 rat (fix round 2): the rat boards later in the same scan (the token re
   assert.ok(found, 'such a placement exists');
   assert.ok(!found.r.events.some(e => e.flag?.name === 'bitten_boba'), `${found.order.join(',')}: not bitten`);
   assert.ok(!found.r.state.flags.bitten_boba);
+});
+
+test('R38: the rat placed on a crate/shop milk knocks it down AND bites it: milk is held until the rat boards the metro (Lv3)', () => {
+  let s = createState(real); s = place(s, 'milk', real).state;            // milk 2 (crate → shop)
+  const r = place(s, 'rat', real); s = r.state;
+  const fx = r.events.find(e => e.kind === 'fx' && e.cause === 'rat' && e.delta?.target === 'milk');
+  assert.deepEqual(fx.delta, { target: 'milk', from: 2, to: 1 }); assert.deepEqual(fx.flag, { name: 'bitten_milk', value: 'rat' });
+  assert.equal(s.flags.bitten_milk, 'rat');
+  s = advance(s, real).state; assert.equal(s.lv.milk, 1, 'held: no auto regrow to 2');
+  assert.equal(advance(s, real).events.find(e => e.kind === 'wait')?.waits.find(w => w.item === 'milk')?.for[0], 'rat');
+  // 老鼠搭上捷運（Lv3）：下一回合牛奶就長
+  s = { ...s, lv: { ...s.lv, rat: 3 } }; s = advance(s, real).state; assert.equal(s.lv.milk, 2);
 });

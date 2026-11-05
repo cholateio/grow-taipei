@@ -174,6 +174,9 @@ function actionEvent(s, a, kind, cause, rules) {
     ev.item = target;
     ev.delta = { target, from, to };
   }
+  // bite：這條 delta 同時「咬」目標——立 bitten_<目標> = 施動者，heldBy 讀它，被咬的在咬的人 bite.while 成立期間不長
+  // （使用者 2026-11-05「牛奶被老鼠喝過後下回合會自己恢復不合理」）
+  if (a.bite && ev.delta) { const name = `bitten_${ev.delta.target}`; s.flags[name] = cause; ev.flag = { name, value: cause }; }
   if (a.lock) { s.locked[a.lock] = true; ev.lock = a.lock; }
   if (a.flag) { const value = a.flag.value ?? true; s.flags[a.flag.name] = value; ev.flag = { name: a.flag.name, value }; }
   if (a.branch) { const value = a.branchTest(s) ? a.branch.then : a.branch.else; s.flags[a.branch.flag] = value; ev.flag = { name: a.branch.flag, value }; }

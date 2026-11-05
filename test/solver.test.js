@@ -57,7 +57,7 @@ test('check passes: exactly one full order (snapshot), ending cyber', () => {
 });
 // 設計 §3：MAX 個數分布（修正批次 2：颱風三級＋降級當回合不升級之後的全枚舉）
 test('MAX-count histogram matches design 2026-10-31 §3', () => {
-  assert.deepEqual(st.maxHist, [3972, 33364, 2746, 145, 57, 26, 8, 1, 1]);   // 計畫 14（R29 雨一直下、R30 老鼠一直咬、攤車被吹走 ≤3 → ≤1）之後重算
+  assert.deepEqual(st.maxHist, [4116, 33760, 2206, 145, 57, 26, 8, 1, 1]);   // R38（使用者 2026-11-05 咬過的鮮奶停著）重算；前值 [3972, 33364, 2746, …]；計畫 14（R29 雨一直下、R30 老鼠一直咬、攤車被吹走 ≤3 → ≤1）之後重算
   assert.ok(st.avgMax <= 3.5);
 });
 // 設計 §3：MAX 落在第 8 回合（棒球）與第 9 回合（其餘七個，颱風在最後一輪放晴）——計畫 14 颱風改第 7 個放

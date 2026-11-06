@@ -104,7 +104,11 @@ export async function start({ params, loading }) {
   const camItem = ANCHORS[params.get('cam')] ? params.get('cam') : null;   // 除錯：?cam=milk 自動放完後鏡頭拉近那個物品的格子（同演出中的 focus）
   const putCam = () => { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); };
   let pinned = false;   // ?auto＋?cam=x,…：放完之後鏡頭釘在 cam（換長寬比的 fit 會照框景把鏡頭拉回全景，釘住時再擺回來）
-  const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight); if (pinned) putCam(); };
+  // R42（使用者 2026-11-06）：手機橫版物品列是右側直排側欄，量它的寬（＋到邊緣的 12 px）給鏡頭 inset，島在側欄左邊那塊置中；
+  // 直版、桌機 0（清掉 view offset）。.slots 還沒建的第一次 fit 量不到 → 0，createSlots 之後再 fit 一次
+  const landscapeRail = matchMedia('(orientation: landscape) and (max-height: 520px)');
+  const railWidth = () => { const el = landscapeRail.matches && document.querySelector('.slots'); return el ? el.getBoundingClientRect().width + 12 : 0; };
+  const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight, { width: innerWidth, height: innerHeight }); rig.setInset({ right: railWidth() }); if (pinned) putCam(); };
   fit(); new ResizeObserver(fit).observe(document.body);
   if (cam?.length === 6) putCam();
 
@@ -150,6 +154,7 @@ export async function start({ params, loading }) {
   // 跳過鍵（計畫 12；修正批次 max-skip §C 放進物品列最後一格）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；
   // 每幀照 show.skippable 啟用／停用（終局前的 hold 停用）
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick, onSkip: () => show.skip() });
+  fit();   // R42：側欄建好了，量一次寬給鏡頭 inset（第一次 fit 時 .slots 還不存在）
   const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
   const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
   if (!auto && !storageGet('grow-taipei:howto')) howTo();

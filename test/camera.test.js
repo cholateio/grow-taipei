@@ -134,3 +134,14 @@ test('setSkyline at home with no flight flies there over 1000 ms (no single-fram
   const g = rigWith(); g.rig.fit(16 / 9); const g0 = g.camera.position.clone(); g.rig.cancel(); g.rig.setSkyline(7.75); g.rig.update(1.1);
   assert.equal(g.rig.flying, false); assert.ok(g.camera.position.distanceTo(g0) < 1e-9, 'grabbed: not moved');
 });
+// R42（使用者 2026-11-06）：手機橫版物品列是右側直排側欄，鏡頭用 view offset 往右推半個側欄，島在側欄左邊那塊置中
+test('setInset({ right }) shifts the view by half the rail (camera.setViewOffset(w, h, right/2, 0, w, h)); right 0 clears it; fit keeps it', () => {
+  const { camera, rig } = rigWith();
+  rig.fit(2, { width: 1000, height: 500 }); rig.setInset({ right: 122 });
+  assert.equal(camera.view?.enabled, true); assert.equal(camera.view.offsetX, 61); assert.equal(camera.view.fullWidth, 1000); assert.equal(camera.view.fullHeight, 500);
+  rig.fit(2, { width: 800, height: 400 }); assert.equal(camera.view.fullWidth, 800); assert.equal(camera.view.offsetX, 61, 'inset survives a resize');
+  rig.setInset({ right: 0 }); assert.ok(!camera.view?.enabled);
+  // 側欄開著時島心（home）投影到左側那塊的正中：NDC x ≈ −(61 / 800)·2 = −0.1525（整個畫面的座標），即剩下那塊的中心
+  rig.setInset({ right: 122 }); rig.home(0); camera.updateMatrixWorld();
+  const p = new THREE.Vector3(0.4, 0.6, 0).project(camera); assert.ok(Math.abs(p.x - (-0.1525)) < 0.02, `home NDC x ${p.x.toFixed(3)}`);
+});

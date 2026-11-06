@@ -15,6 +15,13 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
   // 現在的框景（全景、平移、focus）：fit 換長寬比時照這個重算，不把演到一半的 focus 拉回全景
   let framing = { kind: 'home' };
   const v = (p) => new THREE.Vector3(p.x, p.y, p.z);
+  // R42（使用者 2026-11-06）：手機橫版右側直排側欄佔掉的寬度（px）與最後一次 fit 的畫面像素；
+  // right > 0 → setViewOffset 把畫面往右推半個側欄，島就落在側欄左邊那塊的正中（LEVEL UP、泡泡走投影矩陣，自動跟著）
+  let inset = { right: 0 }, size = null;
+  function applyInset() {
+    if (inset.right > 0 && size) camera.setViewOffset(size.width, size.height, inset.right / 2, 0, size.width, size.height);
+    else if (camera.view?.enabled) camera.clearViewOffset();
+  }
 
   function go(pos, target, ms) {
     if (reducedMotion || ms <= 0) {
@@ -38,8 +45,11 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
     get grabbed() { return grabbed; },
     setReducedMotion(flag) { reducedMotion = flag; if (flag && flight) go(flight.pos, flight.target, 0); },
     // 換長寬比：照現在的框景重算；飛到一半就只換終點（照樣飛過去），沒在飛就直接到位
-    fit(a) {
+    // { width, height }：畫面像素（R42 view offset 用）；沒給就沿用上一組
+    fit(a, { width, height } = {}) {
       aspect = a;
+      if (width > 0 && height > 0) size = { width, height };
+      applyInset();
       const { pos, target } = frame(framing);
       if (flight) { flight.pos = pos; flight.target = target; } else go(pos, target, 0);
     },
@@ -55,6 +65,8 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
       const { pos, target } = frame(framing);
       if (flight) { flight.pos = pos; flight.target = target; } else if (!grabbed) go(pos, target, 1000);
     },
+    // R42：右側側欄寬（px，含到邊緣的間距）；0 清掉 view offset。fit 之後照樣重套，呼叫順序無關
+    setInset({ right = 0 } = {}) { inset = { right: Math.max(0, right || 0) }; applyInset(); },
     // 回到全景框景
     home(ms = 1000) { grabbed = false; show({ kind: 'home' }, ms); },
     // 平移：鏡頭與注視點同向移動 target − home，視角不變

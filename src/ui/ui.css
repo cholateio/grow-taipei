@@ -139,3 +139,15 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
   .slots.collapsed { transform: translate(calc(100% + 40px + env(safe-area-inset-right)), 0); }
   .menu-tab { top: 62px; transform: none; }
 }
+/* R45 結局圖鑑（使用者 2026-11-06）：怎麼玩卡片下方，4 欄結局磚；看過的點亮、沒看過灰磚問號、真結局黃框。卡片太高（矮手機）就在卡片裡捲 */
+.card { max-height: calc(100vh - 32px); overflow: auto; }
+.endings { border-top: 1.5px solid var(--line); padding-top: 12px; margin-bottom: 14px; }
+.endings .eyebrow { text-align: right; margin-bottom: 8px; }
+.endings .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.ending { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px; border-radius: 10px; background: #fff; box-shadow: inset 0 0 0 1.5px var(--line); }
+.ending .icon { display: block; line-height: 0; }
+.ending svg { width: 32px; height: 32px; }
+/* 名稱一行不換行：最長六個字（賽博龐克台北、珍奶攤被吹走）在 360 寬手機的磚裡剛好放得下 10 px（11 px 會折成兩行） */
+.ending .title { font-size: 10px; font-weight: 700; min-height: 1.4em; line-height: 1.4; white-space: nowrap; letter-spacing: -0.2px; }
+.ending.unknown { background: #f1e9e2; }
+.ending.true { box-shadow: inset 0 0 0 2px var(--yellow); }

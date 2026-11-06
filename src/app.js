@@ -17,6 +17,7 @@ import { OrbitControls } from '../vendor/three/addons/controls/OrbitControls.js'
 import * as spec from './rules/spec.js';
 import * as engine from './rules/engine.js';
 import * as endings from './rules/endings.js';
+import { ENDINGS } from './rules/endings.js';
 import { ICONS } from './ui/icons.js';
 import { createSlots } from './ui/slots.js';
 import { showHowTo, createTopBar } from './ui/cards.js';
@@ -39,6 +40,11 @@ import { createGame } from './game.js';
 import { createPathCursor } from './scene/path.js';
 import { ANCHORS, cellCentre, cellOf } from './actors/anchors.js';
 
+// R45 結局圖鑑（使用者 2026-11-06）：看過的結局 id 記在 localStorage（JSON 陣列）；讀不到、壞 JSON、不是陣列 → []
+const SEEN_KEY = 'grow-taipei:endings';
+function seenEndings() {
+  try { const v = JSON.parse(storageGet(SEEN_KEY) ?? '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
 const zeroLevels = () => Object.fromEntries(spec.ORDER.map(id => [id, 0]));
 
 // 開局的點綴模型（tools/startup-bytes.mjs 也讀這裡量開局載入）：
@@ -150,7 +156,8 @@ export async function start({ params, loading }) {
     // 重玩按頂欄 RESET：結束後它變醒目（計畫 12 重玩迴圈），restart 拿掉
     // R43（使用者 2026-11-06）：結束後才開放平移（雙指／右鍵拖曳），注視點鎖在島上（rig.clamp 每幀）；
     // 除錯特寫（?cam=）釘住的鏡頭不開——夾住會把島外／高處的注視點拉回來
-    onFinished: () => { topBar.setFinished(true); slots.setMode('hide'); if (!debugCam) rig.setFree(true); },
+    // R45 結局圖鑑（使用者 2026-11-06）：最後判定的結局 id 併進 localStorage（extras 不算）；storageSet 永不丟例外
+    onFinished: (ending) => { topBar.setFinished(true); slots.setMode('hide'); if (!debugCam) rig.setFree(true); storageSet(SEEN_KEY, JSON.stringify([...new Set([...seenEndings(), ending.id])])); },
   });
   function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.setFree(false); slots.setMode('skip'); rig.home(0); }
   const pick = id => game.pick(id);
@@ -158,9 +165,11 @@ export async function start({ params, loading }) {
   // 每幀照 show.skippable 啟用／停用（終局前的 hold 停用）
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick, onSkip: () => show.skip() });
   fit();   // R42：側欄建好了，量一次寬給鏡頭 inset（第一次 fit 時 .slots 還不存在）
-  const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1') });
+  // R45：怎麼玩卡片下方是結局圖鑑（看過的點亮）；結束後按頂欄「?」看
+  const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1'), endings: ENDINGS, seen: seenEndings() });
   const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
-  if (!auto && !storageGet('grow-taipei:howto')) howTo();
+  // 除錯：?card=howto 不管 localStorage 直接開怎麼玩卡片（tools/shot.mjs 拍圖鑑用）
+  if (params.get('card') === 'howto' || (!auto && !storageGet('grow-taipei:howto'))) howTo();
 
   const clock = new THREE.Clock();
   let autoDone = false, elapsed = 0;

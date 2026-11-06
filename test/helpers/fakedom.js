@@ -34,11 +34,13 @@ export class El {
     };
   }
   // 支援 'tag'、'.cls'、'tag.cls1.cls2'、尾巴一個 '[data-k=v]'（'[data-act=reset]'、'button[data-act=skip]'）
-  querySelector(sel) {
+  querySelector(sel) { return this.querySelectorAll(sel)[0] ?? null; }
+  // 文件順序（先序）列出所有符合的子孫（結局圖鑑測試數磚）
+  querySelectorAll(sel) {
     const attr = /\[data-([\w-]+)=["']?([^"'\]]*)["']?\]$/.exec(sel);
     const [tag, ...cls] = (attr ? sel.slice(0, attr.index) : sel).split('.');
     const hit = e => (!tag || e.tagName === tag) && cls.every(c => e.className.split(' ').includes(c)) && (!attr || e.dataset[attr[1]] === attr[2]);
-    const walk = e => e.children.find(hit) ?? e.children.map(walk).find(Boolean); return walk(this) ?? null;
+    const out = [], walk = e => { for (const c of e.children) { if (hit(c)) out.push(c); walk(c); } }; walk(this); return out;
   }
 }
 export function installFakeDom() { globalThis.document = { createElement: tag => new El(tag) }; }

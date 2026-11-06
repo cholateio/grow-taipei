@@ -27,3 +27,32 @@ export const SKIP_ICON = svg('<path d="M12 18 L30 32 L12 46 Z"/><path d="M30 18 
 
 // 隱藏選單鍵（使用者 2026-11-06：遊戲結束後跳過鍵變隱藏選單）：兩個朝下的 V 形，同一套白底墨線；側欄時 CSS 轉 −90° 朝右，顯示選單圓鍵再轉 180° 朝上（ui.css .skip／.menu-tab）
 export const HIDE_ICON = svg('<path d="M16 16 L32 30 L48 16" fill="none"/><path d="M16 34 L32 48 L48 34" fill="none"/>');
+
+// R45 結局圖鑑（使用者 2026-11-06）：每個結局一個圖示，同一套 64 viewBox 白底墨線；每個只用幾筆，32 px 也認得出來。鍵 = endings.js 的 ENDINGS
+export const ENDING_ICONS = {
+  // 賽博：101 與飛天跑車
+  cyber: svg('<path d="M8 58 H34"/><path d="M14 58 V22 L21 6 L28 22 V58 Z"/><path d="M14 34 h14 M14 46 h14"/><path d="M37 24 C 39 13, 55 13, 57 24 Z"/><rect x="32" y="24" width="30" height="10" rx="5"/><path d="M38 44 h12 M44 51 h12" fill="none"/>'),
+  // 變異鼠稱王：戴王冠的老鼠
+  alien: svg('<path d="M12 46 C 14 32, 36 30, 46 40 L54 42 L46 46 C 40 52, 20 54, 12 46 Z"/><circle cx="40" cy="34" r="5"/><circle cx="46" cy="41" r="1.5" fill="#211d1d"/><path d="M12 46 C 6 48, 6 56, 14 58" fill="none"/><path d="M31 26 L29 12 L35 18 L40 8 L45 18 L51 12 L49 26 Z"/>'),
+  // 大停電：劃掉的燈泡
+  blackout: svg('<path d="M32 10 a14 14 0 0 1 8 25 v7 h-16 v-7 a14 14 0 0 1 8 -25 Z"/><path d="M26 48 h12 M28 54 h8"/><path d="M12 12 L52 52" fill="none"/>'),
+  // 捷運淹水：車站與波浪（水淹到半身）
+  flood: svg('<path d="M12 28 L32 14 L52 28 Z"/><rect x="15" y="28" width="34" height="22"/><rect x="21" y="32" width="22" height="6" rx="1"/><path d="M4 44 C 10 40, 16 48, 22 44 C 28 40, 34 48, 40 44 C 46 40, 52 48, 60 44 V60 H4 Z"/><path d="M10 53 C 16 50, 20 56, 26 53 C 32 50, 36 56, 42 53" fill="none"/>'),
+  // 大巨蛋淹水：巨蛋與波浪
+  domeFlood: svg('<path d="M8 42 C 8 16, 56 16, 56 42 Z"/><path d="M22 24 C 26 30, 26 36, 24 42 M42 24 C 38 30, 38 36, 40 42" fill="none"/><path d="M4 40 C 10 36, 16 44, 22 40 C 28 36, 34 44, 40 40 C 46 36, 52 44, 60 40 V60 H4 Z"/><path d="M10 50 C 16 47, 20 53, 26 50 C 32 47, 36 53, 42 50" fill="none"/>'),
+  // 珍奶攤被吹走：歪掉的攤車與風線
+  cartBlown: svg('<g transform="rotate(-14 42 34)"><rect x="28" y="26" width="26" height="16"/><path d="M25 26 L29 16 H53 L57 26 Z"/><circle cx="34" cy="46" r="4"/><circle cx="48" cy="46" r="4"/></g><path d="M4 22 H18 M4 32 H16 C 22 32, 22 25, 17 25 M8 42 H20" fill="none"/>'),
+  // 大巨蛋鼠災：巨蛋與老鼠
+  domeRats: svg('<path d="M4 40 C 4 16, 42 16, 42 40 Z"/><path d="M2 40 H44 V46 H2 Z"/><path d="M26 54 C 28 42, 46 40, 54 48 L60 50 L54 53 C 48 60, 30 62, 26 54 Z"/><circle cx="47" cy="44" r="4"/><circle cx="53" cy="49" r="1.5" fill="#211d1d"/>'),
+  // 矽盾未就緒：彎成 L 形的 101
+  shieldDown: svg('<path d="M6 58 H34"/><path d="M13 58 V30 H25 V58 Z"/><path d="M13 39 h12 M13 48 h12"/><g transform="rotate(62 25 30)"><path d="M13 30 V12 L19 0 L25 12 V30 Z"/><path d="M13 21 h12"/></g>'),
+  // 颱風吹偏隕石：颱風漩渦與石頭
+  typhoonDeflect: svg('<circle cx="22" cy="42" r="4"/><path d="M26 40 C 38 34, 34 22, 20 24" fill="none"/><path d="M18 44 C 6 50, 10 60, 24 58" fill="none"/><path d="M26 44 C 36 52, 44 46, 44 40" fill="none"/><path d="M43 9 L53 5 L60 13 L57 24 L46 27 L40 18 Z"/><path d="M47 15 l3 2" fill="none"/><path d="M28 12 H35 M30 21 H36" fill="none"/>'),
+  // 鮮奶過期：長腳跑掉的牛奶箱
+  milkExpired: svg('<path d="M22 16 L28 6 H36 L42 16 V44 H22 Z"/><path d="M22 16 H42"/><path d="M27 28 h10"/><path d="M27 44 L22 54 H16 M37 44 L44 54 H50" fill="none"/><path d="M50 12 C 54 16, 46 18, 50 24 M56 18 C 60 22, 52 24, 56 30" fill="none"/>'),
+  // 再接再厲：發芽的種子
+  tryAgain: svg('<path d="M8 54 H56" fill="none"/><ellipse cx="32" cy="48" rx="11" ry="7"/><path d="M32 41 V22" fill="none"/><path d="M32 32 C 24 32, 18 26, 18 18 C 26 18, 32 24, 32 32 Z"/><path d="M32 26 C 40 26, 46 20, 46 12 C 38 12, 32 18, 32 26 Z"/>'),
+};
+
+// 圖鑑裡還沒看過的結局：圓圈裡一個問號
+export const UNKNOWN_ICON = svg('<circle cx="32" cy="32" r="22"/><path d="M25 26 C 25 17, 39 17, 39 26 C 39 32, 32 32, 32 38" fill="none"/><circle cx="32" cy="46" r="2" fill="#211d1d"/>');

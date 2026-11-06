@@ -252,3 +252,21 @@ test('ui.css: the order badge is an 18px ink circle top-left of the cell, 16px i
   assert.match(rail, /\.slot \.n \{ width: 16px; height: 16px;[^}]*font-size: 10px/);
   assert.match(short, /\.slot \.n \{ width: 14px; height: 14px;[^}]*font-size: 9px/);
 });
+
+// R45 結局圖鑑（使用者 2026-11-06）：怎麼玩卡片下方，每個結局一格；看過的點亮（圖示＋名稱），沒看過的灰磚問號
+test('ENDING_ICONS has one shared-style icon per ending id, plus UNKNOWN_ICON', async () => {
+  const { ENDINGS } = await import('../src/rules/endings.js'); const { ENDING_ICONS, UNKNOWN_ICON } = await import('../src/ui/icons.js');
+  assert.deepEqual(Object.keys(ENDING_ICONS).sort(), Object.keys(ENDINGS).sort());
+  for (const s of [...Object.values(ENDING_ICONS), UNKNOWN_ICON]) assert.ok(s.startsWith('<svg viewBox="0 0 64 64"') && s.includes('stroke="#211d1d"'));
+});
+test('the how-to card draws the ending gallery: cyber first (true ring), tryAgain last, seen endings get their icon and title, unseen are unknown tiles without a title; the count reads seen / total; unknown ids are ignored; no endings → no gallery', async () => {
+  installFakeDom(); const { showHowTo } = await import('../src/ui/cards.js'); const { ENDINGS } = await import('../src/rules/endings.js');
+  const root = document.createElement('div');
+  const el = showHowTo(root, { onClose() {}, endings: ENDINGS, seen: ['flood', 'bogus'] });
+  const tiles = [...el.querySelectorAll('.ending')]; assert.equal(tiles.length, Object.keys(ENDINGS).length);
+  assert.equal(tiles[0].dataset.id, 'cyber'); assert.ok(tiles[0].classList.contains('true')); assert.equal(tiles.at(-1).dataset.id, 'tryAgain');
+  const flood = tiles.find(t => t.dataset.id === 'flood'); assert.ok(!flood.classList.contains('unknown')); assert.equal(flood.querySelector('.title').textContent, '捷運淹水');
+  assert.ok(tiles[0].classList.contains('unknown')); assert.equal(tiles[0].querySelector('.title').textContent, '');
+  assert.equal(el.querySelector('.seen').textContent, '1'); assert.equal(el.querySelector('.total').textContent, String(tiles.length));
+  assert.equal(showHowTo(root, { onClose() {} }).querySelector('.endings'), null);
+});

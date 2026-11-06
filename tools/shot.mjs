@@ -6,6 +6,8 @@
 //   npm run shot 的 wide-live 用 warp=2.1：第 6 回合（鮮奶）放下、酪農在鮮奶格冒 ♥，鏡頭拉近在鮮奶格。
 //   計畫 6 任務 6 重校（2026-10-29，warp=0／5 的颱風局）：現在 20 s 預算的 live 截圖（live-rat、live-storm、bridge-live）也拍到 warp 後不到 1 秒——
 //   上面「warp＋十幾秒」是舊的量測；warp 一律照無頭演出量到的事件秒數找。
+//   ?card=howto（R45，使用者 2026-11-06）：不管 localStorage 直接開怎麼玩卡片＋結局圖鑑（新的無頭設定檔沒有看過的結局，全是問號磚）：
+//   node tools/shot.mjs 'howto=card=howto' 'phone360-howto=card=howto&quality=low'
 // node tools/shot.mjs --dom <query>  → 印出頁面 DOM（驗證錯誤畫面文字用）
 // --root dist：從部署用的 dist/ 開頁面（計畫 12：npm run dist 之後 node tools/shot.mjs --root dist open=）
 import { execFile } from 'node:child_process';

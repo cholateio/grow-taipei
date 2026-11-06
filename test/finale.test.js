@@ -123,7 +123,7 @@ test('warning beats: apply star + beacon while the camera looks up at the sky ov
   assert.equal(shout.length, 24); assert.ok(shout.every(b => b.dur === 0.8), '！ 0.8 s each');
   assert.equal(GESTURE_DUR.duck, 1.0);
 });
-test('warning live: the star and the beacon blink in, the camera looks up at the sky over 101 first, visible islanders look at STAR_AT and say ！, then duck 0.8 s, everyone released; ≤ 4.5 s (≤ 5.0 s with the chip 7–8 shieldFail)', async () => {
+test('warning live: the star and the beacon blink in, the camera looks up at the sky over 101 first, visible islanders look at STAR_AT and say ！, then duck 0.8 s, everyone released; ≤ 4.5 s', async () => {
   const { show, run, bubblesLog, rig } = await placedShow();
   const at = finale.STAR_AT, n0 = bubblesLog.length, crowdSize = Math.min(24, islanders({ roster: show.roster }).length), r0 = rig.log.length;
   assert.ok(crowdSize >= 6, `islanders on the island (${crowdSize})`);
@@ -166,9 +166,8 @@ test('warning live: the star and the beacon blink in, the camera looks up at the
   for (const [, d] of shouts) assert.ok(Math.abs(d - finale.SHOUT) < 1e-9, `！ ${finale.SHOUT} s real (${d})`);
   assert.equal(finale.LOOK, 1.2); assert.equal(finale.SHOUT, 0.8);
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'everyone released');
-  // 放完八個、最後一輪之前的正解晶片停在 Lv8：計畫 17 任務 2 起警告多一段試升失敗（SHIELD_FAIL_DUR＋0.2 s），上限 5.0 s；晶片 9／≤6 照舊 4.5 s
-  const cap = [7, 8].includes(show.stage.lv.chip) ? 5.0 : 4.5;
-  assert.ok(show.elapsed <= cap, `≤ ${cap} s real at chip ${show.stage.lv.chip} (${show.elapsed.toFixed(2)})`);
+  // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：試升失敗整段拿掉，晶片幾級都是 4.5 s
+  assert.ok(show.elapsed <= 4.5, `≤ 4.5 s real at chip ${show.stage.lv.chip} (${show.elapsed.toFixed(2)})`);
 });
 // 跳過（instant，reduced motion／玩家按跳過）：警告照樣把旗標、光點套上，沒有人留在劇本手上
 test('warning skipped (instant): alarm 1, the star is there, nobody left in script mode', async () => {
@@ -179,80 +178,42 @@ test('warning skipped (instant): alarm 1, the star is there, nobody left in scri
   assert.equal(everyone(show).filter(m => m.mode === 'script').length, 0, 'nobody in script mode');
 });
 
-// 計畫 17 任務 2（使用者 2026-11-04：看過天線 Lv7、試升 Lv8，隕石照樣打彎 101——看不出矽盾還沒好）：
-// 晶片 7–8 的警告在全島抬頭之後、「！」之前插一段試升失敗 shieldFail——罩子 fail 狀態 replay（SHIELD_FAIL_DUR）＋天線環閃白一下，再停 0.2 s；
-// 晶片 ≤ 6 沒有天線、沒有這段；晶片 9 是擋下的結局（規則層），也沒有
-import { SHIELD_FAIL_DUR } from '../src/actors/parts.js';
-import { blinkLog } from './helpers/show.js';
-const failOf = beats => beats.findIndex(b => b.name === 'shieldFail');
-test('warning beats at chip 7 and 8: a shieldFail segment (dome replay SHIELD_FAIL_DUR + antenna blink, then 0.2 s) after the look-up, before ！; none at chip 6 or 9', () => {
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長；取代計畫 17 任務 2 的試升失敗）：晶片 7–8 的警告跟其他級一樣——沒有 shieldFail 段、
+// 罩子與天線都不出現（Lv7 只是木箱、Lv8 只是鷹架，矽盾要到 Lv9 才長）
+test('R48: warning beats at chip 7 and 8 are the plain warning (no shieldFail), the same as chip 0, 6 and 9', () => {
   const { B } = beatsMod, ctx = { B, roster: { members: () => [], keys: () => [] } };
-  for (const chip of [7, 8]) {
-    const beats = finale.script.warning(WARNING, { lv: { chip }, flags: { alarm: 1 } }, ctx), i = failOf(beats);
-    assert.deepEqual(beats.map(b => b.kind), ['together', 'wait', 'together', 'together', 'wait', 'together', 'home'], `chip ${chip}`);
-    assert.equal(i, 3, `chip ${chip}: after the look-up`);
-    assert.ok(beats[i - 1].beats.some(b => b.kind === 'focus'), 'right after the WIDE framing + look');
-    const inner = beats[i].beats, dome = inner.find(b => b.kind === 'replay');
-    assert.ok(dome && dome.dur === SHIELD_FAIL_DUR, 'the dome replays the fail pose for SHIELD_FAIL_DUR');
-    assert.ok(inner.some(b => b.kind === 'blinkPart' && b.key === 'tower.antenna'), 'the antenna ring blinks');
-    assert.equal(beats[i + 1].dur, 0.2);
-    assert.ok(beats[i + 2].beats.some(b => b.kind === 'bubble'), 'then ！');
-  }
-  for (const chip of [0, 6, 9]) {
+  for (const chip of [0, 6, 7, 8, 9]) {
     const beats = finale.script.warning(WARNING, { lv: { chip }, flags: { alarm: 1 } }, ctx);
-    assert.equal(failOf(beats), -1, `chip ${chip}: no shieldFail`);
-    assert.deepEqual(beats.map(b => b.kind), ['together', 'wait', 'together', 'together', 'home']);
+    assert.equal(beats.findIndex(b => b.name === 'shieldFail'), -1, `chip ${chip}: no shieldFail`);
+    assert.deepEqual(beats.map(b => b.kind), ['together', 'wait', 'together', 'together', 'home'], `chip ${chip}`);
   }
+  assert.equal(finale.FAIL_WAIT, undefined, 'FAIL_WAIT is gone');
 });
 // 晶片停在 8 的一局：枚舉裡第一個最後晶片 Lv8 的順序（颱風第 7 個放，晶片等不到 Lv9；cartBlown、隕石命中）
 const CHIP8_ORDER = ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'];
-test('shieldFail live from a real chip-8 game: the dome rises to 0.6×, flashes twice, retracts and hides within SHIELD_FAIL_DUR; the antenna blinks as it starts; no dome after the meteor; warning ≤ 5.0 s', async () => {
+test('R48: a real chip-8 game — no dome and no antenna through the warning and after the meteor; the scaffold goes with the hit, the crates stay; warning ≤ 4.5 s', async () => {
   const h = await headlessShow(), { show } = h;
   let s = createState(spec);
   for (const st of turnSteps(CHIP8_ORDER)) { const r = st(s); s = r.state; await h.run([...r.events, { kind: 'settle' }], { instant: true }); }
   assert.equal(s.lv.chip, 8, 'chip stuck at 8');
+  assert.ok(show.stage.partKeys().includes('tower.scaffold') && show.stage.partKeys().includes('chip.crates'), 'scaffold and crates before the finale');
   const ending = resolve(s, spec); assert.equal(ending.missile, 'hit');
   const [warn, meteor, ...rest] = finaleEvents(ending);
   assert.equal(warn.kind, 'warning');
-  const log = blinkLog(show), samples = [];
-  let ringAt = null;
-  const update = show.update;
-  show.update = (dt, t) => {
-    update(dt, t);
-    const o = show.stage.partObject('tower.shield'), m = o?.children[0];
-    if (m) samples.push({ t: show.elapsed, visible: m.visible, scale: m.scale.x, opacity: m.material.opacity });
-    if (ringAt === null && log.calls.some(c => c.fn === 'part' && c.key === 'tower.antenna')) ringAt = show.elapsed;
-  };
+  const seen = new Set(), update = show.update;
+  show.update = (dt, t) => { update(dt, t); for (const k of show.stage.partKeys()) seen.add(k); };
   const t0 = show.elapsed;
   await h.run([warn], { finale: true });
-  show.update = update;
   const secs = show.elapsed - t0;
-  console.log(`warning at chip 8 (plan 17 task 2): ${secs.toFixed(2)} s real`);
-  assert.ok(secs <= 5.0, `warning ≤ 5.0 s (${secs.toFixed(2)})`);
-  const shown = samples.filter(x => x.visible);
-  assert.ok(shown.length, 'the dome shows');
-  const from = shown[0].t, to = shown[shown.length - 1].t;
-  assert.ok(to - from <= SHIELD_FAIL_DUR + 1e-6, `visible within ${SHIELD_FAIL_DUR} s (${(to - from).toFixed(2)})`);
-  const peak = Math.max(...shown.map(x => x.scale));
-  assert.ok(peak > 0.55 && peak <= 0.6 + 1e-9, `rises to 0.6× (${peak.toFixed(2)})`);
-  const top = shown.findIndex(x => Math.abs(x.scale - 0.6) < 1e-9), firstOps = shown.slice(0, top).map(x => x.opacity);
-  assert.ok(top > 0 && shown.slice(0, top).every((x, i, a) => !i || x.scale >= a[i - 1].scale) && firstOps.every(o => o === 0.35), 'rises first (opacity 0.35)');
-  const full = shown.filter(x => Math.abs(x.scale - 0.6) < 1e-9);
-  let peaks = 0, prev = full[0].opacity, rising = false;   // 從停在 0.6 倍那一刻（0.35）起算：掉到 0.05 起閃不算一下
-  for (const x of full) {
-    if (x.opacity > prev + 1e-9) rising = true; else if (rising && x.opacity < prev - 1e-9) { peaks++; rising = false; }
-    prev = x.opacity;
-  }
-  assert.equal(peaks, 2, 'flashes twice at full height');
-  const last = shown.slice(-5); assert.ok(last.every((x, i) => !i || x.scale < last[i - 1].scale) && last[last.length - 1].scale < 0.6, 'then retracts');
-  assert.equal(samples[samples.length - 1].visible, false, 'hidden at the end of the warning');
-  const ring = log.calls.filter(c => c.fn === 'part' && c.key === 'tower.antenna');
-  assert.equal(ring.length, 1, 'the antenna ring blinks once');
-  assert.ok(Math.abs(ringAt - from) <= 2 / 30, `as the dome starts rising (${ringAt?.toFixed(2)} vs ${from.toFixed(2)})`);
+  console.log(`warning at chip 8 (R48): ${secs.toFixed(2)} s real`);
+  assert.ok(secs <= 4.5, `warning ≤ 4.5 s (${secs.toFixed(2)})`);
   assert.ok(everyone(show).filter(m => m.mode === 'script').length === 0, 'everyone released');
-  await h.run([meteor, ...rest], { finale: true, instant: true });
+  await h.run([meteor, ...rest], { finale: true });
+  show.update = update;
+  for (const k of ['tower.shield', 'tower.antenna']) assert.ok(!seen.has(k), `no ${k} at any frame`);
   assert.equal(show.stage.flags.missile, 'hit');
-  assert.ok(!show.stage.partKeys().includes('tower.shield'), 'no dome after the meteor');
+  assert.ok(!show.stage.partKeys().includes('tower.scaffold'), 'the scaffold goes with the hit');
+  assert.ok(show.stage.partKeys().includes('chip.crates'), 'the crates stay at the foot (the parts never made it up)');
 });
 
 // 全景（16:9）只框到 101 頭頂上一點點、天空整片出畫——光點要等鏡頭抬頭（天空鏡頭）才看得到；隕石落下時鏡頭在 WIDE：
@@ -932,7 +893,7 @@ test('alien epilogue beats (≤ 5.5 s): the spring shot + the king waves ！ (fo
   assert.equal(out.beats[2].dur, finale.LOVE);
   assert.equal(rest.only, undefined);
   assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.ALIEN_END);
-  assert.deepEqual(ship.beats[1].beat.only, ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'typhoon.main', 'typhoon.rain', 'typhoon.scooter'], 'the storm shrinks away as the mothership blinks in');
+  assert.deepEqual(ship.beats[1].beat.only, ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'tower.scaffold', 'typhoon.main', 'typhoon.rain', 'typhoon.scooter'], 'the storm shrinks away as the mothership blinks in');
   const { BLINK: blink } = await import('../src/show/blink.js');
   const total = finale.WAVE + finale.RUSH + finale.UFO_FALL + finale.SHIP_WAIT + blink + finale.LOVE + finale.ALIEN_END;
   console.log(`alien epilogue nominal: ${total.toFixed(2)} s`);

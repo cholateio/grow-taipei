@@ -135,8 +135,9 @@ test('fireworks once: bursts for 1.2 s then hides the mesh and stays hidden', ()
   p.dispose(); loop.dispose();
 });
 
-// ── 矽盾罩（晶片 Lv8／9、結局）：半球、半透明淡藍、六角格紋（程式產生的貼圖，快取共用），一個 mesh ──
-import { SHIELD, SHIELD_TEST_DUR, SHIELD_FAIL_DUR, shieldPose } from '../src/actors/parts.js';
+// ── 矽盾罩（晶片 Lv9、結局；R48 起只剩待命與全亮）：半球、半透明淡藍、六角格紋（程式產生的貼圖，快取共用），一個 mesh ──
+import * as partsMod from '../src/actors/parts.js';
+const { SHIELD, shieldPose } = partsMod;
 const shieldOf = (f, state, r = 7.6) => f.build({ kind: 'shield', at, r, state });
 const run = (p, secs, fn) => { for (let i = 0; i < secs * 30; i++) { p.update(1 / 30, i / 30); fn?.(i / 30); } };
 test('shield: one transparent basic mesh, single-sided, no depth write, hex-grid texture shared between builds; radius r, centred on at', () => {
@@ -154,18 +155,11 @@ test('shield: one transparent basic mesh, single-sided, no depth write, hex-grid
   assert.ok(Math.max(...alphas) === 255 && Math.min(...alphas) < 80, 'bright hex edges over a faint fill');
   a.dispose(); b.dispose();
 });
-test('shieldPose test: three opacity flashes, then it retracts to scale 0 and hides; done by SHIELD_TEST_DUR', () => {
-  assert.equal(SHIELD.flashes, 3);
-  let peaks = 0, prev = 0, rising = false;
-  for (let t = 0; t <= SHIELD_TEST_DUR + 0.5; t += 1 / 60) {
-    const p = shieldPose('test', t);
-    if (p.opacity > prev) rising = true; else if (rising && p.opacity < prev) { peaks++; rising = false; assert.ok(prev > 0.4, `flash ${peaks} peak ${prev.toFixed(2)}`); }
-    prev = p.opacity;
-  }
-  assert.equal(peaks, 3);
-  const mid = shieldPose('test', SHIELD_TEST_DUR - SHIELD.retract / 2); assert.ok(mid.visible && mid.scale > 0.1 && mid.scale < 0.9, 'retracting');
-  const end = shieldPose('test', SHIELD_TEST_DUR + 0.01); assert.equal(end.visible, false); assert.equal(end.scale, 0);
-  assert.ok(SHIELD_TEST_DUR <= 4, `${SHIELD_TEST_DUR} s`);
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 Lv8 的測試（閃三下）與隕石警告裡的試升失敗整段拿掉——只剩 standby／full
+test('R48: shieldPose knows only standby and full; the test / fail poses and their durations are gone', () => {
+  for (const state of ['test', 'fail']) assert.throws(() => shieldPose(state, 0), new RegExp(state));
+  for (const k of ['SHIELD_TEST_DUR', 'SHIELD_FAIL', 'SHIELD_FAIL_DUR']) assert.equal(partsMod[k], undefined, k);
+  for (const k of ['flashes', 'period', 'retract', 'test']) assert.equal(SHIELD[k], undefined, `SHIELD.${k}`);
 });
 test('shieldPose standby stays a faint outline forever (visible, opacity 0.06–0.22, brightens with the 101 pulse every 3 s); full is bright', () => {
   const ops = [];
@@ -200,48 +194,11 @@ test('shield builder, full: built hidden (the end state); test() plays it from i
   p.object.userData.test(); p.object.userData.finish(); assert.equal(m.visible, false, 'finish() jumps to hidden');
   p.dispose();
 });
-// 計畫 17 任務 2：矽盾未就緒（晶片 7–8）的隕石警告裡試升失敗——0–0.4 s 升到 0.6 倍大（不透明度 0.35）→ 0.5–0.9 s 閃兩下（0.5 ↔ 0.05，
-// 第二下短、像電力不穩，0.8 起暗著）→ 0.9–1.2 s 縮回 0 → 藏起來；整段 SHIELD_FAIL_DUR 1.3 s
-test('shieldPose fail: rises to 0.6× at opacity 0.35 by 0.4 s, flashes twice 0.5 ↔ 0.05 in 0.5–0.9 s, retracts by 1.2 s and hides; SHIELD_FAIL_DUR 1.3', () => {
-  assert.equal(SHIELD_FAIL_DUR, 1.3);
-  const r = shieldPose('fail', 0.2); assert.ok(r.visible); assert.equal(r.opacity, 0.35); assert.ok(Math.abs(r.scale - 0.3) < 1e-9, `rising (${r.scale})`);
-  assert.ok(shieldPose('fail', 0.1).scale < r.scale && r.scale < shieldPose('fail', 0.35).scale, 'grows');
-  const top = shieldPose('fail', 0.45); assert.ok(Math.abs(top.scale - 0.6) < 1e-9 && top.opacity === 0.35, 'holds 0.6× before the flashes');
-  assert.ok(Math.abs(shieldPose('fail', 0.6).opacity - 0.5) < 1e-9, 'first flash bright 0.5');
-  assert.ok(Math.abs(shieldPose('fail', 0.8).opacity - 0.05) < 0.01, `dim 0.05 by 0.8 (${shieldPose('fail', 0.8).opacity})`);
-  let peaks = 0, prev = 0, rising = false;
-  for (let t = 0.5; t <= 0.9; t += 1 / 240) {
-    const p = shieldPose('fail', t); assert.ok(p.visible && Math.abs(p.scale - 0.6) < 1e-9, 'stays 0.6× while flashing');
-    assert.ok(p.opacity >= 0.05 - 1e-9 && p.opacity <= 0.5 + 1e-9);
-    if (p.opacity > prev + 1e-9) rising = true; else if (rising && p.opacity < prev - 1e-9) { peaks++; rising = false; assert.ok(prev > 0.4, `flash ${peaks} peak ${prev.toFixed(2)}`); }
-    prev = p.opacity;
-  }
-  assert.equal(peaks, 2, 'two flashes');
-  const s = shieldPose('fail', 1.0); assert.ok(s.visible && s.scale > 0.05 && s.scale < 0.6, `shrinking (${s.scale})`);
-  assert.ok(shieldPose('fail', 1.1).scale < s.scale, 'keeps shrinking');
-  for (const t of [1.2, 1.25, 1.3, 2, Infinity]) { const p = shieldPose('fail', t); assert.equal(p.visible, false, `hidden at ${t}`); assert.equal(p.scale, 0); }
-});
-test('shield part, fail state: built already hidden (a rebuild never replays it); test() plays the rise / flashes / retract, hidden after SHIELD_FAIL_DUR', () => {
-  const { f } = setup(), p = shieldOf(f, 'fail'), [m] = p.object.children, scales = [];
-  assert.equal(m.visible, false, 'built hidden'); run(p, 1); assert.equal(m.visible, false, 'stays hidden until the script plays it');
-  p.object.userData.test();
-  run(p, SHIELD_FAIL_DUR + 0.3, () => scales.push(m.visible ? m.scale.x : 0));
-  assert.ok(Math.max(...scales) > 0.55 && Math.max(...scales) <= 0.6 + 1e-9, `rises to 0.6× (${Math.max(...scales)})`);
-  assert.equal(m.visible, false); assert.equal(m.scale.x, 0);
-  p.object.userData.test(); run(p, 0.3); assert.ok(m.visible); p.object.userData.finish(); assert.equal(m.visible, false);
-  p.dispose();
-});
-test('shield part follows shieldPose: a test shield is built already retracted; test() plays the flashes then hides, finish() jumps to the end; standby keeps a scrolling faint outline', () => {
-  const { f } = setup(), p = shieldOf(f, 'test'), [m] = p.object.children, ops = [];
-  assert.equal(m.visible, false, 'built retracted (a rebuild never replays the flashes)');
-  run(p, 1); assert.equal(m.visible, false, 'stays retracted until the script starts the test');
-  p.object.userData.test();
-  run(p, SHIELD_TEST_DUR + 0.5, () => ops.push(m.visible ? m.material.opacity : 0));
-  assert.ok(Math.max(...ops) > 0.4); assert.equal(m.visible, false); assert.equal(m.scale.x, 0);
-  p.object.userData.test(); run(p, 0.5); assert.ok(m.visible); p.object.userData.finish(); assert.equal(m.visible, false); run(p, 1); assert.equal(m.visible, false);
-  const s = shieldOf(f, 'standby'), [ms] = s.object.children, y0 = ms.material.map.offset.y;
+test('shield part follows shieldPose: standby keeps a scrolling faint outline from the first frame', () => {
+  const { f } = setup(), s = shieldOf(f, 'standby'), [ms] = s.object.children, y0 = ms.material.map.offset.y;
+  assert.ok(ms.visible, 'standby shows from the first frame');
   run(s, 2); assert.ok(ms.visible && ms.material.opacity < 0.25); assert.notEqual(ms.material.map.offset.y, y0, 'hex grid scrolls');
-  for (const x of [p, s]) x.dispose();
+  s.dispose();
 });
 
 // ── 海底電纜（晶片 Lv6、燈泡 Lv8）：沿 path（世界座標）的管子；暗的時候一個黏土 mesh（連登陸桿），通電多一條發光管，progress 讓光從頭跑到尾 ──
@@ -260,12 +217,13 @@ test('cable: dark = one clay mesh along the path (with the landing pole); lit ad
   lit.object.userData.progress(1); assert.ok(glow.geometry.drawRange.count >= total);
   dark.dispose(); lit.dispose();
 });
-// 裁決 R15：蒙太奇倍速——test({ speed: 2 }) 閃三下、收起來都快兩倍
-test('shield test({ speed: 2 }) runs the flashes at double speed (hidden by half of SHIELD_TEST_DUR)', () => {
-  const { f } = setup(), s = shieldOf(f, 'test'), [m] = s.object.children;
-  s.object.userData.test({ speed: 2 }); run(s, SHIELD_TEST_DUR / 2 - 0.2); assert.ok(m.visible, 'still showing just before half time');
-  run(s, 0.3); assert.equal(m.visible, false, 'retracted by half time');
-  s.object.userData.test(); run(s, SHIELD_TEST_DUR / 2 + 0.1); assert.ok(m.visible, 'a plain test() is back to ×1');
+// 裁決 R15：蒙太奇倍速——test({ speed: 2 }) 全亮、淡掉都快兩倍（R48 起只有 full 用 test()）
+test('shield full test({ speed: 2 }) plays twice as fast (hidden by half of SHIELD.fade[1])', () => {
+  const { f } = setup(), s = shieldOf(f, 'full'), [m] = s.object.children, half = SHIELD.fade[1] / 2;
+  s.object.userData.test({ speed: 2 }); run(s, half - 0.2); assert.ok(m.visible, 'still showing just before half time');
+  run(s, 0.3); assert.equal(m.visible, false, 'gone by half time');
+  s.object.userData.test(); run(s, half + 0.1); assert.ok(m.visible, 'a plain test() is back to ×1');
+  s.dispose();
 });
 // 裁決 R18：?quality=low（手機）的 draw call 預算 ≤ 150——飛天車、無人機（orbit）不畫；fly／land 照樣叫得動（劇本不用分）
 test('quality low: an orbit part builds nothing but keeps fly/land callable', () => {

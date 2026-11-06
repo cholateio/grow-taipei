@@ -1,6 +1,7 @@
 // 101（§5.2）：不是物品，反映全島進度。總等級（物品 v2 共 61 級）0–6 工地（吊車會動）、7–28 半成品、29–50 完工、51+ 點燈（選擇帶動升級重取）。
-// 晶片（物品 v2 §4.3）Lv7 塔頂長出矽盾天線（Cyberpunk Kit 天線 glb＋環）、Lv8 矽盾測試（罩子閃三下又收起）、
-// Lv9 矽盾待命（天線環每 3 秒閃一圈淡藍光、罩子淡淡常駐；結局 shieldSpec('full') 全亮擋隕石，擋完 1.6 s 內淡掉藏起來）；Lv7–8 隕石警告裡 shieldSpec('fail') 試升失敗；燈泡 Lv5 做燈光秀。
+// 晶片（物品 v2 §4.3）R48（使用者 2026-11-06：矽盾只有在真結局才會長）：Lv7 只是零件運到 101 腳下（木箱，chip.js 的 chip.crates）、
+// Lv8 塔頂下搭一圈鷹架（tower.scaffold）；Lv9 才有矽盾——天線（Cyberpunk Kit 天線 glb＋環，每 3 秒閃一圈淡藍光）與罩子（淡淡常駐；
+// 結局 shieldSpec('full') 全亮擋隕石，擋完 1.6 s 內淡掉藏起來）。以前 Lv7 天線、Lv8 罩子閃三下、Lv7–8 隕石警告裡試升失敗，都拿掉了。燈泡 Lv5 做燈光秀。
 // 最終章 §7 賽博尾聲：flags.epilogue === 'cyber' → 黑色高塔（body dark：塔身墨黑、白邊換霓虹藍）、頂帽尖塔換成平屋頂
 // （紅色飛天跑車停在前緣、機器鼠軍團一排 5 隻站在中間），天線桅杆退到屋頂後緣、桅杆頂上一面朝鏡頭的發光螢幕 tower.screen（跑馬燈泡泡掛在它身上）。
 // 最終章 §7 外星尾聲：flags.epilogue === 'alien' → 母艦（body ship：整座塔身抬離地面 SHIP_LIFT、底下一片綠光盤、頂帽尖塔換成倒扣的碟＋碟緣），
@@ -36,6 +37,17 @@ export const DISH_OUT = 0.3;
 const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
 // 螢幕：1.1 × 0.6、厚 0.08，朝 +z（鏡頭）；底邊在桅杆尖上 SCREEN_UP（天線細桿 0.55 高，留 0.05）
 const SCREEN = [1.1, 0.6, 0.08], SCREEN_UP = 0.6;
+// 鷹架（R48，晶片 Lv8；使用者 2026-11-06：矽盾只有在真結局才會長）：塔頂下 SCAFFOLD_DOWN 一圈奶油色 torus（scale 1.3：半徑 0.65）、
+// 環上四根 0.5 高的短柱（往下撐，對角 45°）、一支往東斜上 0.9 長的黃色吊臂（同工地吊車的黃）。相對 101 的 at，照這一階段的塔頂（top）
+const SCAFFOLD_DOWN = 0.6, SCAFFOLD_RING = 1.3, POST_H = 0.5, JIB_L = 0.9, JIB_TILT = 0.6;
+export function scaffoldParts(top) {
+  const y = top - SCAFFOLD_DOWN, r = SCAFFOLD_RING / 2, d = r * Math.SQRT1_2;
+  return [
+    { kind: 'torus', pos: [0, y, 0], scale: SCAFFOLD_RING, rot: [Math.PI / 2, 0, 0], color: CREAM },
+    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ kind: 'box', pos: [sx * d, y - POST_H / 2, sz * d], scale: [0.05, POST_H, 0.05], color: CREAM })),
+    { kind: 'box', pos: [r + Math.cos(JIB_TILT) * JIB_L / 2, y + Math.sin(JIB_TILT) * JIB_L / 2, 0], scale: [JIB_L, 0.05, 0.05], rot: [0, 0, JIB_TILT], color: YELLOW },
+  ];
+}
 
 // 階段名（「101 工地／完工／點燈」）2026-11-03 拿掉了：使用者「整體遊戲中的小字越少越好」——跨階只打 LEVEL UP
 
@@ -164,19 +176,19 @@ export function view(lv, flags = {}, meta = {}) {
   // 被撞彎是一瞬間折下去（隕石撞上那一刻），不從矮樁重長（grow false；2026-11-05 使用者「101 被撞彎後又出現建築物由下往上的動畫」）
   if (hit) { Object.assign(v['tower.main'], { footprint: { x: 0, z: 0, w: 1.6, d: 1.6 }, grow: false }); return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
-  if (lv.chip >= 7) {
-    // 矽盾天線：塔頂的環＋天線 glb；待命（Lv9）時環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
-    const pulse = lv.chip >= 9, glow = pulse ? { glow: NEON_BLUE } : {};
-    const parts = [{ kind: 'torus', pos: [mast?.x ?? 0, top - 0.25, mast?.z ?? 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: pulse ? NEON_BLUE : CREAM, ...glow }];
-    if (pulse) parts.push({ kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE });
-    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast, ship ? mast.z - DISH_OUT : undefined), parts, pulse, footprint: false };
+  // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 8 塔頂下搭鷹架（命中在上面 return 了：撞彎的塔沒有鷹架；母艦也沒有）
+  if (lv.chip === 8 && !ship) v['tower.scaffold'] = { kind: 'compound', at, footprint: false, parts: scaffoldParts(top) };
+  if (lv.chip >= 9) {
+    // 矽盾天線（只在 Lv9 待命）：塔頂的環＋天線 glb；環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
+    const parts = [
+      { kind: 'torus', pos: [mast?.x ?? 0, top - 0.25, mast?.z ?? 0], scale: 1.0, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE },
+      { kind: 'torus', pos: [0, top * 0.55, 0], scale: 2.2, rot: [Math.PI / 2, 0, 0], color: NEON_BLUE, glow: NEON_BLUE },
+    ];
+    v['tower.antenna'] = { kind: 'antenna', at, models: antennaModels(top, mast, ship ? mast.z - DISH_OUT : undefined), parts, pulse: true, footprint: false };
   }
-  // 矽盾未就緒（計畫 17 任務 2，晶片 7–8）：隕石警告（alarm）裡罩子換 fail 狀態（建好時藏著，finale.js 警告劇本 replay 試升失敗）；
-  // 隕石一落下（missile）就沒有罩子（命中本來就在上面 return 了；吹偏也拿掉，不再回 test）
+  // 罩子：結局擋下時全亮（full），否則晶片 9 待命（standby）；R48 起晶片 7–8 一律沒有罩子（Lv8 測試、隕石警告裡的試升失敗都拿掉了）
   if (flags.missile === 'shield') v['tower.shield'] = shieldSpec('full');
   else if (lv.chip >= 9) v['tower.shield'] = shieldSpec('standby');
-  else if (lv.chip >= 7 && flags.alarm) { if (!flags.missile) v['tower.shield'] = shieldSpec('fail'); }
-  else if (lv.chip === 8) v['tower.shield'] = shieldSpec('test');
   if (lv.bulb >= 5) v['tower.show'] = { kind: 'lightshow', at, low: false, parts: Array.from({ length: 8 }, (_, i) => {
     const a = i / 8 * Math.PI * 2, y = lift + 1.0 + (i % 4) * (top - lift - 1.2) / 4;   // 母艦整座抬高 lift
     return { kind: 'box', pos: [Math.cos(a) * 0.5, y, Math.sin(a) * 0.5], scale: [0.08, 0.3, 0.08], color: CREAM, glow: [0xff3fa0, NEON_BLUE, YELLOW, 0x5fcf7a][i % 4] + i };   // + i：八個燈條各自一個材質，才能各轉各的色相
@@ -201,7 +213,7 @@ export const builders = {
     jib.object.name = 'jib'; object.add(mast.object, jib.object);
     return { object, update(dt, t) { jib.object.rotation.y = Math.sin(t * 0.4) * 0.9; }, dispose() { mast.dispose(); jib.dispose(); } };
   },
-  // 矽盾天線：環（compound）＋天線 glb；pulse 時環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零；相位同 parts.js 的 shieldPose）
+  // 矽盾天線（晶片 Lv9）：環（compound）＋天線 glb；pulse 時環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零；相位同 parts.js 的 shieldPose）
   antenna(THREE, spec, ctx) {
     const object = new THREE.Group(), ring = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts, shadow: false });
     const subs = spec.models.map(m => ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint }));

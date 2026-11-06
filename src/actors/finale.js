@@ -37,7 +37,6 @@ import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as
 import { fishArc, FISH_UP } from './baseball.js';
 import { CRATE, CRATE_BRINK, CRATE_SEA } from './milk.js';
 import { WATER_Y } from '../scene/hex.js';
-import { SHIELD_FAIL_DUR } from './parts.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { toDoor } from './typhoon.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
@@ -352,17 +351,9 @@ const later = (delay, dur, beat) => {
 // 隕石各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹偏的「？」1.0 再「♪」0.8
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
 
-// 試升失敗（計畫 17 任務 2）：tower.shield 套上 fail 狀態（tower.js：alarm、晶片 7–8、還沒落下）並從 0 演 shieldPose('fail')
-// （升到 0.6 倍、閃兩下、縮回藏起來，SHIELD_FAIL_DUR）——跟晶片 Lv8 的矽盾測試同一個零件介面（userData.test／finish）；
-// 同時天線環（tower.antenna）閃白一下（blink.part）。鏡頭停在 WIDE，101 與罩子都在畫面裡。演完零件藏著，隕石落下時 view 就拿掉
-export const FAIL_WAIT = 0.2;
+// 零件閃白一下（blink.part；外星收尾換上母艦那一刻用）。
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長）：計畫 17 任務 2 的試升失敗（晶片 7–8 警告裡罩子升起又縮回、天線環閃白）整段拿掉了
 const blinkPart = key => ({ kind: 'blinkPart', key, dur: 0, start(c) { const o = c.stage.partObject(key); if (!o || !c.blink) return false; c.blink.part(o); } });
-const shieldFail = (B, e) => Object.assign(B.together([
-  B.replay(e, 'tower.shield', SHIELD_FAIL_DUR, {
-    begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
-  }),
-  blinkPart('tower.antenna'),
-]), { name: 'shieldFail' });
 // 抬頭看天：101 頭頂（stage.headOf）與光點的中點，警告時鏡頭先對這裡（光點、警示燈、塔頂都在畫面裡；全景看不到天空）
 export const skyShot = c => { const h = c.stage.headOf('tower'); return { x: (h.x + STAR_AT.x) / 2, y: (h.y + STAR_AT.y) / 2, z: (h.z + STAR_AT.z) / 2 }; };
 export const script = {
@@ -370,13 +361,12 @@ export const script = {
   // 同時鏡頭抬頭看天（skyShot，FOCUS_BEAT 0.8 s）→ 停 SKY_HOLD → 鏡頭退到 WIDE、全島（最多 24 人）轉頭看光點 1.2 s（鏡頭在這段飛過去）→
   // 同一批人頭上一起冒「！」、蹲下護頭（duck）0.8 s → 放回日常。終局回合 1 倍速，秒數就是真實秒數（約 3.2 s）。
   // 「！」等鏡頭到 WIDE 才冒（chain.test 的字在畫面裡不變式：天空鏡頭裡島整座出畫）
-  // 計畫 17 任務 2：晶片 7–8（矽盾還沒好；晶片 9 規則上就是擋下）在全島抬頭之後、「！」之前插一段試升失敗 shieldFail（見下面），再停 FAIL_WAIT
+  // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片幾級都一樣——以前晶片 7–8 在這裡插一段試升失敗，拿掉了
   warning(e, s, ctx) {
-    const { B } = ctx, up = lookUp(B, STAR_AT, LOOK), chip = s.lv?.chip;
-    const fail = chip === 7 || chip === 8 ? [shieldFail(B, e), B.wait(FAIL_WAIT)] : [];
+    const { B } = ctx, up = lookUp(B, STAR_AT, LOOK);
     return [
       B.together([B.apply(e, { only: ['finale.star', 'finale.beacon'] }), B.focus(skyShot, { zoom: SKY_ZOOM })]), B.wait(SKY_HOLD),
-      B.together([B.focus(WIDE, { zoom: WIDE_ZOOM }), ...up.look]), ...fail, B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
+      B.together([B.focus(WIDE, { zoom: WIDE_ZOOM }), ...up.look]), B.together([...up.say('！', SHOUT), ...up.act('duck', DUCK)]), up.release,
     ];
   },
   // 隕石（設計 §6，真實秒數，終局回合 1 倍速）：鏡頭在 WIDE（警告已經停在那裡，這拍 0.8 s 當停頓）→ 光點熄掉 →
@@ -384,7 +374,7 @@ export const script = {
   //   結果 → 套上剩下的 → 放人回日常 → 回全景停 HOLD_END（後面接收尾時不停：e.epilogue，計畫 17 任務 3 裁決）。
   //   shield：罩子切 full（閃白就是那一下亮），隕石撞上罩子碎成煙火；全島原地跳＋♥。罩子從撞上算 0.8 s 起淡掉、1.6 s 藏起來（parts.js shieldPose）。
   //   deflect：第二段 DEFLECT 秒被風吹偏、掉進溫泉（同一個 replay 拍裡）→ 水花 → 全島「？」再「♪」。
-  //   hit：101 換成彎 L 的塔身、天線／燈光秀／罩子拿掉（閃白）→ 全島躺平（world 拍只帶 mood，app 合進目前的全島效果；
+  //   hit：101 換成彎 L 的塔身、天線／燈光秀／罩子／鷹架（晶片 8，R48）拿掉（閃白）→ 全島躺平（world 拍只帶 mood，app 合進目前的全島效果；
   //   回合收尾的 world 拍照舞台旗標再算一次，一樣是 lie）。
   //   replay 的 finish 只在跳過（ctx.instant）時跳到終態：live 時拍演完零件自己還在演（煙火撞上罩子才放、放 1.2 秒）
   missile(e, s, ctx) {
@@ -404,7 +394,7 @@ export const script = {
     const tail = [B.apply(e), B.home(() => list ?? []), ...(e.epilogue ? [] : [B.focus('home', { hold: HOLD_END })])];
     if (o === 'shield') return [...lead, B.together([B.apply(e, { only: ['tower.shield'] }), domeUp]), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
-    return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）
+    return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'tower.scaffold'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）
   },
   // 賽博（設計 §7，≤ 12 秒真實，終局回合 1 倍速）：夜晚＋霓虹（world 拍只帶 time／glowScale，app 合進目前的全島效果；
   //   賽博一定是燈泡 Lv9，glowScale 早就是 NEON_BOOST、時間多半也已是夜晚——這拍不會更亮，只是保證尾聲是夜晚霓虹）→
@@ -511,7 +501,7 @@ export function alienEpilogue(e, ctx) {
     B.together([
       B.focus('home'),
       // 同一幀的順序：前一個 later 先開演、apply 第一步就 commit 母艦，blinkPart 接著才開，閃的是剛換上的母艦（不是舊的塔）
-      later(SHIP_WAIT, BLINK, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', ...STORM] })), later(SHIP_WAIT, 0, blinkPart('tower.main')),
+      later(SHIP_WAIT, BLINK, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'tower.scaffold', ...STORM] })), later(SHIP_WAIT, 0, blinkPart('tower.main')),
       later(SHIP_WAIT, BLINK, roof(crew, m => (m.key === 'rat.swarm' ? SAUCER_SPOTS[m.i % SAUCER_SPOTS.length] : SHIP_SPOT))),
     ]),
     B.home(crew),

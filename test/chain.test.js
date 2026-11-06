@@ -15,7 +15,7 @@ import { headlessShow, turnSteps, overviewRig, gameInvariants, ALL } from './hel
 import { finaleStep, EXAMPLE } from './helpers/endings.js';
 
 const SOLUTIONS = stats(enumerate(spec), spec).full.map(r => r.order);
-const FLASH = 0.4;   // 測試閃光的峰值 0.55、谷底 0.04；待命的淡輪廓 0.08–0.2 不會越過
+const FLASH = 0.4;   // 待命的淡輪廓 0.08–0.2 不會越過（R48 起沒有 Lv8 的閃三下，整局都不該越過）
 const CHAIN = [['bulb', 7], ['bulb', 8], ['chip', 6], ['chip', 7], ['chip', 8], ['chip', 9]];
 
 // 一條正解 live 演完：每回合記下演完後的等級、零件鍵、風車轉不轉、電纜亮不亮、罩子露不露出來，和這回合罩子閃了幾下；
@@ -103,14 +103,16 @@ test('island chain, the solution live: bulb 7 → 8 and chip 6 → 7 → 8 → 9
     const wired = Math.min(at('bulb', 8), at('chip', 6)), c6 = at('chip', 6);
     assert.ok(before('chip.cable', wired) && from('chip.cable', wired), `${name}: cable from turn ${wired + 1}`);
     turns.forEach((t, i) => assert.equal(!!t.cableLit, i >= c6, `${name} turn ${i + 1}: cable lit only from chip 6 (turn ${c6 + 1})`));
-    // 晶片 Lv7 天線；Lv8 那回合測試閃三下（其他回合不閃）、演完收起來；Lv9 起罩子常駐
+    // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 Lv7 木箱運到 101 腳下、Lv8 塔頂鷹架（Lv9 兩樣都拿掉）；
+    // 天線與罩子 Lv9 才出現、之後常駐；罩子從來不閃（Lv8 的測試拿掉了）
     const c7 = at('chip', 7), c8 = at('chip', 8), c9 = at('chip', 9);
-    assert.ok(before('tower.antenna', c7) && from('tower.antenna', c7), `${name}: antenna from turn ${c7 + 1}`);
-    // 選擇帶動升級裁決 R6：Lv8 標 ◆，演完整的測試、閃三下；其他回合都不閃。正解的晶片 8 在 ◆ 跟 ◆ 之間的跳級裡（第 8 回合 7 → 8），
-    // Task 6a 修正輪裁決：這種跳級不合成，兩級各演自己的 ◆
+    const only = (k, i, j) => turns.every((t, n) => t.keys.has(k) === (n >= i && n < j));
+    assert.ok(only('chip.crates', c7, c9), `${name}: crates turns ${c7 + 1}–${c9}`);
+    assert.ok(only('tower.scaffold', c8, c9), `${name}: scaffold turns ${c8 + 1}–${c9}`);
+    // 選擇帶動升級裁決 R6：Lv8 標 ◆。正解的晶片 8 在 ◆ 跟 ◆ 之間的跳級裡（第 8 回合 7 → 8），Task 6a 修正輪裁決：這種跳級不合成，兩級各演自己的 ◆
     if (jumps.has('chip8')) jumped8 = true;
-    turns.forEach((t, i) => assert.equal(t.flashes, i === c8 ? 3 : 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
-    assert.ok(before('tower.shield', c8) && from('tower.shield', c8), `${name}: shield from turn ${c8 + 1}`);
+    turns.forEach((t, i) => assert.equal(t.flashes, 0, `${name} turn ${i + 1}: ${t.flashes} shield flashes`));
+    for (const k of ['tower.antenna', 'tower.shield']) assert.ok(before(k, c9) && from(k, c9), `${name}: ${k} from turn ${c9 + 1}`);
     turns.forEach((t, i) => assert.equal(t.shieldOut, i >= c9, `${name} turn ${i + 1}: standby shield out only from chip 9 (turn ${c9 + 1})`));
     // 一回合最多 +2：相鄰兩節可以同一回合（跳級），隔一節的一定分在不同回合
     assert.ok(c6 <= c7 && c7 <= c8 && c8 <= c9 && c6 < c8 && c7 < c9, `${name}: chip chain ${c6 + 1} ${c7 + 1} ${c8 + 1} ${c9 + 1}`);
@@ -128,11 +130,17 @@ test('island chain, event by event: each chain part first appears with its own e
     const own = tag => { const [, id, lv] = tag.match(/^([a-z]+)(\d+)$/), n = +lv; return jumps.has(`${id}${n + 1}`) && !(key(id, n) && key(id, n + 1)) ? `${id}${n + 1}` : tag; };
     // 風車島支線只跟代幣 Lv7 走（R39，使用者 2026-11-05：電燈 Lv7 不再先鋪）
     const PARTS = [['token.spur.windmill', 'token7'], ['token.spur.playground', 'token7'], ['sat.lighthouse', 'bulb7'], ['sat.beam', 'bulb7'],
-      ['chip.cable', 'chip6'], ['tower.antenna', 'chip7'], ['tower.shield', 'chip8']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）
+      ['chip.cable', 'chip6'], ['tower.antenna', 'chip9'], ['tower.shield', 'chip9']].map(([key, tag]) => [key, own(tag)]);   // 電纜：晶片 6 在燈泡 8 之前（下面查）
     for (const [key, tag] of PARTS) {
       const i = first(x => x.keys.has(key));
       assert.equal(events[i]?.e, tag, `${name}: ${key} first after ${events[i]?.e} (want ${tag})`);
       assert.ok(events.slice(i).every(x => x.keys.has(key)), `${name}: ${key} stays`);
+    }
+    // R48：木箱跟晶片 7、鷹架跟晶片 8 一起出現，晶片 9 那個事件演完就拿掉了（縮下去）
+    for (const [key, tag] of [['chip.crates', own('chip7')], ['tower.scaffold', own('chip8')]]) {
+      const i = first(x => x.keys.has(key)), j = idx(own('chip9'));
+      assert.equal(events[i]?.e, tag, `${name}: ${key} first after ${events[i]?.e} (want ${tag})`);
+      assert.ok(j > i && events.slice(i, j).every(x => x.keys.has(key)) && events.slice(j).every(x => !x.keys.has(key)), `${name}: ${key} until chip 9`);
     }
     const lit = first(x => x.cableLit);
     assert.equal(events[lit]?.e, own('chip6'), `${name}: cable lit after ${events[lit]?.e}`); assert.ok(events.slice(lit).every(x => x.cableLit));

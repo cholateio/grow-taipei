@@ -7,7 +7,6 @@ import { anchorWorld, frontOf, cellOf } from '../src/actors/anchors.js';
 import { cellAt, RING_R, SATELLITES, axialToWorld, WATER_Y, R, worldToAxial } from '../src/scene/hex.js';
 import { C, offset } from '../src/actors/palette.js';
 import { diffParts } from '../src/actors/stage.js';
-import { SHIELD_TEST_DUR } from '../src/actors/parts.js';
 import * as spec from '../src/rules/spec.js';
 import * as engine from '../src/rules/engine.js';
 import { enumerate, stats } from '../src/solver/run.js';
@@ -21,8 +20,9 @@ const PALETTE = new Set(Object.values(C));
 const fakeCtx = { B, roster: { members: () => [], nearest: () => null, keys: () => [] } };
 const flat = bs => bs.flatMap(b => (b.kind === 'together' ? flat(b.beats) : b.kind === 'trainStop' ? [b, ...flat(b.during)] : [b]));
 
-// 晶片 Lv7–9 的零件在 101 上（tower.antenna、tower.shield）：一起看
-const both = L => ({ ...chip.view(L, {}), ...Object.fromEntries(Object.entries(tower.view(L, {}, { total: 31 })).filter(([k]) => k === 'tower.antenna' || k === 'tower.shield')) });
+// 晶片 Lv8–9 的零件在 101 上（tower.scaffold、tower.antenna、tower.shield）：一起看
+const TOWER_KEYS = ['tower.scaffold', 'tower.antenna', 'tower.shield'];
+const both = L => ({ ...chip.view(L, {}), ...Object.fromEntries(Object.entries(tower.view(L, {}, { total: 31 })).filter(([k]) => TOWER_KEYS.includes(k))) });
 // 照正解走到晶片 n 級時的其他物品（燈泡 ≥8 才有晶片 6、颱風 ≥2 才有 9）
 const at = n => lv({ chip: n, bulb: n >= 6 ? 8 : 3, token: n >= 7 ? 7 : 3, milk: 4, typhoon: n >= 9 ? 2 : 0 });
 const views = Array.from({ length: 10 }, (_, n) => both(at(n)));
@@ -42,8 +42,10 @@ test('chip view has something new at every level 1–9 (chip cell, the cable, th
   assert.ok(v[5]['chip.solar'] && v[5]['chip.substation'] && !v[5]['chip.smoke'] && !v[4]['chip.solar'], 'Lv5 solar roof and substation; the chimney stops smoking');
   assert.ok(v[6]['chip.cable'].lit && !v[5]['chip.cable'], 'Lv6 the cable is live');
   assert.ok(v[6]['chip.main'].models.some(m => Object.values(m.glow ?? {}).includes(C.warm)) && !v[5]['chip.main'].models.some(m => m.glow), 'Lv6 factory lights all on');
-  assert.ok(v[7]['tower.antenna'] && !v[6]['tower.antenna'], 'Lv7 antenna on 101');
-  assert.equal(v[8]['tower.shield'].state, 'test'); assert.equal(v[7]['tower.shield'], undefined);
+  // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：Lv7 零件運到 101 腳下（木箱）、Lv8 塔頂鷹架、Lv9 才有天線與罩子（木箱、鷹架拿掉）
+  assert.ok(v[7]['chip.crates'] && !v[6]['chip.crates'] && v[8]['chip.crates'] && !v[9]['chip.crates'], 'Lv7–8 crates at the 101 foot');
+  assert.ok(v[8]['tower.scaffold'] && !v[7]['tower.scaffold'] && !v[9]['tower.scaffold'], 'Lv8 scaffold on top of 101');
+  for (const n of [7, 8]) { assert.equal(v[n]['tower.antenna'], undefined, `lv${n} no antenna`); assert.equal(v[n]['tower.shield'], undefined, `lv${n} no shield`); }
   assert.equal(v[9]['tower.shield'].state, 'standby'); assert.equal(v[9]['tower.antenna'].pulse, true);
 });
 test('chip glb parts (factory, chimney, solar panels) exist and take the palette tint', () => {
@@ -160,8 +162,9 @@ test('chip draw calls: ≤ 20 for the chip cell, cable, antenna and shield at ev
 });
 
 // ── 不出格（§14.1）：每個零件與 footprint 的角都在晶片格裡（電纜走海面、天線與罩子在 101 上）──
-test('every chip part and footprint corner stays inside the chip cell (the cable runs on the sea; the landing pole is on the shore)', () => {
+test('every chip part and footprint corner stays inside the chip cell (the cable runs on the sea; the landing pole is on the shore; the crates stand at the 101 foot)', () => {
   for (let n = 1; n <= 9; n++) for (const rat of [0, 2]) for (const [key, s] of Object.entries(chip.view({ ...at(n), rat }, {}))) {
+    if (key === 'chip.crates') { for (const p of worldPoints(s)) assert.deepEqual(cellAt(p.x, p.z), cellOf('tower'), `lv${n} crates in the 101 cell`); continue; }
     for (const f of [].concat(s.footprint || [])) {
       const cx = s.at.x + (f.x ?? 0), cz = s.at.z + (f.z ?? 0), [hx, hz] = f.r != null ? [f.r, f.r] : f.rx != null ? [f.rx, f.rz] : [f.w / 2, f.d / 2];
       const corners = f.r != null || f.rx != null ? [[hx, 0], [-hx, 0], [0, hz], [0, -hz]] : [[hx, hz], [hx, -hz], [-hx, hz], [-hx, -hz]];
@@ -219,7 +222,8 @@ async function liveAt(h, order, pred) {
 }
 const isChip = to => e => e.kind === 'grow' && e.item === 'chip' && e.to === to;
 // 鏡頭軌跡（含回合最後的 focus('home')）
-const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home'], 9: ['home', 'home', 'home'] };
+// Lv8（R48 鷹架）：開場回全景、LEVEL UP 前在全景停一下（BUILD_HOLD）、回合收尾回全景
+const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home', 'home'], 9: ['home', 'home', 'home'] };
 test('scripts: every chip event in the solution plays 2.5–3.5 s (◆ Lv7–9 ≤ 6 s, Lv9 4.5–6 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
@@ -328,29 +332,38 @@ test('Lv7: the staff takes the box off the train while it is held at the station
     assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 5, 'carrying the parts (chip icon) on his way to the foot');
     assert.ok(m && heads.length === 1, 'one chip icon');
     const hd = heads[0](), mh = m.head(); assert.ok(Math.hypot(hd.x - mh.x, hd.y - mh.y, hd.z - mh.z) < 1e-9, 'the chip icon rides on the carrier');
-    assert.ok(show.stage.partKeys().includes('tower.antenna') && m);
+    // R48：Lv7 運到的是零件（101 腳下三個木箱），天線要到 Lv9 才長
+    assert.ok(show.stage.partKeys().includes('chip.crates') && !show.stage.partKeys().includes('tower.antenna') && m);
   }
 });
-// Lv8 ★ 矽盾測試：罩子閃三下又收起（劇本 ≤ 10 s），全島（看得到的人）轉頭看 101
-test('Lv8 live: the shield flashes three times and retracts within the event; visible islanders look at 101', async () => {
+// Lv8 ★ 鷹架（R48，使用者 2026-11-06：矽盾只有在真結局才會長）：回全景 → 塔頂鷹架閃白出現、離 101 腳下最近的工程師朝腳下敲鐵鎚（build）、
+// 全島（看得到的人）轉頭看 101 → LEVEL UP；沒有罩子、沒有天線。◆：整段 4.5–6 s
+test('Lv8 live: the scaffold appears on top of 101, one engineer hammers toward the foot, visible islanders look at 101; no dome, no antenna; ◆ 4.5–6 s', async () => {
   for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show } = h, update = show.update, ops = [], lookers = new Set();
+    const h = await headlessShow(), { show } = h, update = show.update, lookers = new Set(), hammer = new Set();
+    let dome = false;
     show.update = (dt, t) => {
       update(dt, t);
-      const o = show.stage.partObject('tower.shield'), m = o?.children[0];
-      if (m) ops.push(m.visible ? m.material.opacity : 0);
-      for (const k of show.roster.keys()) for (const p of show.roster.members(k)) if (p.walker?.gesture?.kind === 'look') lookers.add(p);
+      if (show.stage.partKeys().includes('tower.shield')) dome = true;
+      for (const k of show.roster.keys()) for (const p of show.roster.members(k)) {
+        const g = p.walker?.gesture?.kind;
+        if (g === 'look') lookers.add(p);
+        if (g === 'build' && k === 'chip.engineers') hammer.add(p);
+      }
     };
     const { secs } = await liveAt(h, order, isChip(8));
-    assert.ok(secs <= 10, `${secs} s`);
-    let peaks = 0; for (let i = 1; i + 1 < ops.length; i++) if (ops[i] > 0.4 && ops[i] >= ops[i - 1] && ops[i] > ops[i + 1]) peaks++;
-    assert.equal(peaks, 3, `${order[5]}: flashes`);
-    assert.equal(ops.at(-1), 0, 'retracted (hidden) by the end of the event');
+    const what = `${order.join('>')}: ${secs.toFixed(2)} s script, ${show.elapsed.toFixed(2)} s whole`;
+    console.log(`chip Lv8 (R48 scaffold) ${what}`);
+    assert.ok(show.stage.partKeys().includes('tower.scaffold'), 'the scaffold is up');
+    assert.ok(show.stage.partKeys().includes('chip.crates'), 'the crates are still at the foot');
+    assert.ok(!dome && !show.stage.partKeys().includes('tower.antenna'), 'no dome, no antenna');
+    assert.equal(hammer.size, 1, 'one engineer hammers');
     assert.ok(lookers.size >= 5, `${lookers.size} people look up`);
+    assert.ok(secs <= KEY_MAX && show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, what);
   }
 });
-// 審稿第 1 輪：測試罩建好就是收好的樣子，閃三下只在劇本演的時候——瞬間演完（跳過、reduced-motion）之後不會再閃
-test('Lv8 instant: the test shield is retracted from the first frame and never replays its flashes', async () => {
+// R48：瞬間演完（跳過、reduced-motion）晶片 8 也一樣：鷹架、木箱在，沒有罩子
+test('Lv8 instant: the scaffold and the crates are there, no dome', async () => {
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show } = h;
     let s = engine.createState(spec), done = false;
@@ -361,8 +374,9 @@ test('Lv8 instant: the test shield is retracted from the first frame and never r
       if (done) break;
       await h.run([{ kind: 'settle' }], { instant: true });
     }
-    const [m] = show.stage.partObject('tower.shield').children;
-    for (let i = 0; i < 150; i++) { show.update(1 / 30, 500 + i / 30); assert.equal(m.visible, false, `${order.join('>')} frame ${i}`); }
+    const keys = show.stage.partKeys();
+    assert.ok(keys.includes('tower.scaffold') && keys.includes('chip.crates'), `${order.join('>')}: scaffold and crates`);
+    assert.ok(!keys.includes('tower.shield') && !keys.includes('tower.antenna'), `${order.join('>')}: no dome, no antenna`);
   }
 });
 // 審稿第 1 輪：全島抬頭只叫日常裡、不是正在走進場的人；看完馬上放回日常（不凍到回合結束）
@@ -410,6 +424,54 @@ test('Lv9 live: the standby shield rises and stays as a faint outline; 101 pulse
   assert.ok(o.visible && o.scale.y === 1 && m.visible);
   assert.ok(Math.min(...ops) >= 0.06 && Math.max(...ops) <= 0.22, `faint ${Math.min(...ops)}–${Math.max(...ops)}`);
   assert.ok(show.stage.partKeys().includes('tower.antenna'));
+  // R48：木箱、鷹架在 Lv9 拿掉（縮下去）
+  for (const k of ['chip.crates', 'tower.scaffold']) assert.ok(!show.stage.partKeys().includes(k), `no ${k} at Lv9`);
+});
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長）：Lv7–8 零件運到 101 腳下——三個 0.3 見方的木箱（兩個並排、一個疊上），Lv9 起拿掉
+test('R48: chip 7–8 stack three crates at the foot of the 101; chip 9 removes them', () => { for (const n of [7, 8]) assert.equal(chip.view(lv({ chip: n, token: 7 }), {})['chip.crates'].parts.filter(p => p.kind === 'box').length, 3); assert.equal(chip.view(lv({ chip: 9, token: 7, typhoon: 3 }), {})['chip.crates'], undefined); });
+test('R48 crates: wood 0.3 cubes, two side by side on the ground and one on top; footprint 0.7 × 0.4; just south of the 101 plinth, clear of it', () => {
+  const c = chip.view(lv({ chip: 7, token: 7 }), {})['chip.crates'], boxes = c.parts.filter(p => p.kind === 'box');
+  assert.equal(c.kind, 'compound'); assert.deepEqual(c.at, chip.CRATES_AT); assert.deepEqual(c.footprint, { w: 0.7, d: 0.4 });
+  for (const b of boxes) { assert.deepEqual(b.scale, [0.3, 0.3, 0.3]); assert.equal(b.color, C.wood); }
+  const ground = boxes.filter(b => Math.abs(b.pos[1] - 0.15) < 1e-9), up = boxes.filter(b => Math.abs(b.pos[1] - 0.45) < 1e-9);
+  assert.equal(ground.length, 2); assert.equal(up.length, 1);
+  assert.ok(Math.abs(ground[0].pos[0] - ground[1].pos[0]) >= 0.3 - 1e-9 && Math.abs(ground[0].pos[2] - ground[1].pos[2]) < 1e-9, 'side by side');
+  assert.ok(Math.abs(up[0].pos[0] - ground[0].pos[0]) < 0.3 || Math.abs(up[0].pos[0] - ground[1].pos[0]) < 0.3, 'the third rests on the others');
+  for (const b of boxes) assert.ok(Math.abs(b.pos[0]) + 0.15 <= 0.35 + 1e-9 && Math.abs(b.pos[2]) + 0.15 <= 0.2 + 1e-9, 'inside the footprint');
+  const base = { x0: TOWER.x - 0.8, x1: TOWER.x + 0.8, z1: TOWER.z + 0.8 }, a = chip.CRATES_AT;
+  assert.deepEqual(cellAt(a.x, a.z), cellOf('tower'), 'in the 101 cell');
+  assert.ok(a.z - 0.2 >= base.z1 && a.z - 0.2 - base.z1 <= 0.3, `just south of the plinth (gap ${(a.z - 0.2 - base.z1).toFixed(2)})`);
+  assert.ok(a.x - 0.35 >= base.x0 - 1e-9 && a.x + 0.35 <= base.x1 + 1e-9, 'under the plinth front, not past its corners');
+});
+// R48：木箱不擋走道——夜市攤子與 101 底座之間（西）、101 與晶片橋頭之間（東）那兩條走道照樣通到南邊的空地；中心格裡沒有被關起來的走路格。
+// 每一種 101 階段（蓋一半有吊車）× 燈泡（夜市一攤／兩攤）× 晶片 7、8：兩條走道往南的出口（底座西南角、東南角外）照樣走得到；
+// 有木箱時的路線最多多 0.8（繞過木箱；堵住走道出口的話要從北邊繞一大圈）
+test('R48 crates keep the walkways beside the 101 open and never seal a pocket of the 101 cell', async () => {
+  const mods = await Promise.all(['tower', 'bulb', 'landmarks', 'token', 'typhoon', 'boba', 'baseball', 'milk', 'rat', 'chip'].map(id => import(`../src/actors/${id}.js`)));
+  const nav = createNav(), bad = [], toW = i => -9.5 + 0.3 * i, C0 = cellOf('tower');
+  const fps = (L, total, skip) => mods.flatMap(m => Object.entries(m.view(L, {}, { total }))).filter(([k]) => k !== skip)
+    .flatMap(([, p]) => [].concat(p.footprint || []).map(f => ({ ...f, x: p.at.x + (f.x ?? 0), z: p.at.z + (f.z ?? 0) })));
+  const W = { x: TOWER.x - 1.32, z: TOWER.z + 0.3 }, E = chip.FOOT, S = { x: TOWER.x, z: TOWER.z + 1.9 }, N = { x: TOWER.x, z: TOWER.z - 1.3 };
+  const MOUTHS = [{ x: TOWER.x - 1.05, z: TOWER.z + 1.1 }, { x: TOWER.x + 1.0, z: TOWER.z + 1.1 }];   // 西、東兩條走道往南的出口（底座角外）
+  for (const total of [10, 31, 55]) for (const b of [2, 4, 9]) for (const n of [7, 8]) {
+    const L = lv({ chip: n, bulb: b, token: 7, milk: 4 }), what = `total ${total} bulb ${b} chip ${n}`;
+    const route = () => Object.fromEntries([['W', W, S], ['E', E, S], ['W→E', W, E], ['N→S', N, S]].map(([k, p, q]) => [k, nav.routeLength(nav.route(p, q))]));
+    const stuck = () => {
+      const out = new Set();
+      for (let i = 0; i < 64; i++) for (let j = 0; j < 64; j++) {
+        const p = { x: toW(i), z: toW(j) }, c = cellAt(p.x, p.z);
+        if (!c || c[0] !== C0[0] || c[1] !== C0[1] || !nav.walkable(p.x, p.z) || nav.inFootprint(p.x, p.z)) continue;
+        const e = nav.edgePoint(C0, p); if (!e || Math.hypot(e.x - p.x, e.z - p.z) < 1.5) out.add(`(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+      }
+      return out;
+    };
+    nav.setFootprints(fps(L, total, 'chip.crates')); const r0 = route(), s0 = stuck();
+    nav.setFootprints(fps(L, total)); const r1 = route(), s1 = stuck();
+    for (const k in r0) if (!(r1[k] <= r0[k] + 0.8)) bad.push(`${what}: ${k} ${r0[k].toFixed(2)} → ${r1[k].toFixed(2)}`);
+    for (const m of MOUTHS) if (!nav.walkable(m.x, m.z) || nav.inFootprint(m.x, m.z)) bad.push(`${what}: walkway mouth (${m.x.toFixed(2)}, ${m.z.toFixed(2)}) blocked`);
+    for (const p of s1) if (!s0.has(p)) bad.push(`${what}: ${p} sealed off`);
+  }
+  assert.deepEqual(bad, []);
 });
 
 // 入口點（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來；入口走得到、離每個站位 ≥ 1.5（每一級、有沒有老鼠；唯一正解每一刻的真 footprint）

@@ -45,37 +45,53 @@ test('view: site has a crane and cones, half 4 tiers + crane, full 8 tiers + cap
   assert.equal(tiers(full), 10); assert.equal(full['tower.crane'], undefined);
   assert.ok(!full['tower.main'].parts.some(p => p.glow)); assert.ok(lit['tower.main'].parts.some(p => p.glow));
 });
-// 物品 v2 §4.3：晶片 Lv7 天線（Cyberpunk Kit glb，零件搭列車來）、Lv8 矽盾測試、Lv9 待命（天線每 3 秒閃一圈、罩子淡淡常駐）
-test('antenna (Cyberpunk Kit glb + ring) appears at chip 7 and pulses from chip 9; shield: test at chip 8, standby from 9; light show needs bulb 5', () => {
-  assert.equal(tower.view({ ...zero, chip: 6 }, {})['tower.antenna'], undefined);
-  const a7 = tower.view({ ...zero, chip: 7 }, {})['tower.antenna'], a9 = tower.view({ ...zero, chip: 9 }, {})['tower.antenna'];
-  assert.equal(a7.kind, 'antenna'); assert.equal(a7.pulse, false); assert.equal(a9.pulse, true);
-  assert.deepEqual(a7.models.map(m => m.path).sort(), ['quat/cyberpunk/Antenna_1.glb', 'quat/cyberpunk/Antenna_2.glb']);
-  for (const m of a7.models) { assert.ok(existsSync(new URL(`../assets/${m.path}`, import.meta.url)), m.path); for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `${m.path} tint ${c.toString(16)}`); }
-  assert.ok(!a7.parts.some(p => p.glow) && a9.parts.every(p => p.glow === 0x3fe0ff), 'the ring glows (one colour) once on standby');
-  assert.equal(tower.view({ ...zero, chip: 7 }, {})['tower.shield'], undefined);
-  assert.equal(tower.view({ ...zero, chip: 8 }, {})['tower.shield'].state, 'test');
+// 物品 v2 §4.3：晶片 Lv9 天線（Cyberpunk Kit glb＋環，每 3 秒閃一圈）與罩子（待命）。R48（使用者 2026-11-06：矽盾只有在真結局才會長）：
+// Lv7 木箱（chip.crates）、Lv8 鷹架（tower.scaffold），天線與罩子只在 Lv9 出現
+test('antenna (Cyberpunk Kit glb + glowing ring) and the standby shield appear only at chip 9; light show needs bulb 5', () => {
+  for (const chip of [6, 7, 8]) { const v = tower.view({ ...zero, chip }, {}); assert.equal(v['tower.antenna'], undefined, `chip ${chip}: no antenna`); assert.equal(v['tower.shield'], undefined, `chip ${chip}: no shield`); }
+  const a9 = tower.view({ ...zero, chip: 9 }, {})['tower.antenna'];
+  assert.equal(a9.kind, 'antenna'); assert.equal(a9.pulse, true);
+  assert.deepEqual(a9.models.map(m => m.path).sort(), ['quat/cyberpunk/Antenna_1.glb', 'quat/cyberpunk/Antenna_2.glb']);
+  for (const m of a9.models) { assert.ok(existsSync(new URL(`../assets/${m.path}`, import.meta.url)), m.path); for (const c of Object.values(m.tint)) assert.ok(PALETTE.has(c), `${m.path} tint ${c.toString(16)}`); }
+  assert.ok(a9.parts.every(p => p.glow === 0x3fe0ff), 'the ring glows (one colour) on standby');
   assert.equal(tower.view({ ...zero, chip: 9 }, {})['tower.shield'].state, 'standby');
   assert.deepEqual(tower.shieldSpec('full'), { ...tower.view({ ...zero, chip: 9 }, {})['tower.shield'], state: 'full' }, 'the ending (plan 5) uses the same dome, fully lit');
   assert.equal(tower.view({ ...zero, bulb: 4 }, {})['tower.show'], undefined);
   assert.equal(tower.view({ ...zero, bulb: 5 }, {})['tower.show'].kind, 'lightshow');
 });
-// 計畫 17 任務 2：矽盾未就緒（晶片 7–8）的隕石警告（flags.alarm）裡，罩子是 fail 狀態（劇本 B.replay 演試升失敗）；
-// 隕石一落下（flags.missile）就拿掉；沒有警告時 Lv8 照舊 test、Lv7 沒有罩子；Lv9 照舊 standby（警告裡也是）
-test('view under the meteor warning: chip 7–8 declare a fail dome (alarm, no missile yet), gone once the meteor falls; chip 8 without alarm still test; chip 9 standby', () => {
-  for (const chip of [7, 8]) {
-    const lv = { ...zero, chip }, v = tower.view(lv, { alarm: 1 });
-    assert.deepEqual(v['tower.shield'], tower.shieldSpec('fail'), `chip ${chip}: fail dome during the warning`);
-    for (const missile of ['deflect', 'hit']) assert.equal(tower.view(lv, { alarm: 1, missile })['tower.shield'], undefined, `chip ${chip}: no dome after the meteor (${missile})`);
+// R48：隕石警告（flags.alarm）裡晶片 7–8 也沒有罩子（試升失敗整段拿掉）；晶片 9 照舊 standby（警告裡也是）
+test('view under the meteor warning: no dome at chip 0–8 (alarm or meteor); chip 9 standby', () => {
+  for (const chip of [0, 6, 7, 8]) for (const flags of [{}, { alarm: 1 }, { alarm: 1, missile: 'deflect' }, { alarm: 1, missile: 'hit' }]) {
+    assert.equal(tower.view({ ...zero, chip }, flags)['tower.shield'], undefined, `chip ${chip} ${JSON.stringify(flags)}: no dome`);
   }
-  assert.equal(tower.view({ ...zero, chip: 8 }, {})['tower.shield'].state, 'test', 'chip 8 without alarm: test');
-  assert.equal(tower.view({ ...zero, chip: 7 }, {})['tower.shield'], undefined, 'chip 7 without alarm: no dome');
   for (const flags of [{}, { alarm: 1 }]) assert.equal(tower.view({ ...zero, chip: 9 }, flags)['tower.shield'].state, 'standby', 'chip 9 standby');
-  for (const chip of [0, 6]) assert.equal(tower.view({ ...zero, chip }, { alarm: 1 })['tower.shield'], undefined, `chip ${chip}: no dome`);
+});
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 8 塔頂下 0.6 一圈奶油色鷹架（torus scale 1.3）＋四根 0.5 高的短柱＋一支斜 0.9 長的吊臂，
+// footprint false；晶片 9 拿掉（換天線與罩子）；命中（彎 L）、母艦都沒有
+test('R48: no antenna or shield before chip 9; chip 8 shows the scaffold; chip 9 has antenna + standby shield and no scaffold; the hit tower has neither', () => {
+  for (const chip of [7, 8]) { const v = tower.view(lvOf(31, { chip, bulb: 5 }), { alarm: 1 }, { total: 31 }); assert.equal(v['tower.antenna'], undefined); assert.equal(v['tower.shield'], undefined); }
+  assert.ok(tower.view(lvOf(31, { chip: 8, bulb: 5 }), {}, { total: 31 })['tower.scaffold']); assert.equal(tower.view(lvOf(31, { chip: 7, bulb: 5 }), {}, { total: 31 })['tower.scaffold'], undefined);
+  const nine = tower.view(lvOf(31, { chip: 9, bulb: 5 }), {}, { total: 31 }); assert.ok(nine['tower.antenna']); assert.equal(nine['tower.shield'].state, 'standby'); assert.equal(nine['tower.scaffold'], undefined);
+  assert.equal(tower.view(lvOf(31, { chip: 8, bulb: 5 }), { missile: 'hit' }, { total: 31 })['tower.scaffold'], undefined);
+  assert.equal(tower.view(lvOf(31, { chip: 8, bulb: 5 }), { missile: 'deflect', epilogue: 'alien' }, { total: 31 })['tower.scaffold'], undefined, 'the mothership has no scaffold');
+});
+test('R48 scaffold: a cream torus (scale 1.3) 0.6 below the top, four 0.5-high posts, one tilted 0.9 jib; on the 101, no footprint; follows the top of every stage', () => {
+  for (const total of [10, 31, 55]) {
+    const v = tower.view(lvOf(total, { chip: 8 }), {}, { total }), s = v['tower.scaffold'], top = tower.body(tower.stageOf(total)).top;
+    assert.equal(s.kind, 'compound'); assert.deepEqual(s.at, anchorWorld('tower')); assert.equal(s.footprint, false);
+    const ring = s.parts.filter(p => p.kind === 'torus');
+    assert.equal(ring.length, 1); assert.equal(ring[0].scale, 1.3); assert.equal(ring[0].color, 0xfff8f4); assert.ok(Math.abs(ring[0].pos[1] - (top - 0.6)) < 1e-9, `${total}: ring 0.6 below the top`);
+    const posts = s.parts.filter(p => p.kind === 'box' && p.scale[1] === 0.5);
+    assert.equal(posts.length, 4, `${total}: four posts`);
+    for (const p of posts) assert.ok(Math.hypot(p.pos[0], p.pos[2]) <= 0.65 + 1e-9 && Math.abs(p.pos[1] - (top - 0.6)) <= 0.25 + 1e-9, 'posts on the ring');
+    const jib = s.parts.filter(p => p.kind === 'box' && p.scale[0] === 0.9);
+    assert.equal(jib.length, 1); assert.ok(Math.abs(jib[0].rot?.[2] ?? 0) > 0.2, 'the jib is tilted');
+    assert.equal(s.parts.length, 6);
+  }
 });
 test('the antenna sits on the spire top of whatever stage the tower is in', () => {
   for (const total of [0, 10, 27, 55]) {
-    const v = tower.view(lvOf(total, { chip: 7 }), {}, { total }), top = Math.max(...v['tower.main'].parts.map(p => p.pos[1] + (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2));
+    const v = tower.view(lvOf(total, { chip: 9 }), {}, { total }), top = Math.max(...v['tower.main'].parts.map(p => p.pos[1] + (Array.isArray(p.scale) ? p.scale[1] : p.scale) / 2));
     const a = v['tower.antenna'];
     assert.ok(Math.abs(a.parts[0].pos[1] - top) < 0.6, `ring at the top (${total})`);
     for (const m of a.models) assert.ok(m.pos[1] > top - 0.7 && m.pos[1] <= top + 0.01, `${m.path} on the spire (${total})`);
@@ -97,7 +113,7 @@ const shapeTop = parts => Math.max(...parts.map(partTop));
 const BEND_AT = { half: 0.3 + 1.1 + 2 * 0.45, full: 0.3 + 1.1 + 4 * 0.45, lit: 0.3 + 1.1 + 4 * 0.45 };
 test('view with missile hit: half / full / lit bend at their own height — the parts above rotated about z by π/2; no antenna/lightshow/shield/crane', () => {
   for (const [total, moves] of [[10, 2 * 2], [31, 2 * 4 + 2], [55, 2 * 4 + 2]]) {
-    const lv = lvOf(total, { chip: 8, bulb: 5 }), plain = tower.view(lv, {}, { total }), v = tower.view(lv, { missile: 'hit' }, { total });
+    const lv = lvOf(total, { chip: 9, bulb: 5 }), plain = tower.view(lv, {}, { total }), v = tower.view(lv, { missile: 'hit' }, { total });
     assert.ok(plain['tower.antenna'] && plain['tower.show'] && plain['tower.shield'], 'normally drawn');
     for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane']) assert.equal(v[k], undefined, `${total}: no ${k}`);
     const stage = tower.stageOf(total), bend = tower.bendPoint(stage), by = bend.y - anchorWorld('tower').y;
@@ -267,13 +283,13 @@ test('view with missile hit + epilogue alien: the mothership too (no antenna / l
     assert.deepEqual(v['tower.main'].footprint, { x: 0, z: 0, w: 1.6, d: 1.6 });
     assert.equal(v['tower.main'].grow, false, 'swaps whole (the rats blink onto the saucer at once)');
     assert.equal(v['tower.main'].labelY, tower.view(lvOf(61), { missile: 'shield', epilogue: 'alien' }, { total: 61 })['tower.main'].labelY, 'the lit head');
-    for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane']) assert.equal(v[k], undefined, `total ${total}: no ${k}`);
+    for (const k of ['tower.antenna', 'tower.show', 'tower.shield', 'tower.crane', 'tower.scaffold']) assert.equal(v[k], undefined, `total ${total}: no ${k}`);
     assert.notDeepEqual(bent['tower.main'].parts, v['tower.main'].parts, 'bent without the epilogue');
   }
 });
 test('all tower parts stand on the tower anchor', () => {
   const a = anchorWorld('tower');
-  for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {})]) for (const k in v) assert.deepEqual(v[k].at, a, k);
+  for (const v of [tower.view(zero, {}), tower.view(lvOf(55, { chip: 9, bulb: 5 }), {}), tower.view(lvOf(31, { chip: 8 }), {}, { total: 31 })]) for (const k in v) assert.deepEqual(v[k].at, a, k);
 });
 test('crane, antenna pulse and lightshow builders animate', () => {
   const glow = createGlowRegistry(); glow.setNight(1);
@@ -283,10 +299,9 @@ test('crane, antenna pulse and lightshow builders animate', () => {
   const pulse = f.build(tower.view({ ...zero, chip: 9 }, {})['tower.antenna']); const m = pulse.materials[0];
   pulse.update(0.1, 0.75); const a = m.emissiveIntensity; pulse.update(0.1, 2.25); assert.notEqual(m.emissiveIntensity, a);
   pulse.update(0.1, 3.75); assert.ok(Math.abs(m.emissiveIntensity - a) < 1e-9, 'every 3 s');
-  const still = f.build(tower.view({ ...zero, chip: 7 }, {})['tower.antenna']); assert.equal(still.update, undefined, 'Lv7 antenna does not pulse');
   const show = f.build(tower.view({ ...zero, bulb: 5 }, {})['tower.show']); const c0 = show.materials[0].emissive.getHex();
   show.update(0.1, 1); assert.notEqual(show.materials[0].emissive.getHex(), c0);
-  for (const p of [crane, pulse, still, show]) p.dispose?.(); assert.equal(glow.size, 0);
+  for (const p of [crane, pulse, show]) p.dispose?.(); assert.equal(glow.size, 0);
 });
 
 // 101 跳階只在回合最後的 settle 發生（計畫 3.6）：view 用 meta.total，沒給才自己加總

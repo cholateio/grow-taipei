@@ -1,7 +1,9 @@
 // 晶片（物品 v2 §4.3，max 9）：北士科工地 → 冒煙的廠房、工地的工人原地換外套變工程師（裁決 R23）→ 園區三棟玻璃盒、多一個工程師（2 個穿外套的，在廠區散步、不通勤）
 //   → 「星群」總部（弧形玻璃）→ 太陽能板屋頂＋變電站（小房子＋電線桿，煙囪不冒煙了）→ ★ 廠房通電（海底電纜從風車島接進變電站、發光、廠房燈全亮）
-//   → ★ 101 頂端長出矽盾天線（零件由列車運進來）→ ★ 矽盾測試（罩子閃三下又收起，全島抬頭）→ ★◆ 矽盾待命（罩子淡淡常駐、101 每 3 秒閃一圈）。
-// 天線與罩子是 101 的零件（tower.js 照 lv.chip 畫 tower.antenna、tower.shield），這裡的劇本用 apply 的 only 叫它們出來。
+//   → ★ 零件搭列車運到 101 腳下（木箱 chip.crates）→ ★ 101 頂上搭起鷹架（tower.scaffold，全島抬頭）→ ★◆ 矽盾待命（天線＋罩子淡淡常駐、101 每 3 秒閃一圈；
+//   木箱與鷹架拿掉）。R48（使用者 2026-11-06：矽盾只有在真結局才會長）：以前 Lv7 就長天線、Lv8 罩子閃三下，玩家看到罩子有了卻不擋隕石。
+// 鷹架、天線與罩子是 101 的零件（tower.js 照 lv.chip 畫 tower.scaffold、tower.antenna、tower.shield），這裡的劇本用 apply 的 only 叫它們出來；
+// 木箱是晶片自己的零件，但放在 101 那一格（CRATES_AT）。
 // 廠房、煙囪、太陽能板用 Kenney City Kit Industrial 的 glb（零件 kind 'campus'，同鮮奶的校舍），經載入器重上色票；
 //   電線桿、海底電纜是程式畫的（§7.2 找不到 CC0 的那幾樣）；玻璃盒、總部圓頂、變電站也是程式畫的（玻璃要一整塊玻璃色）。
 // 海底電纜（零件 kind 'cable'，parts.js）歸晶片管：燈泡 Lv8 先鋪好（暗），晶片 Lv6 通電發光（控制者裁決：燈泡只點亮風車與燈塔）。
@@ -11,7 +13,6 @@ import { anchorWorld, frontOf } from './anchors.js';
 import { SATELLITES, axialToWorld, TOP, WATER_Y } from '../scene/hex.js';
 import { builders as towerBuilders } from './tower.js';
 import { builders as milkBuilders } from './milk.js';
-import { SHIELD_TEST_DUR } from './parts.js';
 import { C, roofColor, rebuilt, offset } from './palette.js';
 import { lookUp } from '../show/crowd.js';
 import { ratMode } from './rat.js';   // 只在函式裡用（唯一正解之後 rat.js 不再 import 這裡：賽博 Lv4 不走工程師路線了）
@@ -24,7 +25,14 @@ const DOOR = offset(AT, -0.3, 1.25);
 // 蓋東西站的鏡頭側距離（§14）：工地的三角錐到 z +1.06、外擴 PAD 後 1.18，鏡頭方向（z 分量 0.96）1.3 才站得到外面
 export const FRONT_R = 1.3;
 const SITE = offset(TOWER, 0.9, 1.0);             // 101 工地（工人從這裡走過來）：101 南側、河濱公園北邊那條走得到的空地
-export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（天線零件送到這裡）
+export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（矽盾零件送到這裡）
+// 木箱（R48，晶片 Lv7–8；使用者 2026-11-06：矽盾只有在真結局才會長）：三個 CRATE 見方的木箱，兩個並排、一個疊在上面（偏西那個上）。
+// 設計原訂 101 底座西南角外 0.3——那裡是夜市攤子和 101 底座之間的走道出口（底座西緣與攤子之間只有一排走路格），東南角外則堵住
+// 晶片橋頭那條走道往南的出口；所以放在底座南緣正前方、西半邊（西緣對齊底座西緣，離底座 0.1）：footprint 0.7 × 0.4 外擴後跟底座連成一塊，
+// 兩條走道與南邊的空地照樣相通（test/chip.test.js 量路線長與被關住的走路格）
+const CRATE = 0.3, PLINTH = 0.8;   // PLINTH：101 底座半寬（tower.js body 的 1.6 見方）
+export const CRATES_AT = offset(TOWER, -PLINTH + 0.35, PLINTH + 0.1 + 0.2);
+const CRATES = [[-0.17, 0], [0.17, 0], [-0.17, 1]].map(([x, k]) => ({ kind: 'box', pos: [x, CRATE / 2 + k * CRATE, 0], scale: [CRATE, CRATE, CRATE], color: C.wood }));
 // 入口（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來——廠房西北、上台地那座階梯旁
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
@@ -41,6 +49,7 @@ const NEST = anchorWorld('rat');
 export const NEST_WATCH = { ...offset(NEST, 1.8, -0.55), yaw: Math.atan2(-1.8, 0.55) };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
 const STATION_MIN = 2.2;   // Lv7：鏡頭在站前至少停幾秒（R41 修正輪 1，見 Lv7 劇本）
+const BUILD_HOLD = 1.5;    // Lv8（R48 鷹架）：LEVEL UP 前在全景停幾秒，◆ 整段補到 4.5 s 以上
 
 // ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
 export const MODELS = {
@@ -175,6 +184,8 @@ export function view(lv, flags = {}) {
     }
   }
   if (wired) v['chip.cable'] = cable(n >= 6, n >= 5);
+  // R48：Lv7–8 零件堆在 101 腳下（Lv9 裝上去了，木箱縮下去）；隕石命中時照樣留著（零件沒裝上去就被撞了）
+  if (n >= 7 && n <= 8) v['chip.crates'] = { kind: 'compound', at: CRATES_AT, parts: CRATES, footprint: { w: 0.7, d: 0.4 } };
   if (n >= 2) {
     // 穿外套的工程師：Lv2 一個——就是 Lv1 的工人（from 'chip.worker'：工人名冊同一刻拿掉，名冊把他原地換外套閃一下；
     //   使用者 2026-10-31「人數還是太多了……晶片廠工人直接變成光頭」，裁決 R23）；Lv3 起兩個（多的那個從入口走進來）。
@@ -214,11 +225,7 @@ const surge = (B, e, dur) => B.replay(e, 'chip.cable', dur, {
   begin: o => { if (!o.userData.progress) return false; o.userData.progress(0); return true; },
   step: (o, k) => o.userData.progress(k), finish: o => o.userData.progress?.(1),
 });
-// 矽盾測試：罩子閃三下又收起（零件的 userData.test／finish）
-const shieldTest = (B, e) => B.replay(e, 'tower.shield', SHIELD_TEST_DUR, {
-  begin: (o, c) => { if (!o.userData.test) return false; o.userData.test({ speed: c.speed ?? 1 }); return true; }, finish: o => o.userData.finish?.(),
-});
-// 矽盾測試時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 24 個
+// 搭鷹架時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 24 個
 // （show/crowd.js 的 lookUp，最終章的宣告也用）。這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）
 
 export const script = {
@@ -272,8 +279,9 @@ export const script = {
         B.home(ENGINEERS), B.levelUp('chip'),
       ];
     },
-    // ★ 矽盾天線（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
-    //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 天線在塔頂閃白 → LEVEL UP 時轉回晶片格。
+    // ★ 零件運到（代幣 ≥7）：零件搭列車來——鏡頭在站前，列車進站停下、站務員一敲（卸下箱子）→ 鏡頭轉去 101：
+    //   離 101 腳下最近的工程師抱著箱子（圖框「晶片」）走到腳下 → 101 腳下長出三個木箱（chip.crates）→ LEVEL UP 時轉回晶片格。
+    //   R48（使用者 2026-11-06：矽盾只有在真結局才會長）：以前這一級塔頂長天線，現在只是零件到了（劇本不變，套用的零件換成木箱）。
     //   （工程師平常在廠區散步，離站前很遠；走過去要 4–5 秒，所以接箱子交給本來就站在月台旁的站務員）
     //   列車從它現在的位置趕來（最多 4.5 倍、減速進站，不瞬移）：剛開走的車要繞一整圈，最多 4.3 秒才到，所以這級最長約 6.9 秒。
     //   Task 6a（◆ ≤ 8 s：外星第 8 回合 6 → 7 合成一段 live 9.5 s——兩級的零件一起閃、工程師離 101 比較遠）：剛開過站不到半圈的車倒回來
@@ -289,10 +297,17 @@ export const script = {
         B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];
     },
-    // ★ 矽盾測試：回全景 → 罩子出現、閃三下又縮回地面、全島的人轉頭看 101（看完就放回日常）→ LEVEL UP
+    // ★ 搭鷹架（R48，使用者 2026-11-06：矽盾只有在真結局才會長；取代以前的矽盾測試——罩子閃三下）：回全景 →
+    //   離 101 腳下最近的工程師朝腳下敲鐵鎚（build 1.0 s）→ 塔頂鷹架閃白出現、全島的人轉頭看 101（1.2 s，看完就放回日常）→ 全景停 BUILD_HOLD → LEVEL UP。
+    //   計畫原訂敲鐵鎚與抬頭同一拍（together），量到劇本 2.2 s（< 一級下限 2.5）、整段 3.3 s（< ◆ 下限 4.5）：先敲再長（看得出是工程師搭起來的），
+    //   劇本 3.2 s；整段再靠回全景停一下補到 4.5 以上（KEY_MIN／KEY_MAX 4.5–6 s）
     8(e, s, ctx) {
-      const { B } = ctx, up = lookUp(B, TOWER, 1.2);
-      return [B.focus('home'), B.together([shieldTest(B, e), ...up.look]), up.release, B.apply(e), B.levelUp('chip')];
+      const { B } = ctx, up = lookUp(B, TOWER, 1.2), e0 = nearestEng(FOOT);
+      return [
+        B.focus('home'), B.gesture(e0, 'build', 1.0, { at: FOOT }),
+        B.together([B.apply(e, { only: ['tower.scaffold'] }), ...up.look]), up.release, B.home(e0),
+        B.apply(e), B.focus('home', { hold: BUILD_HOLD }), B.levelUp('chip'),
+      ];
     },
     // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）
     //   → 全景定格（看一次 101 閃光）→ LEVEL UP。R41（使用者 2026-11-05：後期動畫偏長，◆ ≤ 6 s；整段 6.6 s）：定格 3.2 → 1.8、罩子長起來 1.5 → 1.2
@@ -309,11 +324,11 @@ export const script = {
   fx: () => null,   // 晶片自己沒有 onLevel
 };
 // ◆ 關鍵節點（裁決 R11）：跳級的第二級落在這幾級，也演完整劇本（turn.js）。
-// Lv7 天線、Lv8 矽盾測試（選擇帶動升級裁決 R6）：離島鏈是整局的主線，跳級變多之後兩級常是跳級的第二級（外星 6 → 7、賽博 6 → 8），
-// 不標 ◆ 就看不到箱子搭車來、罩子閃三下
+// Lv7 零件運到、Lv8 鷹架（選擇帶動升級裁決 R6；R48 起不再是天線與矽盾測試）：離島鏈是整局的主線，跳級變多之後兩級常是跳級的第二級
+// （外星 6 → 7、賽博 6 → 8），不標 ◆ 就看不到箱子搭車來、塔頂搭鷹架
 script.grow[7].key = script.grow[8].key = script.grow[9].key = true;
 
 // 拜訪點（計畫 6 設計 §4，同 5b 之前的趕工）：Lv1 工地、Lv2 廠房（園區錨點）、Lv3 園區玻璃盒、Lv4 起星群總部、Lv5 變電站——站位半徑 FRONT_R。
-// Lv6 海底電纜在海裡 → 敲上岸那頭的變電站；Lv7 天線（101 上）、Lv8 矽盾測試、Lv9 待命 → 總部（拜訪的是晶片自己那格）
+// Lv6 海底電纜在海裡 → 敲上岸那頭的變電站；Lv7 木箱、Lv8 鷹架（101 那一格）、Lv9 待命 → 總部（拜訪的是晶片自己那格）
 const VISIT = { 1: AT, 2: AT, 3: offset(AT, 0.6, 0), 5: offset(AT, SUB.x, SUB.z), 6: offset(AT, SUB.x, SUB.z) };
 export const visitSpot = n => (n >= 1 && n <= 9 ? { ...(VISIT[n] ?? offset(AT, HQ.x, HQ.z)), r: FRONT_R } : null);

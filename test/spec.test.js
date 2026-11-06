@@ -88,6 +88,10 @@ test('rat Lv4 branches on chip >= 8; the bite is the only placement reaction (mi
 test('every item has a placed story and a story per level', () => {
   for (const id of ORDER) { assert.ok(STORIES.placed[id]); for (let n = 2; n <= ITEMS[id].max; n++) assert.ok(STORIES.grow[id][n], `${id} story ${n}`); }
 });
+// R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 Lv7 只是零件運到、Lv8 只是搭鷹架
+test('R48: chip 7 and 8 stories are the parts delivery and the scaffolding', () => {
+  assert.equal(STORIES.grow.chip[7], '零件搭列車運到 101 腳下'); assert.equal(STORIES.grow.chip[8], '101 頂上搭起鷹架');
+});
 // 設計 2026-10-31 §5.3 的故事句；拿掉的級數不留句子
 test('stories of the re-levelled items follow design 2026-10-31 §5.3, with no text for removed levels', () => {
   assert.deepEqual(STORIES.grow.typhoon, { 2: '暴風圈還在島上空', 3: '雨過天晴，彩虹出來了' });

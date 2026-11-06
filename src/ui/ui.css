@@ -41,8 +41,8 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .slot .n:empty { display: none; }
 .slot.max .lv { background: var(--yellow); color: var(--ink); }
 .slot:disabled { cursor: default; }
-.slot.placed { opacity: .55; }
-.slot.placed .lv { opacity: 1; }
+/* 放過的格只淡化圖示與名稱：順序圓牌與 Lv 標籤保持全亮（整批審查 2026-11-06：整格 opacity 會把圓牌一起變灰） */
+.slot.placed svg, .slot.placed .name { opacity: .55; }
 .slots.busy .slot:not(.placed) { opacity: .8; }
 /* 跳過鍵（修正批次 max-skip §C）：物品列最後一格窄格，只有 Skip 圖示；一直在、不跳版面。沒有演出時停用（淡），
    演出中啟用：珊瑚底白圖示（正好跟演出中停用的物品格相反）。
@@ -121,6 +121,8 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
   .slot svg { width: 28px; height: 28px; }
   .slot .name { display: none; }
   .slot .n { width: 16px; height: 16px; border-radius: 8px; font-size: 10px; line-height: 16px; }
+  /* Lv 標籤收進格子裡（同 340 那一階）：掛在 bottom −9px 會壓到下一列，被下一列的順序圓牌蓋住「L」（整批審查 2026-11-06，land-end 截圖） */
+  .slot .lv { bottom: 1px; font-size: 9px; padding: 0 3px; line-height: 11px; }
   .skip { grid-column: 1 / span 2; grid-row: 5; width: auto; height: 40px; }
   .skip.hide svg { transform: rotate(-90deg); }   /* 隱藏圖示朝下 → 朝右（把側欄推向右邊）；跳過圖示本來就朝右 */
   .slots.collapsed { transform: translate(calc(100% + 40px + env(safe-area-inset-right)), -50%); }

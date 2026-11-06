@@ -17,7 +17,6 @@ import { OrbitControls } from '../vendor/three/addons/controls/OrbitControls.js'
 import * as spec from './rules/spec.js';
 import * as engine from './rules/engine.js';
 import * as endings from './rules/endings.js';
-import { ENDINGS } from './rules/endings.js';
 import { ICONS } from './ui/icons.js';
 import { createSlots } from './ui/slots.js';
 import { showHowTo, createTopBar } from './ui/cards.js';
@@ -166,7 +165,9 @@ export async function start({ params, loading }) {
   slots = createSlots(uiRoot, { items: spec.ORDER.map(id => ({ id, name: spec.ITEMS[id].name, icon: ICONS[id], max: spec.ITEMS[id].max })), onPick: pick, onSkip: () => show.skip() });
   fit();   // R42：側欄建好了，量一次寬給鏡頭 inset（第一次 fit 時 .slots 還不存在）
   // R45：怎麼玩卡片下方是結局圖鑑（看過的點亮）；結束後按頂欄「?」看
-  const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1'), endings: ENDINGS, seen: seenEndings() });
+  // 除錯：?seen=flood,cyber 只給圖鑑顯示看過哪些（截圖拍點亮的磚用），不寫進 localStorage
+  const debugSeen = params.get('seen')?.split(',').filter(Boolean) ?? null;
+  const howTo = () => showHowTo(uiRoot, { onClose: () => storageSet('grow-taipei:howto', '1'), endings: endings.ENDINGS, seen: debugSeen ?? seenEndings() });
   const topBar = createTopBar(uiRoot, { onReset: restart, onHowTo: howTo });
   // 除錯：?card=howto 不管 localStorage 直接開怎麼玩卡片（tools/shot.mjs 拍圖鑑用）
   if (params.get('card') === 'howto' || (!auto && !storageGet('grow-taipei:howto'))) howTo();

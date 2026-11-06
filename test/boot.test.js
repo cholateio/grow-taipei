@@ -47,6 +47,10 @@ test('app.js records the finished ending and hands the gallery to the how-to car
   const src = readFileSync('src/app.js', 'utf8');
   assert.match(src, /const SEEN_KEY = 'grow-taipei:endings'/);
   assert.match(src, /onFinished:\s*\(ending\)\s*=>\s*\{[^}]*storageSet\(SEEN_KEY, JSON\.stringify\(\[\.\.\.new Set\(\[\.\.\.seenEndings\(\), ending\.id\]\)\]\)\)/);
-  assert.match(src, /showHowTo\(uiRoot, \{[^\n]*endings: ENDINGS, seen: seenEndings\(\)/);
+  assert.match(src, /showHowTo\(uiRoot, \{[^\n]*endings: endings\.ENDINGS, seen: debugSeen \?\? seenEndings\(\)/);
+  // 整批審查：ENDINGS 用已經在的 endings 命名空間，不另外 import；?seen=a,b 只給圖鑑顯示（不寫進 localStorage）
+  assert.doesNotMatch(src, /import \{ ENDINGS \}/);
+  assert.match(src, /const debugSeen = params\.get\('seen'\)\?\.split\(','\)\.filter\(Boolean\) \?\? null;/);
+  assert.equal((src.match(/debugSeen/g) ?? []).length, 2, 'debugSeen is only read by howTo, never stored');
   assert.match(src, /params\.get\('card'\) === 'howto'/);
 });

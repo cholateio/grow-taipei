@@ -8,6 +8,7 @@
 //   上面「warp＋十幾秒」是舊的量測；warp 一律照無頭演出量到的事件秒數找。
 //   ?card=howto（R45，使用者 2026-11-06）：不管 localStorage 直接開怎麼玩卡片＋結局圖鑑（新的無頭設定檔沒有看過的結局，全是問號磚）：
 //   node tools/shot.mjs 'howto=card=howto' 'phone360-howto=card=howto&quality=low'
+//   ?seen=flood,cyber,…：圖鑑當作看過這些結局（只顯示、不寫 localStorage），npm run shot 的 howto-seen 拍點亮的磚
 // node tools/shot.mjs --dom <query>  → 印出頁面 DOM（驗證錯誤畫面文字用）
 // --root dist：從部署用的 dist/ 開頁面（計畫 12：npm run dist 之後 node tools/shot.mjs --root dist open=）
 import { execFile } from 'node:child_process';

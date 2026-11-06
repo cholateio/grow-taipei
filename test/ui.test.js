@@ -140,6 +140,7 @@ test('npm run shot includes howto and phone360-howto (?card=howto)', async () =>
   const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
   assert.match(shot, /'howto=card=howto'/);
   assert.match(shot, /'phone360-howto=card=howto&quality=low'/);
+  assert.match(shot, /'howto-seen=card=howto&seen=flood,cyber,milkExpired'/, 'lit tiles via the ?seen= debug param');
 });
 
 test('ui.css: phone landscape (orientation landscape, max-height 520) turns the item bar into a right-hand rail', async () => {
@@ -304,4 +305,20 @@ test('collapse/expand add .sliding for the slide and drop it after transitionend
   nav.listeners.transitionend({ target: nav }); assert.ok(!nav.classList.contains('sliding'), 'transitionend');
   root.querySelector('.menu-tab').listeners.click(); assert.ok(nav.classList.contains('sliding') && !nav.classList.contains('collapsed'));
   await new Promise(r => setTimeout(r, 400)); assert.ok(!nav.classList.contains('sliding'), 'safety timer');
+});
+
+// 整批審查（2026-11-06）：48 px 側欄的 Lv 標籤收進格子裡（不再掛到下一列、被下一列的順序圓牌蓋住）；放過的格只淡化圖示與名稱，圓牌與 Lv 保持全亮
+test('ui.css: the 48px rail keeps the Lv label inside the cell, and a placed cell dims only its icon and name', async () => {
+  const css = await cssText();
+  const rail = css.slice(css.indexOf('(max-height: 520px)'), css.indexOf('(max-height: 340px)'));
+  assert.match(rail, /\.slot \.lv \{ bottom: 1px;/);
+  assert.match(css, /\n\.slot\.placed svg, \.slot\.placed \.name \{ opacity: \.55; \}/);
+  assert.doesNotMatch(css, /\.slot\.placed \{[^}]*opacity/, 'not the whole button (badges stay full strength)');
+});
+// 整批審查：localStorage 的 getter 本身會丟（Chrome 封鎖 cookie、沙盒 iframe）也不能丟出 storageGet／storageSet
+test('storage helpers never throw even when the localStorage getter itself throws', () => {
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', { get() { throw new Error('blocked'); }, configurable: true });
+  try { assert.equal(storageGet('k'), null); assert.equal(storageSet('k', 'v'), false); }
+  finally { if (had) Object.defineProperty(globalThis, 'localStorage', had); else delete globalThis.localStorage; }
 });

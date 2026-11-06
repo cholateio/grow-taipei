@@ -24,3 +24,6 @@ export const BUBBLE_ICONS = {
 
 // 跳過鍵（物品列最後一格，修正批次 max-skip §C）：⏭ 兩個往右的三角形＋一條直線，同一套白底墨線（啟用時 CSS 改成白色，ui.css .skip）
 export const SKIP_ICON = svg('<path d="M12 18 L30 32 L12 46 Z"/><path d="M30 18 L48 32 L30 46 Z"/><path d="M53 18 V46" fill="none"/>');
+
+// 隱藏選單鍵（使用者 2026-11-06：遊戲結束後跳過鍵變隱藏選單）：兩個朝下的 V 形，同一套白底墨線；側欄時 CSS 轉 −90° 朝右，顯示選單圓鍵再轉 180° 朝上（ui.css .skip／.menu-tab）
+export const HIDE_ICON = svg('<path d="M16 16 L32 30 L48 16" fill="none"/><path d="M16 34 L32 48 L48 34" fill="none"/>');

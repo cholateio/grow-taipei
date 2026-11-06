@@ -150,9 +150,9 @@ export async function start({ params, loading }) {
     // 重玩按頂欄 RESET：結束後它變醒目（計畫 12 重玩迴圈），restart 拿掉
     // R43（使用者 2026-11-06）：結束後才開放平移（雙指／右鍵拖曳），注視點鎖在島上（rig.clamp 每幀）；
     // 除錯特寫（?cam=）釘住的鏡頭不開——夾住會把島外／高處的注視點拉回來
-    onFinished: () => { topBar.setFinished(true); if (!debugCam) rig.setFree(true); },
+    onFinished: () => { topBar.setFinished(true); slots.setMode('hide'); if (!debugCam) rig.setFree(true); },
   });
-  function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.setFree(false); rig.home(0); }
+  function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.setFree(false); slots.setMode('skip'); rig.home(0); }
   const pick = id => game.pick(id);
   // 跳過鍵（計畫 12；修正批次 max-skip §C 放進物品列最後一格）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；
   // 每幀照 show.skippable 啟用／停用（終局前的 hold 停用）

@@ -4,7 +4,7 @@
 //   只有 Skip 圖示、aria-label／title「跳過」；一直在、不跳版面——沒有演出時停用，演出中（show.skippable，app.js 每幀 setSkippable）啟用，
 //   正好跟物品格相反（演出中物品格停用）。setBusy／reset 不碰它
 import { levelLabel } from './format.js';
-import { SKIP_ICON } from './icons.js';
+import { SKIP_ICON, HIDE_ICON } from './icons.js';
 
 export function createSlots(root, { items, onPick, onSkip }) {
   const nav = document.createElement('nav'); nav.className = 'slots'; nav.setAttribute('aria-label', '城市發展物品');
@@ -21,9 +21,25 @@ export function createSlots(root, { items, onPick, onSkip }) {
   }
   const skip = document.createElement('button');
   skip.className = 'skip'; skip.type = 'button'; skip.innerHTML = SKIP_ICON; skip.setAttribute('aria-label', '跳過'); skip.setAttribute('title', '跳過'); skip.disabled = true;
-  skip.addEventListener('click', () => { if (!skip.disabled) onSkip?.(); });
+  // 使用者 2026-11-06：遊戲結束後物品列用不到，跳過鍵變「隱藏選單」，收起後邊緣一顆圓鍵叫回來
+  let mode = 'skip';
+  const tab = document.createElement('button');
+  tab.className = 'menu-tab'; tab.type = 'button'; tab.innerHTML = HIDE_ICON; tab.setAttribute('aria-label', '顯示選單'); tab.setAttribute('title', '顯示選單');
+  const expand = () => { nav.classList.remove('collapsed'); tab.classList.remove('on'); };
+  skip.addEventListener('click', () => {
+    if (mode === 'hide') { nav.classList.add('collapsed'); tab.classList.add('on'); return; }
+    if (!skip.disabled) onSkip?.();
+  });
+  tab.addEventListener('click', expand);
   nav.append(skip);
-  root.append(nav);
+  root.append(nav, tab);
+  const setSkipLook = () => {
+    const hide = mode === 'hide';
+    skip.innerHTML = hide ? HIDE_ICON : SKIP_ICON;
+    const label = hide ? '隱藏選單' : '跳過';
+    skip.setAttribute('aria-label', label); skip.setAttribute('title', label);
+    skip.disabled = !hide; skip.classList.toggle('hide', hide);
+  };
   const placed = new Set();
   const refresh = busy => { for (const [id, b] of Object.entries(buttons)) b.disabled = busy || placed.has(id); };
   return {
@@ -31,9 +47,10 @@ export function createSlots(root, { items, onPick, onSkip }) {
     setPlaced(id) { placed.add(id); buttons[id].classList.add('placed'); refresh(nav.classList.contains('busy')); },
     setBusy(flag) { nav.classList.toggle('busy', flag); refresh(flag); },
     // 每幀呼叫：只有變了才碰 DOM
-    setSkippable(flag) { if (skip.disabled === !!flag) skip.disabled = !flag; },
+    setMode(m) { m = m === 'hide' ? 'hide' : 'skip'; if (m === mode) return; mode = m; expand(); setSkipLook(); },
+    setSkippable(flag) { if (mode === 'hide') return; if (skip.disabled === !!flag) skip.disabled = !flag; },
     reset() {
-      placed.clear(); nav.classList.remove('busy');
+      placed.clear(); nav.classList.remove('busy'); expand(); if (mode !== 'skip') { mode = 'skip'; setSkipLook(); }
       for (const [id, b] of Object.entries(buttons)) { b.classList.remove('placed', 'max'); labels[id].textContent = ''; b.disabled = false; }
     },
   };

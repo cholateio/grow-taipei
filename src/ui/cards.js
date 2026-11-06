@@ -24,7 +24,7 @@ export function showHowTo(root, { onClose, endings, seen = [] }) {
 // 看過 → 圖示＋名稱；沒看過 → 灰磚問號、沒有名稱（.unknown）。seen 裡不在表上的 id 不算。畫面上的新文字只有數字和看過的結局名稱
 function gallery(endings, seen) {
   const ids = Object.keys(endings), order = [...ids.filter(id => id === 'cyber'), ...ids.filter(id => id !== 'cyber' && id !== 'tryAgain'), ...ids.filter(id => id === 'tryAgain')];
-  const known = new Set(seen.filter(id => id in endings));
+  const known = new Set(seen.filter(id => Object.hasOwn(endings, id)));   // hasOwn：存著的 "constructor" 之類原型鍵不算
   const box = document.createElement('div'); box.className = 'endings';
   const count = document.createElement('p'); count.className = 'eyebrow';
   const span = (cls, text) => { const s = document.createElement('span'); s.className = cls; s.textContent = text; return s; };

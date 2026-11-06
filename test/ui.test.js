@@ -270,3 +270,18 @@ test('the how-to card draws the ending gallery: cyber first (true ring), tryAgai
   assert.equal(el.querySelector('.seen').textContent, '1'); assert.equal(el.querySelector('.total').textContent, String(tiles.length));
   assert.equal(showHowTo(root, { onClose() {} }).querySelector('.endings'), null);
 });
+// R45 修正輪：存進 localStorage 的 "constructor" 之類的原型鍵不算看過；卡片高度先 vh 後 dvh（手機網址列）；≤340 寬名稱縮小、超出就省略號
+test('the gallery ignores prototype keys in seen ("constructor" does not count)', async () => {
+  installFakeDom(); const { showHowTo } = await import('../src/ui/cards.js'); const { ENDINGS } = await import('../src/rules/endings.js');
+  const el = showHowTo(document.createElement('div'), { onClose() {}, endings: ENDINGS, seen: ['constructor', 'toString', '__proto__'] });
+  assert.equal(el.querySelector('.seen').textContent, '0');
+  assert.ok([...el.querySelectorAll('.ending')].every(t => t.classList.contains('unknown')));
+});
+test('ui.css: the card scrolls inside 100vh − 32 then 100dvh − 32; gallery titles ellipsize, and shrink to 9 px with a 4 px gap at ≤ 340 px', async () => {
+  const css = await cssText();
+  assert.match(css, /\n\.card \{ max-height: calc\(100vh - 32px\); max-height: calc\(100dvh - 32px\); overflow: auto; \}/);
+  const title = ruleOf(css, '.ending .title');
+  assert.match(title, /overflow:\s*hidden/); assert.match(title, /text-overflow:\s*ellipsis/); assert.match(title, /max-width:\s*100%/); assert.match(title, /white-space:\s*nowrap/);
+  const tiny = mediaOf(css, 'max-width: 340px');
+  assert.match(ruleOf(tiny, '.endings .grid'), /gap:\s*4px/); assert.match(ruleOf(tiny, '.ending .title'), /font-size:\s*9px/);
+});

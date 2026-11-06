@@ -872,7 +872,7 @@ const DOME0 = anchorWorld('baseball');
 const flatD = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 test('R47 plagueSpots: PLAGUE_N rats from a ring 0.3–0.6 round the dome gate to the ground of all seven main cells (radius 0.6–2.0, clear of the 101 plinth ≥ 1.2 and the ballpark ≥ 1.0), fixed seed', () => {
   const spots = rat.plagueSpots();
-  assert.equal(rat.PLAGUE_N, 48);
+  assert.equal(rat.PLAGUE_N, 96, 'fix round 1: 48 → 96 (still one draw call, ~14 a cell)');
   assert.equal(spots.length, rat.PLAGUE_N);
   assert.deepEqual(rat.plagueSpots(), spots, 'fixed seed: the same every time');
   const perCell = new Map();
@@ -890,7 +890,10 @@ test('R47 plagueSpots: PLAGUE_N rats from a ring 0.3–0.6 round the dome gate t
     perCell.set(String(cell), (perCell.get(String(cell)) ?? 0) + 1);
   }
   assert.equal(perCell.size, MAIN_CELLS.length, 'all seven cells');
-  for (const [cell, n] of perCell) assert.ok(n >= 6 && n <= 7, `cell ${cell}: ${n} rats`);
+  const lo = Math.floor(rat.PLAGUE_N / MAIN_CELLS.length), hi = Math.ceil(rat.PLAGUE_N / MAIN_CELLS.length);
+  for (const [cell, n] of perCell) assert.ok(n >= lo && n <= hi, `cell ${cell}: ${n} rats`);
+  // 修正輪 1：放大 1.4 倍之後彼此還是分得開（身體長 0.31）
+  for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) assert.ok(flatD(spots[i].to, spots[j].to) >= 0.35 - 1e-9, `rats ${i}, ${j} apart`);
 });
 test('R47 view: rat.plague only in the domeRats epilogue (one part, no footprint, no shadow)', () => {
   const v = rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, missile: 'deflect', epilogue: 'domeRats' });
@@ -914,6 +917,9 @@ test('R47 plague part: one InstancedMesh (one draw call, no shadow) of clay rats
     assert.ok(mesh.isInstancedMesh); assert.equal(mesh.count, rat.PLAGUE_N);
     assert.equal(mesh.castShadow, false);
     assert.equal(mesh.material.color.getHex(), 0x6b5b53);
+    // 修正輪 1：一隻 × 1.4（身體約 0.22 × 0.14 × 0.31）
+    mesh.geometry.computeBoundingBox(); const sz = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
+    assert.ok(Math.abs(sz.x - 0.224) < 0.01 && sz.y > 0.14 && sz.y < 0.2 && sz.z > 0.45 && sz.z < 0.6, `${quality}: rat size ${sz.x.toFixed(3)} × ${sz.y.toFixed(3)} × ${sz.z.toFixed(3)} (with head and tail)`);
     const m4 = new THREE.Matrix4(), v = new THREE.Vector3();
     const at = i => { mesh.getMatrixAt(i, m4); return v.setFromMatrixPosition(m4).clone(); };
     const progress = i => { const a = at(i), s = S[i], dx = s.to.x - s.from.x, dz = s.to.z - s.from.z; return ((a.x - s.from.x) * dx + (a.z - s.from.z) * dz) / (dx * dx + dz * dz); };

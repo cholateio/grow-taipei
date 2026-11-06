@@ -84,8 +84,10 @@ export const UFO_PARTS = [
 // 沒有骨骼、不進名冊、不算人數）。每隻有自己的出發點（巨蛋門口 GATE 周圍半徑 PLAGUE_FROM 一圈）、目的地（七個主格的地面：格心半徑 PLAGUE_R 之間，
 // 照格子輪流分，每格 6–7 隻；離 101 底座中心 ≥ TOWER_CLEAR（底座 1.6 見方，角在 1.13）、離球場中心 ≥ DOME_CLEAR（巨蛋 footprint 是 2.3 × 1.9 的橢圓，
 // 設計寫 ≥ 1.0，放到 1.3 才不會站進巨蛋裡）、彼此 ≥ PLAGUE_GAP）、朝向（從門口往目的地）、抖動相位。固定種子亂數：每次載入一樣
-export const PLAGUE_N = 48;
-const PLAGUE_R = [0.6, 2.0], PLAGUE_FROM = [0.3, 0.6], TOWER_CLEAR = 1.2, DOME_CLEAR = 1.3, PLAGUE_GAP = 0.3;
+// 修正輪 1（協調者裁決，使用者要「整島都是老鼠」、截圖看起來只是小點）：48 → 96 隻（每格 13–14 隻，還是一個 draw call）、每隻放大 PLAGUE_SCALE 1.4 倍；
+// 彼此間距 0.3 → 0.35（身體長 0.31）
+export const PLAGUE_N = 96, PLAGUE_SCALE = 1.4;
+const PLAGUE_R = [0.6, 2.0], PLAGUE_FROM = [0.3, 0.6], TOWER_CLEAR = 1.2, DOME_CLEAR = 1.3, PLAGUE_GAP = 0.35;
 const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 export function plagueSpots(seed = 7) {
   const rnd = mulberry32(seed), spots = [];
@@ -104,7 +106,7 @@ export function plagueSpots(seed = 7) {
   }
   return spots;
 }
-// 一隻老鼠（局部 +z 是頭）：身體橢球 0.16 × 0.1 × 0.22、頭球 0.08（前面、略低）、兩個小耳朵、尾巴（細圓柱往後拖、尾端微翹）。
+// 一隻老鼠（局部 +z 是頭）：身體橢球 0.16 × 0.1 × 0.22、頭球 0.08（前面、略低）、兩個小耳朵、尾巴（細圓柱往後拖、尾端微翹），整隻 × PLAGUE_SCALE。
 // 牠在原地亂竄的幅度 SCURRY（±0.15）、跑過去時的拋物線高度（每公尺 HOP_PER_M，從門口跳過水道、爬上台地格不穿地）
 export const PLAGUE_COLOR = 0x6b5b53, SCURRY = 0.15;
 const HOP_PER_M = 0.05;
@@ -115,7 +117,7 @@ function ratGeometry(THREE) {
     new THREE.SphereGeometry(0.018, 5, 4).translate(-0.025, 0.1, 0.1), new THREE.SphereGeometry(0.018, 5, 4).translate(0.025, 0.1, 0.1),
     new THREE.CylinderGeometry(0.006, 0.012, 0.16, 5).rotateX(Math.PI / 2 - 0.25).translate(0, 0.06, -0.18),
   ];
-  const geo = mergeGeometries(geos); geos.forEach(g => g.dispose());
+  const geo = mergeGeometries(geos).scale(PLAGUE_SCALE, PLAGUE_SCALE, PLAGUE_SCALE); geos.forEach(g => g.dispose());
   return geo;
 }
 

@@ -335,6 +335,24 @@ test('showAll un-hides every member and puts them back on the ground', () => {
   assert.ok(ms.every(m => !m.hidden));
   for (const m of ms) assert.ok(Math.abs(m.walker.pose.y - m.pos.y) < 1e-9, 'walker back at its pos (not under the sea)');
 });
+// R47 鼠災收尾（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：hide(m, { stay })——躲進門就不出來；showAll（兩種）、snap 都不放，
+// show(m) 才收掉；reset 之後重新宣告的是新成員（沒有 stay）
+test('hide(m, { stay: true }) survives showAll, showAll({ walk }) and snap; show(m) clears it; reset starts fresh', () => {
+  const { roster } = setup();
+  roster.declare('k', kids(3)); roster.flush();
+  const [a, b, c] = roster.members('k');
+  roster.hide(a, { stay: true }); roster.hide(b);
+  roster.showAll(); assert.equal(a.hidden, true, 'showAll keeps the stay one in'); assert.equal(b.hidden, false, 'a plain hide comes out');
+  roster.showAll({ walk: true }); assert.equal(a.hidden, true, 'showAll({ walk }) too');
+  roster.claim(a); roster.snap(); assert.equal(a.hidden, true, 'snap too'); assert.equal(a.mode, 'home', 'snap still homes him');
+  assert.ok(a.walker.pose.y < -1, 'still under the sea');
+  assert.equal(c.hidden, false);
+  roster.show(a); assert.equal(a.hidden, false); assert.ok(!a.stay, 'show clears stay');
+  roster.hide(a); roster.showAll(); assert.equal(a.hidden, false, 'a later plain hide comes out again');
+  roster.hide(c, { stay: true }); roster.reset();
+  roster.declare('k', kids(3)); roster.flush();
+  assert.ok(roster.members('k').every(m => !m.hidden && !m.stay), 'reset: fresh members');
+});
 // 計畫 3.8 Task 6：下一回合開頭 showAll({ walk: true })——躲著的人不在門裡亂走，從門口（藏起來的地方）出來走回家、不閃
 test('showAll({ walk: true }): hidden members stay put indoors, reappear at their door and walk home without a blink', () => {
   const { roster, blink } = setup();

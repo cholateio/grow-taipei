@@ -37,7 +37,7 @@ import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token
 import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as skiffSeat, BLOWN, CART_END, QUAY } from './boba.js';
 import { fishArc, FISH_UP } from './baseball.js';
 import { CRATE, CRATE_BRINK, CRATE_SEA } from './milk.js';
-import { WATER_Y } from '../scene/hex.js';
+import { WATER_Y, cellAt } from '../scene/hex.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { toDoor } from './typhoon.js';
 import { BATHERS_OUT } from './landmarks.js';
@@ -398,7 +398,8 @@ export const script = {
     // 小跑（DASH）到池子東側的池緣外（landmarks.BATHERS_OUT；nav 先從池子 footprint 裡逃到最近的可走點再繞過去，約 0.5 s），頭上「！」BATHER_SHOUT。
     // 疊在隕石那個 together 裡（第二段 DEFLECT 秒正好跑完），不拉長終局（吹偏局的終局 15.4 / 16 s）；跑不到的話 DEFLECT 到了 walk 的收尾把人放到終點。
     // 演完由 tail 的 home 放回日常——那時旗標已折進來（apply），名冊的站位就是 BATHERS_OUT，不再走回池子
-    const flee = o !== 'deflect' ? [] : [later(FLIGHT, DEFLECT, crowd(B, c => bathers(c).map((m, i) => B.together([B.walk(m, BATHERS_OUT[i], { speed: DASH }), B.bubble(m, '！', BATHER_SHOUT)]))))];
+    // 修正輪（任務 2 的小問題）：later 把整段拉長到 DEFLECT，walk 跑到了還在 walking（原地跑步）——用 dash（照 rush 自己記真實秒數，跑到就停）
+    const flee = o !== 'deflect' ? [] : [later(FLIGHT, DEFLECT, crowd(B, c => bathers(c).map((m, i) => B.together([dash(B, m, BATHERS_OUT[i]), B.bubble(m, '！', BATHER_SHOUT)]))))];
     const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)])), ...flee])];
     // 後面接收尾（e.epilogue，game.js finaleEvents；計畫 17 任務 3 裁決）：不回全景停 HOLD_END——收尾第一拍自己平移鏡頭（終局 ≤ 16 s 的預算）
     // home 也放溫泉客（R49：他們被逃跑那一拍點走了；全島的名單 list 多半也有他們，重複的 home 無害）
@@ -476,6 +477,18 @@ const rush = (B, m, to) => {
     end(c) { if (!done && !m.gone) c.roster.setPose(m, { ...m.pos, walking: false }); },
   };
 };
+// 快跑到 to（DASH）：照 rush 自己記真實秒數，跑到就收尾（walk 的 end：停在終點、不再 walking）——包在 later 裡被拉長時不會原地跑步。
+// 跟 rush 不同：沒有上限，跳過時 walk 的收尾照樣放到終點（R49 溫泉客逃到池邊）
+const dash = (B, m, to) => {
+  const w = B.walk(m, to, { speed: DASH });
+  let t = 0, done = false;
+  return {
+    kind: 'dash', dur: c => w.dur(c),
+    start(c) { t = 0; done = false; return w.start(c); },
+    step(k, dt, c) { if (done) return; t += dt; if (t >= w.dur()) { done = true; w.end(c); } else w.step(k, dt, c); },
+    end(c) { if (!done) { done = true; w.end(c); } },
+  };
+};
 // 躲進門（typhoon.js toDoor）有上限 RUSH ＋ UFO_FALL（第二段的長度）：離門很遠的人時間到就在半路藏起來（toDoor 的收尾把他擺到門口、藏好），
 // 第二段不會因為誰站得遠被拉長（吹偏局的終局只剩約 0.4 s）。dur 照 walk 的長度、超過就截到上限；拍照常 step／end
 const capped = (beat, max) => {
@@ -527,12 +540,15 @@ export function alienEpilogue(e, ctx) {
 //   ② 一段：鼠群零件 rat.plague（rat.js，一個 InstancedMesh、PLAGUE_N 隻）套上、閃白，同一刻 plagueRush：RUSH 秒內從門口沿直線撒到七個主格；
 //      門口那兩隻名冊老鼠（rat.pack）也往門口外衝（rush，DASH）——拿水桶的工作人員（baseball.staff，家是 follow 老鼠）跟著追、不躲；
 //      兩個工作人員從現在站的地方快跑（DASH）到兩隻老鼠後面 0.6（剛好是他們 follow 的距離；上限同躲進門：跳過時 walk 的收尾直接放到那裡，
-//      不會留在出生的入口疊在巨蛋後面）；0.4 秒後鏡頭回全景（看整島的老鼠）；全島的人（crowd.islanders，演到才點名，工作人員除外）快走到最近的建築門口躲進去
-//      （hideBeat，同外星收尾，上限 RUSH ＋ UFO_FALL）；
-//   ③ 躲進去就不出來了（roster.hide stay：跳過的 snap 也不放出來，live 跟跳過終態一樣）、交回日常；名冊老鼠、工作人員交回日常（在門口晃、跟著追）；
-//   ④ 剩下的套用 → 全景停 PLAGUE_END。沒有新文字。
-//   名義秒數 FOCUS_BEAT 0.8 ＋ RUSH ＋ UFO_FALL（躲進門的上限）2.2 ＋ PLAGUE_END 1.0 ＝ 4.0 s
-export const PLAGUE_END = 1.0;
+//      不會留在出生的入口疊在巨蛋後面）；DOME_HOLD 秒後鏡頭回全景（修正輪 1：0.4 → 0.8，等鼠群衝出門口看得到）；
+//      全島的人（演到才點名，工作人員除外；修正輪 1：不只 crowd.islanders——還在路上的〔arriving、劇本剛放回來還在走〕也算，見 sheltering）
+//      快走到最近的建築門口躲進去（hideBeat，同外星收尾，上限 RUSH ＋ UFO_FALL）；颱風天的外送員（typhoon.scooter）同一拍縮掉（修正輪 1；收尾的 view 不畫）；
+//   ③ 躲進去就不出來了（roster.hide stay：跳過的 snap 也不放出來，live 跟跳過終態一樣）、交回日常；這一刻主島上還露在外面的人
+//      （點名之後才從橋上走上格子的）一起藏好（同一個 stay）；名冊老鼠、工作人員交回日常（在門口晃、跟著追）；
+//   ④ 修正輪 1：鏡頭推近中心格（101 那格，zoom 0.6）CLOSE_UP 秒看老鼠亂竄；
+//   ⑤ 剩下的套用 → 全景停 PLAGUE_END。沒有新文字。
+//   名義秒數 FOCUS_BEAT 0.8 ＋ RUSH ＋ UFO_FALL（躲進門的上限）2.2 ＋ CLOSE_UP 1.2 ＋ PLAGUE_END 1.0 ＝ 5.2 s
+export const PLAGUE_END = 1.0, DOME_HOLD = 0.8, CLOSE_UP = 1.2;
 // 名冊老鼠衝出去的點：門口外（往鏡頭那側）左右各一，離門口 0.78（還在牠們日常 wander GATE 0.9 的圈裡：交回日常時不會掉頭跑回去）
 const GATE_OUT = [offset(GATE, -0.5, 0.6), offset(GATE, 0.5, 0.6)];
 // 工作人員追老鼠的站位：各自那隻老鼠的正後方（門口那側）0.6——baseball.staff 的家是 follow rat.pack、dist 0.6，交回日常不用再動
@@ -544,23 +560,33 @@ const plagueRush = dur => ({
   start(c) { if (!c.instant) c.stage.partObject('rat.plague')?.userData.rush?.(dur / (c.speed ?? 1)); },
   end(c) { c.stage.partObject('rat.plague')?.userData.finish?.(); },
 });
+// 要躲進門的人（修正輪 1：不只 crowd.islanders）：主島格上、露出來的小人（walker），日常裡站著的、還在路上的（arriving）、
+// 劇本手上還在演的都算；工作人員（追老鼠）、正在走出去的（exit）、拿掉的不算。衛星島、橋上的人 cellAt 回 null，不算
+const CENTRE_CELL = [0, 0];
+const sheltering = c => c.roster.keys().filter(k => k !== 'baseball.staff').flatMap(k => c.roster.members(k))
+  .filter(m => m.walker && !m.hidden && !m.gone && m.mode !== 'exit' && cellAt(m.pos.x, m.pos.z));
 export function domeRatsEpilogue(e, ctx) {
   const { B } = ctx, pack = c => c.roster.members('rat.pack') ?? [], staff = c => c.roster.members('baseball.staff') ?? [];
-  const cast = once(c => islanders(c).filter(m => m.key !== 'baseball.staff'));
+  const cast = once(c => sheltering(c));
   const out = once(c => GATE_OUT.map(p => c.nav.nearestWalkable(p))), chase = once(c => CHASE.map(p => c.nav.nearestWalkable(p)));
-  // 躲著就不出來（stay），交回日常（hidden 的人日常不動；跟跳過的 snap 一樣是 home 模式）
-  const shelter = { kind: 'shelter', dur: 0, start(c) { for (const m of cast(c) ?? []) { c.roster.hide(m, { stay: true }); c.roster.home(m); } return false; } };
+  // 躲著就不出來（stay），交回日常（hidden 的人日常不動；跟跳過的 snap 一樣是 home 模式）；
+  // 這一刻主島上還露在外面的（躲進門那拍點名之後才從橋上走上來的）一起藏好——終態主島上除了工作人員沒有人
+  const shelter = { kind: 'shelter', dur: 0, start(c) {
+    for (const m of [...(cast(c) ?? []), ...sheltering(c)]) { c.roster.hide(m, { stay: true }); c.roster.home(m); }
+    return false;
+  } };
   return [
     B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
     B.together([
       // 同一幀的順序：apply 第一步就 commit 鼠群，later 的 blinkPart 接著才開（閃的是剛露出來的鼠群）；plagueRush 在 apply 之後 start（零件已經建好）
-      B.apply(e, { only: ['rat.plague'] }), plagueRush(RUSH), later(0, 0, blinkPart('rat.plague')),
+      B.apply(e, { only: ['rat.plague', 'typhoon.scooter'] }), plagueRush(RUSH), later(0, 0, blinkPart('rat.plague')),
       crowd(B, c => pack(c).map((m, i) => rush(B, m, out(c)[i % out(c).length]))),
       crowd(B, c => staff(c).map((m, i) => capped(B.walk(m, chase(c)[i % chase(c).length], { speed: DASH }), RUSH + UFO_FALL))),
-      later(0.4, FOCUS_BEAT, B.focus('home')),
+      later(DOME_HOLD, FOCUS_BEAT, B.focus('home')),
       crowd(B, c => cast(c).map(m => hideBeat(B, m))),
     ]),
     shelter, B.home(c => [...pack(c), ...staff(c)]),
+    B.together([B.focus(CENTRE_CELL, { zoom: 0.6 }), B.wait(CLOSE_UP)]),
     B.apply(e), B.focus('home', { hold: PLAGUE_END }),
   ];
 }

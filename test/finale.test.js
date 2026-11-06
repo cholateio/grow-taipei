@@ -500,6 +500,7 @@ test('meteor script instant (skip): the final state matches the live one for all
 // 小跑（DASH）到池子東側池緣外（landmarks.BATHERS_OUT）——隕石掉進池子（FLIGHT + DEFLECT）之前 0.2 s 已經離池心 ≥ SOAK_R + 0.8；
 // 吹偏之前還泡在池裡；跑的時候兩人 ≥ 0.25；頭上「！」；演完放回日常、站在 BATHERS_OUT（新站位，不走回池子）；跳過的終態一樣；整段 live 不變長（≤ 舊秒數 + 0.6）
 import * as landmarksMod from '../src/actors/landmarks.js';
+import { DASH as DASH_SPEED } from '../src/actors/rat.js';
 test('R49 deflect: the bathers climb out when the meteor glances off 101 and reach the east rim (≥ SOAK_R + 0.8 from the pool centre) before it lands, saying ！; released at BATHERS_OUT; skip ends the same; no longer than before', async () => {
   const SPRING = landmarkWorld('spring'), off = m => Math.hypot(m.pos.x - SPRING.x, m.pos.z - SPRING.z);
   const { BATHERS_OUT, SOAK_R } = landmarksMod;
@@ -508,25 +509,41 @@ test('R49 deflect: the bathers climb out when the meteor glances off 101 and rea
   assert.equal(bathers().length, 2);
   for (const m of bathers()) assert.ok(off(m) < SOAK_R + 0.05, 'soaking before the meteor');
   const b0 = bubblesLog.length, heads = new Set(bathers().map(m => m.walker));
-  let launchAt = null, apart = Infinity; const track = [];
+  let launchAt = null, apart = Infinity, seen = b0; const track = [], steps = [0, 0], prev = [null, null], shouts = [[], []], still = [[], []];
   const update = show.update.bind(show);
   show.update = (dt, t) => {
     update(dt, t);
     if (launchAt === null && show.stage.partKeys().includes('finale.missile')) launchAt = show.elapsed;
     if (launchAt === null) return;
-    const [a, b] = bathers();
-    track.push([show.elapsed - launchAt, off(a), off(b)]); apart = Math.min(apart, Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z));
+    const [a, b] = bathers(), now = show.elapsed - launchAt;
+    track.push([now, off(a), off(b)]); apart = Math.min(apart, Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z));
+    // 修正輪（任務 2 的小問題）：每幀水平位移（不能側向瞬移）、每人頭上的 ！ 什麼時候冒、跑到之後還在不在跑步
+    [a, b].forEach((m, i) => {
+      if (prev[i]) steps[i] = Math.max(steps[i], Math.hypot(m.pos.x - prev[i].x, m.pos.z - prev[i].z));
+      if (now > FLIGHT && now < FLIGHT + DEFLECT && prev[i] && Math.hypot(m.pos.x - prev[i].x, m.pos.z - prev[i].z) < 1e-9) still[i].push(!!m.walker.pose?.walking);
+      prev[i] = { ...m.pos };
+    });
+    for (; seen < bubblesLog.length; seen++) {
+      const bb = bubblesLog[seen]; if (bb.kind !== '！') continue;
+      bathers().forEach((m, i) => { const hd = m.walker ? { x: m.pos.x, z: m.pos.z } : null; if (hd && Math.hypot(bb.at.x - hd.x, bb.at.z - hd.z) < 0.15) shouts[i].push(now); });
+    }
   };
   await run([e], { finale: true });
   show.update = update;
   const secs = show.elapsed;
-  assert.ok(secs <= 7.97 + 0.6, `no more than 0.6 s longer than before R49 (7.97 s; ${secs.toFixed(2)})`);
+  assert.ok(secs <= 7.97 + 0.05, `no longer than before R49 (7.97 s; ${secs.toFixed(2)})`);
   const at = t => track.findLast(([tt]) => tt <= t);
   assert.ok(at(FLIGHT - 0.05).slice(1).every(d => d < SOAK_R + 0.05), `still soaking until the meteor glances off 101 (${at(FLIGHT - 0.05).slice(1).map(d => d.toFixed(2))})`);
   const before = at(FLIGHT + DEFLECT - 0.2);
   assert.ok(before.slice(1).every(d => d >= SOAK_R + 0.8), `out of the pool 0.2 s before the meteor lands (${before.slice(1).map(d => d.toFixed(2))})`);
   assert.ok(apart >= 0.25, `the two keep apart while running (${apart.toFixed(2)})`);
   assert.ok(track.every(([, a, b], i) => i === 0 || (Math.abs(a - track[i - 1][1]) < 0.4 && Math.abs(b - track[i - 1][2]) < 0.4)), 'no teleport');
+  // 側向也不瞬移：每幀水平位移 ≤ DASH 一幀的 1.5 倍
+  steps.forEach((d, i) => assert.ok(d <= DASH_SPEED / 30 * 1.5, `bather ${i}: largest step ${d.toFixed(3)} per frame`));
+  // 每個人的 ！ 都在隕石撞上塔頂被吹偏那一刻（FLIGHT）冒（容一幀多一點）
+  shouts.forEach((ts, i) => assert.ok(ts.some(t => Math.abs(t - FLIGHT) <= 0.1), `bather ${i}: ！ at FLIGHT (${ts.map(t => t.toFixed(2)).join(', ')})`));
+  // 跑到池邊就停下（不原地跑步）
+  still.forEach((ws, i) => assert.ok(ws.length > 0 && ws.every(w => !w), `bather ${i}: stops running once at the rim (${ws.filter(Boolean).length}/${ws.length} frames running on the spot)`));
   const bang = bubblesLog.slice(b0).filter(b => b.kind === '！').length;
   assert.ok(bang >= 1, '！ bubbles');
   bathers().forEach((m, i) => {
@@ -1227,25 +1244,29 @@ test('skip mid-epilogue (domeFlood, cartBlown, milkExpired): the final state at 
 // 鏡頭回全景；全島的人躲進門（hideBeat），拿水桶的工作人員（baseball.staff）留在門口追 → 全景停 PLAGUE_END。吹偏局：終局 ≤ 16 s
 import { cellAt as hexCellAt } from '../src/scene/hex.js';
 const staffOf = show => show.roster.members('baseball.staff') ?? [];
-test('R47 domeRats epilogue beats (≤ 5.5 s): fold + worldNow + the ballpark; one segment — rat.plague blinks in and rushes RUSH while the gate rats run out, the camera home after 0.4 s, the islanders (not the staff) hide; they stay hidden; the rest; the overview hold', () => {
+test('R47 domeRats epilogue beats (≤ 5.5 s): fold + worldNow + the ballpark; one segment — rat.plague blinks in and rushes RUSH while the gate rats run out, the camera home after DOME_HOLD 0.8 s, the islanders (not the staff) hide; they stay hidden; a CLOSE_UP on the centre cell; the rest; the overview hold', () => {
   const B = beatsMod.B, e = { kind: 'epilogue', ending: 'domeRats', flag: { name: 'epilogue', value: 'domeRats' } };
   const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
-  assert.deepEqual(kinds(beats), ['together', 'together', 'shelter', 'home', 'apply', 'focus']);
-  const [open, plague, , , rest, hold] = beats;
+  assert.deepEqual(kinds(beats), ['together', 'together', 'shelter', 'home', 'together', 'apply', 'focus']);
+  const [open, plague, , , close, rest, hold] = beats;
   assert.deepEqual(kinds(open.beats), ['apply', 'world', 'focus']);
   assert.deepEqual(open.beats[0].only, [], 'fold the flag first');
   assert.equal(open.beats[1].effects, undefined, 'worldNow');
   assert.equal(open.beats[2].target, 'baseball');
-  assert.deepEqual(plague.beats[0].only, ['rat.plague']);
+  assert.deepEqual(plague.beats[0].only, ['rat.plague', 'typhoon.scooter'], 'fix round 1: the scooter rider shrinks away as the plague pours out');
   assert.equal(plague.beats[1].kind, 'plagueRush'); assert.equal(plague.beats[1].dur, finale.RUSH);
   assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'blinkPart' && b.beat.key === 'rat.plague'), 'the plague blinks');
-  assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'focus' && b.beat.target === 'home' && Math.abs(b.dur - (0.4 + beatsMod.FOCUS_BEAT)) < 1e-9), 'back to the overview after 0.4 s');
+  assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'focus' && b.beat.target === 'home' && Math.abs(b.dur - (finale.DOME_HOLD + beatsMod.FOCUS_BEAT)) < 1e-9), 'back to the overview after DOME_HOLD');
+  assert.equal(finale.DOME_HOLD, 0.8, 'fix round 1: the dome shot holds until the burst is visible');
+  // 修正輪 1：全景之後推近中心格 CLOSE_UP 秒看老鼠亂竄
+  assert.deepEqual(kinds(close.beats), ['focus', 'wait']);
+  assert.deepEqual(close.beats[0].target, [0, 0]); assert.equal(close.beats[1].dur, finale.CLOSE_UP); assert.equal(finale.CLOSE_UP, 1.2);
   assert.equal(plague.beats.filter(b => b.kind === 'crowd').length, 3, 'the gate rats run out, the staff chase them; the islanders hide');
   assert.equal(rest.only, undefined);
   assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.PLAGUE_END);
-  const total = beatsMod.FOCUS_BEAT + finale.RUSH + finale.UFO_FALL + finale.PLAGUE_END;
+  const total = beatsMod.FOCUS_BEAT + finale.RUSH + finale.UFO_FALL + finale.CLOSE_UP + finale.PLAGUE_END;
   console.log(`domeRats epilogue nominal: ${total.toFixed(2)} s`);
-  assert.ok(total <= 5.0, `nominal ≤ 5.0 s (${total.toFixed(2)})`);
+  assert.ok(total <= 5.3, `nominal ≤ 5.3 s, frame rounding inside 5.5 (${total.toFixed(2)})`);
 });
 test('R47 EXAMPLE.domeRats (the video game) is a deflect game ending in 大巨蛋鼠災, now with an epilogue', async () => {
   const g = await badGame('domeRats');
@@ -1272,26 +1293,64 @@ const plagueEnd = (show, h, what) => {
   assert.ok(everyone(show).filter(m => m.hidden).length >= 10, `${what}: ${everyone(show).filter(m => m.hidden).length} hidden`);
   assert.deepEqual(everyone(show).filter(m => m.mode === 'script').map(m => `${m.key}#${m.i}`), [], `${what}: nobody in script mode`);
   assert.equal(h.worldLog.at(-1)[0].mood, 'normal', `${what}: nobody lying`);
+  // 修正輪 1：颱風天的外送機車不再繞中心格（鼠群出來那一拍縮掉、收尾的 view 不畫）
+  assert.equal(show.stage.partObject('typhoon.scooter'), null, `${what}: no scooter rider`);
 };
-test('R47 domeRats live from EXAMPLE.domeRats (deflect, whole finale as one live turn): the plague pours out of the gate onto all seven cells, the islanders hide, the staff stay with the rats; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
-  const g = await badGame('domeRats'), { show, h } = g, { people } = h;
+// 鼠災的命中局：列舉裡第一條結局是鼠災、隕石命中的放法（EXAMPLE.domeRats 是吹偏局）
+const DOMERATS_HIT = enumerate(spec).find(r => r.ending.id === 'domeRats' && missileOf(r.state, spec) === 'hit').order;
+test('R47 domeRats live from EXAMPLE.domeRats (deflect) and the first domeRats hit game (whole finale as one live turn): the plague pours out of the gate onto all seven cells, the camera holds on the dome, the overview, a close-up on the centre cell; the islanders hide, the staff stay with the rats; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
+  for (const [what, order, outcome] of [['deflect', EXAMPLE.domeRats, 'deflect'], ['hit', DOMERATS_HIT, 'hit']]) await plagueLive(what, order, outcome);
+});
+async function plagueLive(what, order, outcome) {
+  const g = await badGame('domeRats', order), { show, h } = g, { people } = h;
+  let r0 = null;
   const lying = [], hidden = [];
   let firstRats = null;
   const res = await liveFinale(g, t => {
-    if (t === null) return;
+    if (t === null) { r0 = h.rig.log.length; return; }
     if (t > 0.1 && people.mood === 'lie') lying.push(t);
     hidden.push(everyone(show).filter(m => m.hidden).length);
     const o = show.stage.partObject('rat.plague');
     if (!firstRats && o?.visible) { const m4 = new THREE.Matrix4(), v = new THREE.Vector3(); let mesh = null; o.traverse(x => { if (x.isMesh) mesh = x; }); mesh.getMatrixAt(0, m4); firstRats = v.setFromMatrixPosition(m4).clone(); }
   });
-  console.log(`domeRats epilogue: ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (R47)`);
-  assert.equal(show.stage.flags.missile, 'deflect');
-  assert.ok(res.secs <= 5.5, `epilogue ≤ 5.5 s (${res.secs.toFixed(2)})`);
-  assert.ok(res.total <= 16, `finale ≤ 16 s (${res.total.toFixed(2)})`);
-  assert.deepEqual(lying, [], 'nobody lies');
-  assert.ok(firstRats && Math.hypot(firstRats.x - ratMod.GATE.x, firstRats.z - ratMod.GATE.z) < 0.8, 'the plague shows up at the dome gate');
-  assert.ok(Math.max(...hidden) >= 10, `the islanders hide (${Math.max(...hidden)})`);
-  plagueEnd(show, h, 'live');
+  console.log(`domeRats epilogue (${what}): ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (R47 fix round 1)`);
+  assert.equal(show.stage.flags.missile, outcome);
+  assert.ok(res.secs <= 5.5, `${what}: epilogue ≤ 5.5 s (${res.secs.toFixed(2)})`);
+  assert.ok(res.total <= 16, `${what}: finale ≤ 16 s (${res.total.toFixed(2)})`);
+  assert.deepEqual(lying, [], `${what}: nobody lies`);
+  assert.ok(firstRats && Math.hypot(firstRats.x - ratMod.GATE.x, firstRats.z - ratMod.GATE.z) < 0.8, `${what}: the plague shows up at the dome gate`);
+  assert.ok(Math.max(...hidden) >= 10, `${what}: the islanders hide (${Math.max(...hidden)})`);
+  // 鏡頭：大巨蛋 → 全景 → 中心格特寫 → 全景
+  const DOME = anchorWorld('baseball');
+  const shots = h.rig.log.slice(r0).filter(([k]) => k === 'focus' || k === 'home').map(([k, p]) => (k === 'home' ? 'home' : Math.hypot(p.x - DOME.x, p.z - DOME.z) < 1.5 ? 'dome' : Math.hypot(p.x, p.z) < 1e-6 ? 'centre' : 'other'));
+  assert.deepEqual(shots.filter((x, i) => x !== shots[i - 1]), ['dome', 'home', 'centre', 'home'], `${what}: camera ${shots.join(' ')}`);
+  plagueEnd(show, h, `live ${what}`);
+}
+// 修正輪 1：收尾開始時還在路上的人（arriving：剛走進來、被叫回家）也躲進門——不只 islanders（日常裡、站定的）。
+// 隕石之後把兩個島民放到對面那一格、叫他們回家（hurry），收尾開演時他們還在走：要被點名走到門口躲好（劇本手上走過），終態藏著
+test('R47 islanders still walking home when the domeRats epilogue starts hide too (live and skip)', async () => {
+  for (const mode of ['live', 'skip']) {
+    const g = await badGame('domeRats'), { show, h } = g;
+    await h.run(g.evs.slice(0, 2), { finale: true, instant: true });
+    const ctx = { roster: show.roster };
+    const walkers = islanders(ctx).filter(m => m.key !== 'baseball.staff').slice(0, 2);
+    assert.equal(walkers.length, 2);
+    for (const m of walkers) {
+      const far = show.nav.nearestWalkable({ x: m.pos.x < 0 ? 4.2 : -4.2, z: 0.6 });
+      show.roster.claim(m); show.roster.setPose(m, { ...far, walking: false }); show.roster.home(m, { hurry: true });
+    }
+    for (let i = 0; i < 3; i++) show.update(1 / 30, i / 30);
+    assert.ok(walkers.every(m => m.arriving && !m.hidden), `${mode}: on their way home when the epilogue starts`);
+    const scripted = new Set(), update = show.update;
+    show.update = (dt, t) => { update(dt, t); for (const m of walkers) if (m.mode === 'script') scripted.add(m); };
+    const p = show.turn([g.evs[2]], { finale: true });
+    if (mode === 'skip') { for (let i = 0; i < 40; i++) { show.update(1 / 30, i / 30); await Promise.resolve(); } show.skip(); }
+    else { let n = 0; while (show.busy && n++ < 600) { show.update(1 / 30, n / 30); await Promise.resolve(); } }
+    await p; show.update = update;
+    assert.ok(walkers.every(m => scripted.has(m)), `${mode}: sent to a door by the epilogue (not popped away)`);
+    assert.ok(walkers.every(m => m.hidden && m.stay), `${mode}: hidden for good`);
+    plagueEnd(show, h, `arriving ${mode}`);
+  }
 });
 test('skip mid-epilogue (domeRats): the same final state at once — the plague all over, the islanders indoors, the staff out, nobody in script mode', async () => {
   for (const frames of [0, 10, 40, 80, 120]) {

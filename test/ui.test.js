@@ -198,21 +198,26 @@ test('app.js spawns the shiba through createLater, calls drawn() after the first
 
 // 使用者 2026-11-06：遊戲結束後跳過鍵變隱藏選單鍵（R43）
 test('setMode("hide") turns the skip cell into a hide-menu button; pressing it collapses the bar and shows the menu tab; the tab restores it; reset returns to skip mode', async () => {
-  const { nav, skip, slots, root } = await slotsWithSkip();
+  const { nav, skip, slots, root, calls } = await slotsWithSkip();
   slots.setMode('hide');
   assert.equal(skip.getAttribute('aria-label'), '隱藏選單'); assert.equal(skip.disabled, false); assert.ok(skip.innerHTML.includes('<svg'));
-  skip.listeners.click(); assert.ok(nav.classList.contains('collapsed'));
+  skip.listeners.click(); assert.ok(nav.classList.contains('collapsed')); assert.equal(nav.inert, true, 'collapsed bar is inert'); assert.deepEqual(calls, [], 'hide press never calls onSkip');
   const tab = root.querySelector('.menu-tab'); assert.ok(tab && tab.classList.contains('on')); assert.equal(tab.getAttribute('aria-label'), '顯示選單');
-  tab.listeners.click(); assert.ok(!nav.classList.contains('collapsed')); assert.ok(!tab.classList.contains('on'));
+  tab.listeners.click(); assert.equal(nav.inert, false); assert.ok(!nav.classList.contains('collapsed')); assert.ok(!tab.classList.contains('on'));
   slots.setSkippable(true); assert.equal(skip.getAttribute('aria-label'), '隱藏選單', 'hide mode ignores setSkippable');
   slots.setSkippable(false); assert.equal(skip.disabled, false);
-  slots.reset(); assert.equal(skip.getAttribute('aria-label'), '跳過'); assert.ok(!nav.classList.contains('collapsed'));
+  skip.listeners.click(); assert.ok(nav.classList.contains('collapsed'), 'collapsed again before reset');
+  slots.reset(); assert.equal(skip.getAttribute('aria-label'), '跳過'); assert.ok(!nav.classList.contains('collapsed')); assert.ok(!tab.classList.contains('on')); assert.equal(nav.inert, false);
 });
 test('ui.css: collapsed bar slides off-screen (down; right in landscape), the menu tab is a 44px round button at the same edge, no slide under reduced motion', async () => {
   const { readFileSync } = await import('node:fs');
   const css = readFileSync(new URL('../src/ui/ui.css', import.meta.url), 'utf8');
   assert.match(css, /\.slots\.collapsed \{ transform: translate\(-50%, calc\(100% \+ 40px\)\); \}/);
-  assert.match(css, /\.slots\.collapsed \{ transform: translate\(calc\(100% \+ 40px\), -50%\); \}/);
+  const land = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 520px)'));
+  assert.match(land, /\.slots\.collapsed \{ transform: translate\(calc\(100% \+ 40px\), -50%\); \}/, 'landscape collapse sits in the rail block');
+  assert.match(land, /\.menu-tab \{[^}]*right: max\(12px[^}]*top: 50%;[^}]*translateY\(-50%\)/);
+  assert.match(land, /\.skip\.hide svg \{ transform: rotate\(-90deg\)/); assert.match(land, /\.menu-tab svg \{ transform: rotate\(90deg\)/);
+  assert.ok(!css.slice(0, css.indexOf('@media (orientation: landscape) and (max-height: 520px)')).includes('calc(100% + 40px), -50%'), 'not outside the block');
   assert.match(css, /\.slots \{ transition: transform \.3s; \}/);
   assert.match(css, /prefers-reduced-motion: reduce\) \{ \.slots \{ transition: none; \} \}/);
   assert.match(css, /\.menu-tab \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 22px;[^}]*display: none;/);

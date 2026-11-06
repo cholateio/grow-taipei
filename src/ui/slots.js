@@ -25,12 +25,14 @@ export function createSlots(root, { items, onPick, onSkip }) {
   let mode = 'skip';
   const tab = document.createElement('button');
   tab.className = 'menu-tab'; tab.type = 'button'; tab.innerHTML = HIDE_ICON; tab.setAttribute('aria-label', '顯示選單'); tab.setAttribute('title', '顯示選單');
-  const expand = () => { nav.classList.remove('collapsed'); tab.classList.remove('on'); };
+  const expand = () => { nav.classList.remove('collapsed'); nav.inert = false; tab.classList.remove('on'); };
+  // 收起時 inert：Tab 鍵不會跑到看不見的按鈕；焦點跟著移到圓鍵、展開後回到隱藏鍵（a11y）
+  const collapse = () => { nav.classList.add('collapsed'); nav.inert = true; tab.classList.add('on'); tab.focus?.(); };
   skip.addEventListener('click', () => {
-    if (mode === 'hide') { nav.classList.add('collapsed'); tab.classList.add('on'); return; }
+    if (mode === 'hide') { collapse(); return; }
     if (!skip.disabled) onSkip?.();
   });
-  tab.addEventListener('click', expand);
+  tab.addEventListener('click', () => { expand(); skip.focus?.(); });
   nav.append(skip);
   root.append(nav, tab);
   const setSkipLook = () => {

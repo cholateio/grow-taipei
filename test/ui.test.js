@@ -135,6 +135,19 @@ test('npm run shot includes phone360-live and phone360-end at 360×780', async (
   assert.match(readFileSync('tools/shot.mjs', 'utf8'), /phone360'\) \? '360,780'/);
 });
 
+test('ui.css: phone landscape (orientation landscape, max-height 520) turns the item bar into a right-hand rail', async () => {
+  const css = await cssText();
+  const block = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 520px)'));
+  for (const rule of ['right: max(12px, env(safe-area-inset-right))', 'left: auto', 'bottom: auto', 'top: calc(50% + 28px)', 'translateY(-50%)', 'repeat(2, 48px)', '.slot .name { display: none; }', 'grid-column: 1 / span 2', 'grid-row: 5']) assert.ok(block.includes(rule), rule);
+  assert.ok(css.indexOf('@media (orientation: landscape)') > css.indexOf('@media (max-width: 380px)'), 'after the width queries so it wins');
+});
+test('npm run shot includes land-live and land-end at 844×390 (quality low)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
+  assert.ok(/\bland-live=[^ ]*quality=low/.test(shot) && /\bland-end=[^ ]*quality=low/.test(shot));
+  assert.ok(readFileSync('tools/shot.mjs', 'utf8').includes("name.includes('land') ? '844,390'"));
+});
+
 // 重玩迴圈（計畫 12 Task 2）：遊戲結束後 RESET 加 glow（珊瑚底白字、輕輕放大），RESET 之後拿掉；沒有任何新文字
 test('setFinished toggles the glow class on RESET only, without adding text', async () => {
   const { root, bar, btn } = await topBar();

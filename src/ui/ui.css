@@ -97,3 +97,14 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .levelup span.cjk { font-style: normal; letter-spacing: 0; -webkit-text-stroke-width: 1px; }
 @keyframes levelup-rise { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-24px); opacity: 0; } }
 @keyframes levelup-fall { 0% { transform: translateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(24px); opacity: 0; } }
+
+/* 手機橫放（使用者 2026-11-06 的截圖：底部物品列蓋掉四分之一的島）：物品列改成右側直排側欄，兩欄 48px、只留圖示，跳過鍵橫跨兩欄放最下面。
+   放在寬度查詢之後才贏得過去；top 多 28px 讓出頂端工具列。 */
+@media (orientation: landscape) and (max-height: 520px) {
+  .slots { right: max(12px, env(safe-area-inset-right)); left: auto; bottom: auto; top: calc(50% + 28px); transform: translateY(-50%);
+    grid-template-columns: repeat(2, 48px); gap: 6px; padding: 10px; }
+  .slot { width: 48px; height: 48px; padding: 4px; }
+  .slot svg { width: 28px; height: 28px; }
+  .slot .name { display: none; }
+  .skip { grid-column: 1 / span 2; grid-row: 5; width: auto; height: 40px; }
+}

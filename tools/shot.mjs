@@ -18,7 +18,7 @@ let PORT = 0;
 const base = q => `http://127.0.0.1:${PORT}/index.html${q ? '?' + q : ''}`;
 const flags = (size, budget = 20000) => ['--headless=new', '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--hide-scrollbars',
   `--window-size=${size}`, `--virtual-time-budget=${budget}`, '--enable-logging=stderr', '--v=0'];
-const sizeOf = name => (name.includes('phone360') ? '360,780' : name.includes('phone') ? '390,844' : name.includes('wide') ? '2560,1080' : '1280,800');
+const sizeOf = name => (name.includes('phone360') ? '360,780' : name.includes('land') ? '844,390' : name.includes('phone') ? '390,844' : name.includes('wide') ? '2560,1080' : '1280,800');
 const ITEM_SHOT = /^(milk|chip|bulb|token|typhoon|rat|boba|baseball)-/;   // 物品特寫（milk-3、token-6…）
 // draw call 預算（裁決 R18，物品 v2 的 61 級島）：手機（名稱含 phone，或 ?quality=low）≤ 150，其他 ≤ 250（原本全部 150，41 級時訂的）
 const budgetCalls = (name, query) => (name.includes('phone') || /(^|&)quality=low(&|$)/.test(query) ? 150 : 250);

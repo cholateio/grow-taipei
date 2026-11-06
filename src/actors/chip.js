@@ -32,7 +32,11 @@ export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（矽盾零件�
 // 兩條走道與南邊的空地照樣相通（test/chip.test.js 量路線長與被關住的走路格）
 const CRATE = 0.3, PLINTH = 0.8;   // PLINTH：101 底座半寬（tower.js body 的 1.6 見方）
 export const CRATES_AT = offset(TOWER, -PLINTH + 0.35, PLINTH + 0.1 + 0.2);
-const CRATES = [[-0.17, 0], [0.17, 0], [-0.17, 1]].map(([x, k]) => ({ kind: 'box', pos: [x, CRATE / 2 + k * CRATE, 0], scale: [CRATE, CRATE, CRATE], color: C.wood }));
+// 每個箱子頂上一圈奶油色箱蓋（修正輪 1：雨天的光線下整個木色看成黑方塊），比箱身寬一點點
+const CRATES = [[-0.17, 0], [0.17, 0], [-0.17, 1]].flatMap(([x, k]) => [
+  { kind: 'box', pos: [x, CRATE / 2 + k * CRATE, 0], scale: [CRATE, CRATE, CRATE], color: C.wood },
+  { kind: 'box', pos: [x, (k + 1) * CRATE - 0.02, 0], scale: [CRATE + 0.02, 0.05, CRATE + 0.02], color: C.cream },
+]);
 // 入口（§13.2）：工人從 101 工地來；工程師（與偵防師）從廠門外靠橋那側來——廠房西北、上台地那座階梯旁
 export const WORKER_ENTRY = SITE;
 export const ENGINEER_ENTRY = [offset(AT, -1.2, -1.4), offset(AT, -0.9, -1.55)];
@@ -49,7 +53,7 @@ const NEST = anchorWorld('rat');
 export const NEST_WATCH = { ...offset(NEST, 1.8, -0.55), yaw: Math.atan2(-1.8, 0.55) };
 const CHIP = [1, 0], TOKEN = [0, 1], TOWER_CELL = [0, 0];   // 鏡頭對的格子：園區、捷運站、101
 const STATION_MIN = 2.2;   // Lv7：鏡頭在站前至少停幾秒（R41 修正輪 1，見 Lv7 劇本）
-const BUILD_HOLD = 1.5;    // Lv8（R48 鷹架）：LEVEL UP 前在全景停幾秒，◆ 整段補到 4.5 s 以上
+const WALK_MIN = 1.5;      // Lv8（R48 鷹架）：工程師走到 101 腳下那拍至少幾秒，◆ 整段 ≥ 4.5 s
 
 // ── 模型（Kenney City Kit Industrial）：size = glb 原始包圍盒（x, y, z）；roof = 平屋頂在全高的幾成（太陽能板放這裡）──
 export const MODELS = {
@@ -298,15 +302,16 @@ export const script = {
       ];
     },
     // ★ 搭鷹架（R48，使用者 2026-11-06：矽盾只有在真結局才會長；取代以前的矽盾測試——罩子閃三下）：回全景 →
-    //   離 101 腳下最近的工程師朝腳下敲鐵鎚（build 1.0 s）→ 塔頂鷹架閃白出現、全島的人轉頭看 101（1.2 s，看完就放回日常）→ 全景停 BUILD_HOLD → LEVEL UP。
-    //   計畫原訂敲鐵鎚與抬頭同一拍（together），量到劇本 2.2 s（< 一級下限 2.5）、整段 3.3 s（< ◆ 下限 4.5）：先敲再長（看得出是工程師搭起來的），
-    //   劇本 3.2 s；整段再靠回全景停一下補到 4.5 以上（KEY_MIN／KEY_MAX 4.5–6 s）
+    //   離 101 腳下最近的工程師快步走到腳下（2.4，同小學生跑；至少 WALK_MIN 秒）→ 朝 101 敲鐵鎚（build 1.0 s）→ 塔頂鷹架閃白出現、
+    //   全島的人轉頭看 101（1.2 s，看完就放回日常）→ LEVEL UP。◆ 整段要 4.5–6 s（KEY_MIN／KEY_MAX）。
+    //   修正輪 1（協調者裁決）：工程師要在 101 腳下敲，走過去那段取代原本 LEVEL UP 前在全景乾停的 1.5 s；
+    //   正解裡晶片 7 → 8 同一回合，Lv7 抱箱子的人剛從腳下往回走、離得近——走過去那拍至少 WALK_MIN，整段才不會短過 4.5
     8(e, s, ctx) {
       const { B } = ctx, up = lookUp(B, TOWER, 1.2), e0 = nearestEng(FOOT);
       return [
-        B.focus('home'), B.gesture(e0, 'build', 1.0, { at: FOOT }),
+        B.focus('home'), B.together([B.walk(e0, FOOT, { speed: 2.4 }), B.wait(WALK_MIN)]), B.gesture(e0, 'build', 1.0, { at: TOWER }),
         B.together([B.apply(e, { only: ['tower.scaffold'] }), ...up.look]), up.release, B.home(e0),
-        B.apply(e), B.focus('home', { hold: BUILD_HOLD }), B.levelUp('chip'),
+        B.apply(e), B.levelUp('chip'),
       ];
     },
     // ★◆ 矽盾待命（颱風 ≥2：暴風圈下測過）：回全景 → 罩子從地面長起來、淡淡常駐 → 天線換成每 3 秒閃一圈（工程師 ！）

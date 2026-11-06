@@ -66,10 +66,10 @@ async function playOrder(order, head0, finaleMax) {
     // 劇本本身的上限由各物品測試單獨量（test/*.test.js 的 SCRIPT_MAX／KEY_MAX）。回合秒數超過上限才算失敗
     // R41 最終審稿：下限也在真的回合裡量（各物品測試只單獨演 playItem，日常裡的人、列車在哪會讓劇本變短）——放下／升級的非關鍵劇本 < SCRIPT_MIN、
     //   ◆ live < KEY_MIN，同樣差 WARN_OVER 以上才印 ⚠。跳級的第一級（mark 的 info.skipped，只有 mark）不量。
-    //   下限的例外（R41 之前就這麼短，不是這一輪的回歸，最終審稿點名留著）：◆ 晶片 8（矽盾測試 4.1 s）、◆ 颱風 3（放晴 4.1 s）、
+    //   下限的例外（R41 之前就這麼短，不是這一輪的回歸，最終審稿點名留著）：◆ 颱風 3（放晴 4.1 s）、
     //   放下老鼠接著咬鮮奶的那一回合（放下劇本只演爬上岸、跑到牛奶箱 1.7 s，聞、！ 在咬的 fx 裡）
     const bites = r.events.some(x => x.kind === 'fx' && x.cause === 'rat' && x.delta?.target === 'milk');
-    const floorExempt = (e, key) => (key && ['chip 8', 'typhoon 3'].includes(`${e.item} ${e.to}`)) || (e.kind === 'placed' && e.item === 'rat' && bites);
+    const floorExempt = (e, key) => (key && ['typhoon 3'].includes(`${e.item} ${e.to}`)) || (e.kind === 'placed' && e.item === 'rat' && bites);
     marks.forEach(([e, , , info], j) => {
       const script = span(j)[1];
       const cap = SCRIPT_EXCEPT[`${e.item} ${e.kind === 'placed' ? 1 : e.to}`] ?? SCRIPT_MAX;

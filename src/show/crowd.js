@@ -1,4 +1,4 @@
-// 群演小工具（最終章計畫 5 任務 2）：從 chip.js（矽盾測試全島抬頭）與 typhoon.js（一群人同時冒泡泡、躲雨）抽出來共用，
+// 群演小工具（最終章計畫 5 任務 2）：從 chip.js（R48 起是搭鷹架時全島抬頭）與 typhoon.js（一群人同時冒泡泡、躲雨）抽出來共用，
 // 隕石警告（finale.js 全島抬頭看天上的光點）與隕石的群演也用。
 // 不 import beats.js：拍的工廠 B 由呼叫的劇本傳進來（ctx.B），跟其他劇本一樣。
 import { cellAt } from '../scene/hex.js';

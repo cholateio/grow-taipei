@@ -17,7 +17,7 @@ export const id = 'tower';
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff;
 // 黑塔（賽博尾聲）：墨黑偏紫一點（純 C.ink 在夜裡跟背景糊在一起），白邊與屋頂邊條發霓虹藍
 export const DARK = 0x2a2630, NEON_BLUE = 0x3fe0ff;
-const TIER_H = 0.45, LABEL_UP = 0.6;   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
+const TIER_H = 0.45, LABEL_UP = 0.6, CAP_H = 1.5;   // CAP_H：完工後八節之上的頂帽＋尖塔   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
 const AT = anchorWorld('tower');
 
 // 矽盾罩：半球立在 101 底座，半徑蓋過主島七格的每個角（最遠的西南角離 101 約 7.6）
@@ -37,14 +37,16 @@ export const DISH_OUT = 0.3;
 const DECK_W = 1.6, DECK_H = 0.08, MAST_Z = -0.62, MAST_H = 0.9;
 // 螢幕：1.1 × 0.6、厚 0.08，朝 +z（鏡頭）；底邊在桅杆尖上 SCREEN_UP（天線細桿 0.55 高，留 0.05）
 const SCREEN = [1.1, 0.6, 0.08], SCREEN_UP = 0.6;
-// 鷹架（R48，晶片 Lv8；使用者 2026-11-06：矽盾只有在真結局才會長）：塔頂下 SCAFFOLD_DOWN 一圈奶油色 torus（scale 1.3：半徑 0.65）、
-// 環上四根 0.5 高的短柱（往下撐，對角 45°）、一支往東斜上 0.9 長的黃色吊臂（同工地吊車的黃）。相對 101 的 at，照這一階段的塔頂（top）
-const SCAFFOLD_DOWN = 0.6, SCAFFOLD_RING = 1.3, POST_H = 0.5, JIB_L = 0.9, JIB_TILT = 0.6;
-export function scaffoldParts(top) {
-  const y = top - SCAFFOLD_DOWN, r = SCAFFOLD_RING / 2, d = r * Math.SQRT1_2;
+// 鷹架（R48，晶片 Lv8；使用者 2026-11-06：矽盾只有在真結局才會長）：圍著最上一節的工作籠——四根 POST_H 高的柱子（對角 45°）
+// 立在最上一節的白邊（0.84 見方）上，頂著一圈奶油色 torus（scale 1.1：半徑 0.55，柱子在環下、站得在白邊裡）；一支往東斜上 0.9 長的
+// 黃色吊臂（同工地吊車的黃）。trim：白邊的高度（相對 101 的 at）——完工／點燈是 top − 1.5（頂帽＋尖塔 1.5，環在 top − 0.6、圍著頂帽），
+// 蓋一半沒有頂帽就是 top。修正輪 1（協調者裁決）：以前環在塔頂下 0.6、0.5 的短柱往下吊，在尖塔旁浮著像光環
+const SCAFFOLD_RING = 1.1, POST_H = 0.9, JIB_L = 0.9, JIB_TILT = 0.6;
+export function scaffoldParts(trim) {
+  const y = trim + POST_H, r = SCAFFOLD_RING / 2, d = r * Math.SQRT1_2;
   return [
     { kind: 'torus', pos: [0, y, 0], scale: SCAFFOLD_RING, rot: [Math.PI / 2, 0, 0], color: CREAM },
-    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ kind: 'box', pos: [sx * d, y - POST_H / 2, sz * d], scale: [0.05, POST_H, 0.05], color: CREAM })),
+    ...[[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([sx, sz]) => ({ kind: 'box', pos: [sx * d, trim + POST_H / 2, sz * d], scale: [0.05, POST_H, 0.05], color: CREAM })),
     { kind: 'box', pos: [r + Math.cos(JIB_TILT) * JIB_L / 2, y + Math.sin(JIB_TILT) * JIB_L / 2, 0], scale: [JIB_L, 0.05, 0.05], rot: [0, 0, JIB_TILT], color: YELLOW },
   ];
 }
@@ -177,7 +179,7 @@ export function view(lv, flags = {}, meta = {}) {
   if (hit) { Object.assign(v['tower.main'], { footprint: { x: 0, z: 0, w: 1.6, d: 1.6 }, grow: false }); return v; }
   if (stage === 'site' || stage === 'half') v['tower.crane'] = { kind: 'crane', at, height: top + 1.2, offset: [0.75, 0, 0.55], footprint: { x: 0.75, z: 0.55, w: 0.2, d: 0.2 } };   // footprint 擋塔架（at + offset）：0.2 外擴 PAD 後 0.44，剛好蓋住 0.4 的底座，塔架和格邊之間留得出走道（§14.1）
   // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：晶片 8 塔頂下搭鷹架（命中在上面 return 了：撞彎的塔沒有鷹架；母艦也沒有）
-  if (lv.chip === 8 && !ship) v['tower.scaffold'] = { kind: 'compound', at, footprint: false, parts: scaffoldParts(top) };
+  if (lv.chip === 8 && !ship) v['tower.scaffold'] = { kind: 'compound', at, footprint: false, parts: scaffoldParts(stage === 'full' || stage === 'lit' ? top - CAP_H : top) };
   if (lv.chip >= 9) {
     // 矽盾天線（只在 Lv9 待命）：塔頂的環＋天線 glb；環發淡藍光，塔身半高再一圈大環，一起每 3 秒亮一次
     const parts = [
@@ -213,13 +215,12 @@ export const builders = {
     jib.object.name = 'jib'; object.add(mast.object, jib.object);
     return { object, update(dt, t) { jib.object.rotation.y = Math.sin(t * 0.4) * 0.9; }, dispose() { mast.dispose(); jib.dispose(); } };
   },
-  // 矽盾天線（晶片 Lv9）：環（compound）＋天線 glb；pulse 時環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零；相位同 parts.js 的 shieldPose）
+  // 矽盾天線（晶片 Lv9）：環（compound）＋天線 glb；環每 3 秒亮一次（白天也看得到，所以底強度不跟著夜晚歸零；相位同 parts.js 的 shieldPose）
   antenna(THREE, spec, ctx) {
     const object = new THREE.Group(), ring = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: spec.parts, shadow: false });
     const subs = spec.models.map(m => ctx.build({ kind: 'glb', at: { x: m.pos[0], y: m.pos[1], z: m.pos[2] }, path: m.path, h: m.h, ry: m.ry ?? 0, tint: m.tint }));
     object.add(ring.object, ...subs.map(p => p.object));
     const dispose = () => { ring.dispose(); for (const p of subs) p.dispose(); };
-    if (!spec.pulse) return { object, materials: ring.materials, dispose };
     return { object, materials: ring.materials, dispose, update(dt, t) { const k = (1 + Math.sin(t * Math.PI * 2 / 3)) / 2; for (const m of ring.materials) m.emissiveIntensity = (1.2 + ctx.glow.intensity) * k; } };
   },
   // 全島 LED：塔身八個燈條沿色相轉，每 4 秒一圈

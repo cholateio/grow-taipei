@@ -222,8 +222,7 @@ async function liveAt(h, order, pred) {
 }
 const isChip = to => e => e.kind === 'grow' && e.item === 'chip' && e.to === to;
 // 鏡頭軌跡（含回合最後的 focus('home')）
-// Lv8（R48 鷹架）：開場回全景、LEVEL UP 前在全景停一下（BUILD_HOLD）、回合收尾回全景
-const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home', 'home'], 9: ['home', 'home', 'home'] };
+const WANT = { 6: ['home', String(CELL), 'home'], 7: ['0,1', '0,0', String(CELL), 'home'], 8: ['home', 'home'], 9: ['home', 'home', 'home'] };
 test('scripts: every chip event in the solution plays 2.5–3.5 s (◆ Lv7–9 ≤ 6 s, Lv9 4.5–6 s whole), ends with LEVEL UP on chip, the camera trail, everyone home', async () => {
   const h = await headlessShow(), { show, run, bubblesLog } = h, timing = {};
   let n = 0, r = 0;
@@ -234,7 +233,7 @@ test('scripts: every chip event in the solution plays 2.5–3.5 s (◆ Lv7–9 �
     await playItem(show, tracked, order, 'chip', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1, what = `${order.join('>')} ${e.kind} ${to}`; seen.push(to); (timing[to] ??= []).push(+secs.toFixed(1));
       // Lv7：列車從現在的位置趕來（≤ 4.5 倍、減速進站，不瞬移），加上停站、抱箱子、LEVEL UP——R41 之後跟其他 ◆ 一樣 ≤ KEY_MAX（6 s）；
-      //   ◆ Lv8 矽盾測試（罩子閃三下）也是 ◆，上限 KEY_MAX（R41 一般劇本降到 3.5 s 之前它 4.1 s 落在 4.5 內）
+      //   ◆ Lv8 搭鷹架（R48：工程師走到 101 腳下敲鐵鎚、全島抬頭）也是 ◆，上限 KEY_MAX
       assert.ok(secs >= 2.5 && secs <= ([7, 8, 9].includes(to) ? KEY_MAX : SCRIPT_MAX), `${what} took ${secs.toFixed(2)}s`);
       if (to === 9) assert.ok(show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, `◆ ${what} whole event ${show.elapsed.toFixed(2)}s`);
       if (e.kind === 'grow') {
@@ -248,7 +247,7 @@ test('scripts: every chip event in the solution plays 2.5–3.5 s (◆ Lv7–9 �
     assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9], `chip events seen: ${seen}`);
   }
 });
-// 選擇帶動升級裁決 R6：Lv7 天線、Lv8 矽盾測試也標 ◆（跳級的第二級照演完整劇本）；其他級不是
+// 選擇帶動升級裁決 R6：Lv7 零件運到、Lv8 搭鷹架（R48）也標 ◆（跳級的第二級照演完整劇本）；其他級不是
 test('the ◆ key nodes are Lv7, Lv8 (R6) and Lv9 (R11); the Lv9 standby holds on the overview before the LEVEL UP', () => {
   assert.deepEqual(Object.entries(chip.script.grow).filter(([, f]) => f.key).map(([n]) => +n), [7, 8, 9]);
   const beats = flat(chip.script.grow[9]({ kind: 'grow', item: 'chip', to: 9 }, { lv: at(9), flags: {} }, fakeCtx));
@@ -340,7 +339,7 @@ test('Lv7: the staff takes the box off the train while it is held at the station
 // 全島（看得到的人）轉頭看 101 → LEVEL UP；沒有罩子、沒有天線。◆：整段 4.5–6 s
 test('Lv8 live: the scaffold appears on top of 101, one engineer hammers toward the foot, visible islanders look at 101; no dome, no antenna; ◆ 4.5–6 s', async () => {
   for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show } = h, update = show.update, lookers = new Set(), hammer = new Set();
+    const h = await headlessShow(), { show } = h, update = show.update, lookers = new Set(), hammer = new Set(), hammerAt = [];
     let dome = false;
     show.update = (dt, t) => {
       update(dt, t);
@@ -348,7 +347,7 @@ test('Lv8 live: the scaffold appears on top of 101, one engineer hammers toward 
       for (const k of show.roster.keys()) for (const p of show.roster.members(k)) {
         const g = p.walker?.gesture?.kind;
         if (g === 'look') lookers.add(p);
-        if (g === 'build' && k === 'chip.engineers') hammer.add(p);
+        if (g === 'build' && k === 'chip.engineers') { hammer.add(p); hammerAt.push(Math.hypot(p.pos.x - chip.FOOT.x, p.pos.z - chip.FOOT.z)); }
       }
     };
     const { secs } = await liveAt(h, order, isChip(8));
@@ -358,6 +357,8 @@ test('Lv8 live: the scaffold appears on top of 101, one engineer hammers toward 
     assert.ok(show.stage.partKeys().includes('chip.crates'), 'the crates are still at the foot');
     assert.ok(!dome && !show.stage.partKeys().includes('tower.antenna'), 'no dome, no antenna');
     assert.equal(hammer.size, 1, 'one engineer hammers');
+    // 修正輪 1（協調者裁決）：敲鐵鎚的工程師先走到 101 腳下（FOOT）才敲
+    assert.ok(hammerAt.length && hammerAt.every(d => d < 0.3), `hammers at the foot (${Math.max(...hammerAt).toFixed(2)} from FOOT)`);
     assert.ok(lookers.size >= 5, `${lookers.size} people look up`);
     assert.ok(secs <= KEY_MAX && show.elapsed >= 4.5 && show.elapsed <= KEY_MAX, what);
   }
@@ -428,9 +429,13 @@ test('Lv9 live: the standby shield rises and stays as a faint outline; 101 pulse
   for (const k of ['chip.crates', 'tower.scaffold']) assert.ok(!show.stage.partKeys().includes(k), `no ${k} at Lv9`);
 });
 // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：Lv7–8 零件運到 101 腳下——三個 0.3 見方的木箱（兩個並排、一個疊上），Lv9 起拿掉
-test('R48: chip 7–8 stack three crates at the foot of the 101; chip 9 removes them', () => { for (const n of [7, 8]) assert.equal(chip.view(lv({ chip: n, token: 7 }), {})['chip.crates'].parts.filter(p => p.kind === 'box').length, 3); assert.equal(chip.view(lv({ chip: 9, token: 7, typhoon: 3 }), {})['chip.crates'], undefined); });
+test('R48: chip 7–8 stack three crates at the foot of the 101; chip 9 removes them', () => { for (const n of [7, 8]) assert.equal(chip.view(lv({ chip: n, token: 7 }), {})['chip.crates'].parts.filter(p => p.kind === 'box' && p.color === C.wood).length, 3); assert.equal(chip.view(lv({ chip: 9, token: 7, typhoon: 3 }), {})['chip.crates'], undefined); });
 test('R48 crates: wood 0.3 cubes, two side by side on the ground and one on top; footprint 0.7 × 0.4; just south of the 101 plinth, clear of it', () => {
-  const c = chip.view(lv({ chip: 7, token: 7 }), {})['chip.crates'], boxes = c.parts.filter(p => p.kind === 'box');
+  const c = chip.view(lv({ chip: 7, token: 7 }), {})['chip.crates'], boxes = c.parts.filter(p => p.kind === 'box' && p.color === C.wood);
+  // 修正輪 1：每個木箱頂上一圈淺色箱蓋（C.cream），雨天的光線下才不會看成黑方塊
+  const lids = c.parts.filter(p => p.kind === 'box' && p.color === C.cream);
+  assert.equal(lids.length, 3, 'a cream lid band on every crate');
+  for (const b of boxes) assert.ok(lids.some(l => Math.abs(l.pos[0] - b.pos[0]) < 1e-9 && Math.abs(l.pos[1] - (b.pos[1] + 0.15)) < 0.05 && l.scale[0] > 0.3), 'lid on top of the crate');
   assert.equal(c.kind, 'compound'); assert.deepEqual(c.at, chip.CRATES_AT); assert.deepEqual(c.footprint, { w: 0.7, d: 0.4 });
   for (const b of boxes) { assert.deepEqual(b.scale, [0.3, 0.3, 0.3]); assert.equal(b.color, C.wood); }
   const ground = boxes.filter(b => Math.abs(b.pos[1] - 0.15) < 1e-9), up = boxes.filter(b => Math.abs(b.pos[1] - 0.45) < 1e-9);

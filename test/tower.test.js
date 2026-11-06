@@ -75,15 +75,25 @@ test('R48: no antenna or shield before chip 9; chip 8 shows the scaffold; chip 9
   assert.equal(tower.view(lvOf(31, { chip: 8, bulb: 5 }), { missile: 'hit' }, { total: 31 })['tower.scaffold'], undefined);
   assert.equal(tower.view(lvOf(31, { chip: 8, bulb: 5 }), { missile: 'deflect', epilogue: 'alien' }, { total: 31 })['tower.scaffold'], undefined, 'the mothership has no scaffold');
 });
-test('R48 scaffold: a cream torus (scale 1.3) 0.6 below the top, four 0.5-high posts, one tilted 0.9 jib; on the 101, no footprint; follows the top of every stage', () => {
+// 修正輪 1（協調者裁決：原本的環浮在尖塔旁像光環）：鷹架圍著最上一節——四根 0.9 高的柱子立在最上一節的白邊（0.84 見方）上、頂著一圈
+// 奶油色 torus（scale 1.1：半徑 0.55，柱子在環上、站得在白邊裡）；完工／點燈的白邊在 top − 1.5（頂帽＋尖塔 1.5），環在 top − 0.6；
+// 蓋一半沒有頂帽，白邊就是 top。吊臂照舊（斜 0.9）
+test('R48 scaffold: four 0.9 posts standing on the top-tier trim (top − 1.5 when full / lit, top when half) up to a cream torus (scale 1.1), one tilted 0.9 jib; no footprint', () => {
   for (const total of [10, 31, 55]) {
-    const v = tower.view(lvOf(total, { chip: 8 }), {}, { total }), s = v['tower.scaffold'], top = tower.body(tower.stageOf(total)).top;
+    const stage = tower.stageOf(total), v = tower.view(lvOf(total, { chip: 8 }), {}, { total }), s = v['tower.scaffold'], top = tower.body(stage).top;
+    const trim = stage === 'half' ? top : top - 1.5;
     assert.equal(s.kind, 'compound'); assert.deepEqual(s.at, anchorWorld('tower')); assert.equal(s.footprint, false);
     const ring = s.parts.filter(p => p.kind === 'torus');
-    assert.equal(ring.length, 1); assert.equal(ring[0].scale, 1.3); assert.equal(ring[0].color, 0xfff8f4); assert.ok(Math.abs(ring[0].pos[1] - (top - 0.6)) < 1e-9, `${total}: ring 0.6 below the top`);
-    const posts = s.parts.filter(p => p.kind === 'box' && p.scale[1] === 0.5);
+    assert.equal(ring.length, 1); assert.equal(ring[0].scale, 1.1); assert.equal(ring[0].color, 0xfff8f4);
+    assert.ok(Math.abs(ring[0].pos[1] - (trim + 0.9)) < 1e-9, `${total}: ring on the posts (${ring[0].pos[1]})`);
+    if (stage !== 'half') assert.ok(Math.abs(ring[0].pos[1] - (top - 0.6)) < 1e-9, `${total}: ring 0.6 below the spire tip`);
+    const posts = s.parts.filter(p => p.kind === 'box' && p.scale[1] === 0.9);
     assert.equal(posts.length, 4, `${total}: four posts`);
-    for (const p of posts) assert.ok(Math.hypot(p.pos[0], p.pos[2]) <= 0.65 + 1e-9 && Math.abs(p.pos[1] - (top - 0.6)) <= 0.25 + 1e-9, 'posts on the ring');
+    for (const p of posts) {
+      assert.ok(Math.abs(p.pos[1] - 0.45 - trim) < 1e-9, `${total}: post base on the trim (${(p.pos[1] - 0.45).toFixed(3)} vs ${trim.toFixed(3)})`);
+      assert.ok(Math.abs(p.pos[0]) <= 0.42 && Math.abs(p.pos[2]) <= 0.42, `${total}: post on the 0.84 trim`);
+      assert.ok(Math.abs(Math.hypot(p.pos[0], p.pos[2]) - 0.55) < 1e-9, 'post under the ring');
+    }
     const jib = s.parts.filter(p => p.kind === 'box' && p.scale[0] === 0.9);
     assert.equal(jib.length, 1); assert.ok(Math.abs(jib[0].rot?.[2] ?? 0) > 0.2, 'the jib is tilted');
     assert.equal(s.parts.length, 6);

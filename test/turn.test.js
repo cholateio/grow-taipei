@@ -323,7 +323,7 @@ test('a merged jump plays the highest key level among n−1 and n: n−1 key, n 
   const none = make([]), r0 = buildTurn(events, base([quietTower, none.mod]), fakeCtx());
   assert.deepEqual(none.asked, [4], 'no key level → n'); assert.equal(marksOf(r0)[1].info.key, false);
 });
-// Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：矽盾測試不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
+// Task 6a 修正輪裁決：n−1 和 n 都是 ◆ 就不合成（外星晶片 8 → 9：Lv8 搭鷹架〔R48，以前是矽盾測試〕不能被 Lv9 待命吃掉）——兩個 grow 照一般事件接著演，
 // 各演自己的 ◆ 劇本、各一個（不是跳級版的）LEVEL UP、各自一個 apply（起因提示 2026-10-31 拿掉了，R22）
 test('a jump between two key levels is not merged: both levels play their own key script with a single LEVEL UP', () => {
   const asked = [], fn = n => { const f = (e, s, c) => { asked.push(n); return [c.B.wait(2), c.B.levelUp('chip')]; }; f.key = true; return f; };

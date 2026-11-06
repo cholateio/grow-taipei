@@ -1254,7 +1254,8 @@ test('R47 domeRats epilogue beats (≤ 5.5 s): fold + worldNow + the ballpark; o
   assert.equal(open.beats[1].effects, undefined, 'worldNow');
   assert.equal(open.beats[2].target, 'baseball');
   assert.deepEqual(plague.beats[0].only, ['rat.plague', 'typhoon.scooter'], 'fix round 1: the scooter rider shrinks away as the plague pours out');
-  assert.equal(plague.beats[1].kind, 'plagueRush'); assert.equal(plague.beats[1].dur, finale.RUSH);
+  assert.equal(plague.beats[1].kind, 'placePlague', 'whole-branch review: move buried destinations out of buildings first (live and skip)');
+  assert.equal(plague.beats[2].kind, 'plagueRush'); assert.equal(plague.beats[2].dur, finale.RUSH);
   assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'blinkPart' && b.beat.key === 'rat.plague'), 'the plague blinks');
   assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'focus' && b.beat.target === 'home' && Math.abs(b.dur - (finale.DOME_HOLD + beatsMod.FOCUS_BEAT)) < 1e-9), 'back to the overview after DOME_HOLD');
   assert.equal(finale.DOME_HOLD, 0.8, 'fix round 1: the dome shot holds until the burst is visible');
@@ -1295,7 +1296,28 @@ const plagueEnd = (show, h, what) => {
   assert.equal(h.worldLog.at(-1)[0].mood, 'normal', `${what}: nobody lying`);
   // 修正輪 1：颱風天的外送機車不再繞中心格（鼠群出來那一拍縮掉、收尾的 view 不畫）
   assert.equal(show.stage.partObject('typhoon.scooter'), null, `${what}: no scooter rider`);
+  // 整支審稿：plagueSpots 是純函式、看不到建築——收尾一開演（live、跳過都一樣）把落進 footprint 的目的地挪到最近的可走點（同一格、0.6 內）。
+  // 終態每隻的目的地都不在任何建築（外擴後的 footprint）裡、還在原本那一格
+  const targets = o.userData.targets(), spots = ratMod.plagueSpots();
+  const buried = targets.filter(t => show.nav.inFootprint(t.x, t.z));
+  assert.deepEqual(buried.map(t => `(${t.x.toFixed(2)}, ${t.z.toFixed(2)})`), [], `${what}: no rat buried in a building`);
+  targets.forEach((t, i) => {
+    assert.equal(String(hexCellAt(t.x, t.z)), String(hexCellAt(spots[i].to.x, spots[i].to.z)), `${what}: rat ${i} stays on its cell`);
+    assert.ok(Math.hypot(t.x - spots[i].to.x, t.z - spots[i].to.z) <= 0.6 + 1e-6, `${what}: rat ${i} moved ≤ 0.6`);
+  });
+  for (let i = 0; i < meshes[0].count; i++) {
+    meshes[0].getMatrixAt(i, m4); v.setFromMatrixPosition(m4);
+    assert.ok(Math.hypot(v.x - targets[i].x, v.z - targets[i].z) <= ratMod.SCURRY * Math.SQRT2 + 1e-6, `${what}: rat ${i} scurries round its placed spot`);
+  }
 };
+// 整支審稿：原本的 plagueSpots 有十幾隻落在建築裡（101 底座旁、火山錐裡、隕石掉進的溫泉池）——上面 plagueEnd 驗挪過之後一隻都沒有；這裡記下挪之前有幾隻
+test('R47 review: plagueSpots alone puts some rats inside stage footprints (the reason for userData.place)', async () => {
+  const g = await badGame('domeRats'), { show, h } = g;
+  await h.run(g.evs, { finale: true, instant: true });
+  const n = ratMod.plagueSpots().filter(s => show.nav.inFootprint(s.to.x, s.to.z)).length;
+  console.log(`plague destinations inside footprints before place(): ${n} of ${ratMod.PLAGUE_N}`);
+  assert.ok(n > 0);
+});
 // 鼠災的命中局：列舉裡第一條結局是鼠災、隕石命中的放法（EXAMPLE.domeRats 是吹偏局）
 const DOMERATS_HIT = enumerate(spec).find(r => r.ending.id === 'domeRats' && missileOf(r.state, spec) === 'hit').order;
 test('R47 domeRats live from EXAMPLE.domeRats (deflect) and the first domeRats hit game (whole finale as one live turn): the plague pours out of the gate onto all seven cells, the camera holds on the dome, the overview, a close-up on the centre cell; the islanders hide, the staff stay with the rats; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {

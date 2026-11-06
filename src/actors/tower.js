@@ -17,7 +17,8 @@ export const id = 'tower';
 const GLASS = 0x9cc3bf, CREAM = 0xfff8f4, SAND = 0xe9dcc6, CORAL = 0xdb6a41, YELLOW = 0xfcea8b, ICE = 0x9fe8ff;
 // 黑塔（賽博尾聲）：墨黑偏紫一點（純 C.ink 在夜裡跟背景糊在一起），白邊與屋頂邊條發霓虹藍
 export const DARK = 0x2a2630, NEON_BLUE = 0x3fe0ff;
-const TIER_H = 0.45, LABEL_UP = 0.6, CAP_H = 1.5;   // CAP_H：完工後八節之上的頂帽＋尖塔   // LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
+// CAP_H：完工後八節之上的頂帽＋尖塔；LABEL_UP：頭頂（LEVEL UP、泡泡）在塔頂上多高
+const TIER_H = 0.45, LABEL_UP = 0.6, CAP_H = 1.5;
 const AT = anchorWorld('tower');
 
 // 矽盾罩：半球立在 101 底座，半徑蓋過主島七格的每個角（最遠的西南角離 101 約 7.6）

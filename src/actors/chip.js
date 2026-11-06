@@ -32,6 +32,11 @@ export const FOOT = offset(TOWER, 0.95, 0.25);    // 101 腳下（矽盾零件�
 // 兩條走道與南邊的空地照樣相通（test/chip.test.js 量路線長與被關住的走路格）
 const CRATE = 0.3, PLINTH = 0.8;   // PLINTH：101 底座半寬（tower.js body 的 1.6 見方）
 export const CRATES_AT = offset(TOWER, -PLINTH + 0.35, PLINTH + 0.1 + 0.2);
+// 整支審稿（R48）：Lv7 抱箱子的工程師走到木箱前面（南側 0.45：木箱 footprint 深 0.4、外擴 PAD 之後還在外面，走得到；
+// 偏東 0.2——還在木箱寬度 0.7 裡，他從晶片格那頭〔東邊〕來，少走一點），箱子出現時面向木箱——以前走到 101 東側的 FOOT，跟木箱差 1.6 公尺。
+// 多走的這段（約 2 公尺）用快步 CARRY 4.0 補回來（原本 2.8；繞環 8 個位置量 4.7–6.0 s，◆ ≤ 6 s）
+export const CRATES_FRONT = offset(CRATES_AT, 0.2, 0.45), CARRY = 4.0;
+const HAMMER_DETOUR = 4;   // Lv8：走到 FOOT 的路線超過這麼長就改在木箱前面敲（見 grow[8]）
 // 每個箱子頂上一圈奶油色箱蓋（修正輪 1：雨天的光線下整個木色看成黑方塊），比箱身寬一點點
 const CRATES = [[-0.17, 0], [0.17, 0], [-0.17, 1]].flatMap(([x, k]) => [
   { kind: 'box', pos: [x, CRATE / 2 + k * CRATE, 0], scale: [CRATE, CRATE, CRATE], color: C.wood },
@@ -217,7 +222,12 @@ const seen = (c, key) => c.roster.members(key).filter(m => !m.hidden);
 const worker = () => c => seen(c, 'chip.worker')[0] ?? null;
 const eng = i => c => seen(c, 'chip.engineers')[i] ?? null;
 const ENGINEERS = c => c.roster.members('chip.engineers');
-const nearestEng = p => once(c => seen(c, 'chip.engineers').sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0] ?? null);
+// 離 p 最近的工程師——照走過去的路線長（整支審稿：颱風 Lv3 的河濱公園〔樹、長椅〕把木箱前面到 101 東側的路封住，
+// Lv7 抱箱子的人站在木箱前、直線離 FOOT 1.6，走過去卻要繞全島 12 公尺；Lv8 同一回合就挑到他，◆ 拉到 8 s）
+const nearestEng = p => once(c => {
+  const len = m => c.nav.routeLength(c.nav.route(m.pos, p));
+  return seen(c, 'chip.engineers').map(m => [m, len(m)]).sort((a, b) => a[1] - b[1])[0]?.[0] ?? null;
+});
 // 工程師（最多 2 個，裁決 R23）一起轉頭看 p；不在的那拍跳過。R41（使用者 2026-11-05：後期動畫偏長）：預設 1.0 → 0.6 s
 const engineersLook = (B, p, dur = 0.6) => B.together([0, 1].map(i => B.gesture(eng(i), 'look', dur, { at: p })));
 // 偵防師（老鼠 ≥2 且晶片 ≥3）：apply 時名冊自己用 from 把一個工程師原地換成放大鏡；這裡補一拍 ！
@@ -232,6 +242,11 @@ const surge = (B, e, dur) => B.replay(e, 'chip.cable', dur, {
 // 搭鷹架時全島抬頭：主島上看得到、在日常裡的小人（不含模型、坐車的、正在走進場的）都轉頭看 101；演到這拍才點名，最多 24 個
 // （show/crowd.js 的 lookUp，最終章的宣告也用）。這級一開始就回全景，全島都在鏡頭裡，所以不看焦點格。release：看完馬上放回日常（不凍到回合結束）
 
+// 0 秒：轉身面向木箱（整支審稿：箱子出現時抱箱子的人看著它；走路的收尾朝最後一段路的方向，不一定對著木箱）
+const faceCrates = who => ({ kind: 'face', dur: 0, start(c) {
+  const m = typeof who === 'function' ? who(c) : who; if (!m) return false;
+  c.roster.setPose(m, { ...m.pos, yaw: Math.atan2(CRATES_AT.x - m.pos.x, CRATES_AT.z - m.pos.z), walking: false }); return false;
+} });
 export const script = {
   // 工地開工：閃白圍籬 → 工人從 101 工地走過來 → ♪ → 繞工地
   placed(e, s, ctx) {
@@ -294,11 +309,11 @@ export const script = {
     //   工程師抱箱子快步走（2.8）；修正輪 1：倒車範圍 π → 2.34 rad（趕路上限照舊 4.5 倍：往前最遠與倒車最遠一樣久，最壞 2.8 s 進站，π 時 3.3 s；
     //   test/chip.test.js 繞環 8 個位置量）；列車剛好在站前時整段只有 3.6 s（低於 ◆ 軟下限 4.5；繞環量最短 4.0 s）：鏡頭在站前至少停 STATION_MIN 秒
     7(e, s, ctx) {
-      const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(FOOT);
+      const { B } = ctx, staff = once(c => seen(c, 'token.staff')[0] ?? null), e0 = nearestEng(CRATES_FRONT);
       return [
         B.together([B.focus(TOKEN), B.wait(STATION_MIN), B.trainStop({ stop: 0.5, arrive: 1.6, back: 2.34, during: [B.gesture(staff, 'knock', 0.5)] })]),
-        B.together([B.focus(TOWER_CELL), B.walk(e0, FOOT, { speed: 2.8 }), B.bubble(e0, { icon: 'chip' }, 0.8)]),
-        B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
+        B.together([B.focus(TOWER_CELL), B.walk(e0, CRATES_FRONT, { speed: CARRY }), B.bubble(e0, { icon: 'chip' }, 0.8)]),
+        faceCrates(e0), B.apply(e), B.home(e0), B.together([B.focus(CHIP), B.levelUp('chip')]),
       ];
     },
     // ★ 搭鷹架（R48，使用者 2026-11-06：矽盾只有在真結局才會長；取代以前的矽盾測試——罩子閃三下）：回全景 →
@@ -308,8 +323,11 @@ export const script = {
     //   正解裡晶片 7 → 8 同一回合，Lv7 抱箱子的人剛從腳下往回走、離得近——走過去那拍至少 WALK_MIN，整段才不會短過 4.5
     8(e, s, ctx) {
       const { B } = ctx, up = lookUp(B, TOWER, 1.2), e0 = nearestEng(FOOT);
+      // 整支審稿：在哪敲——FOOT（101 東側）走得到（路線 ≤ HAMMER_DETOUR）就去 FOOT；颱風 Lv3 的河濱公園把木箱前面到 FOOT 的路封住、
+      // 只剩一個工程師（另一個是偵防師）又剛把箱子放在木箱前（珍奶攤被吹走那局：要繞全島 12 公尺），就在木箱前面（CRATES_FRONT，也是 101 腳下）敲
+      const spot = once(c => { const m = e0(c); return !m || c.nav.routeLength(c.nav.route(m.pos, FOOT)) <= HAMMER_DETOUR ? FOOT : CRATES_FRONT; });
       return [
-        B.focus('home'), B.together([B.walk(e0, FOOT, { speed: 2.4 }), B.wait(WALK_MIN)]), B.gesture(e0, 'build', 1.0, { at: TOWER }),
+        B.focus('home'), B.together([B.walk(e0, spot, { speed: 2.4 }), B.wait(WALK_MIN)]), B.gesture(e0, 'build', 1.0, { at: TOWER }),
         B.together([B.apply(e, { only: ['tower.scaffold'] }), ...up.look]), up.release, B.home(e0),
         B.apply(e), B.levelUp('chip'),
       ];

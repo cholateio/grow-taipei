@@ -110,6 +110,7 @@ export function plagueSpots(seed = 7) {
 // 牠在原地亂竄的幅度 SCURRY（±0.15）、跑過去時的拋物線高度（每公尺 HOP_PER_M，從門口跳過水道、爬上台地格不穿地）
 export const PLAGUE_COLOR = 0x6b5b53, SCURRY = 0.15;
 const HOP_PER_M = 0.05;
+const PLACE_MAX = 0.6, PLACE_STEP = 0.05, PLACE_GAP = 0.3;   // place(nav)：挪開建築最遠幾公尺、一圈多寬、彼此至少多遠
 function ratGeometry(THREE) {
   const geos = [
     new THREE.SphereGeometry(0.5, 8, 6).scale(0.16, 0.1, 0.22).translate(0, 0.05, 0),
@@ -186,7 +187,7 @@ export const builders = {
   // 到了就原地小步亂竄（±SCURRY、各自的相位與週期，頭跟著微轉；跑的時候亂竄照 smoothstep 淡入，到站不跳）。finish()：跳到終態。
   // 建好就是終態（全部在 to、亂竄中）：跳過、截圖、舞台重建零件直接看到撒滿島的老鼠。?quality=low 照畫（一個 draw call）
   plague(THREE, spec) {
-    const spots = spec.spots, n = spots.length, object = new THREE.Group();
+    const spots = spec.spots.map(sp => ({ ...sp, to: { ...sp.to } })), n = spots.length, object = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: PLAGUE_COLOR, roughness: 0.85, metalness: 0, flatShading: true });
     const mesh = new THREE.InstancedMesh(ratGeometry(THREE), mat, n);
     mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
@@ -207,6 +208,28 @@ export const builders = {
     };
     object.userData.rush = d => { t = d > 0 ? 0 : Infinity; dur = d; pose(); };
     object.userData.finish = () => { t = Infinity; pose(); };
+    // 整支審稿（R47）：plagueSpots 是純函式、看不到建築——十幾隻落在 101 底座旁、火山錐裡、隕石掉進的溫泉池裡，被埋掉。
+    // place(nav)：收尾一開演（live、跳過都叫，finale.js placePlague）把落在建築裡（nav.walkable 不成立：外擴後的 footprint）的目的地
+    // 挪到 PLACE_MAX 內、同一格、離已經放好的 ≥ PLACE_GAP 的最近可走點（一圈一圈找）；找不到就取 nav.nearestWalkable。朝向重算
+    object.userData.place = nav => {
+      let moved = 0;
+      spots.forEach((sp, i) => {
+        if (nav.walkable(sp.to.x, sp.to.z)) return;
+        const cell = String(cellAt(sp.to.x, sp.to.z)), others = spots.filter((o, j) => j !== i);
+        const ok = (x, z) => nav.walkable(x, z) && String(cellAt(x, z)) === cell && others.every(o => Math.hypot(o.to.x - x, o.to.z - z) >= PLACE_GAP);
+        let to = null;
+        for (let r = PLACE_STEP; !to && r <= PLACE_MAX + 1e-9; r += PLACE_STEP) for (let k = 0; k < 16 && !to; k++) {
+          const a = k / 16 * Math.PI * 2, x = sp.to.x + Math.cos(a) * r, z = sp.to.z + Math.sin(a) * r;
+          if (ok(x, z)) to = { x, y: nav.groundY(x, z), z };
+        }
+        to ??= nav.nearestWalkable(sp.to);
+        sp.to = { x: to.x, y: to.y ?? sp.to.y, z: to.z }; sp.yaw = Math.atan2(sp.to.x - sp.from.x, sp.to.z - sp.from.z);
+        lengths[i] = Math.hypot(sp.to.x - sp.from.x, sp.to.z - sp.from.z); moved++;
+      });
+      pose();
+      return moved;
+    };
+    object.userData.targets = () => spots.map(sp => ({ ...sp.to }));
     pose();
     return {
       object,

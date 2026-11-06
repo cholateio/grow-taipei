@@ -313,11 +313,17 @@ test('Lv6 live: the camera opens on the overview, the light runs along the cable
 // Lv7 ★ 天線：零件搭列車來——列車停在站前時站務員一敲（卸下箱子），離 101 最近的工程師抱著箱子走到 101 腳下，天線在塔頂閃白（≤ 5 s：列車最多趕 2 秒）
 test('Lv7: the staff takes the box off the train while it is held at the station, then an engineer carries it to the 101 foot', async () => {
   for (const order of SOLUTIONS) {
-    const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, knocks = [], foot = new Set();
+    const h = await headlessShow(), { show, bubblesLog } = h, update = show.update, knocks = [], foot = new Set(), facing = [];
+    let crateSeen = false;
     show.update = (dt, t) => {
       const before = h.rail.offset; update(dt, t);
       if (show.roster.members('token.staff').some(m => m.walker?.gesture?.kind === 'knock')) knocks.push(h.rail.offset - before + dt);   // 停住時時鐘偏移跟時間等速倒退 → 0
-      for (const m of show.roster.members('chip.engineers')) if (m.mode === 'script' && Math.hypot(m.pos.x - chip.FOOT.x, m.pos.z - chip.FOOT.z) < 0.3) foot.add(m);
+      for (const m of show.roster.members('chip.engineers')) if (m.mode === 'script' && Math.hypot(m.pos.x - chip.CRATES_FRONT.x, m.pos.z - chip.CRATES_FRONT.z) < 0.3) foot.add(m);
+      // 整支審稿：木箱出現那一幀，抱箱子的工程師站在木箱前面、面向木箱
+      if (!crateSeen && show.stage.partKeys().includes('chip.crates')) {
+        crateSeen = true;
+        for (const m of foot) facing.push(Math.atan2(Math.sin(m.yaw - Math.atan2(chip.CRATES_AT.x - m.pos.x, chip.CRATES_AT.z - m.pos.z)), Math.cos(m.yaw - Math.atan2(chip.CRATES_AT.x - m.pos.x, chip.CRATES_AT.z - m.pos.z))));
+      }
     };
     // 圖框「晶片」掛在誰頭上：記下 bubbles.show 拿到的 head（演完再問一次，跟抱箱子的工程師的頭同一個位置才算掛在他身上）
     const heads = [], showBubble = show.bubbles.show;
@@ -325,10 +331,11 @@ test('Lv7: the staff takes the box off the train while it is held at the station
     const { n } = await liveAt(h, order, isChip(7));
     assert.ok(knocks.length > 5, `knock frames ${knocks.length}`);
     assert.ok(knocks.slice(1).every(d => Math.abs(d) < 1e-9), `train held during the knock (${order.join('>')})`);
-    assert.equal(foot.size, 1, 'one engineer brings the box to the 101 foot');
+    assert.equal(foot.size, 1, 'one engineer brings the box to the crates (CRATES_FRONT, whole-branch review: not FOOT on the east side)');
+    assert.ok(facing.length === 1 && Math.abs(facing[0]) < 0.35, `he faces the crates as they appear (${facing.map(a => a.toFixed(2))} rad off)`);
     const box = bubblesLog.slice(n).find(b => b.kind?.icon === 'chip'), [m] = foot;
     // 裁決 R23：工程師不再通勤到 101 腳下附近，是從廠區走過來的——圖框在他出發的地方冒（晶片格，離腳下約 4 公尺），跟著他走（見下面 heads）
-    assert.ok(box && Math.hypot(box.at.x - chip.FOOT.x, box.at.z - chip.FOOT.z) < 5, 'carrying the parts (chip icon) on his way to the foot');
+    assert.ok(box && Math.hypot(box.at.x - chip.CRATES_FRONT.x, box.at.z - chip.CRATES_FRONT.z) < 5.5, 'carrying the parts (chip icon) on his way to the crates');
     assert.ok(m && heads.length === 1, 'one chip icon');
     const hd = heads[0](), mh = m.head(); assert.ok(Math.hypot(hd.x - mh.x, hd.y - mh.y, hd.z - mh.z) < 1e-9, 'the chip icon rides on the carrier');
     // R48：Lv7 運到的是零件（101 腳下三個木箱），天線要到 Lv9 才長
@@ -451,6 +458,15 @@ test('R48 crates: wood 0.3 cubes, two side by side on the ground and one on top;
 // R48：木箱不擋走道——夜市攤子與 101 底座之間（西）、101 與晶片橋頭之間（東）那兩條走道照樣通到南邊的空地；中心格裡沒有被關起來的走路格。
 // 每一種 101 階段（蓋一半有吊車）× 燈泡（夜市一攤／兩攤）× 晶片 7、8：兩條走道往南的出口（底座西南角、東南角外）照樣走得到；
 // 有木箱時的路線最多多 0.8（繞過木箱；堵住走道出口的話要從北邊繞一大圈）
+// 整支審稿：Lv7 抱箱子的工程師走到木箱前面（CRATES_FRONT：南側 0.45、偏東 0.2——還在木箱寬度裡，他從東邊來；在木箱外擴後的 footprint 外、走得到）——以前走到 101 東側的 FOOT，跟木箱差 1.6
+test('CRATES_FRONT: just south of the crates, outside their padded footprint, walkable with the crates and the plinth up', async () => {
+  const { createNav } = await import('../src/show/nav.js'), { mulberry32 } = await import('../src/scene/random.js');
+  const c = chip.CRATES_FRONT, A = chip.CRATES_AT;
+  assert.ok(Math.abs(c.x - A.x) <= 0.35 - 0.1 && c.z > A.z + 0.3 && c.z - A.z <= 0.5, `in front of (south of) the crates (${(c.x - A.x).toFixed(2)}, ${(c.z - A.z).toFixed(2)})`);
+  const nav = createNav({ rnd: mulberry32(1) });
+  nav.setFootprints([{ x: A.x, z: A.z, w: 0.7, d: 0.4 }, { x: anchorWorld('tower').x, z: anchorWorld('tower').z, w: 1.6, d: 1.6 }]);
+  assert.ok(nav.walkable(c.x, c.z), 'walkable');
+});
 test('R48 crates keep the walkways beside the 101 open and never seal a pocket of the 101 cell', async () => {
   const mods = await Promise.all(['tower', 'bulb', 'landmarks', 'token', 'typhoon', 'boba', 'baseball', 'milk', 'rat', 'chip'].map(id => import(`../src/actors/${id}.js`)));
   const nav = createNav(), bad = [], toW = i => -9.5 + 0.3 * i, C0 = cellOf('tower');
@@ -537,4 +553,12 @@ test('Lv2 in the real turn (the worker is already by the site): script ≥ 2.5 s
   const { playLive } = await import('./helpers/show.js');
   const ev = (await playLive(SOLUTIONS[0])).find(x => x.e.kind === 'grow' && x.e.item === 'chip' && x.e.to === 2);
   assert.ok(ev && ev.script >= 2.5 && ev.script <= SCRIPT_MAX, `turn ${ev?.turn}: Lv2 ${ev?.script.toFixed(2)} s`);
+});
+// 整支審稿：Lv7 的工程師改走到木箱前面之後，同一回合的 Lv8 要挑「走得到 FOOT 最近」的工程師——珍奶攤被吹走那局（EXAMPLE.cartBlown）最後一輪
+// 颱風 Lv3 的河濱公園把木箱前面到 101 東側的路封住，照直線挑到抱箱子那位要繞全島（pace 量到 ◆ 8.0 s）
+//   ——只剩一個工程師（另一個是偵防師），FOOT 太繞就在木箱前面（CRATES_FRONT，也是 101 腳下）敲
+test('Lv8 in the cartBlown final round (chip 7 → 8, typhoon park up): no walk round the island (hammers at the crates when FOOT is a detour), ◆ 4.5 s – KEY_MAX', async () => {
+  const { playLive } = await import('./helpers/show.js'), { EXAMPLE } = await import('./helpers/endings.js');
+  const ev = (await playLive(EXAMPLE.cartBlown)).find(x => x.e.kind === 'grow' && x.e.item === 'chip' && x.e.to === 8);
+  assert.ok(ev && ev.live >= 4.5 && ev.live <= KEY_MAX, `turn ${ev?.turn}: Lv8 ${ev?.live.toFixed(2)} s live`);
 });

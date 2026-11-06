@@ -555,6 +555,8 @@ const GATE_OUT = [offset(GATE, -0.5, 0.6), offset(GATE, 0.5, 0.6)];
 const CHASE = GATE_OUT.map(p => offset(p, 0, -0.6));
 // 鼠群從門口撒出去（照 bulb.js spinUp 的寫法）：拍長是真的 RUSH（together 等它），零件吃真實秒數，所以 dur ÷ 演出速度；
 // 跳過（instant）不呼叫——零件建好就是終態；end 跳到終態（照常演完時本來就到了）
+// 整支審稿：鼠群的目的地挪出建築（rat.js userData.place）——live、跳過都要（跟 plagueRush 不同），跳過的終態才一樣；放在 plagueRush 前面
+const placePlague = { kind: 'placePlague', dur: 0, start(c) { c.stage.partObject('rat.plague')?.userData.place?.(c.nav); return false; } };
 const plagueRush = dur => ({
   kind: 'plagueRush', dur,
   start(c) { if (!c.instant) c.stage.partObject('rat.plague')?.userData.rush?.(dur / (c.speed ?? 1)); },
@@ -579,7 +581,7 @@ export function domeRatsEpilogue(e, ctx) {
     B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
     B.together([
       // 同一幀的順序：apply 第一步就 commit 鼠群，later 的 blinkPart 接著才開（閃的是剛露出來的鼠群）；plagueRush 在 apply 之後 start（零件已經建好）
-      B.apply(e, { only: ['rat.plague', 'typhoon.scooter'] }), plagueRush(RUSH), later(0, 0, blinkPart('rat.plague')),
+      B.apply(e, { only: ['rat.plague', 'typhoon.scooter'] }), placePlague, plagueRush(RUSH), later(0, 0, blinkPart('rat.plague')),
       crowd(B, c => pack(c).map((m, i) => rush(B, m, out(c)[i % out(c).length]))),
       crowd(B, c => staff(c).map((m, i) => capped(B.walk(m, chase(c)[i % chase(c).length], { speed: DASH }), RUSH + UFO_FALL))),
       later(DOME_HOLD, FOCUS_BEAT, B.focus('home')),

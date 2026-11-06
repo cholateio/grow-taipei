@@ -36,6 +36,9 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
 .slot .name { font-size: 12px; font-weight: 700; }
 .slot .lv { position: absolute; bottom: -9px; font-style: normal; font-size: 10px; font-weight: 900; color: #fff; background: var(--coral); border-radius: 6px; padding: 1px 6px; }
 .slot .lv:empty { display: none; }
+/* 使用者 2026-11-06：放置順序圓牌（左上角，1–8），空的不顯示 */
+.slot .n { position: absolute; top: -6px; left: -6px; width: 18px; height: 18px; border-radius: 9px; background: var(--ink); color: #fff; font: 900 11px/18px sans-serif; text-align: center; font-style: normal; }
+.slot .n:empty { display: none; }
 .slot.max .lv { background: var(--yellow); color: var(--ink); }
 .slot:disabled { cursor: default; }
 .slot.placed { opacity: .55; }
@@ -114,6 +117,7 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
   .slot { width: 48px; height: 48px; padding: 4px; }
   .slot svg { width: 28px; height: 28px; }
   .slot .name { display: none; }
+  .slot .n { width: 16px; height: 16px; border-radius: 8px; font-size: 10px; line-height: 16px; }
   .skip { grid-column: 1 / span 2; grid-row: 5; width: auto; height: 40px; }
   .skip.hide svg { transform: rotate(-90deg); }   /* 隱藏圖示朝下 → 朝右（把側欄推向右邊）；跳過圖示本來就朝右 */
   .slots.collapsed { transform: translate(calc(100% + 40px + env(safe-area-inset-right)), -50%); }
@@ -128,6 +132,7 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
   .slots { top: 62px; transform: none; grid-template-columns: repeat(2, 36px); gap: 4px; padding: 8px; }
   .slot { width: 36px; height: 36px; padding: 0; }   /* 這裡沒有 border-box：padding 0 才剛好 36 */
   .slot svg { width: 22px; height: 22px; margin-top: 3px; }
+  .slot .n { width: 14px; height: 14px; border-radius: 7px; font-size: 9px; line-height: 14px; top: -5px; left: -5px; }
   .slot .lv { bottom: 1px; font-size: 8px; padding: 0 2px; line-height: 10px; }
   .slot, .skip { min-height: 0; }   /* 全域 button 有 min-height 44，不蓋掉就縮不下去 */
   .skip { height: 30px; }

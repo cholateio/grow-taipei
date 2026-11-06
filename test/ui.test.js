@@ -233,3 +233,22 @@ test('ui.css: collapsed bar slides off-screen (down; right in landscape), the me
   assert.match(css, /\.menu-tab \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 22px;[^}]*display: none;/);
   assert.match(css, /\.menu-tab\.on \{ display: grid; place-items: center; \}/);
 });
+
+// 使用者 2026-11-06：放置順序編號
+test('setPlaced numbers the cell with the order it was placed (1…8); reset clears the numbers and restarts the count', async () => {
+  installFakeDom(); const { createSlots } = await import('../src/ui/slots.js');
+  const root = document.createElement('div'), slots = createSlots(root, { items: slotItems(), onPick() {} });
+  const nav = root.querySelector('.slots');
+  const n = id => nav.children.find(b => b.dataset.id === id).querySelector('.n').textContent;
+  slots.setPlaced('milk'); slots.setPlaced('rat'); assert.equal(n('milk'), '1'); assert.equal(n('rat'), '2'); assert.equal(n('chip'), '');
+  slots.setPlaced('rat'); assert.equal(n('rat'), '2');
+  slots.reset(); assert.equal(n('milk'), ''); slots.setPlaced('chip'); assert.equal(n('chip'), '1');
+});
+test('ui.css: the order badge is an 18px ink circle top-left of the cell, 16px in the landscape rail and 14px in the short rail; empty badges are hidden', async () => {
+  const css = await cssText();
+  assert.match(css, /\.slot \.n \{ position: absolute; top: -6px; left: -6px; width: 18px; height: 18px; border-radius: 9px; background: var\(--ink\); color: #fff; font: 900 11px\/18px sans-serif; text-align: center; font-style: normal; \}/);
+  assert.match(css, /\.slot \.n:empty \{ display: none; \}/);
+  const rail = css.slice(css.indexOf('(max-height: 520px)'), css.indexOf('(max-height: 340px)')), short = css.slice(css.indexOf('(max-height: 340px)'));
+  assert.match(rail, /\.slot \.n \{ width: 16px; height: 16px;[^}]*font-size: 10px/);
+  assert.match(short, /\.slot \.n \{ width: 14px; height: 14px;[^}]*font-size: 9px/);
+});

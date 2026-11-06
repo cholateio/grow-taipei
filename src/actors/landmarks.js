@@ -3,6 +3,7 @@ import { landmarkWorld, cellCentre } from './anchors.js';
 import { offset } from './palette.js';
 import { trainCars } from './token.js';
 import { mulberry32 } from '../scene/random.js';
+import { cellAt, cellTop } from '../scene/hex.js';
 
 export const id = 'landmarks';
 
@@ -28,8 +29,20 @@ const SPRING_FP = [{ r: POOL_R, door: false }, BATHHOUSE, { x: -0.85, z: 0.75, w
 // 泡湯老鼠（rat.js SPRING_SPOTS：池心半徑 0.62、2 隻，2026-11-04 起）離每位溫泉客 ≥ 0.25；
 // 外星的變異鼠站在池子前緣（rat.js MUTANT）時離兩人都 0.73（≥ 0.6），溫泉客在池裡不換位置——
 // 計畫寫的「改用北側的角度」要先從池裡走出來（nav 從 footprint 裡逃到最近的可走點，正好是變異鼠站的池子前緣）再繞一圈，反而貼著牠走
-const SOAK_R = 0.3, WATER_TOP = 0.13, SOAK = 0.15;
+export const SOAK_R = 0.3, WATER_TOP = 0.13, SOAK = 0.15;
 const BATHERS = [0.93, 2.0].map(a => { const p = { x: Math.cos(a) * SOAK_R, z: Math.sin(a) * SOAK_R }; return { p, yaw: Math.atan2(-p.x, -p.z) }; });
+// R49（使用者 2026-11-06：隕石砸到溫泉裡時裡面還有人很奇怪）：吹偏的隕石掉進池子之前，兩位溫泉客爬出來跑到池子東側的池緣外
+// （finale.js 的吹偏劇本），之後就站在那裡（flags.missile 'deflect' 時名冊的站位換成 BATHERS_OUT，收尾的 home 不會再走回有隕石的池子）。
+// 離池心 SOAK_R + BATHER_FLEE（水平）、z ±0.35（x 照半徑算回來）、站在格面（cellTop）、面向池心。世界座標：劇本直接拿來當走路的終點。
+// 東側（+x）：池子外擴 footprint 到 0.87、小澡堂（BATHHOUSE，x 0.65–1.25、z −1.0 – −0.5，外擴 PAD 0.12 到 z −0.38）在東北——
+// z −0.35 這一點離小澡堂的外擴框還有 0.03，走路格上；泡湯老鼠（rat.js SPRING_SPOTS 半徑 0.62）、變異鼠（MUTANT，池子正前方）都 ≥ 0.6
+// 第 0 位（池裡偏東那位）跑東北（z −0.35）、第 1 位跑東南（z +0.35）：兩條路不交叉（反過來的話第 1 位要從第 0 位面前繞過去，最近 0.34），跑的時候兩人 ≥ 0.31
+export const BATHER_FLEE = 1.1;
+const SPRING_AT = landmarkWorld('spring'), OUT_R = SOAK_R + BATHER_FLEE, OUT_Z = 0.35;
+export const BATHERS_OUT = [-OUT_Z, OUT_Z].map(dz => {
+  const dx = Math.sqrt(OUT_R * OUT_R - dz * dz), x = SPRING_AT.x + dx, z = SPRING_AT.z + dz;
+  return { x, y: cellTop(cellAt(x, z)), z, yaw: Math.atan2(-dx, -dz) };
+});
 
 // 島民人數：HOMES（一位）減掉轉成角色的（代幣 ≥2 的站長），最少 0。flush() 會把不夠的名冊補滿，所以宣告的人數一定要跟著減。
 // 鮮奶不再借島民（計畫 13 §設計 1：兩個小學生都從校門外走進來）
@@ -96,8 +109,8 @@ export const builders = {
 };
 
 // 老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時池水變成淡綠色
-// 舞台照模組的共同簽名 view(lv, flags, meta) 呼叫；地標用不到旗標（計畫 13 起溫泉客不看變異鼠換位置），只看 lv
-export function view(lv = {}) {
+// 舞台照模組的共同簽名 view(lv, flags, meta) 呼叫；旗標只看 missile（R49：吹偏之後溫泉客站在池緣外，計畫 13 起溫泉客不看變異鼠換位置）
+export function view(lv = {}, flags = {}) {
   const v = landmarkWorld('volcano'), s = landmarkWorld('spring'), water = lv.rat >= 3 && !trainCars(lv.token) ? 0xbfd39c : WATER;
   return {
     // 錐、碗、熔岩痕由 builders.volcano 算；這裡只列碗底的熔岩與錐腳四顆石頭（錐腳比原本的錐台寬 0.15，石頭照比例往外挪 1.2 倍，一樣半埋在錐腳）
@@ -123,7 +136,8 @@ export function view(lv = {}) {
     'landmarks.springSteam': { kind: 'smoke', at: s, n: 3, size: 0.14, rise: 0.9, offsetY: 0.1 },
     // 被轉走的島民不補（裁決 R23）：代幣 ≥2 一個變站長（token.staff，from 這裡 pick 'nearest'）；鮮奶不再借島民（計畫 13）
     'landmarks.islanders': { kind: 'roster', at: HOMES[0], n: islanderCount(lv), accessory: 'none', home: { kind: 'wander', at: HOMES, r: ISLANDER_R } },
-    // 溫泉客：泡在池裡偶爾看一下（fidget look）；站位在池子 footprint 裡、不帶 rescue（計畫 13 §設計 3）
-    'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: BATHERS.map(({ p, yaw }) => ({ ...offset(s, p.x, p.z, WATER_TOP - SOAK), yaw })), fidget: 'look' } },
+    // 溫泉客：泡在池裡偶爾看一下（fidget look）；站位在池子 footprint 裡、不帶 rescue（計畫 13 §設計 3）。
+    // R49：隕石吹偏（flags.missile 'deflect'）之後站在池緣外（BATHERS_OUT）——跳過、截圖的終態也從這裡來（單一來源）
+    'landmarks.bathers': { kind: 'roster', at: s, n: 2, shirt: [WALL, 0xf2b5c6], home: { kind: 'stand', spots: flags?.missile === 'deflect' ? BATHERS_OUT : BATHERS.map(({ p, yaw }) => ({ ...offset(s, p.x, p.z, WATER_TOP - SOAK), yaw })), fidget: 'look' } },
   };
 }

@@ -44,6 +44,31 @@ test('islanders: one, wandering the 101 cell; two bathers soak in the pool (radi
     assert.ok(p.z > SPRING.z, `bather ${i} on the camera side`);
   }
 });
+// R49（使用者 2026-11-06：隕石砸到溫泉裡時裡面還有人很奇怪）：隕石吹偏（flags.missile 'deflect'）之後溫泉客站在池子東側的池緣外——
+// 離池心 SOAK_R + BATHER_FLEE（水平）、z ±0.35、站在格面上、面向池心；在走路格上（不在任何外擴 footprint 裡）、兩人 ≥ 0.25；沒旗標（或命中、擋下）照舊泡在池裡
+test('R49: after a deflected meteor (flags.missile deflect) the bathers stand outside the pool on its east rim (SOAK_R + BATHER_FLEE from the centre, z ±0.35, on the cell top, facing the pool, walkable); otherwise they still soak', () => {
+  const spots = flags => landmarks.view(zero, flags)['landmarks.bathers'].home.spots;
+  const out = spots({ missile: 'deflect' }), R = landmarks.SOAK_R + landmarks.BATHER_FLEE;
+  assert.equal(landmarks.BATHER_FLEE, 1.1);
+  assert.equal(out.length, 2);
+  const fp = [].concat(landmarks.view(zero, {})['landmarks.spring'].footprint), nav = createNav();
+  nav.setFootprints(fp.map(f => ({ ...f, x: SPRING.x + (f.x ?? 0), z: SPRING.z + (f.z ?? 0) })));
+  for (const [i, p] of out.entries()) {
+    const dx = p.x - SPRING.x, dz = p.z - SPRING.z;
+    assert.ok(Math.abs(Math.hypot(dx, dz) - R) < 1e-9, `bather ${i} ${R} from the pool centre (${Math.hypot(dx, dz).toFixed(3)})`);
+    assert.ok(dx > 1.3, `bather ${i} east of the pool`);
+    assert.ok(Math.abs(Math.abs(dz) - 0.35) < 1e-9, `bather ${i} z ±0.35`);
+    assert.ok(Math.abs(p.y - cellTop(cellAt(p.x, p.z))) < 1e-9, `bather ${i} on the cell top`);
+    assert.deepEqual(cellAt(p.x, p.z), [1, -1], `bather ${i} still in the spring cell`);
+    const face = Math.atan2(SPRING.x - p.x, SPRING.z - p.z);
+    assert.ok(Math.abs(Math.atan2(Math.sin(p.yaw - face), Math.cos(p.yaw - face))) < 1e-9, `bather ${i} faces the pool`);
+    assert.ok(nav.walkable(p.x, p.z) && !nav.inFootprint(p.x, p.z), `bather ${i} on walkable ground (out of the pool and the bathhouse)`);
+  }
+  assert.ok(Math.hypot(out[0].x - out[1].x, out[0].z - out[1].z) >= 0.25, 'the two apart');
+  assert.deepEqual(out, landmarks.BATHERS_OUT, 'the view uses BATHERS_OUT (world points; finale.js walks them there)');
+  for (const flags of [{}, { missile: 'hit' }, { missile: 'shield' }, { alarm: 1 }]) assert.deepEqual(spots(flags), spots({}), `${JSON.stringify(flags)}: still soaking`);
+  for (const p of spots({})) assert.ok(Math.hypot(p.x - SPRING.x, p.z - SPRING.z) < 0.31, 'soaking in the pool');
+});
 // 審查重點 4：老鼠泡溫泉（老鼠 ≥3、沒搭上捷運）時，溫泉客站池邊、老鼠在池裡，10 秒內每一對都 ≥ 0.25。
 // 唯一正解（其實所有放置順序）都到不了泡溫泉（老鼠 3 時代幣都已 ≥2），所以用合成的老鼠事件直接演到那一刻
 test('spring bathers vs soaking rats (rat ≥ 3, token < 2): every pair stays ≥ 0.25 apart over 10 s (review focus 4)', async () => {

@@ -430,7 +430,7 @@ test('meteor script live, each outcome: ≤ 10 s real, ！ from the crowd mid-fa
     assert.ok(secs <= 10, `${outcome}: ≤ 10 s real (${secs.toFixed(2)})`);
     assert.ok(launchAt !== null && launchAt >= 0.8 - 1e-6, `${outcome}: falls after the 0.8 s WIDE framing beat`);
     assert.ok(!show.stage.partKeys().includes('finale.star'), 'the star is out');
-    const bang = of('！');
+    const bang = of('！').filter(b => b.t < launchAt + FLIGHT - 0.05);   // R49：吹偏時溫泉客逃出池子另外冒的「！」（FLIGHT 之後）不算全島那一聲
     assert.ok(named >= crowdSize - 2, `${outcome}: about everyone is still on the island (${named}/${crowdSize})`);
     assert.equal(bang.length, named, `${outcome}: everyone (≤ 24) says ！`);
     assert.ok(Math.abs(bang[0].t - launchAt - FLIGHT / 2) < 0.15, `${outcome}: ！ mid-flight (${(bang[0].t - launchAt).toFixed(2)} s after launch)`);
@@ -494,6 +494,58 @@ test('meteor script instant (skip): the final state matches the live one for all
     assert.equal(a.mood, outcome === 'hit' ? 'lie' : 'normal');
     assert.equal(a.body, outcome !== 'shield');
   }
+});
+
+// R49（使用者 2026-11-06：隕石砸到溫泉裡時裡面還有人很奇怪）：吹偏的隕石撞到塔頂被風吹偏那一刻（FLIGHT）起，兩位溫泉客從池裡爬出來、
+// 小跑（DASH）到池子東側池緣外（landmarks.BATHERS_OUT）——隕石掉進池子（FLIGHT + DEFLECT）之前 0.2 s 已經離池心 ≥ SOAK_R + 0.8；
+// 吹偏之前還泡在池裡；跑的時候兩人 ≥ 0.25；頭上「！」；演完放回日常、站在 BATHERS_OUT（新站位，不走回池子）；跳過的終態一樣；整段 live 不變長（≤ 舊秒數 + 0.6）
+import * as landmarksMod from '../src/actors/landmarks.js';
+test('R49 deflect: the bathers climb out when the meteor glances off 101 and reach the east rim (≥ SOAK_R + 0.8 from the pool centre) before it lands, saying ！; released at BATHERS_OUT; skip ends the same; no longer than before', async () => {
+  const SPRING = landmarkWorld('spring'), off = m => Math.hypot(m.pos.x - SPRING.x, m.pos.z - SPRING.z);
+  const { BATHERS_OUT, SOAK_R } = landmarksMod;
+  const { show, run, e, bubblesLog } = await missileShow('deflect');
+  const bathers = () => show.roster.members('landmarks.bathers');
+  assert.equal(bathers().length, 2);
+  for (const m of bathers()) assert.ok(off(m) < SOAK_R + 0.05, 'soaking before the meteor');
+  const b0 = bubblesLog.length, heads = new Set(bathers().map(m => m.walker));
+  let launchAt = null, apart = Infinity; const track = [];
+  const update = show.update.bind(show);
+  show.update = (dt, t) => {
+    update(dt, t);
+    if (launchAt === null && show.stage.partKeys().includes('finale.missile')) launchAt = show.elapsed;
+    if (launchAt === null) return;
+    const [a, b] = bathers();
+    track.push([show.elapsed - launchAt, off(a), off(b)]); apart = Math.min(apart, Math.hypot(a.pos.x - b.pos.x, a.pos.z - b.pos.z));
+  };
+  await run([e], { finale: true });
+  show.update = update;
+  const secs = show.elapsed;
+  assert.ok(secs <= 7.97 + 0.6, `no more than 0.6 s longer than before R49 (7.97 s; ${secs.toFixed(2)})`);
+  const at = t => track.findLast(([tt]) => tt <= t);
+  assert.ok(at(FLIGHT - 0.05).slice(1).every(d => d < SOAK_R + 0.05), `still soaking until the meteor glances off 101 (${at(FLIGHT - 0.05).slice(1).map(d => d.toFixed(2))})`);
+  const before = at(FLIGHT + DEFLECT - 0.2);
+  assert.ok(before.slice(1).every(d => d >= SOAK_R + 0.8), `out of the pool 0.2 s before the meteor lands (${before.slice(1).map(d => d.toFixed(2))})`);
+  assert.ok(apart >= 0.25, `the two keep apart while running (${apart.toFixed(2)})`);
+  assert.ok(track.every(([, a, b], i) => i === 0 || (Math.abs(a - track[i - 1][1]) < 0.4 && Math.abs(b - track[i - 1][2]) < 0.4)), 'no teleport');
+  const bang = bubblesLog.slice(b0).filter(b => b.kind === '！').length;
+  assert.ok(bang >= 1, '！ bubbles');
+  bathers().forEach((m, i) => {
+    const p = BATHERS_OUT[i];
+    assert.ok(Math.hypot(m.pos.x - p.x, m.pos.z - p.z) < 0.1 && Math.abs(m.pos.y - p.y) < 0.02, `bather ${i} ends at BATHERS_OUT (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+    assert.equal(m.mode, 'home', `bather ${i} released`);
+  });
+  // 放回日常之後不走回池子
+  for (let i = 0; i < 90; i++) show.update(1 / 30, 3000 + i / 30);
+  bathers().forEach((m, i) => {
+    assert.ok(Math.hypot(m.pos.x - BATHERS_OUT[i].x, m.pos.z - BATHERS_OUT[i].z) < 0.1, `bather ${i} stays at the rim`);
+    const dy = Math.atan2(Math.sin(m.yaw - BATHERS_OUT[i].yaw), Math.cos(m.yaw - BATHERS_OUT[i].yaw));
+    assert.ok(Math.abs(dy) < 0.6, `bather ${i} faces the pool (${dy.toFixed(2)} rad off)`);
+  });
+  // 跳過：終態一樣
+  const skip = await missileShow('deflect');
+  await skip.run([skip.e], { finale: true, instant: true });
+  for (let i = 0; i < 30; i++) skip.show.update(1 / 30, i / 30);
+  skip.show.roster.members('landmarks.bathers').forEach((m, i) => assert.ok(Math.hypot(m.pos.x - BATHERS_OUT[i].x, m.pos.z - BATHERS_OUT[i].z) < 0.1 && m.mode === 'home', `skip: bather ${i} at BATHERS_OUT`));
 });
 
 // ── 賽博尾聲（設計 §7，任務 6）──

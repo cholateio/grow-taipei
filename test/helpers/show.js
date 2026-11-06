@@ -219,7 +219,9 @@ export function gameInvariants(show, { cam = null } = {}) {
         const jerk = Math.hypot(step.x - was.step.x, step.z - was.step.z);
         if (jerk > POP_MAX && !show.blink.has(m.walker ?? m.holder)) pops.add(`${what} jumped ${Math.hypot(step.x, step.z).toFixed(2)} without a blink`);
       }
-      const inWall = !m.hidden && !m.gone && h?.kind !== 'ride' && !authored(h, m.i) && cellAt(m.pos.x, m.pos.z) && fps.some(f => inShape(f, m.pos.x, m.pos.z));
+      // 站位寫在 footprint 裡的（泳客、泡溫泉的）：照舞台旗標算的家，或名冊現在實際照著擺的家（旗標先折進來、名冊的鍵晚一點才套用的那段——
+      // R49 吹偏的隕石：第一拍就折了 missile，溫泉客的新站位（池緣外）要到隕石落進池子之後才套用，這段時間他們照舊泡在池裡）
+      const inWall = !m.hidden && !m.gone && h?.kind !== 'ride' && !authored(h, m.i) && !authored(show.roster.homeOf?.(k), m.i) && cellAt(m.pos.x, m.pos.z) && fps.some(f => inShape(f, m.pos.x, m.pos.z));
       if (!inWall) { caught.delete(m); continue; }
       if (!caught.has(m)) caught.set(m, t);
       else if (t - caught.get(m) > CAUGHT_MAX) walls.add(`${what} inside a building for > ${CAUGHT_MAX} s`);

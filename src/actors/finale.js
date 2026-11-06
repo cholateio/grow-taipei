@@ -39,6 +39,7 @@ import { CRATE, CRATE_BRINK, CRATE_SEA } from './milk.js';
 import { WATER_Y } from '../scene/hex.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { toDoor } from './typhoon.js';
+import { BATHERS_OUT } from './landmarks.js';
 // 有收尾的壞結局（計畫 17）：清單定義在規則層（game.js finaleEvents 只讀規則層），這裡原樣再匯出給劇本與測試
 export { BAD_EPILOGUES } from '../rules/endings.js';
 
@@ -350,6 +351,9 @@ const later = (delay, dur, beat) => {
 };
 // 隕石各段的真實秒數：「！」0.8、矽盾擋下的跳＋♥ 1.0、吹偏的「？」1.0 再「♪」0.8
 const CHEER = 1.0, HUH = 1.0, TUNE = 0.8, CROWD = 24;
+// R49：溫泉客逃出池子時頭上的「！」秒數；名冊的兩位溫泉客（landmarks.bathers）
+const BATHER_SHOUT = 0.6;
+const bathers = c => c.roster.members('landmarks.bathers') ?? [];
 
 // 零件閃白一下（blink.part；外星收尾換上母艦那一刻用）。
 // R48（使用者 2026-11-06：矽盾只有在真結局才會長）：計畫 17 任務 2 的試升失敗（晶片 7–8 警告裡罩子升起又縮回、天線環閃白）整段拿掉了
@@ -389,9 +393,15 @@ export const script = {
       begin: (m, c) => { if (!m.userData.launch) return false; m.userData.launch({ speed: c.speed ?? 1 }); return true; },
       finish: (m, c) => { if (c?.instant) m.userData.finish(); },
     });
-    const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)]))])];
+    // R49（使用者 2026-11-06：隕石砸到溫泉裡時裡面還有人很奇怪）：吹偏時，隕石撞到塔頂被風吹偏那一刻（FLIGHT）起，兩位溫泉客從池裡爬出來、
+    // 小跑（DASH）到池子東側的池緣外（landmarks.BATHERS_OUT；nav 先從池子 footprint 裡逃到最近的可走點再繞過去，約 0.5 s），頭上「！」BATHER_SHOUT。
+    // 疊在隕石那個 together 裡（第二段 DEFLECT 秒正好跑完），不拉長終局（吹偏局的終局 15.4 / 16 s）；跑不到的話 DEFLECT 到了 walk 的收尾把人放到終點。
+    // 演完由 tail 的 home 放回日常——那時旗標已折進來（apply），名冊的站位就是 BATHERS_OUT，不再走回池子
+    const flee = o !== 'deflect' ? [] : [later(FLIGHT, DEFLECT, crowd(B, c => bathers(c).map((m, i) => B.together([B.walk(m, BATHERS_OUT[i], { speed: DASH }), B.bubble(m, '！', BATHER_SHOUT)]))))];
+    const lead = [B.focus(WIDE, { zoom: WIDE_ZOOM }), B.apply(e, { only: ['finale.star'] }), B.together([fly, later(FLIGHT / 2, SHOUT, all(m => [B.bubble(m, '！', SHOUT)])), ...flee])];
     // 後面接收尾（e.epilogue，game.js finaleEvents；計畫 17 任務 3 裁決）：不回全景停 HOLD_END——收尾第一拍自己平移鏡頭（終局 ≤ 16 s 的預算）
-    const tail = [B.apply(e), B.home(() => list ?? []), ...(e.epilogue ? [] : [B.focus('home', { hold: HOLD_END })])];
+    // home 也放溫泉客（R49：他們被逃跑那一拍點走了；全島的名單 list 多半也有他們，重複的 home 無害）
+    const tail = [B.apply(e), B.home(c => [...(list ?? []), ...(o === 'deflect' ? bathers(c) : [])]), ...(e.epilogue ? [] : [B.focus('home', { hold: HOLD_END })])];
     if (o === 'shield') return [...lead, B.together([B.apply(e, { only: ['tower.shield'] }), domeUp]), all(m => [B.gesture(m, 'jump', CHEER), B.bubble(m, '♥', CHEER)]), ...tail];
     if (o === 'deflect') return [...lead, B.apply(e, { only: ['finale.splash'] }), all(m => [B.bubble(m, '？', HUH)]), all(m => [B.bubble(m, '♪', TUNE)]), ...tail];
     return [...lead, B.apply(e, { only: ['tower.main', 'tower.antenna', 'tower.show', 'tower.shield', 'tower.scaffold'] }), B.worldNow(), ...tail];   // 心情照 world.js 的規則重算（單一來源，最終審稿）

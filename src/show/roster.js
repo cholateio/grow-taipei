@@ -817,6 +817,8 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
   const api = {
     group, declare, flush, retire, sync, syncAll, spawnHeld, claim, home, relocate, flash, setPose: (m, p) => { if (!out(m)) setPose(m, p); }, accessory, hide, show, showAll, snap, update, reset, setFocus,
     members: key => [...(groups.get(key)?.members ?? [])],
+    // 這個名冊現在照哪個家在擺人（宣告過、還沒套用的 pending 也算；測試的不變式用：舞台旗標先折進來、名冊的鍵還沒套用的那段，人照舊站在舊站位，R49）
+    homeOf: key => { const g = groups.get(key); return g ? current(g)?.home ?? null : null; },
     // visible：藏起來的人（颱風放下時躲進門裡）不算
     nearest(key, p, { visible = false } = {}) {
       let best = null, bestD = Infinity;

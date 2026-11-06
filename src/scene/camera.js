@@ -51,6 +51,7 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
     setFree(flag, { radius = FREE_RADIUS } = {}) {
       free = !!flag; freeRadius = radius;
       controls.enablePan = free; controls.screenSpacePanning = false;
+      if (!free) controls._panOffset?.set(0, 0, 0);   // 阻尼中的平移餘量歸零，RESET 緊接在甩動之後也精準回 home
     },
     // R43：app 每幀在 rig.update() 之後呼叫——free 時把注視點鎖在島上：水平距離 home 超過 radius 就拉回圓周、
     // y 固定在全景注視點的高度（= home.y＋天際線抬高；101 蓋完時全景注視點比 home.y 高，釘 home.y 會讓終局鏡頭一結束就往下掉），

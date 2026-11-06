@@ -116,7 +116,21 @@ button.primary { background: var(--ink); color: #fff; padding: 0 22px; font-weig
   .slot .name { display: none; }
   .skip { grid-column: 1 / span 2; grid-row: 5; width: auto; height: 40px; }
   .skip.hide svg { transform: rotate(-90deg); }   /* 隱藏圖示朝下 → 朝右（把側欄推向右邊）；跳過圖示本來就朝右 */
-  .slots.collapsed { transform: translate(calc(100% + 40px), -50%); }
+  .slots.collapsed { transform: translate(calc(100% + 40px + env(safe-area-inset-right)), -50%); }
   .menu-tab { right: max(12px, env(safe-area-inset-right)); left: auto; bottom: auto; top: 50%; transform: translateY(-50%); }
   .menu-tab svg { transform: rotate(90deg); }   /* 朝左（向內拉出側欄） */
+}
+
+/* 矮視窗（使用者 2026-11-06）：瀏覽器裡橫放的視窗只有 ~280–332 px 高（狀態列＋網址列），360 的側欄（≈276 px、置中偏下 28）會蓋到 ?/RESET、底下一格被切掉。
+   再縮一階：側欄貼在頂列（約 54 px）下方 top 62px、不置中；格 36×36、圖示 22、gap 4、padding 8、跳過／隱藏鍵 30 高，Lv 標籤收進格子裡（不再掛在底下）。
+   高度 = 4×36 + 4×4（五列之間 4 個 gap）+ 30 + 2×8 = 206 ≤ 280 − 62 − 8（視窗最矮 280 時下緣仍留 12 px、至少 8 px）。 */
+@media (orientation: landscape) and (max-height: 340px) {
+  .slots { top: 62px; transform: none; grid-template-columns: repeat(2, 36px); gap: 4px; padding: 8px; }
+  .slot { width: 36px; height: 36px; padding: 0; }   /* 這裡沒有 border-box：padding 0 才剛好 36 */
+  .slot svg { width: 22px; height: 22px; margin-top: 3px; }
+  .slot .lv { bottom: 1px; font-size: 8px; padding: 0 2px; line-height: 10px; }
+  .slot, .skip { min-height: 0; }   /* 全域 button 有 min-height 44，不蓋掉就縮不下去 */
+  .skip { height: 30px; }
+  .slots.collapsed { transform: translate(calc(100% + 40px + env(safe-area-inset-right)), 0); }
+  .menu-tab { top: 62px; transform: none; }
 }

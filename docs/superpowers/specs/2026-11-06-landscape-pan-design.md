@@ -21,7 +21,7 @@
 
 ## R43 終局之後才可平移、跳過鍵變隱藏選單鍵
 
-- 平移只在遊戲結束後開放（`onFinished` → `rig.setFree(true)`；RESET → `setFree(false)` 再 `home(0)`）。開放時 `controls.enablePan = true`、`screenSpacePanning = false`（沿地面平移）；雙指拖曳（手機）／右鍵拖曳（桌機）平移，注視點每幀鎖在島的範圍內：`controls.target` 與 `home` 的水平距離 ≤ `FREE_RADIUS` 9、`y` 固定 `home.y`（超出就拉回圓內，鏡頭位置同向跟著移，視角不變）。演出中（結束前）一律不能平移，行為同現在。
+- 平移只在遊戲結束後開放（`onFinished` → `rig.setFree(true)`；RESET → `setFree(false)` 再 `home(0)`）。開放時 `controls.enablePan = true`、`screenSpacePanning = false`（沿地面平移）；雙指拖曳（手機）／右鍵拖曳（桌機）平移，注視點每幀鎖在島的範圍內：`controls.target` 與 `home` 的水平距離 ≤ `FREE_RADIUS` 9、`y` 固定在全景注視點的高度（`home.y + SKYLINE_LIFT × rise`，101 蓋完時比 `home.y` 高；超出就拉回圓內，鏡頭位置同向跟著移，視角不變）。演出中（結束前）一律不能平移，行為同現在。
 - 跳過鍵：結束後變成「隱藏選單」鍵（圖示換成往下／往右的雙箭頭，`aria-label`「隱藏選單」；`slots.setMode('hide')`）。按下：整條物品列收起（`.slots.collapsed`：往畫面外滑、不佔位），同時在原本的邊緣出現一顆 44 × 44 的圓鍵（`.menu-tab`，同一個圖示反向，`aria-label`「顯示選單」）；再按就展開。RESET 時回到 `skip` 模式、展開。
 - 不加任何文字（最小文字原則）；圖示沿用 `icons.js` 的線條風格。
 

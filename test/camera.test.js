@@ -171,3 +171,12 @@ test('clamp pins y to the overview target height (skyline lift included) so enab
   rig.focus({ x: 20, y: 0.65, z: 0 }); rig.update(0.3); assert.ok(rig.flying); const mid = controls.target.clone();
   rig.clamp(); assert.ok(controls.target.distanceTo(mid) < 1e-9, 'flying: untouched');
 });
+
+// 計畫 19 終審：RESET 緊接在甩動之後，阻尼中的平移餘量要歸零，才精準回 home
+test('setFree(false) zeroes OrbitControls\' damped pan offset (guarded when absent)', () => {
+  const { controls, rig } = rigWith();
+  controls._panOffset = new THREE.Vector3(1, 0, 2);
+  rig.setFree(true); assert.equal(controls._panOffset.x, 1, 'opening free leaves it');
+  rig.setFree(false); assert.equal(controls._panOffset.lengthSq(), 0);
+  delete controls._panOffset; rig.setFree(false);
+});

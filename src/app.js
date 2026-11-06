@@ -108,7 +108,7 @@ export async function start({ params, loading }) {
   // R42（使用者 2026-11-06）：手機橫版物品列是右側直排側欄，量它的寬（＋到邊緣的 12 px）給鏡頭 inset，島在側欄左邊那塊置中；
   // 直版、桌機 0（清掉 view offset）。.slots 還沒建的第一次 fit 量不到 → 0，createSlots 之後再 fit 一次
   const landscapeRail = matchMedia('(orientation: landscape) and (max-height: 520px)');
-  const railWidth = () => { const el = landscapeRail.matches && document.querySelector('.slots'); return el ? el.getBoundingClientRect().width + 12 : 0; };
+  const railWidth = () => { const el = landscapeRail.matches && document.querySelector('.slots'); return el ? innerWidth - el.getBoundingClientRect().left : 0; };
   const fit = () => { view.resize(); rig.fit(innerWidth / innerHeight, { width: innerWidth, height: innerHeight }); rig.setInset({ right: railWidth() }); if (pinned) putCam(); };
   fit(); new ResizeObserver(fit).observe(document.body);
   if (cam?.length === 6) putCam();

@@ -141,6 +141,16 @@ test('ui.css: phone landscape (orientation landscape, max-height 520) turns the 
   for (const rule of ['right: max(12px, env(safe-area-inset-right))', 'left: auto', 'bottom: auto', 'top: calc(50% + 28px)', 'translateY(-50%)', 'repeat(2, 48px)', '.slot .name { display: none; }', 'grid-column: 1 / span 2', 'grid-row: 5']) assert.ok(block.includes(rule), rule);
   assert.ok(css.indexOf('@media (orientation: landscape)') > css.indexOf('@media (max-width: 380px)'), 'after the width queries so it wins');
 });
+// 使用者 2026-11-06：瀏覽器裡橫放視窗只有 ~280–332 px 高——再縮一階，206 ≤ 280 − 62 − 8
+test('ui.css: short landscape viewports (max-height 340) anchor the rail under the top bar and shrink it to 206 px', async () => {
+  const css = await cssText();
+  const at = css.indexOf('@media (orientation: landscape) and (max-height: 340px)');
+  assert.ok(at > css.indexOf('@media (orientation: landscape) and (max-height: 520px)'), 'after the 520 rail so it wins');
+  const block = css.slice(at);
+  for (const rule of ['top: 62px', 'transform: none', 'repeat(2, 36px)', 'gap: 4px', 'padding: 8px', 'width: 36px; height: 36px', 'width: 22px; height: 22px', '.slot, .skip { min-height: 0; }', '.skip { height: 30px; }', '.slot .lv { bottom: 1px']) assert.ok(block.includes(rule), rule);
+  assert.ok(4 * 36 + 4 * 4 + 30 + 2 * 8 <= 280 - 62 - 8);
+  assert.ok(css.match(/env\(safe-area-inset-right\)\), -50%\)/) && block.includes('40px + env(safe-area-inset-right)'), 'collapsed rail clears the notch');
+});
 test('npm run shot includes land-live and land-end at 844×390 (quality low)', async () => {
   const { readFileSync } = await import('node:fs');
   const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
@@ -214,10 +224,10 @@ test('ui.css: collapsed bar slides off-screen (down; right in landscape), the me
   const css = readFileSync(new URL('../src/ui/ui.css', import.meta.url), 'utf8');
   assert.match(css, /\.slots\.collapsed \{ transform: translate\(-50%, calc\(100% \+ 40px\)\); \}/);
   const land = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 520px)'));
-  assert.match(land, /\.slots\.collapsed \{ transform: translate\(calc\(100% \+ 40px\), -50%\); \}/, 'landscape collapse sits in the rail block');
+  assert.match(land, /\.slots\.collapsed \{ transform: translate\(calc\(100% \+ 40px \+ env\(safe-area-inset-right\)\), -50%\); \}/, 'landscape collapse sits in the rail block');
   assert.match(land, /\.menu-tab \{[^}]*right: max\(12px[^}]*top: 50%;[^}]*translateY\(-50%\)/);
   assert.match(land, /\.skip\.hide svg \{ transform: rotate\(-90deg\)/); assert.match(land, /\.menu-tab svg \{ transform: rotate\(90deg\)/);
-  assert.ok(!css.slice(0, css.indexOf('@media (orientation: landscape) and (max-height: 520px)')).includes('calc(100% + 40px), -50%'), 'not outside the block');
+  assert.ok(!css.slice(0, css.indexOf('@media (orientation: landscape) and (max-height: 520px)')).includes('40px + env(safe-area-inset-right)), -50%'), 'not outside the block');
   assert.match(css, /\.slots \{ transition: transform \.3s; \}/);
   assert.match(css, /prefers-reduced-motion: reduce\) \{ \.slots \{ transition: none; \} \}/);
   assert.match(css, /\.menu-tab \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 22px;[^}]*display: none;/);

@@ -9,13 +9,15 @@ import { finaleEvents } from '../../src/game.js';
 export const EXAMPLE = {
   hit: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],       // 結局 flood（2026-10-31 唯一正解重找）
   deflect: ['milk', 'chip', 'bulb', 'token', 'rat', 'boba', 'baseball', 'typhoon'],   // 結局 flood（修正批次 2 颱風三級重找；颱風第 8 個放，最後一輪 Lv2 暴風圈還在）
-  // 計畫 17：有收尾的六個壞結局各一局——枚舉裡第一個 resolve().id 是它的順序（括號是隕石結果）
+  // 計畫 17：有收尾的壞結局各一局——枚舉裡第一個 resolve().id 是它的順序（括號是隕石結果；domeRats 例外，見下）
   blackout: ['milk', 'chip', 'bulb', 'typhoon', 'token', 'rat', 'boba', 'baseball'],    // hit
   flood: ['milk', 'chip', 'bulb', 'token', 'typhoon', 'rat', 'boba', 'baseball'],       // hit（同 EXAMPLE.hit）
   alien: ['milk', 'chip', 'bulb', 'token', 'baseball', 'boba', 'rat', 'typhoon'],       // deflect（老鼠 Lv4 外星分岔）
   domeFlood: ['milk', 'chip', 'typhoon', 'rat', 'baseball', 'bulb', 'token', 'boba'],   // hit
   cartBlown: ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'],   // hit
   milkExpired: ['milk', 'typhoon', 'chip', 'rat', 'bulb', 'token', 'boba', 'baseball'], // hit
+  // R47：大巨蛋鼠災用使用者影片那一局（不是列舉裡第一條）——deflect（吹偏），老鼠 Lv4 外星分岔被鼠災蓋過
+  domeRats: ['milk', 'baseball', 'token', 'bulb', 'chip', 'rat', 'boba', 'typhoon'],
 };
 
 export function finaleStep(state) {

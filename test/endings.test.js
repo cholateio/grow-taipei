@@ -127,6 +127,7 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
     domeFlood: ['milk', 'chip', 'typhoon', 'rat', 'baseball', 'bulb', 'token', 'boba'],
     cartBlown: ['milk', 'chip', 'bulb', 'baseball', 'token', 'rat', 'typhoon', 'boba'],
     milkExpired: ['milk', 'typhoon', 'chip', 'rat', 'bulb', 'token', 'boba', 'baseball'],
+    domeRats: ['milk', 'baseball', 'token', 'bulb', 'chip', 'rat', 'boba', 'typhoon'],
   });
   for (const outcome of ['hit', 'deflect']) {
     const first = all.find(r => !r.error && r.ending.missile === outcome);
@@ -141,9 +142,10 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
     assert.deepEqual(events.map(e => [e.kind, e.outcome]), [['warning', undefined], ['missile', outcome], ['epilogue', undefined]], `${outcome}: warning, the missile, then the flood epilogue`);
   }
   // 計畫 17：每個有收尾的壞結局一局——列舉裡第一個 resolve().id 是它的順序；照順序放完＋最後一輪，resolve 就是它
+  // R47：大巨蛋鼠災用影片那一局（不是列舉裡第一條；吹偏局），只驗它到得了
   for (const id of BAD_EPILOGUES) {
     const first = all.find(r => !r.error && r.ending.id === id);
-    assert.deepEqual(EXAMPLE[id], first.order, `${id}: the first ${id} order in the enumeration`);
+    if (id !== 'domeRats') assert.deepEqual(EXAMPLE[id], first.order, `${id}: the first ${id} order in the enumeration`);
     let s = createState(spec);
     for (const k of EXAMPLE[id]) s = place(s, k, spec).state;
     for (let i = 0; i < spec.CLOSING_TURNS; i++) s = advance(s, spec).state;
@@ -153,8 +155,9 @@ test('EXAMPLE.hit / EXAMPLE.deflect recomputed from the enumeration (pinned lite
   }
 });
 // 計畫 17：有收尾的壞結局（finale.js 匯出、規則層 endings.js 定義——game.js 只讀規則層）；每一個都是結局表裡的壞結局
-test('BAD_EPILOGUES: six bad endings with an epilogue, every one a bad ending in ENDINGS; finale.js re-exports the same list', async () => {
-  assert.deepEqual(BAD_EPILOGUES, ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired']);
+// R47（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：大巨蛋鼠災也接收尾，七個
+test('BAD_EPILOGUES: seven bad endings with an epilogue (R47 adds domeRats), every one a bad ending in ENDINGS; finale.js re-exports the same list', async () => {
+  assert.deepEqual(BAD_EPILOGUES, ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired', 'domeRats']);
   for (const id of BAD_EPILOGUES) assert.equal(ENDINGS[id]?.kind, 'bad', id);
   const finale = await import('../src/actors/finale.js');
   assert.equal(finale.BAD_EPILOGUES, BAD_EPILOGUES);

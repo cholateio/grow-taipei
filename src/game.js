@@ -11,7 +11,7 @@ import { ENDINGS, BAD_EPILOGUES } from './rules/endings.js';
 // 隕石警告（終局回合的第一個事件；trim §C 從飛彈換成隕石，政治風險）：舞台旗標 alarm = 1，天上的光點出現（finale.js script.warning、view 看它）
 export const WARNING = { kind: 'warning', flag: { name: 'alarm', value: 1 } };
 // 終局回合的事件：警告 → 隕石（outcome = shield／deflect／hit），真結局（唯一正解 2026-10-31：只有賽博）或有收尾的壞結局
-// （計畫 17：endings.js BAD_EPILOGUES——大停電、捷運淹水、變異鼠稱王、大巨蛋淹水、攤車被吹走、鮮奶過期）再接 epilogue
+// （計畫 17：endings.js BAD_EPILOGUES——大停電、捷運淹水、變異鼠稱王、大巨蛋淹水、攤車被吹走、鮮奶過期；R47 加大巨蛋鼠災）再接 epilogue
 export function finaleEvents(ending) {
   const out = [{ ...WARNING, flag: { ...WARNING.flag } }, {   // 每局一個新物件：舞台用 WeakSet 認事件，共用同一個物件時同一個 show 不 reset 連演兩次終局，第二次紅光不出現（最終審稿）
     kind: 'missile', outcome: ending.missile, flag: { name: 'missile', value: ending.missile } }];

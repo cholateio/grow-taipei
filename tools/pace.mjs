@@ -114,7 +114,8 @@ for (const [outcome, title] of [['hit', '命中'], ['deflect', '吹偏']]) {
   if (fin.ending.missile !== outcome) failures.push(`${title}：EXAMPLE.${outcome} 的隕石是 ${fin.ending.missile}`);
 }
 // 計畫 17：有自己收尾的壞結局各跑一局（EXAMPLE 裡那條到得了的順序；捷運淹水已在上面兩局、變異鼠稱王在下面的老鼠跑遠局），只看終局 ≤ 16 s
-for (const id of ['blackout', 'domeFlood', 'cartBlown', 'milkExpired']) {
+// R47：大巨蛋鼠災（影片那一局，吹偏）也有收尾了
+for (const id of ['blackout', 'domeFlood', 'cartBlown', 'milkExpired', 'domeRats']) {
   const order = EXAMPLE[id], head = `${ENDINGS[id].title}（${order.map(name).join('、')}）`;
   const { cells, details, total, fin } = await playOrder(order, ENDINGS[id].title, BAD_FINALE_MAX);
   console.log(`${head}  ${cells.join(' | ')} | 合計 ${s1(total)} s`);

@@ -864,3 +864,69 @@ test('◆ Lv4 alien in the real turn (the mutant starts by the spring, FAR_TROUB
   const ev = (await playLive(['typhoon', 'milk', 'chip', 'bulb', 'token', 'boba', 'baseball', 'rat'])).find(x => x.e.kind === 'grow' && x.e.item === 'rat' && x.e.to === 4);
   assert.ok(ev && ev.key && ev.live >= 4.5 && ev.live <= KEY_MAX, `turn ${ev?.turn}: ◆ Lv4 ${ev?.live.toFixed(2)} s`);
 });
+
+// ── R47 鼠災收尾：整島都是老鼠（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）──
+// rat.plague：一個 InstancedMesh、PLAGUE_N 隻，從巨蛋門口跑到七個主格的地面；建好就是終態
+import { MAIN_CELLS, axialToWorld, cellTop } from '../src/scene/hex.js';
+const DOME0 = anchorWorld('baseball');
+const flatD = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+test('R47 plagueSpots: PLAGUE_N rats from a ring 0.3–0.6 round the dome gate to the ground of all seven main cells (radius 0.6–2.0, clear of the 101 plinth ≥ 1.2 and the ballpark ≥ 1.0), fixed seed', () => {
+  const spots = rat.plagueSpots();
+  assert.equal(rat.PLAGUE_N, 48);
+  assert.equal(spots.length, rat.PLAGUE_N);
+  assert.deepEqual(rat.plagueSpots(), spots, 'fixed seed: the same every time');
+  const perCell = new Map();
+  for (const [i, s] of spots.entries()) {
+    const cell = cellAt(s.to.x, s.to.z);
+    assert.ok(cell, `rat ${i} lands on a main cell`);
+    const c = axialToWorld(...cell), r = flatD(s.to, c);
+    assert.ok(r >= 0.6 - 1e-9 && r <= 2.0 + 1e-9, `rat ${i}: ${r.toFixed(2)} from its cell centre`);
+    assert.ok(Math.abs(s.to.y - cellTop(cell)) < 1e-9, `rat ${i} on the ground`);
+    assert.ok(flatD(s.to, TOWER) >= 1.2, `rat ${i} clear of 101 (${flatD(s.to, TOWER).toFixed(2)})`);
+    assert.ok(flatD(s.to, DOME0) >= 1.0, `rat ${i} clear of the ballpark (${flatD(s.to, DOME0).toFixed(2)})`);
+    const g = flatD(s.from, GATE);
+    assert.ok(g >= 0.3 - 1e-9 && g <= 0.6 + 1e-9, `rat ${i} starts by the gate (${g.toFixed(2)})`);
+    assert.ok(Number.isFinite(s.yaw) && Number.isFinite(s.phase));
+    perCell.set(String(cell), (perCell.get(String(cell)) ?? 0) + 1);
+  }
+  assert.equal(perCell.size, MAIN_CELLS.length, 'all seven cells');
+  for (const [cell, n] of perCell) assert.ok(n >= 6 && n <= 7, `cell ${cell}: ${n} rats`);
+});
+test('R47 view: rat.plague only in the domeRats epilogue (one part, no footprint, no shadow)', () => {
+  const v = rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, missile: 'deflect', epilogue: 'domeRats' });
+  const p = v['rat.plague'];
+  assert.ok(p, 'the plague'); assert.equal(p.kind, 'plague'); assert.deepEqual(p.at, { x: 0, y: 0, z: 0 });
+  assert.equal(p.footprint, false); assert.equal(p.shadow, false);
+  assert.deepEqual(p.spots, rat.plagueSpots());
+  assert.ok(v['rat.pack'], 'the two roster rats stay');
+  for (const flags of [{ domeRats: true }, { domeRats: true, missile: 'deflect' }, { ratBranch: 'alien', epilogue: 'alien', missile: 'deflect' }, {}]) {
+    assert.equal(rat.view(lv({ rat: 4, baseball: 8 }), flags)['rat.plague'], undefined, JSON.stringify(flags));
+  }
+});
+test('R47 plague part: one InstancedMesh (one draw call, no shadow) of clay rats; built finished (every rat at its to); rush(1.2) restarts at the gate, half way after 0.3 s, home after 1.2 s; scurries ±0.15 in place; ?quality=low the same', () => {
+  const spec = rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, epilogue: 'domeRats' })['rat.plague'], S = spec.spots;
+  for (const quality of ['high', 'low']) {
+    const f = createPartFactory(THREE, { glow: createGlowRegistry(), quality, builders: rat.builders });
+    const p = f.build(spec), meshes = [];
+    p.object.traverse(o => { if (o.isMesh) meshes.push(o); });
+    assert.equal(meshes.length, 1, `${quality}: one draw call`);
+    const [mesh] = meshes;
+    assert.ok(mesh.isInstancedMesh); assert.equal(mesh.count, rat.PLAGUE_N);
+    assert.equal(mesh.castShadow, false);
+    assert.equal(mesh.material.color.getHex(), 0x6b5b53);
+    const m4 = new THREE.Matrix4(), v = new THREE.Vector3();
+    const at = i => { mesh.getMatrixAt(i, m4); return v.setFromMatrixPosition(m4).clone(); };
+    const progress = i => { const a = at(i), s = S[i], dx = s.to.x - s.from.x, dz = s.to.z - s.from.z; return ((a.x - s.from.x) * dx + (a.z - s.from.z) * dz) / (dx * dx + dz * dz); };
+    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} built at its to`);
+    p.update(0.5, 0.5);
+    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} scurries in place`);
+    p.object.userData.rush(1.2);
+    p.update(0, 0.5);
+    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].from) < 1e-6, `${quality}: rat ${i} back at the gate`);
+    p.update(0.3, 0.8);
+    for (const i of [0, 17, 47]) { const k = progress(i); assert.ok(k > 0.05 && k < 0.95, `${quality}: rat ${i} on its way (${k.toFixed(2)})`); }
+    for (let t = 0; t < 0.95; t += 1 / 30) p.update(1 / 30, 0.8 + t);
+    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} arrived`);
+    p.dispose();
+  }
+});

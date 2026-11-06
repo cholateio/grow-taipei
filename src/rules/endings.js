@@ -20,8 +20,8 @@ export const ENDINGS = {
 
 // 有收尾的壞結局（計畫 17，使用者 2026-11-04：壞結局不再全部停在同一張隕石圖）：終局回合在隕石之後接 epilogue 事件
 // （game.js finaleEvents），劇本在 finale.js script.epilogue。清單放規則層，game.js 只讀規則層；finale.js 原樣再匯出。
-// 矽盾未就緒、大巨蛋鼠災、颱風吹偏、再接再厲沒有收尾
-export const BAD_EPILOGUES = ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired'];
+// 矽盾未就緒、颱風吹偏、再接再厲沒有收尾。R47（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：大巨蛋鼠災加進來（整島撒滿老鼠）
+export const BAD_EPILOGUES = ['blackout', 'flood', 'alien', 'domeFlood', 'cartBlown', 'milkExpired', 'domeRats'];
 
 // 隕石（trim §C：原本是飛彈，政治風險換掉；識別字 missile 沿用）：矽盾 MAX → 擋下；否則颱風放了還沒放晴（0 < lv < max：Lv1–2，暴風圈還在島上）→ 吹偏；否則命中（沒放的颱風沒有雲，不算吹偏）
 export function missile(state, spec = defaultSpec) {

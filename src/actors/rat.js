@@ -23,12 +23,15 @@ import { compile } from '../rules/conditions.js';
 import { trainCars, GAP, TRACK, DECK_AT, PLATFORM } from './token.js';
 import { modelExtras } from '../show/roster.js';
 import { body as towerBody, shipTop } from './tower.js';
+import { MAIN_CELLS, axialToWorld, cellAt, cellTop } from '../scene/hex.js';
+import { mulberry32 } from '../scene/random.js';
+import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
 const RAT = 'quat/enemies/Rat.glb', GREY = { Grey: 0xc0c8d0 };
 const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring'), DOME = anchorWorld('baseball');
-const GATE = offset(DOME, 0, 1.1);                 // 巨蛋門口（鼠災時老鼠在這裡晃）
+export const GATE = offset(DOME, 0, 1.1);          // 巨蛋門口（鼠災時老鼠在這裡晃；R47 鼠災收尾的鼠群從這裡湧出來，finale.js）
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客泡在池裡（池心半徑 0.3，計畫 13），離牠 0.73，不換位置
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的機器鼠從這裡走出來）
@@ -75,6 +78,46 @@ export const UFO_PARTS = [
   { kind: 'dome', pos: [0, 0, 0], scale: [0.9, 0.3, 0.9], color: 0xc0c8d0 }, { kind: 'cylinder', pos: [0, 0, 0], scale: [1.0, 0.04, 1.0], color: 0x9aa7b8 },
   { kind: 'sphere', pos: [0, -0.06, 0], scale: [0.35, 0.12, 0.35], color: C.alien, glow: C.alien },
 ];
+
+// ── R47 鼠災收尾（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）──
+// 大巨蛋鼠災的收尾（flags.epilogue 'domeRats'）多一個鼠群零件 rat.plague：PLAGUE_N 隻低多邊形黏土老鼠，一個 InstancedMesh（一個 draw call，
+// 沒有骨骼、不進名冊、不算人數）。每隻有自己的出發點（巨蛋門口 GATE 周圍半徑 PLAGUE_FROM 一圈）、目的地（七個主格的地面：格心半徑 PLAGUE_R 之間，
+// 照格子輪流分，每格 6–7 隻；離 101 底座中心 ≥ TOWER_CLEAR（底座 1.6 見方，角在 1.13）、離球場中心 ≥ DOME_CLEAR（巨蛋 footprint 是 2.3 × 1.9 的橢圓，
+// 設計寫 ≥ 1.0，放到 1.3 才不會站進巨蛋裡）、彼此 ≥ PLAGUE_GAP）、朝向（從門口往目的地）、抖動相位。固定種子亂數：每次載入一樣
+export const PLAGUE_N = 48;
+const PLAGUE_R = [0.6, 2.0], PLAGUE_FROM = [0.3, 0.6], TOWER_CLEAR = 1.2, DOME_CLEAR = 1.3, PLAGUE_GAP = 0.3;
+const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+export function plagueSpots(seed = 7) {
+  const rnd = mulberry32(seed), spots = [];
+  for (let i = 0; i < PLAGUE_N; i++) {
+    const cell = MAIN_CELLS[i % MAIN_CELLS.length], c = axialToWorld(...cell), y = cellTop(cell);
+    let to = null;
+    for (let tries = 0; tries < 500 && !to; tries++) {
+      const a = rnd() * Math.PI * 2, r = PLAGUE_R[0] + rnd() * (PLAGUE_R[1] - PLAGUE_R[0]), p = { x: c.x + Math.cos(a) * r, y, z: c.z + Math.sin(a) * r };
+      if (flatDist(p, TOWER) < TOWER_CLEAR || flatDist(p, DOME) < DOME_CLEAR || !cellAt(p.x, p.z) || spots.some(s => flatDist(s.to, p) < PLAGUE_GAP)) continue;
+      to = p;
+    }
+    if (!to) throw new Error(`plagueSpots: no room for rat ${i} on cell ${cell}`);
+    const a = rnd() * Math.PI * 2, r = PLAGUE_FROM[0] + rnd() * (PLAGUE_FROM[1] - PLAGUE_FROM[0]);
+    const from = { x: GATE.x + Math.cos(a) * r, y: GATE.y, z: GATE.z + Math.sin(a) * r };
+    spots.push({ from, to, yaw: Math.atan2(to.x - from.x, to.z - from.z), phase: rnd() * Math.PI * 2 });
+  }
+  return spots;
+}
+// 一隻老鼠（局部 +z 是頭）：身體橢球 0.16 × 0.1 × 0.22、頭球 0.08（前面、略低）、兩個小耳朵、尾巴（細圓柱往後拖、尾端微翹）。
+// 牠在原地亂竄的幅度 SCURRY（±0.15）、跑過去時的拋物線高度（每公尺 HOP_PER_M，從門口跳過水道、爬上台地格不穿地）
+export const PLAGUE_COLOR = 0x6b5b53, SCURRY = 0.15;
+const HOP_PER_M = 0.05;
+function ratGeometry(THREE) {
+  const geos = [
+    new THREE.SphereGeometry(0.5, 8, 6).scale(0.16, 0.1, 0.22).translate(0, 0.05, 0),
+    new THREE.SphereGeometry(0.04, 7, 5).translate(0, 0.06, 0.12),
+    new THREE.SphereGeometry(0.018, 5, 4).translate(-0.025, 0.1, 0.1), new THREE.SphereGeometry(0.018, 5, 4).translate(0.025, 0.1, 0.1),
+    new THREE.CylinderGeometry(0.006, 0.012, 0.16, 5).rotateX(Math.PI / 2 - 0.25).translate(0, 0.06, -0.18),
+  ];
+  const geo = mergeGeometries(geos); geos.forEach(g => g.dispose());
+  return geo;
+}
 
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
 export function ratMode(lv, flags) {
@@ -126,11 +169,49 @@ export function view(lv, flags, meta) {
       else v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
       return v;
     }
-    case 'dome': return { 'rat.pack': pack(GATE, GROW_TO, wander(GATE, 0.9)) };
+    case 'dome': {
+      const v = { 'rat.pack': pack(GATE, GROW_TO, wander(GATE, 0.9)) };
+      // R47（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：收尾時整島撒滿鼠群（零件 at 在原點，spots 都是世界座標）
+      if (flags.epilogue === 'domeRats') v['rat.plague'] = { kind: 'plague', at: { x: 0, y: 0, z: 0 }, spots: plagueSpots(), footprint: false, shadow: false };
+      return v;
+    }
   }
 }
 
 export const builders = {
+  // R47 鼠群（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：一個 InstancedMesh、spec.spots 一隻一個實例，黏土色、平面著色、不投影。
+  // object.userData.rush(dur)：時鐘歸零、dur 秒內每隻沿自己的直線從 from 跑到 to（smoothstep，水平；高度多一段小拋物線），頭朝前進方向；
+  // 到了就原地小步亂竄（±SCURRY、各自的相位與週期，頭跟著微轉；跑的時候亂竄照 smoothstep 淡入，到站不跳）。finish()：跳到終態。
+  // 建好就是終態（全部在 to、亂竄中）：跳過、截圖、舞台重建零件直接看到撒滿島的老鼠。?quality=low 照畫（一個 draw call）
+  plague(THREE, spec) {
+    const spots = spec.spots, n = spots.length, object = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: PLAGUE_COLOR, roughness: 0.85, metalness: 0, flatShading: true });
+    const mesh = new THREE.InstancedMesh(ratGeometry(THREE), mat, n);
+    mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
+    const lengths = spots.map(s => Math.hypot(s.to.x - s.from.x, s.to.z - s.from.z));
+    const rates = spots.map(s => 2.2 + 1.6 * (s.phase / (Math.PI * 2)));   // 亂竄的角頻率（各不同）
+    const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+    let t = Infinity, dur = 0, age = 0;
+    const pose = () => {
+      const k = t === Infinity ? 1 : Math.min(1, t / dur), s = k * k * (3 - 2 * k);
+      for (let i = 0; i < n; i++) {
+        const { from, to, yaw, phase } = spots[i], w = rates[i], a = age * w + phase;
+        const jx = SCURRY * Math.sin(a) * s, jz = SCURRY * Math.sin(a * 1.37 + phase) * s;
+        p.set(from.x + (to.x - from.x) * s + jx, from.y + (to.y - from.y) * s + HOP_PER_M * lengths[i] * 4 * k * (1 - k), from.z + (to.z - from.z) * s + jz);
+        q.setFromAxisAngle(Y, yaw + 0.5 * Math.sin(a * 0.8) * s);
+        mesh.setMatrixAt(i, m4.compose(p, q, one));
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    object.userData.rush = d => { t = d > 0 ? 0 : Infinity; dur = d; pose(); };
+    object.userData.finish = () => { t = Infinity; pose(); };
+    pose();
+    return {
+      object,
+      update(dt) { age += dt; if (t !== Infinity) { t += dt; if (t >= dur) t = Infinity; } pose(); },
+      dispose() { mesh.geometry.dispose(); mat.dispose(); mesh.dispose?.(); },
+    };
+  },
   // 小 UFO：銀色碟 + 綠色底光，在原地小圓盤旋、上下飄
   ufo(THREE, spec, ctx) {
     const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: UFO_PARTS }), object = new THREE.Group(); object.add(part.object);
@@ -184,6 +265,7 @@ export const DASH = 4.5;   // 老鼠趕路（泡溫泉從窩跑上台地約 11 �
 // R41（使用者 2026-11-05：後期動畫偏長）：◆ Lv4 快步——賽博排隊走去 101（ARMY）、外星走到溫泉邊（MARCH；一般走路 1.6；
 //   賽博 3.2 時正解整段掉到 4.5 s 的軟下限以下）、聞一聞（預設 1.5）。走路最快 DASH（修正輪 1：不像抽搐）
 const ARMY = 2.8, MARCH = 3.2, SNIFF = 1.0, NIBBLE_RUN = 1.4;
+const NEST_OUT = 0.9;   // 一窩（Lv2）新鑽出來的那隻走到窩旁至少幾秒（沒有偵防師那拍時；見 grow[2]）
 // ◆ Lv4 外星：走到溫泉邊那拍至少幾秒（R41 最終審稿：老鼠跑遠那局搭車來、跳下車就在溫泉旁，整段 4.1 s < ◆ 軟下限 4.5；搭車、從窩來兩條都用）
 const MUTANT_MIN = 3.0;
 // 列車停靠：最多趕 TRAIN_IN 秒進站（車剛開過不到半圈就倒車回來），停到大家一起跳完（再多停 0.05 s 落地），跳的時候車不動
@@ -329,7 +411,9 @@ export const script = {
         B.bubble(B.partHead('rat.main', labelY, ctx), '♥', 0.8), B.apply(e, { only: ['rat.main'] }),   // ♥ 1.2 → 0.8（R41，使用者 2026-11-05：後期動畫偏長）
         B.apply(e, { only: [KEY], hold: [KEY] }),
         B.together(out.map((i, k) => B.spawn(KEY, c => door(c)[k]))),
-        B.together(out.map((i, k) => B.walk(rat(i), c => spot(c)[k]))),
+        // R47（pace 新增的鼠災路線第 6 回合：晶片還沒到 3、沒有偵防師那拍，整段只有 2.1 s < 一級下限 2.5）：沒有偵防師時，
+        //   鑽出來走到窩旁那段至少 NEST_OUT 秒（剛鑽出來的那隻站著多看一下；有偵防師的那條本來就 3 s 多，不加）
+        B.together([...out.map((i, k) => B.walk(rat(i), c => spot(c)[k])), ...(s.lv.chip >= 3 ? [] : [B.wait(NEST_OUT)])]),
         B.apply(e), ...detectiveBubble(ctx, s), B.home(RATS), B.levelUp('rat'),
       ];
     },

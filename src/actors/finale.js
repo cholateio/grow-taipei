@@ -23,15 +23,16 @@
 //   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
 // 計畫 17 任務 5：大巨蛋淹水（球員拉竿、一條魚從泳池跳出來）、珍奶攤被吹走（老闆坐小船追漂走的攤車）、鮮奶過期（長腳的牛奶箱走到西岸掉進海裡）的收尾，
 //   見 domeFloodEpilogue、cartBlownEpilogue、milkExpiredEpilogue。
+// R47（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：大巨蛋鼠災也接收尾——鼠群從巨蛋門口撒滿全島、大家躲進門，見 domeRatsEpilogue。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
-import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, SWARM_N, UFO_PARTS, DASH } from './rat.js';
+import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, SWARM_N, UFO_PARTS, DASH, GATE } from './rat.js';
 import { island, ROCKS_HOME_A as HOME_A } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
 import { NEON_BOOST } from './world.js';
-import { C } from './palette.js';
+import { C, offset } from './palette.js';
 import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
 import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as skiffSeat, BLOWN, CART_END, QUAY } from './boba.js';
 import { fishArc, FISH_UP } from './baseball.js';
@@ -422,6 +423,7 @@ export const script = {
     if (e.ending === 'domeFlood') return domeFloodEpilogue(e, ctx);
     if (e.ending === 'cartBlown') return cartBlownEpilogue(e, ctx);
     if (e.ending === 'milkExpired') return milkExpiredEpilogue(e, ctx);
+    if (e.ending === 'domeRats') return domeRatsEpilogue(e, ctx);
     if (e.ending !== 'cyber') return [B.apply(e)];
     const rats = c => c.roster.members('rat.pack');
     const fly = B.replay(e, 'finale.car', CAR_FLIGHT, {
@@ -519,6 +521,50 @@ export function alienEpilogue(e, ctx) {
     B.apply(e), B.focus('home', { hold: ALIEN_END }),
   ];
 }
+// ── R47 大巨蛋鼠災收尾（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠；終局回合 1 倍速，真實秒數 ≤ 5.5 s——
+//   鼠災局多半是吹偏局，警告 3.3＋吹偏的隕石約 7.0，壞結局終局 ≤ 16 s）──
+//   ① 折旗標（apply only []）＋ worldNow（吹偏之後本來就站著；命中局躺平的人站起來）＋鏡頭到大巨蛋（FOCUS_BEAT）；
+//   ② 一段：鼠群零件 rat.plague（rat.js，一個 InstancedMesh、PLAGUE_N 隻）套上、閃白，同一刻 plagueRush：RUSH 秒內從門口沿直線撒到七個主格；
+//      門口那兩隻名冊老鼠（rat.pack）也往門口外衝（rush，DASH）——拿水桶的工作人員（baseball.staff，家是 follow 老鼠）跟著追、不躲；
+//      兩個工作人員從現在站的地方快跑（DASH）到兩隻老鼠後面 0.6（剛好是他們 follow 的距離；上限同躲進門：跳過時 walk 的收尾直接放到那裡，
+//      不會留在出生的入口疊在巨蛋後面）；0.4 秒後鏡頭回全景（看整島的老鼠）；全島的人（crowd.islanders，演到才點名，工作人員除外）快走到最近的建築門口躲進去
+//      （hideBeat，同外星收尾，上限 RUSH ＋ UFO_FALL）；
+//   ③ 躲進去就不出來了（roster.hide stay：跳過的 snap 也不放出來，live 跟跳過終態一樣）、交回日常；名冊老鼠、工作人員交回日常（在門口晃、跟著追）；
+//   ④ 剩下的套用 → 全景停 PLAGUE_END。沒有新文字。
+//   名義秒數 FOCUS_BEAT 0.8 ＋ RUSH ＋ UFO_FALL（躲進門的上限）2.2 ＋ PLAGUE_END 1.0 ＝ 4.0 s
+export const PLAGUE_END = 1.0;
+// 名冊老鼠衝出去的點：門口外（往鏡頭那側）左右各一，離門口 0.78（還在牠們日常 wander GATE 0.9 的圈裡：交回日常時不會掉頭跑回去）
+const GATE_OUT = [offset(GATE, -0.5, 0.6), offset(GATE, 0.5, 0.6)];
+// 工作人員追老鼠的站位：各自那隻老鼠的正後方（門口那側）0.6——baseball.staff 的家是 follow rat.pack、dist 0.6，交回日常不用再動
+const CHASE = GATE_OUT.map(p => offset(p, 0, -0.6));
+// 鼠群從門口撒出去（照 bulb.js spinUp 的寫法）：拍長是真的 RUSH（together 等它），零件吃真實秒數，所以 dur ÷ 演出速度；
+// 跳過（instant）不呼叫——零件建好就是終態；end 跳到終態（照常演完時本來就到了）
+const plagueRush = dur => ({
+  kind: 'plagueRush', dur,
+  start(c) { if (!c.instant) c.stage.partObject('rat.plague')?.userData.rush?.(dur / (c.speed ?? 1)); },
+  end(c) { c.stage.partObject('rat.plague')?.userData.finish?.(); },
+});
+export function domeRatsEpilogue(e, ctx) {
+  const { B } = ctx, pack = c => c.roster.members('rat.pack') ?? [], staff = c => c.roster.members('baseball.staff') ?? [];
+  const cast = once(c => islanders(c).filter(m => m.key !== 'baseball.staff'));
+  const out = once(c => GATE_OUT.map(p => c.nav.nearestWalkable(p))), chase = once(c => CHASE.map(p => c.nav.nearestWalkable(p)));
+  // 躲著就不出來（stay），交回日常（hidden 的人日常不動；跟跳過的 snap 一樣是 home 模式）
+  const shelter = { kind: 'shelter', dur: 0, start(c) { for (const m of cast(c) ?? []) { c.roster.hide(m, { stay: true }); c.roster.home(m); } return false; } };
+  return [
+    B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
+    B.together([
+      // 同一幀的順序：apply 第一步就 commit 鼠群，later 的 blinkPart 接著才開（閃的是剛露出來的鼠群）；plagueRush 在 apply 之後 start（零件已經建好）
+      B.apply(e, { only: ['rat.plague'] }), plagueRush(RUSH), later(0, 0, blinkPart('rat.plague')),
+      crowd(B, c => pack(c).map((m, i) => rush(B, m, out(c)[i % out(c).length]))),
+      crowd(B, c => staff(c).map((m, i) => capped(B.walk(m, chase(c)[i % chase(c).length], { speed: DASH }), RUSH + UFO_FALL))),
+      later(0.4, FOCUS_BEAT, B.focus('home')),
+      crowd(B, c => cast(c).map(m => hideBeat(B, m))),
+    ]),
+    shelter, B.home(c => [...pack(c), ...staff(c)]),
+    B.apply(e), B.focus('home', { hold: PLAGUE_END }),
+  ];
+}
+
 // ── 計畫 17 任務 3：大停電、捷運淹水收尾（設計 §4；終局回合 1 倍速，真實秒數，每段 ≤ 7.0 s；隕石命中之後全島躺平，
 //   收尾第一拍把 epilogue 旗標折進舞台、緊接 worldNow——world.js 有收尾就不躺，大家站起來）──
 // 大停電（約 4 s）：警示燈重新亮在塔尖（閃白；折旗標）→ worldNow（漆黑 TIMES.pitch、發光照舊關著、站起來）→

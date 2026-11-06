@@ -1221,3 +1221,85 @@ test('skip mid-epilogue (domeFlood, cartBlown, milkExpired): the final state at 
     }
   }
 });
+
+// ── R47 大巨蛋鼠災收尾：整島都是老鼠（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）──
+// 鏡頭到大巨蛋 → rat.plague（一個 InstancedMesh、PLAGUE_N 隻）閃白、RUSH 秒從門口撒滿七格；門口那兩隻名冊老鼠也往外跑、
+// 鏡頭回全景；全島的人躲進門（hideBeat），拿水桶的工作人員（baseball.staff）留在門口追 → 全景停 PLAGUE_END。吹偏局：終局 ≤ 16 s
+import { cellAt as hexCellAt } from '../src/scene/hex.js';
+const staffOf = show => show.roster.members('baseball.staff') ?? [];
+test('R47 domeRats epilogue beats (≤ 5.5 s): fold + worldNow + the ballpark; one segment — rat.plague blinks in and rushes RUSH while the gate rats run out, the camera home after 0.4 s, the islanders (not the staff) hide; they stay hidden; the rest; the overview hold', () => {
+  const B = beatsMod.B, e = { kind: 'epilogue', ending: 'domeRats', flag: { name: 'epilogue', value: 'domeRats' } };
+  const beats = finale.script.epilogue(e, { lv: {}, flags: {} }, { B, roster: fakeRoster });
+  assert.deepEqual(kinds(beats), ['together', 'together', 'shelter', 'home', 'apply', 'focus']);
+  const [open, plague, , , rest, hold] = beats;
+  assert.deepEqual(kinds(open.beats), ['apply', 'world', 'focus']);
+  assert.deepEqual(open.beats[0].only, [], 'fold the flag first');
+  assert.equal(open.beats[1].effects, undefined, 'worldNow');
+  assert.equal(open.beats[2].target, 'baseball');
+  assert.deepEqual(plague.beats[0].only, ['rat.plague']);
+  assert.equal(plague.beats[1].kind, 'plagueRush'); assert.equal(plague.beats[1].dur, finale.RUSH);
+  assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'blinkPart' && b.beat.key === 'rat.plague'), 'the plague blinks');
+  assert.ok(plague.beats.some(b => b.kind === 'later' && b.beat.kind === 'focus' && b.beat.target === 'home' && Math.abs(b.dur - (0.4 + beatsMod.FOCUS_BEAT)) < 1e-9), 'back to the overview after 0.4 s');
+  assert.equal(plague.beats.filter(b => b.kind === 'crowd').length, 3, 'the gate rats run out, the staff chase them; the islanders hide');
+  assert.equal(rest.only, undefined);
+  assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.PLAGUE_END);
+  const total = beatsMod.FOCUS_BEAT + finale.RUSH + finale.UFO_FALL + finale.PLAGUE_END;
+  console.log(`domeRats epilogue nominal: ${total.toFixed(2)} s`);
+  assert.ok(total <= 5.0, `nominal ≤ 5.0 s (${total.toFixed(2)})`);
+});
+test('R47 EXAMPLE.domeRats (the video game) is a deflect game ending in 大巨蛋鼠災, now with an epilogue', async () => {
+  const g = await badGame('domeRats');
+  assert.equal(g.state.flags.domeRats, true);
+  assert.equal(resolve(g.state, spec).missile, 'deflect');
+  assert.deepEqual(g.evs.at(-1), { kind: 'epilogue', ending: 'domeRats', flag: { name: 'epilogue', value: 'domeRats' } });
+});
+// 終態：鼠群撒在七格、島民藏著（工作人員除外）、沒人在劇本手上、沒人躺著
+const plagueEnd = (show, h, what) => {
+  assert.equal(show.stage.flags.epilogue, 'domeRats', what);
+  const o = show.stage.partObject('rat.plague'), meshes = [];
+  o?.traverse(x => { if (x.isMesh) meshes.push(x); });
+  assert.ok(o && o.visible && meshes.length === 1 && meshes[0].count === ratMod.PLAGUE_N, `${what}: the plague on the stage`);
+  const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), cells = new Set();
+  for (let i = 0; i < meshes[0].count; i++) { meshes[0].getMatrixAt(i, m4); v.setFromMatrixPosition(m4); cells.add(String(hexCellAt(v.x, v.z))); }
+  assert.equal(cells.size, 7, `${what}: rats all over the seven cells (${[...cells].join(' ')})`);
+  const staff = staffOf(show);
+  assert.equal(staff.length, 2, `${what}: two staff`); assert.ok(staff.every(m => !m.hidden), `${what}: the staff stay out`);
+  // 工作人員在門口追老鼠（不是疊在一起、不在巨蛋後面）
+  for (const m of staff) assert.ok(Math.hypot(m.pos.x - ratMod.GATE.x, m.pos.z - ratMod.GATE.z) < 1.2, `${what}: staff ${m.i} at the gate (${m.pos.x.toFixed(2)}, ${m.pos.z.toFixed(2)})`);
+  assert.ok(Math.hypot(staff[0].pos.x - staff[1].pos.x, staff[0].pos.z - staff[1].pos.z) > 0.3, `${what}: the two staff apart`);
+  const out = everyone(show).filter(m => m.walker && !m.hidden && m.key !== 'baseball.staff' && hexCellAt(m.pos.x, m.pos.z));
+  assert.deepEqual(out.map(m => `${m.key}#${m.i}`), [], `${what}: every islander indoors`);
+  assert.ok(everyone(show).filter(m => m.hidden).length >= 10, `${what}: ${everyone(show).filter(m => m.hidden).length} hidden`);
+  assert.deepEqual(everyone(show).filter(m => m.mode === 'script').map(m => `${m.key}#${m.i}`), [], `${what}: nobody in script mode`);
+  assert.equal(h.worldLog.at(-1)[0].mood, 'normal', `${what}: nobody lying`);
+};
+test('R47 domeRats live from EXAMPLE.domeRats (deflect, whole finale as one live turn): the plague pours out of the gate onto all seven cells, the islanders hide, the staff stay with the rats; invariants clean; epilogue ≤ 5.5 s, finale ≤ 16 s', async () => {
+  const g = await badGame('domeRats'), { show, h } = g, { people } = h;
+  const lying = [], hidden = [];
+  let firstRats = null;
+  const res = await liveFinale(g, t => {
+    if (t === null) return;
+    if (t > 0.1 && people.mood === 'lie') lying.push(t);
+    hidden.push(everyone(show).filter(m => m.hidden).length);
+    const o = show.stage.partObject('rat.plague');
+    if (!firstRats && o?.visible) { const m4 = new THREE.Matrix4(), v = new THREE.Vector3(); let mesh = null; o.traverse(x => { if (x.isMesh) mesh = x; }); mesh.getMatrixAt(0, m4); firstRats = v.setFromMatrixPosition(m4).clone(); }
+  });
+  console.log(`domeRats epilogue: ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (R47)`);
+  assert.equal(show.stage.flags.missile, 'deflect');
+  assert.ok(res.secs <= 5.5, `epilogue ≤ 5.5 s (${res.secs.toFixed(2)})`);
+  assert.ok(res.total <= 16, `finale ≤ 16 s (${res.total.toFixed(2)})`);
+  assert.deepEqual(lying, [], 'nobody lies');
+  assert.ok(firstRats && Math.hypot(firstRats.x - ratMod.GATE.x, firstRats.z - ratMod.GATE.z) < 0.8, 'the plague shows up at the dome gate');
+  assert.ok(Math.max(...hidden) >= 10, `the islanders hide (${Math.max(...hidden)})`);
+  plagueEnd(show, h, 'live');
+});
+test('skip mid-epilogue (domeRats): the same final state at once — the plague all over, the islanders indoors, the staff out, nobody in script mode', async () => {
+  for (const frames of [0, 10, 40, 80, 120]) {
+    const g = await badGame('domeRats'), { show, h } = g;
+    await h.run(g.evs.slice(0, 2), { finale: true, instant: true });
+    const p = show.turn([g.evs[2]], { finale: true });
+    for (let i = 0; i < frames; i++) { show.update(1 / 30, i / 30); await Promise.resolve(); }
+    show.skip(); await p;
+    plagueEnd(show, h, `domeRats skipped after ${frames} frames`);
+  }
+});

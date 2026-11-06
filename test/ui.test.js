@@ -135,6 +135,13 @@ test('npm run shot includes phone360-live and phone360-end at 360×780', async (
   assert.match(readFileSync('tools/shot.mjs', 'utf8'), /phone360'\) \? '360,780'/);
 });
 
+test('npm run shot includes howto and phone360-howto (?card=howto)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const shot = JSON.parse(readFileSync('package.json', 'utf8')).scripts.shot;
+  assert.match(shot, /'howto=card=howto'/);
+  assert.match(shot, /'phone360-howto=card=howto&quality=low'/);
+});
+
 test('ui.css: phone landscape (orientation landscape, max-height 520) turns the item bar into a right-hand rail', async () => {
   const css = await cssText();
   const block = css.slice(css.indexOf('@media (orientation: landscape) and (max-height: 520px)'));

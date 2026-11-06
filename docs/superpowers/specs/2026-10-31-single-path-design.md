@@ -315,6 +315,7 @@
   - 換掉的建築只有外形變了才由下往上長（`stage.js shapeKey`：拿掉顏色、發光、tint、頭高、footprint 之後比）；101 被撞彎 `grow: false`。隕石撞上 101 停 0.2 s、再 0.5 s 掉到底座西邊的地上半埋（`METEOR_REST`），不擋路（擋了夜市和 101 之間的走道）。
 - R38–R41（2026-11-05）：試玩修正批次（老鼠咬過的牛奶、電燈 Lv7 與風車島、停電的燈呼吸、後期劇本修剪）——見 `docs/superpowers/specs/2026-11-05-playtest-fixes-design.md`
 - R42–R43（2026-11-06）：手機橫版側欄、終局後才可平移——見 `docs/superpowers/specs/2026-11-06-landscape-pan-design.md`
+- R44–R46（2026-11-06）：放置順序編號、結局圖鑑、側欄小瑕疵——見 `docs/superpowers/specs/2026-11-06-order-gallery-design.md`
 
 ## 附錄：試作的規則表（2026-10-31，全枚舉剛好一解）
 

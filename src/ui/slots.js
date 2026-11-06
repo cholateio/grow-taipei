@@ -27,9 +27,14 @@ export function createSlots(root, { items, onPick, onSkip }) {
   let mode = 'skip';
   const tab = document.createElement('button');
   tab.className = 'menu-tab'; tab.type = 'button'; tab.innerHTML = HIDE_ICON; tab.setAttribute('aria-label', '顯示選單'); tab.setAttribute('title', '顯示選單');
-  const expand = () => { nav.classList.remove('collapsed'); nav.inert = false; tab.classList.remove('on'); };
+  // 使用者 2026-11-06（R46）：滑動只在收合／展開那一下；平常（旋轉、剛載入）不帶 transition，免得從錯的位置滑一下
+  let slideTimer = null;
+  const endSlide = () => { clearTimeout(slideTimer); slideTimer = null; nav.classList.remove('sliding'); };
+  const slide = () => { clearTimeout(slideTimer); nav.classList.add('sliding'); slideTimer = setTimeout(endSlide, 350); };
+  nav.addEventListener('transitionend', e => { if (!e || e.target === nav) endSlide(); });
+  const expand = () => { if (nav.classList.contains('collapsed')) slide(); nav.classList.remove('collapsed'); nav.inert = false; tab.classList.remove('on'); };
   // 收起時 inert：Tab 鍵不會跑到看不見的按鈕；焦點跟著移到圓鍵、展開後回到隱藏鍵（a11y）
-  const collapse = () => { nav.classList.add('collapsed'); nav.inert = true; tab.classList.add('on'); tab.focus?.(); };
+  const collapse = () => { slide(); nav.classList.add('collapsed'); nav.inert = true; tab.classList.add('on'); tab.focus?.(); };
   skip.addEventListener('click', () => {
     if (mode === 'hide') { collapse(); return; }
     if (!skip.disabled) onSkip?.();

@@ -228,8 +228,8 @@ test('ui.css: collapsed bar slides off-screen (down; right in landscape), the me
   assert.match(land, /\.menu-tab \{[^}]*right: max\(12px[^}]*top: 50%;[^}]*translateY\(-50%\)/);
   assert.match(land, /\.skip\.hide svg \{ transform: rotate\(-90deg\)/); assert.match(land, /\.menu-tab svg \{ transform: rotate\(90deg\)/);
   assert.ok(!css.slice(0, css.indexOf('@media (orientation: landscape) and (max-height: 520px)')).includes('40px + env(safe-area-inset-right)), -50%'), 'not outside the block');
-  assert.match(css, /\.slots \{ transition: transform \.3s; \}/);
-  assert.match(css, /prefers-reduced-motion: reduce\) \{ \.slots \{ transition: none; \} \}/);
+  assert.ok(!/\.slots\s*\{[^}]*transition/.test(css)); assert.ok(css.includes('.slots.sliding { transition: transform .3s; }'));
+  assert.match(css, /prefers-reduced-motion: reduce\) \{ \.slots\.sliding \{ transition: none; \} \}/);
   assert.match(css, /\.menu-tab \{[^}]*width: 44px; height: 44px;[^}]*border-radius: 22px;[^}]*display: none;/);
   assert.match(css, /\.menu-tab\.on \{ display: grid; place-items: center; \}/);
 });
@@ -284,4 +284,17 @@ test('ui.css: the card scrolls inside 100vh − 32 then 100dvh − 32; gallery t
   assert.match(title, /overflow:\s*hidden/); assert.match(title, /text-overflow:\s*ellipsis/); assert.match(title, /max-width:\s*100%/); assert.match(title, /white-space:\s*nowrap/);
   const tiny = mediaOf(css, 'max-width: 340px');
   assert.match(ruleOf(tiny, '.endings .grid'), /gap:\s*4px/); assert.match(ruleOf(tiny, '.ending .title'), /font-size:\s*9px/);
+});
+
+test('collapse/expand add .sliding for the slide and drop it after transitionend or 350 ms; the hide cell is cream, not coral', async () => {
+  const css = (await import('node:fs')).readFileSync(new URL('../src/ui/ui.css', import.meta.url), 'utf8');
+  assert.ok(css.includes('.skip.hide:not(:disabled) { background: var(--cream)'));
+  assert.ok(css.indexOf('.skip.hide:not(:disabled) {') > css.indexOf('.skip:not(:disabled) { background: var(--coral)'));
+  const { nav, skip, slots, root } = await slotsWithSkip();
+  slots.setMode('hide'); assert.ok(!nav.classList.contains('sliding'), 'no slide when merely switching mode');
+  skip.listeners.click();
+  assert.ok(nav.classList.contains('sliding') && nav.classList.contains('collapsed'));
+  nav.listeners.transitionend({ target: nav }); assert.ok(!nav.classList.contains('sliding'), 'transitionend');
+  root.querySelector('.menu-tab').listeners.click(); assert.ok(nav.classList.contains('sliding') && !nav.classList.contains('collapsed'));
+  await new Promise(r => setTimeout(r, 400)); assert.ok(!nav.classList.contains('sliding'), 'safety timer');
 });

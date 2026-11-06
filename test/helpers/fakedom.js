@@ -13,6 +13,7 @@ export class El {
   remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; }
   set textContent(v) { this._text = v; this.children = []; } get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
   // innerHTML：文字留下、<button> 變成子元素（卡片測試要點按鈕）
+  get innerHTML() { return this._html ?? ''; }
   set innerHTML(v) {
     this._html = v;
     this._text = v.replace(/<button[^>]*>[\s\S]*?<\/button>/g, '').replace(/<[^>]+>/g, '');

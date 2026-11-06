@@ -200,10 +200,10 @@ test('app.js spawns the shiba through createLater, calls drawn() after the first
 test('setMode("hide") turns the skip cell into a hide-menu button; pressing it collapses the bar and shows the menu tab; the tab restores it; reset returns to skip mode', async () => {
   const { nav, skip, slots, root } = await slotsWithSkip();
   slots.setMode('hide');
-  assert.equal(skip.getAttribute('aria-label'), '隱藏選單'); assert.equal(skip.disabled, false); assert.ok(skip._html.includes('<svg'));
-  skip.click(); assert.ok(nav.classList.contains('collapsed'));
+  assert.equal(skip.getAttribute('aria-label'), '隱藏選單'); assert.equal(skip.disabled, false); assert.ok(skip.innerHTML.includes('<svg'));
+  skip.listeners.click(); assert.ok(nav.classList.contains('collapsed'));
   const tab = root.querySelector('.menu-tab'); assert.ok(tab && tab.classList.contains('on')); assert.equal(tab.getAttribute('aria-label'), '顯示選單');
-  tab.click(); assert.ok(!nav.classList.contains('collapsed')); assert.ok(!tab.classList.contains('on'));
+  tab.listeners.click(); assert.ok(!nav.classList.contains('collapsed')); assert.ok(!tab.classList.contains('on'));
   slots.setSkippable(true); assert.equal(skip.getAttribute('aria-label'), '隱藏選單', 'hide mode ignores setSkippable');
   slots.setSkippable(false); assert.equal(skip.disabled, false);
   slots.reset(); assert.equal(skip.getAttribute('aria-label'), '跳過'); assert.ok(!nav.classList.contains('collapsed'));

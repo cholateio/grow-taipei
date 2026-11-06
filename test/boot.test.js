@@ -25,9 +25,19 @@ test('app.js skips through the item-bar skip cell only: no canvas click listener
 // 計畫 12 Task 2：遊戲結束（onFinished）RESET 變醒目，restart 拿掉
 test('app.js lights RESET on finish and turns it off on restart', () => {
   const src = readFileSync('src/app.js', 'utf8');
-  assert.match(src, /onFinished:\s*\(\)\s*=>\s*topBar\.setFinished\(true\)/);
+  assert.match(src, /onFinished:\s*\(\)\s*=>\s*\{?\s*topBar\.setFinished\(true\)/);
   // restart 的本文（到下一個頂層宣告前）：先拿掉 glow，再 game.reset()
   const body = src.slice(src.indexOf('function restart()'), src.indexOf('\n  const pick'));
   const off = body.indexOf('topBar.setFinished(false)'), reset = body.indexOf('game.reset()');
   assert.ok(off >= 0, 'restart turns the glow off'); assert.ok(reset > off, 'before game.reset()');
+});
+// R43（使用者 2026-11-06）：結束才開放平移（除錯特寫不開），RESET 先關再回全景；每幀 rig.update 之後夾住注視點
+test('app.js enables free panning on finish, disables it on restart before home, and clamps every frame after rig.update', () => {
+  const src = readFileSync('src/app.js', 'utf8');
+  assert.match(src, /onFinished:\s*\(\)\s*=>\s*\{[^}]*if \(!debugCam\) rig\.setFree\(true\)/);
+  const body = src.slice(src.indexOf('function restart()'), src.indexOf('\n  const pick'));
+  const off = body.indexOf('rig.setFree(false)'), home = body.indexOf('rig.home(0)');
+  assert.ok(off >= 0 && home > off, 'setFree(false) before home(0)');
+  assert.match(src, /rig\.update\(dt\);\s*rig\.clamp\(\)/);
+  assert.match(src, /enablePan:\s*false/, 'no panning until the game finishes');
 });

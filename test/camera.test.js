@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from '../vendor/three/three.module.js';
-import { overviewDistance, easeInOutCubic, createCameraRig, OVERVIEW_DIR } from '../src/scene/camera.js';
-const rigWith = (opts = {}) => { const camera = new THREE.PerspectiveCamera(32, 1, .3, 320); const controls = { target: new THREE.Vector3(), update() {} }; return { rig: createCameraRig({ THREE, camera, controls, ...opts }), camera, controls }; };
+import { overviewDistance, easeInOutCubic, createCameraRig, OVERVIEW_DIR, FREE_RADIUS } from '../src/scene/camera.js';
+const rigWith = (opts = {}) => { const camera = new THREE.PerspectiveCamera(32, 1, .3, 320); const controls = { target: new THREE.Vector3(), enablePan: false, screenSpacePanning: true, update() {} }; return { rig: createCameraRig({ THREE, camera, controls, ...opts }), camera, controls }; };
 test('overview distance by aspect', () => { assert.equal(overviewDistance(16 / 9), 19); assert.equal(overviewDistance(1), 26); assert.equal(overviewDistance(9 / 16), 40); });
 test('ease endpoints and midpoint', () => { assert.equal(easeInOutCubic(0), 0); assert.equal(easeInOutCubic(1), 1); assert.equal(easeInOutCubic(.5), .5); });
 test('fit places the camera along OVERVIEW_DIR at the aspect distance', () => {
@@ -144,4 +144,30 @@ test('setInset({ right }) shifts the view by half the rail (camera.setViewOffset
   // 側欄開著時島心（home）投影到左側那塊的正中：NDC x ≈ −(61 / 800)·2 = −0.1525（整個畫面的座標），即剩下那塊的中心
   rig.setInset({ right: 122 }); rig.home(0); camera.updateMatrixWorld();
   const p = new THREE.Vector3(0.4, 0.6, 0).project(camera); assert.ok(Math.abs(p.x - (-0.1525)) < 0.02, `home NDC x ${p.x.toFixed(3)}`);
+});
+// R43（使用者 2026-11-06）：遊戲結束後才開放平移，注視點鎖在島上（home 水平 FREE_RADIUS 內、y 固定 home.y）
+test('setFree(true) enables ground-plane panning; clamp pulls the target back inside FREE_RADIUS of home moving the camera by the same vector; setFree(false) disables panning and clamp does nothing', () => {
+  const { camera, controls, rig } = rigWith();
+  assert.equal(controls.enablePan, false); assert.equal(rig.free, false);
+  rig.setFree(true); assert.equal(controls.enablePan, true); assert.equal(controls.screenSpacePanning, false); assert.equal(rig.free, true);
+  rig.home(0); const before = camera.position.clone().sub(controls.target);
+  controls.target.set(0.4 + FREE_RADIUS + 5, 0.6, 0); camera.position.add(new THREE.Vector3(FREE_RADIUS + 5, 0, 0));
+  rig.clamp();
+  assert.ok(Math.abs(Math.hypot(controls.target.x - 0.4, controls.target.z) - FREE_RADIUS) < 1e-6, 'on the circle');
+  assert.equal(controls.target.y, 0.6); assert.ok(camera.position.clone().sub(controls.target).distanceTo(before) < 1e-6, 'viewing vector unchanged');
+  // 圓內只修 y（沿地面平移不該飄高），鏡頭跟著同向移
+  controls.target.set(2, 1.6, 3); camera.position.add(new THREE.Vector3(2 - 9.4, 1, 3)); rig.clamp();
+  assert.ok(controls.target.distanceTo(new THREE.Vector3(2, 0.6, 3)) < 1e-9, 'inside: only y pinned');
+  assert.ok(camera.position.clone().sub(controls.target).distanceTo(before) < 1e-6, 'viewing vector unchanged inside');
+  rig.setFree(false); assert.equal(controls.enablePan, false); assert.equal(rig.free, false);
+  controls.target.set(50, 0.6, 0); rig.clamp(); assert.equal(controls.target.x, 50, 'not free: untouched');
+});
+// R43：天際線抬高的全景（101 蓋完）——結束那一刻開 free，鏡頭不能動（y 釘全景注視點的高度，不是 home.y）；飛行中不夾
+test('clamp pins y to the overview target height (skyline lift included) so enabling free at the raised end overview moves nothing; clamp skips while flying', () => {
+  const { camera, controls, rig } = rigWith(); rig.fit(16 / 9); rig.setSkyline(7.75); rig.update(1.1);
+  const pos = camera.position.clone(), target = controls.target.clone(); assert.ok(target.y > 0.6 + 1, 'raised');
+  rig.setFree(true); rig.clamp();
+  assert.ok(camera.position.distanceTo(pos) < 1e-9 && controls.target.distanceTo(target) < 1e-9, 'end overview untouched');
+  rig.focus({ x: 20, y: 0.65, z: 0 }); rig.update(0.3); assert.ok(rig.flying); const mid = controls.target.clone();
+  rig.clamp(); assert.ok(controls.target.distanceTo(mid) < 1e-9, 'flying: untouched');
 });

@@ -93,7 +93,7 @@ export async function start({ params, loading }) {
   later.add(() => assets.spawn(SHIBA.path, { ...SHIBA.opts, parent: decor }).then(m => { shiba = m; }).catch(e => console.warn('柴犬載入失敗', e)));
   const setTime = minute => { const s = view.setTime(minute); terrain.setHorizon(s.horizon); return s; };
   setTime(TIMES[params.get('time')] ?? TIMES.day);
-  // 鏡頭：OrbitControls（阻尼、禁平移、仰角 25°–70°、距離 3–70）+ 全景／飛行
+  // 鏡頭：OrbitControls（阻尼、禁平移——R43 結束後才開，rig.setFree；仰角 25°–70°、距離 3–70）+ 全景／飛行
   const controls = new OrbitControls(view.camera, view.renderer.domElement);
   Object.assign(controls, { enableDamping: true, dampingFactor: 0.07, enablePan: false, minPolarAngle: 25 * Math.PI / 180, maxPolarAngle: 70 * Math.PI / 180, minDistance: 3, maxDistance: 70 });
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -103,6 +103,7 @@ export async function start({ params, loading }) {
   const cam = params.get('cam')?.split(',').map(Number);   // 除錯：?cam=x,y,z,tx,ty,tz 拍特寫（配 ?auto 時放完再擺一次，見下面）
   const camItem = ANCHORS[params.get('cam')] ? params.get('cam') : null;   // 除錯：?cam=milk 自動放完後鏡頭拉近那個物品的格子（同演出中的 focus）
   const putCam = () => { view.camera.position.set(cam[0], cam[1], cam[2]); controls.target.set(cam[3], cam[4], cam[5]); controls.update(); };
+  const debugCam = !!camItem || cam?.length === 6;
   let pinned = false;   // ?auto＋?cam=x,…：放完之後鏡頭釘在 cam（換長寬比的 fit 會照框景把鏡頭拉回全景，釘住時再擺回來）
   // R42（使用者 2026-11-06）：手機橫版物品列是右側直排側欄，量它的寬（＋到邊緣的 12 px）給鏡頭 inset，島在側欄左邊那塊置中；
   // 直版、桌機 0（清掉 view offset）。.slots 還沒建的第一次 fit 量不到 → 0，createSlots 之後再 fit 一次
@@ -147,9 +148,11 @@ export async function start({ params, loading }) {
     onLevels: applyWorld,
     // 結局：沒有標題卡（使用者 2026-11-01：直接用畫面呈現，不用文字描述）——畫面停在終局回合演完的狀態，玩家自己看；
     // 重玩按頂欄 RESET：結束後它變醒目（計畫 12 重玩迴圈），restart 拿掉
-    onFinished: () => topBar.setFinished(true),
+    // R43（使用者 2026-11-06）：結束後才開放平移（雙指／右鍵拖曳），注視點鎖在島上（rig.clamp 每幀）；
+    // 除錯特寫（?cam=）釘住的鏡頭不開——夾住會把島外／高處的注視點拉回來
+    onFinished: () => { topBar.setFinished(true); if (!debugCam) rig.setFree(true); },
   });
-  function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.home(0); }
+  function restart() { topBar.setFinished(false); game.reset(); applyWorld(game.state.lv, game.state.flags, { instant: true }); rig.setFree(false); rig.home(0); }
   const pick = id => game.pick(id);
   // 跳過鍵（計畫 12；修正批次 max-skip §C 放進物品列最後一格）：取代原本「演出中點畫面 = 跳過」——手機上點畫面常常只是想轉鏡頭；
   // 每幀照 show.skippable 啟用／停用（終局前的 hold 停用）
@@ -165,7 +168,7 @@ export async function start({ params, loading }) {
   const frame = dt => {
     const t = (elapsed += dt);
     const w = stepWorld(world, worldTarget, dt); if (w !== world) { world = w; showWorld(w); }
-    rig.update(dt); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); show.update(dt, t);
+    rig.update(dt); rig.clamp(); view.water.update(t); terrain.update(t); people.update(dt, t, view.camera.position.length()); assets.update(dt); show.update(dt, t);
     if (shiba) { shibaPath.advance(dt * 0.3); const p = shibaPath.locate(); shiba.position.set(p.x, p.y, p.z); shiba.rotation.y = p.yaw; }
   };
   view.renderer.setAnimationLoop(() => {

@@ -7,6 +7,8 @@ export function overviewDistance(aspect) { return aspect >= 1.4 ? 19 : aspect >=
 // 全景跟 101 高度（§14.4）：天際線（101 頭頂 y）超過 SKYLINE_FLOOR 的每一單位，注視點抬高 SKYLINE_LIFT、距離多拉 SKYLINE_PULL 倍，
 // 頭頂在 16:9 與 21:9 都落在畫面上緣 10% 以內（NDC y ≤ 0.8；完工頭頂 7.75 約 0.72），島中心最多掉到 NDC −0.32；≤ 3（工地）全景不變
 export const SKYLINE_FLOOR = 3, SKYLINE_LIFT = 0.5, SKYLINE_PULL = 0.05;
+// R43（使用者 2026-11-06）：遊戲結束後開放平移，注視點只能在島中心（home）水平 FREE_RADIUS 以內
+export const FREE_RADIUS = 9;
 export function easeInOutCubic(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
 
 export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y: 0.6, z: 0 }, reducedMotion = false }) {
@@ -18,6 +20,8 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
   // R42（使用者 2026-11-06）：手機橫版右側直排側欄佔掉的寬度（px）與最後一次 fit 的畫面像素；
   // right > 0 → setViewOffset 把畫面往右推半個側欄，島就落在側欄左邊那塊的正中（LEVEL UP、泡泡走投影矩陣，自動跟著）
   let inset = { right: 0 }, size = null;
+  // R43（使用者 2026-11-06）：free＝遊戲結束後可平移；radius＝注視點離 home 的水平上限
+  let free = false, freeRadius = FREE_RADIUS;
   function applyInset() {
     if (inset.right > 0 && size) camera.setViewOffset(size.width, size.height, inset.right / 2, 0, size.width, size.height);
     else if (camera.view?.enabled) camera.clearViewOffset();
@@ -41,6 +45,24 @@ export function createCameraRig({ THREE, camera, controls, center = { x: 0.4, y:
 
   return {
     get flying() { return !!flight; },
+    get free() { return free; },
+    // R43（使用者 2026-11-06）：遊戲結束（onFinished）才開放平移，RESET 關掉；演出中一律不能平移。
+    // screenSpacePanning false → 沿地面平移（雙指拖曳／右鍵拖曳）
+    setFree(flag, { radius = FREE_RADIUS } = {}) {
+      free = !!flag; freeRadius = radius;
+      controls.enablePan = free; controls.screenSpacePanning = false;
+    },
+    // R43：app 每幀在 rig.update() 之後呼叫——free 時把注視點鎖在島上：水平距離 home 超過 radius 就拉回圓周、
+    // y 固定在全景注視點的高度（= home.y＋天際線抬高；101 蓋完時全景注視點比 home.y 高，釘 home.y 會讓終局鏡頭一結束就往下掉），
+    // 鏡頭位置加上同一個位移（視角不變）。非 free、或還在飛（飛行的終點都是框景算好的）什麼都不做
+    clamp() {
+      if (!free || flight) return;
+      const t = controls.target, dx = t.x - home.x, dz = t.z - home.z, d = Math.hypot(dx, dz);
+      const k = d > freeRadius ? freeRadius / d : 1, y = frame({ kind: 'home' }).target.y;
+      const shift = new THREE.Vector3(home.x + dx * k - t.x, y - t.y, home.z + dz * k - t.z);
+      if (shift.lengthSq() === 0) return;
+      t.add(shift); camera.position.add(shift);
+    },
     // 玩家拖過鏡頭：這回合 focus 不再搶鏡頭，home 回全景時清掉（§13.1）
     get grabbed() { return grabbed; },
     setReducedMotion(flag) { reducedMotion = flag; if (flag && flight) go(flight.pos, flight.target, 0); },

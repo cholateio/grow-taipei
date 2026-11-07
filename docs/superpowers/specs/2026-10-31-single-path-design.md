@@ -317,6 +317,7 @@
 - R42–R43（2026-11-06）：手機橫版側欄、終局後才可平移——見 `docs/superpowers/specs/2026-11-06-landscape-pan-design.md`
 - R44–R46（2026-11-06）：放置順序編號、結局圖鑑、側欄小瑕疵——見 `docs/superpowers/specs/2026-11-06-order-gallery-design.md`
 - R47–R49（2026-11-06）：鼠災整島、矽盾只在真結局、溫泉客逃離——見 `docs/superpowers/specs/2026-11-06-plague-shield-design.md`
+  - R47 2026-11-07 改版：整島鼠群收回，鼠災只在大巨蛋、老鼠維持當下型態（變異鼠／機器鼠／普通鼠）——見同一設計檔 §R47
 
 ## 附錄：試作的規則表（2026-10-31，全枚舉剛好一解）
 

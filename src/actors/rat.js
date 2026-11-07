@@ -122,7 +122,7 @@ export const HORDE_ZONES = [
 ];
 // 點 p 在不在區域 z 裡：巨蛋格＝格內；橋＝兩個橋端之間、離中心線 ≤ 半個橋寬；橋頭＝那個鄰格裡、離橋頭 ≤ HEAD_IN[1]
 export function inHordeZone(z, p) {
-  if (z.kind === 'cell') return sameCell(cellAt(p.x, p.z), z.cell);
+  if (z.kind === 'cell') return sameCell(cellAt(p.x, p.z), z.cell) && flatDist(p, DOME) >= DOME_CLEAR - 1e-9;
   if (z.kind === 'head') return sameCell(cellAt(p.x, p.z), z.cell) && flatDist(p, z.at) <= HEAD_IN[1] + 1e-9;
   const dx = z.b.x - z.a.x, dz = z.b.z - z.a.z, L = Math.hypot(dx, dz), px = p.x - z.a.x, pz = p.z - z.a.z;
   const t = (px * dx + pz * dz) / L, off = Math.abs(px * dz - pz * dx) / L;

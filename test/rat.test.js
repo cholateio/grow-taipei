@@ -1035,3 +1035,11 @@ test('R47 v3 hordeAt: every rush path runs round the dome (never inside its elli
   }
   assert.deepEqual(bad, []);
 });
+
+test('inHordeZone cell branch rejects points inside the dome clearance (1.3 from the dome centre)', () => {
+  const z = rat.HORDE_ZONES.find(zz => zz.kind === 'cell');
+  const near = { x: DOME_C.x + 0.9, z: DOME_C.z }, far = { x: DOME_C.x + 1.5, z: DOME_C.z };
+  assert.ok(sameCell(cellAt(near.x, near.z), DOME_CELL));
+  assert.equal(rat.inHordeZone(z, near), false, 'inside the clearance');
+  assert.equal(rat.inHordeZone(z, far), true, 'outside the clearance');
+});

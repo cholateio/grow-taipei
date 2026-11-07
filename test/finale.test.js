@@ -34,6 +34,7 @@ async function placedShow() {
 }
 
 const TOWER0 = anchorWorld('tower');
+const DOME_AT = anchorWorld('baseball');
 // 隕石警告（trim §C）：天上一顆越來越亮的橘紅光點（finale.star）——高空 y ≈ 14、101 正上方偏北；發光球＋一條往外（離開 101 那頭）拖長的淡光尾；
 // 脈動照舊 FLARE_HZ；海平面的紅光柱（finale.flare、FLARE_AT）拿掉了
 test('view: alarm draws finale.star high above 101 (slightly north), a glowing orb with a long faint tail pointing away from 101, brightening and pulsing at FLARE_HZ 2; the meteor puts it out; no sea flare', () => {
@@ -1326,6 +1327,7 @@ const domeRatsEnd = (show, h, what, { hidden0, evac, others }) => {
   targets.forEach((t, i) => {
     const z = ratMod.HORDE_ZONES[spots[i].zone];
     assert.ok(ratMod.inHordeZone(z, t), `${what}: horde rat ${i} in its zone (${z.kind})`); zones[z.kind]++;
+    if (z.kind === 'cell') assert.ok(Math.hypot(t.x - DOME_AT.x, t.z - DOME_AT.z) >= 1.3 - 1e-9, `${what}: horde rat ${i} clear of the dome`);
     assert.ok(!show.nav.inFootprint(t.x, t.z), `${what}: horde rat ${i} not buried (${t.x.toFixed(2)}, ${t.z.toFixed(2)})`);
     meshes[0].getMatrixAt(i, m4); v.setFromMatrixPosition(m4);
     assert.ok(Math.hypot(v.x - t.x, v.z - t.z) <= (spots[i].jig ?? ratMod.HORDE_SCURRY) * Math.SQRT2 + 1e-6, `${what}: horde rat ${i} scurries round its spot`);

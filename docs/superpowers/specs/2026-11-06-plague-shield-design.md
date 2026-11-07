@@ -6,15 +6,15 @@
 
 接在 `2026-10-31-single-path-design.md` §8 R46 之後，記成 R47–R49。規則只動一條清單（`BAD_EPILOGUES` 加 `domeRats`）；其餘是演出與零件。
 
-## R47 鼠災收尾：整島都是老鼠
+## R47 鼠災收尾：只在大巨蛋，老鼠維持型態（2026-11-07 改版）
 
-- `domeRats` 進 `BAD_EPILOGUES`（規則層清單）：終局回合隕石之後接 `epilogue`（吹偏／命中都一樣接）。
-- 鼠群零件 `rat.plague`：一個 `InstancedMesh`（`PLAGUE_N` 48 隻；低多邊形的黏土老鼠：身體橢球＋頭＋尾巴合成一個幾何；一個 draw call，沒有骨骼、不佔名冊），每隻有自己的出發點（巨蛋門口 `GATE` 附近一圈）、目的地（七個主格的地面：每格的環道與格內半徑 0.6–2.0 之間，用固定種子亂數選，避開 101 底座與球場）、朝向與抖動相位；`userData.rush(dur)` 讓牠們在 dur 秒內沿各自的直線跑到目的地（smoothstep），到了之後原地小步亂竄（±0.15，週期各不同）。建好就是終態（跳過、截圖看到的是撒滿島的老鼠）。`?quality=low` 照畫（一個 draw call）。
-  - 定案（修正輪 1）：`PLAGUE_N` 96 隻（每格 13–14 隻）、每隻 × 1.4（身體約 0.22 × 0.14 × 0.31）、彼此 ≥ 0.35、離球場中心 ≥ 1.3；收尾一開演（live、跳過都一樣）`userData.place(nav)` 把落進建築的目的地挪到 0.6 內同一格的可走點。
-- 劇本 `domeRatsEpilogue`（真實秒數 ≤ 5.5 s）：鏡頭到大巨蛋 → 套用 `rat.plague`（閃白）＋ `rush` RUSH 1.2 s，巨蛋門口的兩隻名冊老鼠也一起往外跑（`rush`）→ 鏡頭回全景（同時）→ 全島的人躲進門（`hideBeat`，同外星收尾）、工作人員（`baseball.staff`，拿水桶）留在門口追 → 全景停 1.0 s。沒有新文字。
-  - 定案（修正輪 1）：鏡頭大巨蛋停 0.8 s → 回全景 → 中心格特寫（zoom 0.6）1.2 s → 全景停 1.0 s；外送機車（`typhoon.scooter`）同一拍縮掉；還在路上的人也躲、躲了不出來（`roster.hide({ stay })`）。live 4.7 s，終局吹偏 14.9 s／命中 11.8 s。
-- 節奏：`test/helpers/endings.js` 加 `EXAMPLE.domeRats`（影片那條：鮮奶、棒球、代幣、燈泡、晶片、老鼠、珍奶、颱風，隕石吹偏），pace 加一條路線，壞結局終局 ≤ 16 s（吹偏隕石約 10.3 s＋收尾 ≤ 5.5 s）。
-- 圖鑑圖示不變。
+第一版（2026-11-06 計畫 21）做成整島 96 隻老鼠撒滿七格、島民躲進門；使用者 2026-11-07：「鼠災收尾莫名其妙。我覺得問題在於老鼠變異後下一級又變回老鼠，變異老鼠意義不明。另外全島老鼠的效果太噁心，建議收回。」→ 整島鼠群整段收回，改成下面這版。
+
+- 老鼠維持型態：鼠災（`ratMode` 'dome'）的老鼠照老鼠當下的型態畫——Lv4 分岔 `alien` 就是綠色發光三眼的變異鼠、`cyber` 就是灰色帶天線的機器鼠、Lv3 就是普通鼠（`packModel(lv, flags)`：同 `rat.swarm`／機器鼠軍團的 model 參數；不戴王冠、一般大小）。整局後段巨蛋門口的老鼠也一樣，不再退化成普通鼠。
+- 數量：巨蛋門口的鼠群 `DOME_N` 6 隻（骨架動畫上限 12：6 隻＋柴犬）；收尾前是 `GROW_TO` 2 隻、收尾時補到 6 隻（從門口生出來，同 Lv3 的 fill）。
+- 收尾 `domeRatsEpilogue`（真實秒數 ≤ 4.5 s）：鏡頭到大巨蛋 → 門口湧出老鼠（補的 4 隻從門口冒出、6 隻各自跑到門外扇形的點 `GATE_FAN`，離門口 0.6–1.0）→ 同時球迷（`baseball.crowd`）與球員（`baseball.players`）從巨蛋跑出來到門外 1.3–1.6 的 `FLEE_SPOTS`（頭上「！」），兩個工作人員（`baseball.staff`，拿水桶、follow 老鼠）追著跑 → 全景停 1.0 s。不躲進門、不拉近中心格、不動其他格；`typhoon.scooter` 照舊。
+- `BAD_EPILOGUES` 仍含 `domeRats`；`EXAMPLE.domeRats`（影片那條、吹偏）不變；pace ≤ 16。
+- 刪除第一版的 `rat.plague` 零件（InstancedMesh、`plagueSpots`、`PLAGUE_*`、`placePlague`、`plagueRush`）、`sheltering`／`shelter`、`roster.hide(m, { stay })`（沒人再用）；截圖 `plague`／`phone-plague` 改成 `domerats`／`phone-domerats`。
 
 ## R48 矽盾只在真結局長出來
 

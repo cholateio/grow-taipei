@@ -538,31 +538,55 @@ export function alienEpilogue(e, ctx) {
 // 使用者 2026-11-07：「鼠災收尾莫名其妙。我覺得問題在於老鼠變異後下一級又變回老鼠，變異老鼠意義不明。另外全島老鼠的效果太噁心，建議收回。」
 // 第一版（計畫 21）的整島鼠群、島民躲進門、中心格特寫整段收回；只在大巨蛋演，老鼠照當下的型態（rat.js packModel：變異鼠就是綠色三眼）：
 //   ① 折旗標（apply only []）＋ worldNow（命中局躺平的人站起來）＋鏡頭到大巨蛋（FOCUS_BEAT）；
-//   ② 一段：門口的鼠群 hold 在 DOME_N 隻（家是門外扇形 GATE_FAN，rat.js），缺的從門口冒出來（spawnMore，同 rat.js Lv3 的 fill），
-//      六隻各自衝到自己的扇形點（rush，DASH，RUSH 秒）；同一刻球迷、球員的家搬到門外兩側（baseball.js FLEE_SPOTS，同珍奶老闆的家搬到船上），
-//      他們快跑（DASH）過去、頭上「！」（上限 FLEE）；兩個拿水桶的工作人員（baseball.staff，家是 follow 老鼠）追到老鼠後面（CHASE，上限 FLEE）；
+//   ② 一段（SEG 秒）：門口的鼠群 hold 在 DOME_N 隻（家是門外扇形 GATE_FAN，rat.js）；原本的兩隻小跑（RAT_RUN）到自己的扇形點，
+//      缺的四隻每 POP 秒從門口正前方冒出一隻（pop，同 rat.js Lv3 的 fill：spawnHeld），冒出來就小跑到自己的扇形點；
+//      同一刻球迷、球員、新線觀眾的家搬到門外兩側（baseball.js FLEE_SPOTS，同珍奶老闆的家搬到船上），REACT 秒後（看到第一隻老鼠）
+//      一個接一個（間隔 FAN_GAP）頭上「！」、快跑（FAN_RUN）過去，「！」跟跑步疊在一起；兩個拿水桶的工作人員（baseball.staff，家是 follow 老鼠）
+//      快跑（STAFF_RUN）追到老鼠後面（CHASE；他們多半從巨蛋後面繞過來，整段 SEG 就是給他們的）；
 //   ③ 交回日常（老鼠、球迷、球員站在新家，工作人員跟著最近的老鼠）→ 剩下的套用（放開 hold）→ 全景停 DOME_END。
-//   不躲進門、不拉近中心格、不動其他格；颱風天的外送機車照舊。沒有新文字。名義秒數 FOCUS_BEAT 0.8 ＋ FLEE 1.4 ＋ DOME_END 1.0 ＝ 3.2 s
-export const DOME_END = 1.0, FLEE = 1.4;
+//   不躲進門、不拉近中心格、不動其他格；颱風天的外送機車照舊。沒有新文字。名義秒數 FOCUS_BEAT 0.8 ＋ SEG 2.2 ＋ DOME_END 1.0 ＝ 4.0 s
+// 修正輪 1（審稿：六隻在 0.87–1.00 s 以 DASH 一閃就到、球迷 1.0 s 前全停、之後 1.9 s 沒人動，主戲變成一跳）：
+//   老鼠小跑 1.2 m/s（扇形約 0.6–0.8 s 演完；跑太遠的照 RAT_MAX 加快，1.2 s 前一定站定）、新的四隻一隻一隻冒出來、球迷錯開起跑 2.0 m/s
+export const DOME_END = 1.0, SEG = 2.2, POP = 0.15, RAT_RUN = 1.2, RAT_MAX = 0.75, FAN_RUN = 2.0, STAFF_RUN = 2.0, REACT = 0.25, FAN_GAP = 0.08, FAN_MAX = 1.0;
 export { GATE_FAN } from './rat.js';
 export { FLEE_SPOTS } from './baseball.js';
 // 工作人員追老鼠的站位（相對門口）：門口兩旁、內排老鼠（GATE_FAN ±20°、±60°）的後面（靠門那側），離老鼠 ≥ 0.3、兩人相距 0.5
-const CHASE = [-1, 1].map(k => offset(GATE, k * 0.25, 0.12));
+export const CHASE = [-1, 1].map(k => offset(GATE, k * 0.25, 0.12));
 const KEY = 'rat.pack', FANS = ['baseball.crowd', 'baseball.players', 'baseball.riders'];
-// 0 秒：鼠群 hold 在 DOME_N 隻之後，缺的從門口冒出來（劇本手上、不閃到家；同 rat.js Lv3 的 fill）。
-// 冒出來的點是門口正前方一排（DOOR_ROW，間距 0.26～0.52）——nav.slots 繞門口一圈，門後是巨蛋的 footprint，圈會被撐到 0.6、冒在球員腳邊；
-// 第 i 隻（i ≥ 2）照牠要去的扇形點（GATE_FAN[i]：±60°、±40°）從同一側冒出來，往外跑不交叉
-const DOOR_ROW = [-0.39, 0.39, -0.13, 0.13].map(x => offset(GATE, x, 0.1));
-const spawnMore = () => ({
-  kind: 'spawn', dur: 0,
-  start(c) {
-    for (let k = c.roster.members(KEY).length; k < DOME_N; k++) {
-      const p = DOOR_ROW[(k - 2 + DOOR_ROW.length) % DOOR_ROW.length];
-      c.roster.spawnHeld(KEY, c.nav.walkable(p.x, p.z) ? p : c.nav.nearestWalkable(p));
-    }
-    return false;
-  },
-});
+// 新的老鼠從門口正前方冒出來（DOOR_ROW：門口往外 0.1、左右 ±0.13）——nav.slots 繞門口一圈，門後是巨蛋的 footprint，圈會被撐到 0.6、冒在球員腳邊。
+// 第 i 隻（i ≥ 2）照牠要去的扇形點（GATE_FAN[i]：−60°、+60°、−40°、+40°）從同一側冒出來，往外跑不交叉
+const DOOR_ROW = [-0.13, 0.13].map(x => offset(GATE, x, 0.1));
+// 跑到 to：照 speed 跑（路太長、照 speed 會超過 max 秒的，加快到剛好 max 秒），跑到就收尾（walk 的 end：停在終點、不再 walking）——
+// 包在 later、together 裡被拉長時不會原地跑步；跳過時 walk 的收尾直接放到終點（同 dash）
+const paced = (B, who, to, speed, max) => {
+  let w = null, t = 0, done = false;
+  return {
+    kind: 'paced', dur: () => (w ? w.dur() : 0),
+    start(c) {
+      t = 0; done = false;
+      const probe = B.walk(who, to, { speed }), est = probe.estimate(c);
+      w = est > max ? B.walk(who, to, { speed: speed * est / max }) : probe;
+      return w.start(c);
+    },
+    step(k, dt, c) { if (done) return; t += dt; if (t >= w.dur()) { done = true; w.end(c); } else w.step(k, dt, c); },
+    end(c) { if (!done) { done = true; w?.end(c); } },
+  };
+};
+// 冒出一隻（0 秒生、接著小跑到扇形點）：hold 住的鼠群還缺才生；生在 DOOR_ROW 牠那一側
+const pop = B => {
+  let run = null;
+  return {
+    kind: 'pop', dur: () => (run ? run.dur() : 0),
+    start(c) {
+      const have = c.roster.members(KEY).length; if (have >= DOME_N) return false;
+      const p = DOOR_ROW[GATE_FAN[have].x < GATE.x ? 0 : 1], m = c.roster.spawnHeld(KEY, c.nav.walkable(p.x, p.z) ? p : c.nav.nearestWalkable(p));
+      run = paced(B, m, GATE_FAN[m.i], RAT_RUN, RAT_MAX);
+      return run.start(c);
+    },
+    step(k, dt, c) { run?.step(k, dt, c); },
+    end(c) { run?.end(c); },
+  };
+};
 export function domeRatsEpilogue(e, ctx) {
   const { B } = ctx, pack = c => c.roster.members(KEY) ?? [], staff = c => c.roster.members('baseball.staff') ?? [];
   const fleeing = c => FANS.flatMap(k => c.roster.members(k) ?? []).filter(m => !m.hidden);
@@ -572,10 +596,11 @@ export function domeRatsEpilogue(e, ctx) {
   return [
     B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
     B.together([
-      B.apply(e, { only: [KEY], hold: [KEY] }), spawnMore(), B.apply(e, { only: FANS }),
-      crowd(B, c => pack(c).map(m => rush(B, m, GATE_FAN[m.i]))),
-      crowd(B, c => fleeing(c).map(m => B.together([capped(B.walk(m, fled(c, m), { speed: DASH }), FLEE), B.bubble(m, '！', 0.6)]))),
-      crowd(B, c => staff(c).map((m, i) => capped(B.walk(m, chase(c)[i % CHASE.length], { speed: DASH }), FLEE))),
+      B.apply(e, { only: [KEY], hold: [KEY] }), B.apply(e, { only: FANS }), B.wait(SEG),
+      crowd(B, c => pack(c).map(m => paced(B, m, GATE_FAN[m.i], RAT_RUN, RAT_MAX))),
+      ...Array.from({ length: DOME_N - 2 }, (_, k) => later(k * POP, RAT_MAX, pop(B))),
+      crowd(B, c => fleeing(c).map((m, i) => later(REACT + i * FAN_GAP, FAN_MAX, B.together([paced(B, m, fled(c, m), FAN_RUN, FAN_MAX), B.bubble(m, '！', 0.6)])))),
+      crowd(B, c => staff(c).map((m, i) => paced(B, m, chase(c)[i % CHASE.length], STAFF_RUN, SEG))),
     ]),
     B.home(c => [...pack(c), ...staff(c), ...fleeing(c)]),
     B.apply(e), B.focus('home', { hold: DOME_END }),

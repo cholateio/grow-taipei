@@ -13,6 +13,7 @@
 - 老鼠維持型態：鼠災（`ratMode` 'dome'）的老鼠照老鼠當下的型態畫——Lv4 分岔 `alien` 就是綠色發光三眼的變異鼠、`cyber` 就是灰色帶天線的機器鼠、Lv3 就是普通鼠（`packModel(lv, flags)`：同 `rat.swarm`／機器鼠軍團的 model 參數；不戴王冠、一般大小）。整局後段巨蛋門口的老鼠也一樣，不再退化成普通鼠。
 - 數量：巨蛋門口的鼠群 `DOME_N` 6 隻（骨架動畫上限 12：6 隻＋柴犬）；收尾前是 `GROW_TO` 2 隻、收尾時補到 6 隻（從門口生出來，同 Lv3 的 fill）。
 - 收尾 `domeRatsEpilogue`（真實秒數 ≤ 4.5 s）：鏡頭到大巨蛋 → 門口湧出老鼠（補的 4 隻從門口冒出、6 隻各自跑到門外扇形的點 `GATE_FAN`，離門口 0.6–1.0）→ 同時球迷（`baseball.crowd`）與球員（`baseball.players`）從巨蛋跑出來到門外 1.3–1.6 的 `FLEE_SPOTS`（頭上「！」），兩個工作人員（`baseball.staff`，拿水桶、follow 老鼠）追著跑 → 全景停 1.0 s。不躲進門、不拉近中心格、不動其他格；`typhoon.scooter` 照舊。
+  - 定案（修正輪 1，審稿：老鼠以 DASH 一閃就到、之後近 2 s 沒人動）：新的四隻從門口正前方每 `POP` 0.15 s 冒出一隻；老鼠小跑 `RAT_RUN` 1.2 m/s（跑太遠的加快到 `RAT_MAX` 0.75 s 內），1.2 s 前站定；球迷球員看到老鼠 `REACT` 0.25 s 後一個接一個（間隔 0.08 s）「！」、以 `FAN_RUN` 2.0 m/s 逃到 `FLEE_SPOTS`（左右各四，一人一點）；工作人員 `STAFF_RUN` 2.0 m/s 從巨蛋後面繞過來追；這一段固定 `SEG` 2.2 s，收尾 live 約 4.1 s。
 - `BAD_EPILOGUES` 仍含 `domeRats`；`EXAMPLE.domeRats`（影片那條、吹偏）不變；pace ≤ 16。
 - 刪除第一版的 `rat.plague` 零件（InstancedMesh、`plagueSpots`、`PLAGUE_*`、`placePlague`、`plagueRush`）、`sheltering`／`shelter`、`roster.hide(m, { stay })`（沒人再用）；截圖 `plague`／`phone-plague` 改成 `domerats`／`phone-domerats`。
 
@@ -37,6 +38,6 @@
 
 ## 驗收
 
-- `npm test`、`npm run check`（仍一解）、`npm run pace -- --check`（含新路線、無 ⚠）、`npm run shot`（含 `plague` 截圖；手機 ≤ 150）。
-- 截圖：鼠災收尾終態（整島老鼠）、晶片 Lv7 木箱、Lv8 鷹架、吹偏後溫泉客站在池邊。
-- 使用者眼看：老鼠密度與動作、鷹架在塔頂看不看得清、溫泉客逃的時機。
+- `npm test`、`npm run check`（仍一解）、`npm run pace -- --check`（含新路線、無 ⚠；鼠災收尾 ≤ 4.5 s、終局 ≤ 16 s）、`npm run shot`（含 `domerats`〔cam=baseball〕／`phone-domerats` 截圖；手機 ≤ 150）。
+- 截圖：鼠災收尾終態（大巨蛋門口六隻維持型態的老鼠〔影片那局是綠色三眼變異鼠〕、球迷球員在門外兩側、工作人員在老鼠後面）、晶片 Lv7 木箱、Lv8 鷹架、吹偏後溫泉客站在池邊。
+- 使用者眼看：鼠災收尾的扇形（新的四隻一隻一隻從門口冒出來、六隻小跑散開）、球迷球員「！」往兩側逃、工作人員追老鼠；鷹架在塔頂看不看得清、溫泉客逃的時機。

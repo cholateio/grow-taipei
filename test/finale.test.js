@@ -1258,24 +1258,27 @@ test('R47 rev domeRats epilogue beats (≤ 4.5 s): fold + worldNow + the ballpar
   assert.deepEqual(open.beats[0].only, [], 'fold the flag first');
   assert.equal(open.beats[1].effects, undefined, 'worldNow');
   assert.equal(open.beats[2].target, 'baseball');
-  assert.equal(seg.beats[0].kind, 'apply');
-  assert.deepEqual(seg.beats[0].only, ['rat.pack'], 'the pack (held at DOME_N)');
-  assert.deepEqual(seg.beats[2].only, ['baseball.crowd', 'baseball.players', 'baseball.riders'], 'the fans move house to FLEE_SPOTS');
+  const applies = seg.beats.filter(b => b.kind === 'apply');
+  assert.deepEqual(applies.map(b => b.only), [['rat.pack'], ['baseball.crowd', 'baseball.players', 'baseball.riders']], 'the pack (held at DOME_N); the fans move house to FLEE_SPOTS');
   assert.ok(!seg.beats.some(b => b.kind === 'apply' && b.only?.some(k => k === 'rat.plague' || k.startsWith('typhoon.'))), 'no plague, the scooter left alone');
-  assert.equal(seg.beats[1].kind, 'spawn', 'the extra rats out of the gate');
-  assert.equal(seg.beats.filter(b => b.kind === 'crowd').length, 3, 'the rats fan out, the fans flee, the staff chase');
+  assert.equal(seg.beats.filter(b => b.kind === 'later' && b.beat.kind === 'pop').length, 4, 'four extra rats pop out of the door one by one');
+  assert.deepEqual(seg.beats.filter(b => b.kind === 'later' && b.beat.kind === 'pop').map(b => +(b.dur - finale.RAT_MAX).toFixed(9)), [0, 0.15, 0.3, 0.45]);
+  assert.equal(seg.beats.filter(b => b.kind === 'crowd').length, 3, 'the gate rats fan out, the fans flee, the staff chase');
   assert.equal(rest.only, undefined);
   assert.equal(hold.target, 'home'); assert.equal(hold.dur, finale.DOME_END);
-  assert.equal(finale.DOME_END, 1.0); assert.equal(finale.FLEE, 1.4);
+  assert.equal(finale.DOME_END, 1.0);
+  // 修正輪 1（審稿：六隻 0.87–1.00 s 一閃就到、之後 1.9 s 沒人動）：新的四隻每 POP 秒冒一隻、老鼠小跑 RAT_RUN、球迷逃 FAN_RUN、工作人員 STAFF_RUN；整段 SEG 秒
+  assert.deepEqual([finale.POP, finale.RAT_RUN, finale.FAN_RUN, finale.STAFF_RUN], [0.15, 1.2, 2.0, 2.0]);
+  assert.ok(seg.beats.some(b => b.kind === 'wait' && b.dur === finale.SEG), 'the segment lasts SEG');
   for (const k of ['PLAGUE_END', 'DOME_HOLD', 'CLOSE_UP']) assert.equal(finale[k], undefined, `${k} gone`);
-  const total = beatsMod.FOCUS_BEAT + Math.max(finale.RUSH, finale.FLEE) + finale.DOME_END;
+  const total = beatsMod.FOCUS_BEAT + finale.SEG + finale.DOME_END;
   console.log(`domeRats epilogue nominal: ${total.toFixed(2)} s`);
-  assert.ok(total <= 4.2, `nominal ≤ 4.2 s (${total.toFixed(2)})`);
+  assert.ok(total >= 3.6 && total <= 4.2, `nominal about 4 s (${total.toFixed(2)})`);
 });
 test('R47 rev GATE_FAN (rat.js, re-exported) and FLEE_SPOTS (baseball.js, re-exported): fans and players flee to 1.3–1.6 off the gate, left and right, walkable, apart', () => {
   assert.equal(finale.GATE_FAN, ratMod.GATE_FAN);
   assert.equal(finale.FLEE_SPOTS, baseballMod.FLEE_SPOTS);
-  const nav = (() => { const { createNav } = navMod; return createNav(); })();
+  const nav = navMod.createNav();
   const sides = { L: 0, R: 0 };
   for (const [i, p] of finale.FLEE_SPOTS.entries()) {
     const r = Math.hypot(p.x - ratMod.GATE.x, p.z - ratMod.GATE.z);
@@ -1355,18 +1358,31 @@ const DOMERATS_HIT = enumerate(spec).find(r => r.ending.id === 'domeRats' && mis
 test('R47 rev domeRats live from EXAMPLE.domeRats (deflect) and the first domeRats hit game (whole finale as one live turn): the camera on the dome, then the overview; six rats in their form fan out of the gate, fans and players run out; invariants clean; epilogue ≤ 4.5 s, finale ≤ 16 s', async () => {
   for (const [what, order, outcome] of [['deflect', EXAMPLE.domeRats, 'deflect'], ['hit', DOMERATS_HIT, 'hit']]) {
     const g = await badGame('domeRats', order), { show, h } = g, { people } = h;
-    let r0 = null, hidden0 = null, born = null;
-    const lying = [];
+    let r0 = null, hidden0 = null, born = null, t0 = null;
+    const lying = [], snaps = {}, pops = [];
     const res = await liveFinale(g, t => {
       if (t === null) { r0 = h.rig.log.length; hidden0 = everyone(show).filter(m => m.hidden).length; return; }
       if (t > 0.1 && people.mood === 'lie') lying.push(t);
       const rats = show.roster.members('rat.pack');
-      if (!born && rats.length > 2) born = rats.slice(2).map(m => ({ ...m.pos }));
+      if (rats.length > 2 && t0 === null) t0 = t;   // 扇形開演：第一隻新老鼠從門口冒出來
+      while (rats.length > pops.length + 2) { pops.push(t); (born ??= []).push({ ...rats[pops.length + 1].pos }); }
+      for (const at of [0.5, 1.2]) if (t0 !== null && !snaps[at] && t - t0 >= at) {
+        const fans = fansOf(show);
+        snaps[at] = { t: t - t0, rats: rats.map(m => ({ i: m.i, walking: m.walking, x: +(m.pos.x - ratMod.GATE.x).toFixed(2), z: +(m.pos.z - ratMod.GATE.z).toFixed(2) })),
+          fans: fans.map(m => ({ k: `${m.key.split('.')[1]}#${m.i}`, walking: m.walking, x: +(m.pos.x - ratMod.GATE.x).toFixed(2), z: +(m.pos.z - ratMod.GATE.z).toFixed(2) })) };
+      }
     });
+    for (const at of [0.5, 1.2]) console.log(`domeRats ${what} @${at}s (rel. gate): ${JSON.stringify(snaps[at])}`);
+    // 修正輪 1：看得出來的扇形——新的四隻一隻一隻冒出來（間隔約 POP），0.5 s 時老鼠、球迷都還在跑，1.2 s 時老鼠都站定了
+    assert.equal(pops.length, ratMod.DOME_N - 2, `${what}: four pops`);
+    pops.slice(1).forEach((p, k) => assert.ok(Math.abs(p - pops[k] - finale.POP) < 0.05, `${what}: pop ${k + 1} ${(p - pops[k]).toFixed(2)} s after the last`));
+    assert.ok(snaps[0.5].rats.filter(r => r.walking).length >= 2, `${what}: rats still running at 0.5 s`);
+    assert.ok(snaps[0.5].fans.filter(f => f.walking).length >= 2, `${what}: fans still running at 0.5 s`);
+    assert.deepEqual(snaps[1.2].rats.filter(r => r.walking).map(r => r.i), [], `${what}: the rats settled by 1.2 s`);
     console.log(`domeRats epilogue (${what}): ${res.secs.toFixed(2)} s, finale ${res.total.toFixed(2)} s (R47 rev)`);
     assert.equal(show.stage.flags.missile, outcome);
     if (what === 'deflect') assert.equal(show.stage.flags.ratBranch, 'alien', 'the video game: a Lv4 mutant');
-    assert.ok(res.secs <= 4.5, `${what}: epilogue ≤ 4.5 s (${res.secs.toFixed(2)})`);
+    assert.ok(res.secs >= 3.6 && res.secs <= 4.5, `${what}: epilogue about 4 s, ≤ 4.5 (${res.secs.toFixed(2)})`);
     assert.ok(res.total <= 16, `${what}: finale ≤ 16 s (${res.total.toFixed(2)})`);
     assert.deepEqual(lying, [], `${what}: nobody lies`);
     assert.ok(born && born.length === ratMod.DOME_N - 2 && born.every(p => Math.hypot(p.x - ratMod.GATE.x, p.z - ratMod.GATE.z) < 0.6), `${what}: the extra rats come out of the gate`);
@@ -1386,4 +1402,14 @@ test('skip mid-epilogue (domeRats): the same final state at once — six rats on
     show.skip(); await p;
     domeRatsEnd(show, h, `domeRats skipped after ${frames} frames`, hidden0);
   }
+});
+// 修正輪 1（審稿 minor）：扇形、逃跑、追老鼠的點在真的舞台上（棒球 Lv7 的巨蛋、Lv8 以下的燈柱與看台 footprint）都走得到——
+// 上面的幾何測試只用空的 createNav()。命中局（DOMERATS_HIT）是棒球 Lv7、五個觀眾：終局瞬間演完再查
+test('R47 rev on the real stage (the domeRats hit game, baseball Lv7): every fan, flee and chase spot is walkable', async () => {
+  const g = await badGame('domeRats', DOMERATS_HIT), { show, h } = g;
+  assert.equal(g.state.lv.baseball, 7);
+  await h.run(g.evs, { finale: true, instant: true });
+  const bad = [];
+  for (const [name, list] of [['fan', finale.GATE_FAN], ['flee', finale.FLEE_SPOTS], ['chase', finale.CHASE]]) list.forEach((p, i) => { if (!show.nav.walkable(p.x, p.z)) bad.push(`${name} ${i}`); });
+  assert.deepEqual(bad, []);
 });

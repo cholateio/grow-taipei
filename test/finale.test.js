@@ -1270,6 +1270,8 @@ test('R47 rev domeRats epilogue beats (≤ 4.5 s): fold + worldNow + the ballpar
   // 修正輪 1（審稿：六隻 0.87–1.00 s 一閃就到、之後 1.9 s 沒人動）：新的四隻每 POP 秒冒一隻、老鼠小跑 RAT_RUN、球迷逃 FAN_RUN、工作人員 STAFF_RUN；整段 SEG 秒
   assert.deepEqual([finale.POP, finale.RAT_RUN, finale.FAN_RUN, finale.STAFF_RUN], [0.15, 1.2, 2.0, 2.0]);
   assert.ok(seg.beats.some(b => b.kind === 'wait' && b.dur === finale.SEG), 'the segment lasts SEG');
+  assert.ok(seg.beats.findIndex(b => b.kind === 'freeze') > seg.beats.findIndex(b => b.kind === 'apply' && b.only?.includes('baseball.crowd')), 'fix round 2: the fleeing stand still right after their homes move');
+  assert.equal(finale.SHOUT_LEAD, 0.15);
   for (const k of ['PLAGUE_END', 'DOME_HOLD', 'CLOSE_UP']) assert.equal(finale[k], undefined, `${k} gone`);
   const total = beatsMod.FOCUS_BEAT + finale.SEG + finale.DOME_END;
   console.log(`domeRats epilogue nominal: ${total.toFixed(2)} s`);
@@ -1358,21 +1360,43 @@ const DOMERATS_HIT = enumerate(spec).find(r => r.ending.id === 'domeRats' && mis
 test('R47 rev domeRats live from EXAMPLE.domeRats (deflect) and the first domeRats hit game (whole finale as one live turn): the camera on the dome, then the overview; six rats in their form fan out of the gate, fans and players run out; invariants clean; epilogue ≤ 4.5 s, finale ≤ 16 s', async () => {
   for (const [what, order, outcome] of [['deflect', EXAMPLE.domeRats, 'deflect'], ['hit', DOMERATS_HIT, 'hit']]) {
     const g = await badGame('domeRats', order), { show, h } = g, { people } = h;
-    let r0 = null, hidden0 = null, born = null, t0 = null;
-    const lying = [], snaps = {}, pops = [];
+    let r0 = null, hidden0 = null, born = null, t0 = null, base = null, tNow = null;
+    const lying = [], snaps = {}, pops = [], moved = new Map(), shouts = [];
+    // 修正輪 2：「！」記下時間與頭上的點（之後對到是誰）
+    const showBubble = show.bubbles.show;
+    show.bubbles.show = (head, kind, dur) => { if (kind === '！' && tNow !== null) shouts.push({ t: tNow, at: head() }); return showBubble(head, kind, dur); };
     const res = await liveFinale(g, t => {
+      tNow = t;
       if (t === null) { r0 = h.rig.log.length; hidden0 = everyone(show).filter(m => m.hidden).length; return; }
       if (t > 0.1 && people.mood === 'lie') lying.push(t);
       const rats = show.roster.members('rat.pack');
       if (rats.length > 2 && t0 === null) t0 = t;   // 扇形開演：第一隻新老鼠從門口冒出來
       while (rats.length > pops.length + 2) { pops.push(t); (born ??= []).push({ ...rats[pops.length + 1].pos }); }
+      if (t0 !== null) {
+        base ??= fansOf(show).map(m => ({ m, p: { ...m.pos } }));
+        for (const { m, p } of base) if (!moved.has(m) && Math.hypot(m.pos.x - p.x, m.pos.z - p.z) > 0.05) moved.set(m, t - t0);
+      }
       for (const at of [0.5, 1.2]) if (t0 !== null && !snaps[at] && t - t0 >= at) {
         const fans = fansOf(show);
         snaps[at] = { t: t - t0, rats: rats.map(m => ({ i: m.i, walking: m.walking, x: +(m.pos.x - ratMod.GATE.x).toFixed(2), z: +(m.pos.z - ratMod.GATE.z).toFixed(2) })),
           fans: fans.map(m => ({ k: `${m.key.split('.')[1]}#${m.i}`, walking: m.walking, x: +(m.pos.x - ratMod.GATE.x).toFixed(2), z: +(m.pos.z - ratMod.GATE.z).toFixed(2) })) };
       }
     });
+    show.bubbles.show = showBubble;
     for (const at of [0.5, 1.2]) console.log(`domeRats ${what} @${at}s (rel. gate): ${JSON.stringify(snaps[at])}`);
+    // 修正輪 2（審稿：家一搬他們就在日常裡一起走過去，錯開的「！」→ 跑看不出來）：每個人在自己的起跑時刻（REACT + i × FAN_GAP）之前不動（≤ 0.05），
+    // 「！」先冒、跑步接著才開始
+    const cues = base.map(({ m, p }, i) => {
+      // 「！」冒的那一刻他還站在原地（p）：頭上的點離 p 水平最近的那個「！」就是他的
+      const cue = finale.REACT + i * finale.FAN_GAP, go = moved.get(m), near = b => Math.hypot(b.at.x - p.x, b.at.z - p.z);
+      const sh = shouts.filter(b => b.t >= t0).sort((a, b) => near(a) - near(b))[0];
+      return { who: `${m.key.split('.')[1]}#${m.i}`, cue: +cue.toFixed(2), shout: sh ? +(sh.t - t0).toFixed(2) : null, run: go === undefined ? null : +go.toFixed(2) };
+    });
+    console.log(`domeRats ${what} flee cues (s after the first pop): ${JSON.stringify(cues)}`);
+    for (const c of cues) {
+      assert.ok(c.run !== null && c.run >= c.cue - 1 / 30, `${what}: ${c.who} still until its cue ${c.cue} (moved at ${c.run})`);
+      assert.ok(c.shout !== null && c.shout >= c.cue - 1 / 30 && c.shout < c.run, `${what}: ${c.who} 「！」 (${c.shout}) at its cue ${c.cue}, before the run (${c.run})`);
+    }
     // 修正輪 1：看得出來的扇形——新的四隻一隻一隻冒出來（間隔約 POP），0.5 s 時老鼠、球迷都還在跑，1.2 s 時老鼠都站定了
     assert.equal(pops.length, ratMod.DOME_N - 2, `${what}: four pops`);
     pops.slice(1).forEach((p, k) => assert.ok(Math.abs(p - pops[k] - finale.POP) < 0.05, `${what}: pop ${k + 1} ${(p - pops[k]).toFixed(2)} s after the last`));

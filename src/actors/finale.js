@@ -540,13 +540,16 @@ export function alienEpilogue(e, ctx) {
 //   ① 折旗標（apply only []）＋ worldNow（命中局躺平的人站起來）＋鏡頭到大巨蛋（FOCUS_BEAT）；
 //   ② 一段（SEG 秒）：門口的鼠群 hold 在 DOME_N 隻（家是門外扇形 GATE_FAN，rat.js）；原本的兩隻小跑（RAT_RUN）到自己的扇形點，
 //      缺的四隻每 POP 秒從門口正前方冒出一隻（pop，同 rat.js Lv3 的 fill：spawnHeld），冒出來就小跑到自己的扇形點；
-//      同一刻球迷、球員、新線觀眾的家搬到門外兩側（baseball.js FLEE_SPOTS，同珍奶老闆的家搬到船上），REACT 秒後（看到第一隻老鼠）
-//      一個接一個（間隔 FAN_GAP）頭上「！」、快跑（FAN_RUN）過去，「！」跟跑步疊在一起；兩個拿水桶的工作人員（baseball.staff，家是 follow 老鼠）
+//      同一刻球迷、球員、新線觀眾的家搬到門外兩側（baseball.js FLEE_SPOTS，同珍奶老闆的家搬到船上）、原地站住（freeze），REACT 秒後（看到第一隻老鼠）
+//      一個接一個（間隔 FAN_GAP）頭上「！」、SHOUT_LEAD 秒後快跑（FAN_RUN）過去，「！」跟跑步疊在一起；兩個拿水桶的工作人員（baseball.staff，家是 follow 老鼠）
 //      快跑（STAFF_RUN）追到老鼠後面（CHASE；他們多半從巨蛋後面繞過來，整段 SEG 就是給他們的）；
 //   ③ 交回日常（老鼠、球迷、球員站在新家，工作人員跟著最近的老鼠）→ 剩下的套用（放開 hold）→ 全景停 DOME_END。
 //   不躲進門、不拉近中心格、不動其他格；颱風天的外送機車照舊。沒有新文字。名義秒數 FOCUS_BEAT 0.8 ＋ SEG 2.2 ＋ DOME_END 1.0 ＝ 4.0 s
 // 修正輪 1（審稿：六隻在 0.87–1.00 s 以 DASH 一閃就到、球迷 1.0 s 前全停、之後 1.9 s 沒人動，主戲變成一跳）：
 //   老鼠小跑 1.2 m/s（扇形約 0.6–0.8 s 演完；跑太遠的照 RAT_MAX 加快，1.2 s 前一定站定）、新的四隻一隻一隻冒出來、球迷錯開起跑 2.0 m/s
+// 修正輪 2（審稿：家一搬〔apply FANS〕他們就在日常裡一起走過去，錯開的「！」→ 跑看不出來）：家搬的同一幀把要逃的人拿到劇本手上、原地站住（freeze），
+//   各自的起跑時刻先冒「！」、SHOUT_LEAD 秒後才起跑
+export const SHOUT_LEAD = 0.15;
 export const DOME_END = 1.0, SEG = 2.2, POP = 0.15, RAT_RUN = 1.2, RAT_MAX = 0.75, FAN_RUN = 2.0, STAFF_RUN = 2.0, REACT = 0.25, FAN_GAP = 0.08, FAN_MAX = 1.0;
 export { GATE_FAN } from './rat.js';
 export { FLEE_SPOTS } from './baseball.js';
@@ -587,6 +590,8 @@ const pop = B => {
     end(c) { run?.end(c); },
   };
 };
+// 0 秒：把 who(c) 拿到劇本手上、原地站住（家搬了也不在日常裡先走過去；之後的拍各自叫他們動，B.home 交回日常）
+const freeze = who => ({ kind: 'freeze', dur: 0, start(c) { for (const m of who(c)) { c.roster.claim(m); c.roster.setPose(m, { ...m.pos, walking: false }); } return false; } });
 export function domeRatsEpilogue(e, ctx) {
   const { B } = ctx, pack = c => c.roster.members(KEY) ?? [], staff = c => c.roster.members('baseball.staff') ?? [];
   const fleeing = c => FANS.flatMap(k => c.roster.members(k) ?? []).filter(m => !m.hidden);
@@ -596,10 +601,10 @@ export function domeRatsEpilogue(e, ctx) {
   return [
     B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
     B.together([
-      B.apply(e, { only: [KEY], hold: [KEY] }), B.apply(e, { only: FANS }), B.wait(SEG),
+      B.apply(e, { only: [KEY], hold: [KEY] }), B.apply(e, { only: FANS }), freeze(fleeing), B.wait(SEG),
       crowd(B, c => pack(c).map(m => paced(B, m, GATE_FAN[m.i], RAT_RUN, RAT_MAX))),
       ...Array.from({ length: DOME_N - 2 }, (_, k) => later(k * POP, RAT_MAX, pop(B))),
-      crowd(B, c => fleeing(c).map((m, i) => later(REACT + i * FAN_GAP, FAN_MAX, B.together([paced(B, m, fled(c, m), FAN_RUN, FAN_MAX), B.bubble(m, '！', 0.6)])))),
+      crowd(B, c => fleeing(c).map((m, i) => later(REACT + i * FAN_GAP, SHOUT_LEAD + FAN_MAX, B.together([B.bubble(m, '！', 0.6), later(SHOUT_LEAD, FAN_MAX, paced(B, m, fled(c, m), FAN_RUN, FAN_MAX))])))),
       crowd(B, c => staff(c).map((m, i) => paced(B, m, chase(c)[i % CHASE.length], STAFF_RUN, SEG))),
     ]),
     B.home(c => [...pack(c), ...staff(c), ...fleeing(c)]),

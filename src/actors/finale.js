@@ -23,11 +23,11 @@
 //   珍奶老闆跳上攤車頂）的收尾，見 blackoutEpilogue、floodEpilogue。
 // 計畫 17 任務 5：大巨蛋淹水（球員拉竿、一條魚從泳池跳出來）、珍奶攤被吹走（老闆坐小船追漂走的攤車）、鮮奶過期（長腳的牛奶箱走到西岸掉進海裡）的收尾，
 //   見 domeFloodEpilogue、cartBlownEpilogue、milkExpiredEpilogue。
-// R47（2026-11-07 改版）：大巨蛋鼠災也接收尾——門口湧出六隻維持型態的老鼠、球迷球員跑到門外、工作人員追，見 domeRatsEpilogue。
+// R47（2026-11-07 第三版）：大巨蛋鼠災也接收尾——老鼠佔領巨蛋格、溢到三座橋與鄰格橋頭，巨蛋格上的人過橋撤到隔壁格、工作人員追，見 domeRatsEpilogue。
 import { lookUp, crowd, islanders } from '../show/crowd.js';
 import { anchorWorld, landmarkWorld } from './anchors.js';
 import { SHIELD_R, stageOfView, body as towerBody, bendPoint } from './tower.js';
-import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, SWARM_N, UFO_PARTS, DASH, GATE, GATE_FAN, DOME_N } from './rat.js';
+import { ROOF_SPOTS, SHIP_SPOT, SAUCER_SPOTS, SWARM_ENTRIES, SWARM_N, UFO_PARTS, DASH, GATE, GATE_FAN, DOME_N, HORDE_ZONES } from './rat.js';
 import { island, ROCKS_HOME_A as HOME_A } from './satellites.js';
 import { BLINK } from '../show/blink.js';
 import { TIMES } from '../scene/daynight.js';
@@ -35,9 +35,10 @@ import { NEON_BOOST } from './world.js';
 import { C, offset } from './palette.js';
 import { roadsterParts, BOAT_FROM, BOAT_TO, boatSeat, SHEET_DROP } from './token.js';
 import { floodPerch, BOAT_START as SKIFF_FROM, BOAT_END as SKIFF_TO, boatSeat as skiffSeat, BLOWN, CART_END, QUAY } from './boba.js';
-import { fishArc, FISH_UP } from './baseball.js';
+import { fishArc, FISH_UP, EVAC_SPOTS, evacSpots } from './baseball.js';
 import { CRATE, CRATE_BRINK, CRATE_SEA } from './milk.js';
-import { WATER_Y } from '../scene/hex.js';
+import { WATER_Y, cellAt } from '../scene/hex.js';
+import { BRIDGE_HALF } from '../show/nav.js';
 import { FOCUS_BEAT } from '../show/beats.js';
 import { toDoor } from './typhoon.js';
 import { BATHERS_OUT } from './landmarks.js';
@@ -534,28 +535,26 @@ export function alienEpilogue(e, ctx) {
     B.apply(e), B.focus('home', { hold: ALIEN_END }),
   ];
 }
-// ── R47 大巨蛋鼠災收尾（2026-11-07 改版；終局回合 1 倍速，真實秒數 ≤ 4.5 s——鼠災局多半是吹偏局，壞結局終局 ≤ 16 s）──
-// 使用者 2026-11-07：「鼠災收尾莫名其妙。我覺得問題在於老鼠變異後下一級又變回老鼠，變異老鼠意義不明。另外全島老鼠的效果太噁心，建議收回。」
-// 第一版（計畫 21）的整島鼠群、島民躲進門、中心格特寫整段收回；只在大巨蛋演，老鼠照當下的型態（rat.js packModel：變異鼠就是綠色三眼）：
+// ── R47 大巨蛋鼠災收尾（2026-11-07 第三版；終局回合 1 倍速，真實秒數 ≤ 5.5 s——鼠災局多半是吹偏局，壞結局終局 ≤ 16 s）──
+// 第一版（計畫 21）整島 96 隻鼠群——使用者：「全島老鼠的效果太噁心，建議收回」；第二版（計畫 22）只在巨蛋門口六隻、球迷退到門外——
+// 使用者 2026-11-07：「結果人都在，只有三隻老鼠。看不出來是鼠災。全島都是老鼠又太超過，感覺要折衷」，選了「老鼠也溢到橋上和隔壁格邊緣」。
 //   ① 折旗標（apply only []）＋ worldNow（命中局躺平的人站起來）＋鏡頭到大巨蛋（FOCUS_BEAT）；
-//   ② 一段（SEG 秒）：門口的鼠群 hold 在 DOME_N 隻（家是門外扇形 GATE_FAN，rat.js）；原本的兩隻小跑（RAT_RUN）到自己的扇形點，
-//      缺的四隻每 POP 秒從門口正前方冒出一隻（pop，同 rat.js Lv3 的 fill：spawnHeld），冒出來就小跑到自己的扇形點；
-//      同一刻球迷、球員、新線觀眾的家搬到門外兩側（baseball.js FLEE_SPOTS，同珍奶老闆的家搬到船上）、原地站住（freeze），REACT 秒後（看到第一隻老鼠）
-//      一個接一個（間隔 FAN_GAP）頭上「！」、SHOUT_LEAD 秒後快跑（FAN_RUN）過去，「！」跟跑步疊在一起；兩個拿水桶的工作人員（baseball.staff，家是 follow 老鼠）
-//      快跑（STAFF_RUN）追到老鼠後面（CHASE；他們多半從巨蛋後面繞過來，整段 SEG 就是給他們的）；
-//   ③ 交回日常（老鼠、球迷、球員站在新家，工作人員跟著最近的老鼠）→ 剩下的套用（放開 hold）→ 全景停 DOME_END。
-//   不躲進門、不拉近中心格、不動其他格；颱風天的外送機車照舊。沒有新文字。名義秒數 FOCUS_BEAT 0.8 ＋ SEG 2.2 ＋ DOME_END 1.0 ＝ 4.0 s
-// 修正輪 1（審稿：六隻在 0.87–1.00 s 以 DASH 一閃就到、球迷 1.0 s 前全停、之後 1.9 s 沒人動，主戲變成一跳）：
-//   老鼠小跑 1.2 m/s（扇形約 0.6–0.8 s 演完；跑太遠的照 RAT_MAX 加快，1.2 s 前一定站定）、新的四隻一隻一隻冒出來、球迷錯開起跑 2.0 m/s
-// 修正輪 2（審稿：家一搬〔apply FANS〕他們就在日常裡一起走過去，錯開的「！」→ 跑看不出來）：家搬的同一幀把要逃的人拿到劇本手上、原地站住（freeze），
-//   各自的起跑時刻先冒「！」、SHOUT_LEAD 秒後才起跑
+//   ② 一段（SEG 秒）：一次套用門口的鼠群（hold 在 DOME_N 隻，家是門外扇形 GATE_FAN）、鼠群 rat.horde（rat.js：36 隻、一個 InstancedMesh）、
+//      撤離的人的家（baseball.js EVAC_SPOTS：鄰格的撤離點）；同一幀把要撤離的人拿到劇本手上、原地站住（freeze：巨蛋格上、三座橋上露出來的小人，
+//      老鼠和工作人員不算）；鼠群的落點挪出建築（placeHorde，live、跳過都做）、RUSH 秒內從門口繞著巨蛋湧到巨蛋格、橋上、鄰格橋頭（hordeRush）；
+//      原本的兩隻小跑（RAT_RUN）到自己的扇形點、缺的四隻每 POP 秒從門口冒出一隻（pop）；撤離的人 REACT 秒後一個接一個（間隔 FAN_GAP）頭上「！」、
+//      SHOUT_LEAD 秒後快跑（FAN_RUN，路太長的加快到 EVAC_MAX 秒內）過橋到自己的撤離點（球迷球員：新家的站位；其他路人：最近那座橋那格的撤離點）；
+//      兩個工作人員快跑（STAFF_RUN）追到門口老鼠後面（CHASE）；GATE_HOLD 秒後鏡頭回全景（看得到巨蛋格一片老鼠、橋上有老鼠、人往隔壁跑）；
+//   ③ 交回日常 → 剩下的套用（放開 hold）→ 全景停 DOME_END。不躲進門、其他格的人不動；颱風天的外送機車照舊。沒有新文字。
+//   名義秒數 FOCUS_BEAT 0.8 ＋ SEG 3.0 ＋ DOME_END 1.0 ＝ 4.8 s
+// 第二版的修正輪照舊：老鼠小跑、新的四隻一隻一隻冒出來（修正輪 1）；家搬的同一幀原地站住，各自的起跑時刻先冒「！」、SHOUT_LEAD 秒後才起跑（修正輪 2）
 export const SHOUT_LEAD = 0.15;
-export const DOME_END = 1.0, SEG = 2.2, POP = 0.15, RAT_RUN = 1.2, RAT_MAX = 0.75, FAN_RUN = 2.0, STAFF_RUN = 2.0, REACT = 0.25, FAN_GAP = 0.08, FAN_MAX = 1.0;
+export const DOME_END = 1.0, SEG = 3.0, GATE_HOLD = 0.8, POP = 0.15, RAT_RUN = 1.2, RAT_MAX = 0.75, FAN_RUN = 2.0, STAFF_RUN = 2.0, REACT = 0.25, FAN_GAP = 0.08, EVAC_MAX = 2.0;
 export { GATE_FAN } from './rat.js';
-export { FLEE_SPOTS } from './baseball.js';
+export { EVAC_SPOTS } from './baseball.js';
 // 工作人員追老鼠的站位（相對門口）：門口兩旁、內排老鼠（GATE_FAN ±20°、±60°）的後面（靠門那側），離老鼠 ≥ 0.3、兩人相距 0.5
 export const CHASE = [-1, 1].map(k => offset(GATE, k * 0.25, 0.12));
-const KEY = 'rat.pack', FANS = ['baseball.crowd', 'baseball.players', 'baseball.riders'];
+const KEY = 'rat.pack', HORDE = 'rat.horde', FANS = ['baseball.crowd', 'baseball.players', 'baseball.riders', 'baseball.lawn'];
 // 新的老鼠從門口正前方冒出來（DOOR_ROW：門口往外 0.1、左右 ±0.13）——nav.slots 繞門口一圈，門後是巨蛋的 footprint，圈會被撐到 0.6、冒在球員腳邊。
 // 第 i 隻（i ≥ 2）照牠要去的扇形點（GATE_FAN[i]：−60°、+60°、−40°、+40°）從同一側冒出來，往外跑不交叉
 const DOOR_ROW = [-0.13, 0.13].map(x => offset(GATE, x, 0.1));
@@ -592,22 +591,53 @@ const pop = B => {
 };
 // 0 秒：把 who(c) 拿到劇本手上、原地站住（家搬了也不在日常裡先走過去；之後的拍各自叫他們動，B.home 交回日常）
 const freeze = who => ({ kind: 'freeze', dur: 0, start(c) { for (const m of who(c)) { c.roster.claim(m); c.roster.setPose(m, { ...m.pos, walking: false }); } return false; } });
+// 鼠群：落點挪出建築（rat.js userData.place）——live、跳過都要（跟 hordeRush 不同），跳過的終態才一樣；放在 hordeRush 前面。
+// 同一幀的順序：apply 的 start 就建好鼠群（commit 在第一步），這兩拍接著 start 時零件已經在舞台上
+const placeHorde = { kind: 'placeHorde', dur: 0, start(c) { c.stage.partObject(HORDE)?.userData.place?.(c.nav); return false; } };
+const hordeRush = dur => ({
+  kind: 'hordeRush', dur,
+  start(c) { if (!c.instant) c.stage.partObject(HORDE)?.userData.rush?.(dur / (c.speed ?? 1)); },
+  end(c) { c.stage.partObject(HORDE)?.userData.finish?.(); },
+});
+// 三座橋（rat.js HORDE_ZONES 的 bridge：巨蛋格那端 a、鄰格那端 b、通往的鄰格 cell）：點在兩個橋端之間、離中心線 ≤ 半個橋寬就算在橋上
+const BRIDGES = HORDE_ZONES.filter(z => z.kind === 'bridge');
+const bridgeOf = p => BRIDGES.find(z => {
+  const dx = z.b.x - z.a.x, dz = z.b.z - z.a.z, L = Math.hypot(dx, dz), px = p.x - z.a.x, pz = p.z - z.a.z, t = (px * dx + pz * dz) / L;
+  return t >= 0 && t <= L && Math.abs(px * dz - pz * dx) / L <= BRIDGE_HALF;
+});
+const DOME_CELL = String(HORDE_ZONES.find(z => z.kind === 'cell').cell);
+const onDome = p => String(cellAt(p.x, p.z)) === DOME_CELL;
+// 要撤離的人：巨蛋格上、三座橋上露出來的小人（球迷球員排前面，其他路人照名冊順序）；老鼠、正在走出去的（exit）、拿掉的不算。
+// 日常就是跟著老鼠的人（家是 follow rat.pack：拿水桶的工作人員、晶片的偵防師）留下來追老鼠——偵防師撤走了，交回日常又會跟著老鼠走回巨蛋格
+const chasing = (c, k) => { const h = c.roster.homeOf(k); return h?.kind === 'follow' && h.key === KEY; };
+const evacuating = c => {
+  const keys = [...FANS, ...c.roster.keys().filter(k => !FANS.includes(k) && k !== KEY && !chasing(c, k))];
+  return keys.flatMap(k => c.roster.members(k) ?? []).filter(m => m.walker && !m.hidden && !m.gone && m.mode !== 'exit' && (FANS.includes(m.key) || onDome(m.pos) || bridgeOf(m.pos)));
+};
+// 撤離到的點：球迷球員是新家的站位（baseball.js 的 view 已經照旗標搬好）；其他路人——橋上的到那座橋那格最近的撤離點、巨蛋格上的照 evacSpots 分；
+// 落在 footprint 裡（某些舞台）就站到最近的可走點
+const near = (list, p) => list.reduce((a, b) => (Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? b : a));
+function evacTo(c, m) {
+  let p = FANS.includes(m.key) ? c.roster.homeOf(m.key)?.spots?.[m.i] : null;
+  if (!p) { const br = bridgeOf(m.pos); p = br ? near(EVAC_SPOTS[String(br.cell)], m.pos) : evacSpots([m.pos])[0]; }
+  return c.nav.walkable(p.x, p.z) ? p : c.nav.nearestWalkable(p);
+}
 export function domeRatsEpilogue(e, ctx) {
   const { B } = ctx, pack = c => c.roster.members(KEY) ?? [], staff = c => c.roster.members('baseball.staff') ?? [];
-  const fleeing = c => FANS.flatMap(k => c.roster.members(k) ?? []).filter(m => !m.hidden);
-  // 逃到的點：他新家的站位（baseball.js 的 view 已經照旗標搬好；rescue：落在 footprint 裡就站到最近的可走點，同名冊）
-  const fled = (c, m) => { const p = c.roster.homeOf(m.key)?.spots?.[m.i] ?? m.pos; return c.nav.walkable(p.x, p.z) ? p : c.nav.nearestWalkable(p); };
+  const evac = once(c => evacuating(c)), cast = c => evac(c) ?? [];
   const chase = once(c => CHASE.map(p => (c.nav.walkable(p.x, p.z) ? p : c.nav.nearestWalkable(p))));
+  const run = (c, m, i) => later(REACT + i * FAN_GAP, SHOUT_LEAD + EVAC_MAX, B.together([B.bubble(m, '！', 0.6), later(SHOUT_LEAD, EVAC_MAX, paced(B, m, evacTo(c, m), FAN_RUN, EVAC_MAX))]));
   return [
     B.together([B.apply(e, { only: [] }), B.worldNow(), B.focus('baseball')]),
     B.together([
-      B.apply(e, { only: [KEY], hold: [KEY] }), B.apply(e, { only: FANS }), freeze(fleeing), B.wait(SEG),
+      B.apply(e, { only: [KEY, HORDE, ...FANS], hold: [KEY] }), freeze(cast), placeHorde, hordeRush(RUSH), B.wait(SEG),
       crowd(B, c => pack(c).map(m => paced(B, m, GATE_FAN[m.i], RAT_RUN, RAT_MAX))),
       ...Array.from({ length: DOME_N - 2 }, (_, k) => later(k * POP, RAT_MAX, pop(B))),
-      crowd(B, c => fleeing(c).map((m, i) => later(REACT + i * FAN_GAP, SHOUT_LEAD + FAN_MAX, B.together([B.bubble(m, '！', 0.6), later(SHOUT_LEAD, FAN_MAX, paced(B, m, fled(c, m), FAN_RUN, FAN_MAX))])))),
+      crowd(B, c => cast(c).map((m, i) => run(c, m, i))),
       crowd(B, c => staff(c).map((m, i) => paced(B, m, chase(c)[i % CHASE.length], STAFF_RUN, SEG))),
+      later(GATE_HOLD, FOCUS_BEAT, B.focus('home')),
     ]),
-    B.home(c => [...pack(c), ...staff(c), ...fleeing(c)]),
+    B.home(c => [...pack(c), ...staff(c), ...cast(c)]),
     B.apply(e), B.focus('home', { hold: DOME_END }),
   ];
 }

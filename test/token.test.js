@@ -739,6 +739,10 @@ test('fix3 C: Lv5 / Lv6 stop the train at the station front (trainStop at STATIO
     assert.ok(flat(stop.during).some(b => b.kind === 'bubble') && flat(stop.during).some(b => b.kind === 'levelUp'), `lv${n} ♪ and LEVEL UP while it stands / pulls away`);
     assert.ok(!beats.some(b => b.kind === 'trainDepart'), `lv${n} no trainDepart`);
   }
+  // 計畫 23（R47 第三版同批）：站務員在 Lv5、Lv6、Lv9 都喊「！」太多——Lv6 不喊（只跳），Lv5 照舊喊（開場那一拍的 together 裡）
+  const opening = n => token.script.grow[n]({ kind: 'grow', item: 'token', to: n }, { lv: L({ token: n }), flags: {} }, fakeCtx)[0].beats;
+  assert.equal(opening(5).filter(b => b.kind === 'bubble').length, 1, 'Lv5: the staff still shouts ！');
+  assert.equal(opening(6).filter(b => b.kind === 'bubble').length, 0, 'Lv6: no ！ from the staff');
   // Lv4（第一次有車）照舊從站後面駛出
   assert.ok(flat(token.script.grow[4]({ kind: 'grow', item: 'token', to: 4 }, { lv: L({ token: 4 }), flags: {} }, fakeCtx)).some(b => b.kind === 'trainDepart'), 'Lv4 still departs from behind the station');
 });
@@ -748,7 +752,10 @@ test('fix3 C live: Lv5 / Lv6 play 2.5–3.5 s; at the swap the head car stands a
   const front = token.trainPose(STATION_A / 0.35, 0, { speed: 0.35 });
   for (const order of SOLUTIONS) {
     const h = await headlessShow(), { show, run } = h, update = show.update, apply = show.stage.apply, seen = {};
-    let now = 0, watch = null;
+    let now = 0, watch = null, shouts = 0;
+    // 計畫 23：站務員 Lv5 喊「！」、Lv6 不喊（只跳）——單獨演的這一級裡數「！」
+    const showBubble = show.bubbles.show;
+    show.bubbles.show = (head, kind, dur) => { if (kind === '！') shouts++; return showBubble(head, kind, dur); };
     const head = () => token.trainPose(now + h.rail.offset, 0, { speed: 0.35, trip: h.rail.trip });
     show.stage.apply = (e, opts) => {
       const r = apply(e, opts);
@@ -756,7 +763,7 @@ test('fix3 C live: Lv5 / Lv6 play 2.5–3.5 s; at the swap the head car stands a
       return r;
     };
     show.update = (dt, t) => { now = t; update(dt, t); if (watch) watch.path.push([now - watch.t0, head()]); };
-    await playItem(show, run, order, 'token', (e, secs) => {
+    await playItem(show, (evs, o) => { if (!o?.instant) shouts = 0; return run(evs, o); }, order, 'token', (e, secs) => {
       const to = e.kind === 'grow' ? e.to : 1; if (to !== 5 && to !== 6) return;
       assert.ok(secs >= 2.5 && secs <= SCRIPT_MAX, `${order.join('>')} Lv${to} took ${secs.toFixed(2)} s`);
       assert.ok(watch?.to === to, `Lv${to} swapped the train`);
@@ -766,6 +773,7 @@ test('fix3 C live: Lv5 / Lv6 play 2.5–3.5 s; at the swap the head car stands a
       assert.ok(still.length >= 30 && Math.max(...still) < 0.01, `Lv${to}: stands still ${Math.max(...still).toFixed(3)} for 1.2 s after the swap`);
       const [u1, p1] = watch.path.at(-1), d1 = Math.hypot(p1.x - front.x, p1.z - front.z);
       assert.ok(u1 >= 1.5 && d1 > 0.3, `Lv${to}: pulled away (${d1.toFixed(2)} from the front ${u1.toFixed(2)} s after the swap, as the level ends)`);
+      assert.equal(shouts, to === 5 ? 1 : 0, `Lv${to}: ${shouts} 「！」`);
       seen[to] = +secs.toFixed(2); watch = null;
     });
     assert.deepEqual(Object.keys(seen).map(Number), [5, 6], `${order.join('>')}: both levels seen (${JSON.stringify(seen)})`);

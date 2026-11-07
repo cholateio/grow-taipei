@@ -536,3 +536,55 @@ test('Lv6 in the real turn with no boba tourists (EXAMPLE.cartBlown): script ≥
   const ev = (await playLive(EXAMPLE.cartBlown)).find(x => x.e.kind === 'grow' && x.e.item === 'baseball' && x.e.to === 6);
   assert.ok(ev && ev.script >= 2.5 && ev.script <= SCRIPT_MAX, `turn ${ev?.turn}: Lv6 ${ev?.script.toFixed(2)} s`);
 });
+
+// ── R47 第三版（2026-11-07）：人撤到鄰格 ──
+// 使用者 2026-11-07：「結果人都在，只有三隻老鼠。看不出來是鼠災。全島都是老鼠又太超過，感覺要折衷」——老鼠佔領巨蛋格、溢到橋上，
+// 巨蛋格上的人（球員、觀眾、新線觀眾、草皮散步的人）撤到三個鄰格（EVAC_SPOTS：每格 3 點，離橋頭 ≥ 1.5、走得到、彼此 ≥ 0.4）
+import { edgeMidpoint as edgeMid, cellTop as topOf } from '../src/scene/hex.js';
+const EVAC_NEXT = [[0, 1], [-1, 0], [0, 0]], EVAC_KEYS = ['baseball.crowd', 'baseball.players', 'baseball.riders', 'baseball.lawn'];
+const headOf = n => edgeMid(CELL, n, RING_R * Math.sqrt(3) / 2).b;
+test('R47 v3 EVAC_SPOTS: three neighbour cells × 3 spots, on that cell, ≥ 1.5 from its bridgehead, walkable, ≥ 0.4 apart, on the ground, facing back to the bridge', () => {
+  assert.equal(baseball.FLEE_SPOTS, undefined, 'FLEE_SPOTS gone');
+  assert.deepEqual(Object.keys(baseball.EVAC_SPOTS).sort(), EVAC_NEXT.map(String).sort());
+  const nav = createNav(), all = [];
+  for (const n of EVAC_NEXT) {
+    const spots = baseball.EVAC_SPOTS[String(n)], head = headOf(n);
+    assert.equal(spots.length, 3, `${n}: 3 spots`);
+    for (const [i, p] of spots.entries()) {
+      const c = cellAt(p.x, p.z), d = Math.hypot(p.x - head.x, p.z - head.z);
+      assert.ok(c && c[0] === n[0] && c[1] === n[1], `${n} #${i} on its cell`);
+      assert.ok(d >= 1.5, `${n} #${i}: ${d.toFixed(2)} from the bridgehead`);
+      assert.ok(nav.walkable(p.x, p.z), `${n} #${i} walkable`);
+      assert.equal(p.y, topOf(n));
+      assert.ok(Math.abs(p.yaw - Math.atan2(head.x - p.x, head.z - p.z)) < 1e-9, `${n} #${i} looks back at the bridge`);
+      all.push(p);
+    }
+  }
+  for (let i = 0; i < all.length; i++) for (let j = i + 1; j < all.length; j++) assert.ok(Math.hypot(all[i].x - all[j].x, all[i].z - all[j].z) >= 0.4, `spots ${i}, ${j} apart`);
+});
+test('R47 v3 view: in the domeRats epilogue the players, fans, riders and the lawn walker stand on EVAC_SPOTS (one each, ≤ 3 a cell, nearest bridge first); before it they stand where they did; nothing else changes', () => {
+  const evac = new Map(Object.entries(baseball.EVAC_SPOTS).flatMap(([cell, ps]) => ps.map(p => [p, cell])));
+  for (let n = 1; n <= 8; n++) {
+    const before = baseball.view(lv({ baseball: n }), { domeRats: true }), after = baseball.view(lv({ baseball: n }), { domeRats: true, epilogue: 'domeRats' });
+    const used = [], perCell = {};
+    for (const k of EVAC_KEYS) {
+      if (!before[k]) { assert.equal(after[k], undefined); continue; }
+      assert.equal(after[k].n, before[k].n, `lv${n} ${k}: same people`);
+      assert.equal(after[k].home.kind, 'stand'); assert.equal(after[k].home.rescue, true);
+      assert.deepEqual(after[k].home.entry, before[k].home.entry, `lv${n} ${k}: same entry`);
+      const spots = after[k].home.spots.slice(0, after[k].n);
+      for (const p of spots) { assert.ok(evac.has(p), `lv${n} ${k}: an evac spot`); perCell[evac.get(p)] = (perCell[evac.get(p)] ?? 0) + 1; }
+      used.push(...spots);
+    }
+    assert.equal(new Set(used).size, used.length, `lv${n}: one spot each (${used.length})`);
+    for (const [cell, c] of Object.entries(perCell)) assert.ok(c <= 3, `lv${n} ${cell}: ${c}`);
+    for (const k of Object.keys(before)) if (!EVAC_KEYS.includes(k)) assert.deepEqual(after[k], before[k], `lv${n} ${k} unchanged`);
+  }
+  // 草皮散步的人在巨蛋東北邊：走往中心格那座橋（最近）
+  const v = baseball.view(lv({ baseball: 7 }), { domeRats: true, epilogue: 'domeRats' });
+  assert.equal(evac.get(v['baseball.lawn'].home.spots[0]), '0,0', 'the lawn walker takes the bridge to the centre cell');
+  // 門口西端的觀眾往西北那座橋、東端的往東
+  const crowd = v['baseball.crowd'].home.spots, west = baseball.fanSpots(5).findIndex(p => p.x === Math.min(...baseball.fanSpots(5).map(q => q.x))), east = baseball.fanSpots(5).findIndex(p => p.x === Math.max(...baseball.fanSpots(5).map(q => q.x)));
+  assert.equal(evac.get(crowd[west]), '-1,0', 'the west end fan → the north-west bridge');
+  assert.equal(evac.get(crowd[east]), '0,1', 'the east end fan → the east bridge');
+});

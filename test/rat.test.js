@@ -631,6 +631,7 @@ test('cyber Lv4: the rats set off behind the detective one after another, ≥ 0.
 import { entryProblems, focusCell, focusTrail } from './helpers/actors.js';
 import { entriesThroughSolutions } from './helpers/show.js';
 import { createNav } from '../src/show/nav.js';
+import * as navMod from '../src/show/nav.js';
 import { cellOf } from '../src/actors/anchors.js';
 import { B } from '../src/show/beats.js';
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);
@@ -887,13 +888,14 @@ test('R47 rev dome mode: the gate rats keep their form (alien / cyber / plain), 
       assert.equal(p.n, epilogue ? 6 : 2, `${what}: n`);
       assert.deepEqual(p.home, epilogue ? { kind: 'stand', spots: rat.GATE_FAN } : { kind: 'wander', at: GATE, r: 0.9 }, `${what}: home`);
       assert.equal(v['rat.plague'], undefined, `${what}: no plague part`);
-      assert.deepEqual(Object.keys(v), ['rat.pack'], `${what}: only the pack`);
+      // R47 第三版：收尾多一群 rat.horde（一個 InstancedMesh，不是骨架動畫）
+      assert.deepEqual(Object.keys(v), epilogue ? ['rat.pack', 'rat.horde'] : ['rat.pack'], `${what}: the pack${epilogue ? ' and the horde' : ''}`);
       // 骨架動畫 ≤ 11（再加柴犬 ≤ 12）：門口的鼠群＋石堆島的兩隻
       const s = sat.view(lv(l), { ...f, epilogue }), anim = p.n + (s['sat.rocks']?.n ?? 0);
       assert.ok(anim <= 11, `${what}: animated rats ${anim}`);
     }
   }
-  for (const k of ['PLAGUE_N', 'PLAGUE_SCALE', 'plagueSpots', 'PLAGUE_COLOR', 'SCURRY']) assert.equal(rat[k], undefined, `${k} gone`);
+  for (const k of ['PLAGUE_N', 'PLAGUE_SCALE', 'plagueSpots', 'PLAGUE_COLOR']) assert.equal(rat[k], undefined, `${k} gone`);
   assert.equal(rat.builders.plague, undefined, 'no plague builder');
 });
 test('R47 rev GATE_FAN: six spots outside the dome gate, 0.6–1.0 from GATE, within ±60° of the camera side, ≥ 0.3 apart, facing out, walkable', () => {
@@ -908,4 +910,128 @@ test('R47 rev GATE_FAN: six spots outside the dome gate, 0.6–1.0 from GATE, wi
     assert.ok(nav.walkable(p.x, p.z), `spot ${i} walkable`);
   }
   for (let i = 0; i < rat.GATE_FAN.length; i++) for (let j = i + 1; j < rat.GATE_FAN.length; j++) assert.ok(flatD(rat.GATE_FAN[i], rat.GATE_FAN[j]) >= 0.3, `spots ${i}, ${j} apart`);
+});
+
+// ── R47 第三版（2026-11-07）：鼠群佔領巨蛋格、溢到三座橋與鄰格橋頭 ──
+// 使用者 2026-11-07：「結果人都在，只有三隻老鼠。看不出來是鼠災。全島都是老鼠又太超過，感覺要折衷」——選了「老鼠也溢到橋上和隔壁格邊緣」。
+// rat.horde：HORDE_N 36 隻（一個 InstancedMesh、一個 draw call），從巨蛋門口湧出：24 隻在巨蛋格、每座橋 2 隻、每個鄰格橋頭 2 隻
+import { edgeMidpoint, RING_R, axialToWorld as a2w } from '../src/scene/hex.js';
+import { bridgeDecks } from '../src/scene/bridge.js';
+const DOME_CELL = [-1, 1], NEXT = [[0, 1], [-1, 0], [0, 0]], DOME_C = anchorWorld('baseball');
+const HEADS = NEXT.map(n => ({ n, ...edgeMidpoint(DOME_CELL, n, RING_R * Math.sqrt(3) / 2) }));
+const sameCell = (c, d) => !!c && c[0] === d[0] && c[1] === d[1];
+test('R47 v3 hordeSpots: 36 rats from a ring 0.3–0.6 round the gate — 24 on the dome cell (0.6–2.0 from its centre, ≥ 1.3 from the dome), 2 on each of the three bridges (deck t 0.3 / 0.7), 2 by each neighbour bridgehead (0.4–0.8 into the cell); ≥ 0.35 apart; fixed seed', () => {
+  assert.equal(rat.HORDE_N, 36);
+  const spots = rat.hordeSpots();
+  assert.equal(spots.length, 36);
+  assert.deepEqual(rat.hordeSpots(), spots, 'fixed seed');
+  const count = { cell: 0, bridge: new Map(), head: new Map() };
+  for (const [i, s] of spots.entries()) {
+    const g = flatD(s.from, GATE);
+    assert.ok(g >= 0.3 - 1e-9 && g <= 0.6 + 1e-9, `rat ${i} starts by the gate (${g.toFixed(2)})`);
+    assert.ok(Number.isFinite(s.yaw) && Number.isFinite(s.phase), `rat ${i}: yaw, phase`);
+    const z = rat.HORDE_ZONES[s.zone];
+    assert.ok(z && rat.inHordeZone(z, s.to), `rat ${i} in its zone ${z?.kind}`);
+    assert.ok(rat.HORDE_ZONES.some(zz => rat.inHordeZone(zz, s.to)));
+    if (z.kind === 'cell') {
+      count.cell++;
+      assert.ok(sameCell(cellAt(s.to.x, s.to.z), DOME_CELL), `rat ${i} on the dome cell`);
+      const r = flatD(s.to, a2w(...DOME_CELL));
+      assert.ok(r >= 0.6 - 1e-9 && r <= 2.0 + 1e-9, `rat ${i}: ${r.toFixed(2)} from the cell centre`);
+      assert.ok(flatD(s.to, DOME_C) >= 1.3 - 1e-9, `rat ${i} clear of the dome (${flatD(s.to, DOME_C).toFixed(2)})`);
+    } else if (z.kind === 'bridge') {
+      const h = HEADS.find(b => sameCell(b.n, z.cell)), decks = bridgeDecks(h.a, h.b, { n: 21 });
+      // 橋長 0.88：簡報的 t 0.35／0.65 只隔 0.26 公尺，放寬到 0.3／0.7（隔 0.35）
+      assert.ok([6, 14].some(k => flatD(s.to, decks[k]) < 1e-9), `rat ${i} on a deck point t 0.3 / 0.7 of the bridge to ${z.cell}`);
+      assert.equal(cellAt(s.to.x, s.to.z), null, `rat ${i} over the water (on the bridge)`);
+      count.bridge.set(String(z.cell), (count.bridge.get(String(z.cell)) ?? 0) + 1);
+    } else {
+      const h = HEADS.find(b => sameCell(b.n, z.cell)), d = flatD(s.to, h.b);
+      assert.ok(sameCell(cellAt(s.to.x, s.to.z), z.cell), `rat ${i} on the neighbour ${z.cell}`);
+      assert.ok(d >= 0.4 - 1e-9 && d <= 0.8 + 1e-9, `rat ${i}: ${d.toFixed(2)} from the bridgehead`);
+      count.head.set(String(z.cell), (count.head.get(String(z.cell)) ?? 0) + 1);
+    }
+    // 落點在地面（橋上是橋面）
+    assert.ok(Math.abs(s.to.y - navMod.groundAt(s.to.x, s.to.z)) < 1e-9, `rat ${i} on the ground (${s.to.y.toFixed(3)})`);
+  }
+  assert.equal(count.cell, 24);
+  for (const n of NEXT) { assert.equal(count.bridge.get(String(n)), 2, `bridge to ${n}`); assert.equal(count.head.get(String(n)), 2, `bridgehead ${n}`); }
+  for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) assert.ok(flatD(spots[i].to, spots[j].to) >= 0.35 - 1e-9, `rats ${i}, ${j} apart`);
+  // 門口留給名冊的六隻（GATE_FAN）
+  for (const [i, s] of spots.entries()) for (const q of rat.GATE_FAN) assert.ok(flatD(s.to, q) >= 0.35 - 1e-9, `rat ${i} clear of the gate fan`);
+});
+test('R47 v3 view: rat.horde only in the domeRats epilogue (one part at the origin, no footprint, no shadow, look = packModel)', () => {
+  for (const [l, f] of [[{ rat: 4, baseball: 8 }, { ratBranch: 'alien' }], [{ rat: 4, baseball: 7 }, { ratBranch: 'cyber' }], [{ rat: 3, baseball: 5 }, {}]]) {
+    const flags = { ...f, domeRats: true, missile: 'deflect', epilogue: 'domeRats' }, v = rat.view(lv(l), flags), p = v['rat.horde'];
+    assert.ok(p, 'the horde'); assert.equal(p.kind, 'horde'); assert.deepEqual(p.at, { x: 0, y: 0, z: 0 });
+    assert.equal(p.footprint, false); assert.equal(p.shadow, false);
+    assert.deepEqual(p.spots, rat.hordeSpots());
+    assert.deepEqual(p.look, rat.packModel(lv(l), flags));
+    assert.ok(v['rat.pack'], 'the roster rats stay');
+  }
+  for (const flags of [{ domeRats: true }, { domeRats: true, missile: 'deflect' }, { ratBranch: 'alien', epilogue: 'alien', missile: 'deflect' }, {}]) {
+    assert.equal(rat.view(lv({ rat: 4, baseball: 8 }), flags)['rat.horde'], undefined, JSON.stringify(flags));
+  }
+});
+const hordePart = (look, quality) => {
+  const spec = { ...rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, epilogue: 'domeRats' })['rat.horde'], look };
+  const glow = createGlowRegistry(), f = createPartFactory(THREE, { glow, quality, builders: rat.builders });
+  return { spec, glow, p: f.build(spec) };
+};
+test('R47 v3 horde part: one InstancedMesh (one draw call, no shadow) of 36 clay rats ×1.4; colour by look (alien green with glow, cyber grey, plain clay); built finished; rush(1.2): at the gate, half way after 0.5 s, home after 1.2 s, never inside the dome; ?quality=low the same', () => {
+  for (const quality of ['high', 'low']) for (const [name, look, color] of [['plain', {}, 0x6b5b53], ['alien', rat.packModel(lv({ rat: 4 }), { ratBranch: 'alien' }), C.alien], ['cyber', rat.packModel(lv({ rat: 4 }), { ratBranch: 'cyber' }), 0xc0c8d0]]) {
+    const { spec, glow, p } = hordePart(look, quality), S = spec.spots, what = `${quality} ${name}`, meshes = [];
+    p.object.traverse(o => { if (o.isMesh) meshes.push(o); });
+    assert.equal(meshes.length, 1, `${what}: one draw call`);
+    const [mesh] = meshes;
+    assert.ok(mesh.isInstancedMesh); assert.equal(mesh.count, rat.HORDE_N); assert.equal(mesh.castShadow, false);
+    assert.equal(mesh.material.color.getHex(), color, `${what}: colour`);
+    assert.equal(mesh.material.emissive.getHex(), name === 'alien' ? new THREE.Color(C.alien).multiplyScalar(rat.HORDE_GLOW).getHex() : 0, `${what}: glow (alien: C.alien × HORDE_GLOW)`);
+    if (name === 'alien' && quality === 'high') assert.equal(glow.size, 1, 'the glow registered (night)');
+    mesh.geometry.computeBoundingBox(); const sz = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
+    assert.ok(Math.abs(sz.x - 0.224) < 0.01 && sz.z > 0.45 && sz.z < 0.6, `${what}: rat size ×1.4`);
+    const m4 = new THREE.Matrix4(), v = new THREE.Vector3(), at = i => { mesh.getMatrixAt(i, m4); return v.setFromMatrixPosition(m4).clone(); };
+    const all = [...S.keys()], jig = i => (S[i].jig ?? rat.HORDE_SCURRY) * Math.SQRT2 + 1e-6;
+    for (const i of all) assert.ok(flatD(at(i), S[i].to) <= jig(i), `${what}: rat ${i} built at its to`);
+    p.update(0.5, 0.5);
+    for (const i of all) assert.ok(flatD(at(i), S[i].to) <= jig(i), `${what}: rat ${i} scurries in place`);
+    p.object.userData.rush(1.2); p.update(0, 0.5);
+    for (const i of all) assert.ok(flatD(at(i), S[i].from) < 1e-6, `${what}: rat ${i} back at the gate`);
+    let inDome = 0;
+    for (let t = 0; t < 0.5 - 1e-9; t += 0.05) { p.update(0.05, 0.5 + t); for (const i of all) { const q = at(i); if (((q.x - DOME_C.x) / 1.15) ** 2 + ((q.z - DOME_C.z) / 0.95) ** 2 < 1 && flatD(S[i].from, q) > 0.3) inDome++; } }
+    for (const i of all) {
+      const q = at(i), L = flatD(S[i].from, S[i].to);
+      if (L > 1.0) assert.ok(flatD(q, S[i].from) > 0.2 && flatD(q, S[i].to) > 0.2, `${what}: rat ${i} on its way at 0.5 s`);
+    }
+    for (let t = 0; t < 0.75; t += 0.05) { p.update(0.05, 1.0 + t); for (const i of all) { const q = at(i); if (((q.x - DOME_C.x) / 1.15) ** 2 + ((q.z - DOME_C.z) / 0.95) ** 2 < 1) inDome++; } }
+    assert.equal(inDome, 0, `${what}: the horde runs round the dome, not through it`);
+    for (const i of all) assert.ok(flatD(at(i), S[i].to) <= jig(i), `${what}: rat ${i} arrived by 1.2 s`);
+    p.dispose();
+    if (quality === 'high') assert.equal(glow.size, 0, 'the glow released');
+  }
+});
+test('R47 v3 horde place(nav): destinations inside footprints move to walkable ground in their own zone (≤ 0.6); none buried after', () => {
+  const { p, spec } = hordePart({}, 'high'), nav = createNav();
+  // 一個蓋住巨蛋格一大片的假 footprint：被蓋到的都要挪出去、還在自己的區域
+  nav.setFootprints([{ x: DOME_C.x, z: DOME_C.z, rx: 1.15, rz: 0.95 }, { x: DOME_C.x + 1.6, z: DOME_C.z + 0.4, r: 0.5 }]);
+  const moved = p.object.userData.place(nav), targets = p.object.userData.targets();
+  assert.ok(moved >= 1, `moved ${moved}`);
+  targets.forEach((t, i) => {
+    assert.ok(nav.walkable(t.x, t.z), `rat ${i} on walkable ground`);
+    assert.ok(rat.inHordeZone(rat.HORDE_ZONES[spec.spots[i].zone], t), `rat ${i} still in its zone`);
+    assert.ok(flatD(t, spec.spots[i].to) <= 0.6 + 1e-6, `rat ${i} moved ≤ 0.6`);
+  });
+  p.dispose();
+});
+test('R47 v3 hordeAt: every rush path runs round the dome (never inside its ellipse) and over land or the three bridges (never the water); starts at from, ends at to', () => {
+  const bridges = rat.HORDE_ZONES.filter(z => z.kind === 'bridge'), bad = [];
+  for (const [i, sp] of rat.hordeSpots().entries()) {
+    assert.ok(flatD(rat.hordeAt(sp, 0), sp.from) < 1e-9 && flatD(rat.hordeAt(sp, 1), sp.to) < 1e-9, `rat ${i}: from → to`);
+    for (let k = 0; k <= 1 + 1e-9; k += 0.02) {
+      const p = rat.hordeAt(sp, k);
+      if (!cellAt(p.x, p.z) && !bridges.some(z => rat.inHordeZone(z, p))) bad.push(`rat ${i} wet at ${k.toFixed(2)}`);
+      if (((p.x - DOME_C.x) / 1.15) ** 2 + ((p.z - DOME_C.z) / 0.95) ** 2 < 1) bad.push(`rat ${i} in the dome at ${k.toFixed(2)}`);
+    }
+  }
+  assert.deepEqual(bad, []);
 });

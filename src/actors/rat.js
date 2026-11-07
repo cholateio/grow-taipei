@@ -23,6 +23,11 @@ import { compile } from '../rules/conditions.js';
 import { trainCars, GAP, TRACK, DECK_AT, PLATFORM } from './token.js';
 import { modelExtras } from '../show/roster.js';
 import { body as towerBody, shipTop } from './tower.js';
+import { axialToWorld, cellAt, edgeMidpoint, RING_R } from '../scene/hex.js';
+import { bridgeDecks } from '../scene/bridge.js';
+import { groundAt, BRIDGE_HALF } from '../show/nav.js';
+import { mulberry32 } from '../scene/random.js';
+import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
@@ -96,6 +101,113 @@ export function packModel(lv, flags) {
   return {};
 }
 
+// ── R47 第三版（2026-11-07）：鼠群佔領巨蛋格、溢到橋上和隔壁格橋頭 ──
+// 使用者 2026-11-07：「結果人都在，只有三隻老鼠。看不出來是鼠災。全島都是老鼠又太超過，感覺要折衷」——選了「老鼠也溢到橋上和隔壁格邊緣」。
+// 收尾（flags.epilogue 'domeRats'）門口六隻名冊老鼠（GATE_FAN）之外多一群 rat.horde：HORDE_N 隻黏土老鼠，一個 InstancedMesh（一個 draw call，
+// 沒有骨骼、不進名冊、不算人數；幾何同計畫 21 收回的整島鼠群，× HORDE_SCALE），顏色照型態（packModel：外星綠色帶發光、賽博灰、普通黏土色）。
+// 落點只在三種區域（HORDE_ZONES）：
+//   巨蛋格（24 隻）：格心半徑 HORDE_R 之間、離巨蛋中心 ≥ DOME_CLEAR（巨蛋 footprint 2.3 × 1.9 的橢圓）、離門口 ≥ GATE_CLEAR、離 GATE_FAN ≥ HORDE_GAP（門口留給名冊的六隻與工作人員）；
+//   巨蛋格通往三個鄰格的橋面（每座 2 隻）：bridgeDecks 甲板中心線 t 0.3／0.7（橋長 0.88：簡報的 0.35／0.65 只隔 0.26，放寬到彼此 0.35）；
+//   鄰格靠橋頭（每格 2 隻）：橋頭（橋在鄰格那端）往格心 HEAD_IN 之間。
+// 彼此 ≥ HORDE_GAP。出發點在門口 GATE 周圍半徑 HORDE_FROM 一圈；固定種子亂數，每次載入一樣
+export const HORDE_N = 36, HORDE_SCALE = 1.4;
+const DOME_CELL = [-1, 1], NEXT_CELLS = [[0, 1], [-1, 0], [0, 0]], HEAD_R = RING_R * Math.sqrt(3) / 2;   // 橋頭：同 island.js addBridge 的橋端
+const HORDE_R = [0.6, 2.0], HORDE_FROM = [0.3, 0.6], HEAD_IN = [0.4, 0.8], DOME_CLEAR = 1.3, GATE_CLEAR = 0.5, HORDE_GAP = 0.35, DECK_T = [0.3, 0.7], DECK_N = 21;
+const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
+const sameCell = (c, d) => !!c && c[0] === d[0] && c[1] === d[1];
+export const HORDE_ZONES = [
+  { kind: 'cell', cell: DOME_CELL, n: 24 },
+  ...NEXT_CELLS.map(cell => { const { a, b } = edgeMidpoint(DOME_CELL, cell, HEAD_R); return { kind: 'bridge', cell, a, b, n: DECK_T.length }; }),
+  ...NEXT_CELLS.map(cell => { const { a, b } = edgeMidpoint(DOME_CELL, cell, HEAD_R); return { kind: 'head', cell, a, at: b, n: 2 }; }),
+];
+// 點 p 在不在區域 z 裡：巨蛋格＝格內；橋＝兩個橋端之間、離中心線 ≤ 半個橋寬；橋頭＝那個鄰格裡、離橋頭 ≤ HEAD_IN[1]
+export function inHordeZone(z, p) {
+  if (z.kind === 'cell') return sameCell(cellAt(p.x, p.z), z.cell);
+  if (z.kind === 'head') return sameCell(cellAt(p.x, p.z), z.cell) && flatDist(p, z.at) <= HEAD_IN[1] + 1e-9;
+  const dx = z.b.x - z.a.x, dz = z.b.z - z.a.z, L = Math.hypot(dx, dz), px = p.x - z.a.x, pz = p.z - z.a.z;
+  const t = (px * dx + pz * dz) / L, off = Math.abs(px * dz - pz * dx) / L;
+  return t >= 0 && t <= L && off <= BRIDGE_HALF + 1e-9 && !cellAt(p.x, p.z);
+}
+// 跑的路線（k 0 → 1）：繞巨蛋中心的極座標——角度從出發點轉到落點（短的那邊）、半徑線性內插，中段撐到至少 AROUND（巨蛋 footprint 外），
+// 老鼠從門口湧出來繞著巨蛋跑到後面，不穿過巨蛋。上橋的（橋上、鄰格橋頭）先這樣繞到巨蛋格那端的橋頭（via 的第一點），再沿橋直線過去
+// （via 其餘的點、最後到落點），不從水上抄近路。k 照路長分段；高度線性內插＋每公尺 HOP_PER_M 的小拋物線
+const AROUND = 1.45, HOP_PER_M = 0.05, FROM_ARC = 80 * Math.PI / 180, ARC_SAMPLES = 6;
+function around(from, to, k) {
+  const a0 = Math.atan2(from.z - DOME.z, from.x - DOME.x), a1 = Math.atan2(to.z - DOME.z, to.x - DOME.x);
+  let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+  const r0 = flatDist(from, DOME), r1 = flatDist(to, DOME), base = r0 + (r1 - r0) * k, w = Math.min(1, 3 * Math.sin(Math.PI * k));
+  const r = base + Math.max(0, AROUND - base) * w, a = a0 + da * k;
+  return { x: DOME.x + Math.cos(a) * r, z: DOME.z + Math.sin(a) * r };
+}
+export function hordeAt(sp, k) {
+  const { from, to } = sp, pts = sp.via ? [...sp.via, to] : [to];
+  // 第一段（繞巨蛋）的長度取樣估，之後直線
+  let arc = 0; for (let i = 1, p = from; i <= ARC_SAMPLES; i++) { const q = around(from, pts[0], i / ARC_SAMPLES); arc += flatDist(p, q); p = q; }
+  const legs = [arc, ...pts.slice(1).map((q, i) => flatDist(pts[i], q))], total = legs.reduce((a, b) => a + b, 0) || 1;
+  let d = k * total, xz = null;
+  for (let i = 0; i < legs.length && !xz; i++) {
+    if (d <= legs[i] + 1e-12 || i === legs.length - 1) {
+      const u = legs[i] ? Math.min(1, d / legs[i]) : 1;
+      xz = i === 0 ? around(from, pts[0], u) : { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * u, z: pts[i - 1].z + (pts[i].z - pts[i - 1].z) * u };
+    } else d -= legs[i];
+  }
+  return { x: xz.x, y: from.y + (to.y - from.y) * k + HOP_PER_M * total * 4 * k * (1 - k), z: xz.z };
+}
+// 到站時的朝向：路線最後一小段的方向
+const arriveYaw = sp => { const p = hordeAt(sp, 0.98), q = sp.to; return Math.atan2(q.x - p.x, q.z - p.z); };
+// 橋上的老鼠亂竄小一點（橋寬 0.5，不掉下橋）
+const BRIDGE_JIG = 0.06;
+export function hordeSpots(seed = 7) {
+  const rnd = mulberry32(seed), spots = [], centre = axialToWorld(...DOME_CELL);
+  const clear = p => spots.every(s => flatDist(s.to, p) >= HORDE_GAP) && GATE_FAN.every(q => flatDist(q, p) >= HORDE_GAP);
+  const pick = (zone, gen) => {
+    let to = null;
+    for (let tries = 0; tries < 500 && !to; tries++) { const p = gen(); if (p && clear(p)) to = p; }
+    if (!to) throw new Error(`hordeSpots: no room in zone ${zone}`);
+    return { x: to.x, y: groundAt(to.x, to.z), z: to.z };
+  };
+  HORDE_ZONES.forEach((z, zone) => {
+    for (let k = 0; k < z.n; k++) {
+      let to;
+      if (z.kind === 'cell') to = pick(zone, () => {
+        const a = rnd() * Math.PI * 2, r = HORDE_R[0] + rnd() * (HORDE_R[1] - HORDE_R[0]), p = { x: centre.x + Math.cos(a) * r, z: centre.z + Math.sin(a) * r };
+        return sameCell(cellAt(p.x, p.z), DOME_CELL) && flatDist(p, DOME) >= DOME_CLEAR && flatDist(p, GATE) >= GATE_CLEAR ? p : null;
+      });
+      else if (z.kind === 'bridge') { const d = bridgeDecks(z.a, z.b, { n: DECK_N })[Math.round(DECK_T[k] * (DECK_N - 1))]; to = pick(zone, () => d); }
+      else {
+        const c = axialToWorld(...z.cell), L = flatDist(c, z.at), ux = (c.x - z.at.x) / L, uz = (c.z - z.at.z) / L;
+        to = pick(zone, () => {
+          const d = HEAD_IN[0] + rnd() * (HEAD_IN[1] - HEAD_IN[0]), s = (rnd() - 0.5) * 1.2, p = { x: z.at.x + ux * d - uz * s, z: z.at.z + uz * d + ux * s };
+          return sameCell(cellAt(p.x, p.z), z.cell) && flatDist(p, z.at) >= HEAD_IN[0] && flatDist(p, z.at) <= HEAD_IN[1] ? p : null;
+        });
+      }
+      // 出發點只在門口往外那半圈（±FROM_ARC，從門口往鏡頭那側）：門後是巨蛋，起跑不在巨蛋裡
+      const a = (rnd() * 2 - 1) * FROM_ARC, r = HORDE_FROM[0] + rnd() * (HORDE_FROM[1] - HORDE_FROM[0]);
+      const sp = { from: { x: GATE.x + Math.sin(a) * r, y: GATE.y, z: GATE.z + Math.cos(a) * r }, to, zone, phase: rnd() * Math.PI * 2 };
+      if (z.kind === 'bridge') sp.jig = BRIDGE_JIG;
+      if (z.kind !== 'cell') sp.via = z.kind === 'bridge' ? [{ ...z.a }] : [{ ...z.a }, { ...z.at }];   // 上橋的：先到巨蛋格那端的橋頭（橋頭的：再到鄰格那端）
+      sp.yaw = arriveYaw(sp);
+      spots.push(sp);
+    }
+  });
+  return spots;
+}
+const HORDE = hordeSpots();
+// 一隻老鼠（局部 +z 是頭）：身體橢球 0.16 × 0.1 × 0.22、頭球 0.08（前面、略低）、兩個小耳朵、尾巴（細圓柱往後拖、尾端微翹），整隻 × HORDE_SCALE。
+// 到站後原地小步亂竄（±HORDE_SCURRY；橋上 ±BRIDGE_JIG）
+export const HORDE_COLOR = 0x6b5b53, HORDE_SCURRY = 0.15, HORDE_GLOW = 0.3;
+const PLACE_MAX = 0.6, PLACE_STEP = 0.05, PLACE_GAP = 0.3;   // place(nav)：挪開建築最遠幾公尺、一圈多寬、彼此至少多遠
+function ratGeometry(THREE) {
+  const geos = [
+    new THREE.SphereGeometry(0.5, 8, 6).scale(0.16, 0.1, 0.22).translate(0, 0.05, 0),
+    new THREE.SphereGeometry(0.04, 7, 5).translate(0, 0.06, 0.12),
+    new THREE.SphereGeometry(0.018, 5, 4).translate(-0.025, 0.1, 0.1), new THREE.SphereGeometry(0.018, 5, 4).translate(0.025, 0.1, 0.1),
+    new THREE.CylinderGeometry(0.006, 0.012, 0.16, 5).rotateX(Math.PI / 2 - 0.25).translate(0, 0.06, -0.18),
+  ];
+  const geo = mergeGeometries(geos).scale(HORDE_SCALE, HORDE_SCALE, HORDE_SCALE); geos.forEach(g => g.dispose());
+  return geo;
+}
+
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
 export function ratMode(lv, flags) {
   if (!lv.rat) return null;
@@ -147,13 +259,76 @@ export function view(lv, flags, meta) {
       return v;
     }
     // 鼠災（颱風把老鼠沖進大巨蛋）：老鼠照當下的型態（packModel，R47 改版）在門口晃；收尾時 DOME_N 隻站在門外扇形（GATE_FAN）
-    case 'dome': return {
-      'rat.pack': flags.epilogue === 'domeRats' ? pack(GATE, DOME_N, { kind: 'stand', spots: GATE_FAN }, packModel(lv, flags)) : pack(GATE, GROW_TO, wander(GATE, 0.9), packModel(lv, flags)),
-    };
+    // R47 第三版：收尾多一群 rat.horde（佔領巨蛋格、溢到三座橋與鄰格橋頭；finale.js 的收尾劇本讓牠們從門口湧出）
+    case 'dome': {
+      if (flags.epilogue !== 'domeRats') return { 'rat.pack': pack(GATE, GROW_TO, wander(GATE, 0.9), packModel(lv, flags)) };
+      return {
+        'rat.pack': pack(GATE, DOME_N, { kind: 'stand', spots: GATE_FAN }, packModel(lv, flags)),
+        'rat.horde': { kind: 'horde', at: { x: 0, y: 0, z: 0 }, spots: HORDE, look: packModel(lv, flags), footprint: false, shadow: false },
+      };
+    }
   }
 }
 
 export const builders = {
+  // R47 第三版鼠群：一個 InstancedMesh、spec.spots 一隻一個實例，平面著色、不投影；顏色照 spec.look（packModel）：
+  // 外星綠色（C.alien）帶發光（夜裡亮，同名冊的變異鼠；?quality=low 不發光）、賽博灰、普通黏土色。
+  // object.userData.rush(dur)：時鐘歸零、dur 秒內每隻沿自己的路線（hordeAt：繞巨蛋）從 from 跑到 to（smoothstep），頭朝前進方向；
+  // 到了就原地小步亂竄（±HORDE_SCURRY，橋上 ±BRIDGE_JIG；各自的相位與週期，頭跟著微轉；跑的時候亂竄照 smoothstep 淡入，到站不跳）。finish()：跳到終態。
+  // 建好就是終態（全部在 to、亂竄中）：跳過、截圖、舞台重建零件直接看到佔領的鼠群
+  horde(THREE, spec, ctx) {
+    const spots = spec.spots.map(sp => ({ ...sp, to: { ...sp.to } })), n = spots.length, object = new THREE.Group(), look = spec.look ?? {};
+    const mat = new THREE.MeshStandardMaterial({ color: look.tint?.Grey ?? HORDE_COLOR, roughness: 0.85, metalness: 0, flatShading: true });
+    const glow = look.glow?.Grey;
+    // 發光色打 HORDE_GLOW 折：整片黏土平面著色、沒有名冊老鼠模型的暗部，同樣的發光強度會整群洗成白綠（截圖）
+    if (glow != null) { mat.emissive.setHex(glow).multiplyScalar(HORDE_GLOW); if (ctx?.quality !== 'low') ctx?.glow?.add(mat); }
+    const mesh = new THREE.InstancedMesh(ratGeometry(THREE), mat, n);
+    mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
+    const rates = spots.map(s => 2.2 + 1.6 * (s.phase / (Math.PI * 2)));   // 亂竄的角頻率（各不同）
+    const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
+    let t = Infinity, dur = 0, age = 0;
+    const pose = () => {
+      const k = t === Infinity ? 1 : Math.min(1, t / dur), s = k * k * (3 - 2 * k);
+      for (let i = 0; i < n; i++) {
+        const sp = spots[i], { phase } = sp, a = age * rates[i] + phase, jig = (sp.jig ?? HORDE_SCURRY) * s;
+        const at = s < 1 ? hordeAt(sp, s) : sp.to, ahead = s < 1 ? hordeAt(sp, Math.min(1, s + 0.02)) : null;
+        const heading = ahead && (ahead.x !== at.x || ahead.z !== at.z) ? Math.atan2(ahead.x - at.x, ahead.z - at.z) : sp.yaw;
+        p.set(at.x + jig * Math.sin(a), at.y, at.z + jig * Math.sin(a * 1.37 + phase));
+        q.setFromAxisAngle(Y, heading + 0.5 * Math.sin(a * 0.8) * s);
+        mesh.setMatrixAt(i, m4.compose(p, q, one));
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    object.userData.rush = d => { t = d > 0 ? 0 : Infinity; dur = d; pose(); };
+    object.userData.finish = () => { t = Infinity; pose(); };
+    // hordeSpots 是純函式、看不到建築（計畫 21 整支審稿：整島鼠群十幾隻埋在建築裡）。place(nav)：收尾一開演（live、跳過都叫，finale.js placeHorde）
+    // 把落在建築裡（nav.walkable 不成立：外擴後的 footprint）的目的地挪到 PLACE_MAX 內、同一個區域（HORDE_ZONES）、離已經放好的 ≥ PLACE_GAP 的最近可走點
+    // （一圈一圈找）；找不到就取 nav.nearestWalkable。朝向重算
+    object.userData.place = nav => {
+      let moved = 0;
+      spots.forEach((sp, i) => {
+        if (nav.walkable(sp.to.x, sp.to.z)) return;
+        const zone = HORDE_ZONES[sp.zone], others = spots.filter((o, j) => j !== i);
+        const ok = (x, z) => nav.walkable(x, z) && (!zone || inHordeZone(zone, { x, z })) && others.every(o => Math.hypot(o.to.x - x, o.to.z - z) >= PLACE_GAP);
+        let to = null;
+        for (let r = PLACE_STEP; !to && r <= PLACE_MAX + 1e-9; r += PLACE_STEP) for (let k = 0; k < 16 && !to; k++) {
+          const a = k / 16 * Math.PI * 2, x = sp.to.x + Math.cos(a) * r, z = sp.to.z + Math.sin(a) * r;
+          if (ok(x, z)) to = { x, y: nav.groundY(x, z), z };
+        }
+        to ??= nav.nearestWalkable(sp.to);
+        sp.to = { x: to.x, y: to.y ?? sp.to.y, z: to.z }; sp.yaw = arriveYaw(sp); moved++;
+      });
+      pose();
+      return moved;
+    };
+    object.userData.targets = () => spots.map(sp => ({ ...sp.to }));
+    pose();
+    return {
+      object,
+      update(dt) { age += dt; if (t !== Infinity) { t += dt; if (t >= dur) t = Infinity; } pose(); },
+      dispose() { if (glow != null) ctx?.glow?.remove(mat); mesh.geometry.dispose(); mat.dispose(); mesh.dispose?.(); },
+    };
+  },
   // 小 UFO：銀色碟 + 綠色底光，在原地小圓盤旋、上下飄
   ufo(THREE, spec, ctx) {
     const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: UFO_PARTS }), object = new THREE.Group(); object.add(part.object);

@@ -407,11 +407,12 @@ const STATION_A = Math.atan2(AT.z, AT.x);
 //   （test/token.test.js 繞環 8 個位置量）
 const SWAP_IN = 0.6, SWAP_BOOST = 9, SWAP_STOP = 1.2, SWAP_MIN = 2.6;
 const POST_MIN = 0.9;   // Lv2：島民走到崗位那拍至少幾秒（R41 最終審稿，見 Lv2 劇本；之後 ♪ 0.6、LEVEL UP 1.0，整級 ≥ 2.65）
-function trainSwap(e, ctx, move) {
+// 計畫 23（R47 第三版同批）：站務員在 Lv5、Lv6、Lv9 都喊「！」太多——shout false 不喊（Lv6 高鐵只跳）；拍長由 wait(SWAP_MIN)／trainStop 決定，不受影響
+function trainSwap(e, ctx, move, { shout = true } = {}) {
   const { B } = ctx, st = staffOf();
   return [
     B.together([
-      B.bubble(st, '！', 0.6), B.wait(SWAP_MIN),
+      ...(shout ? [B.bubble(st, '！', 0.6)] : []), B.wait(SWAP_MIN),
       B.trainStop({ at: STATION_A, arrive: SWAP_IN, boost: SWAP_BOOST, stop: SWAP_STOP, back: Math.PI / 2, during: [
         B.together([B.apply(e), B.bubble(B.trainHead(ctx), '♪', 0.7), B.gesture(st, move, 0.7)]), B.levelUp('token'),
       ] }),
@@ -464,9 +465,9 @@ export const script = {
     // 五節（修正批次 fix3 §C，使用者 2026-11-01「列車升級時建議先讓列車開到相機前停留，然後升級，再啟動列車」）：
     //   站務員 ！、列車同時趕到站前（車頭停在站前島緣、鏡頭這一側）→ 停 1.2 秒：停著的時候換成 5 節、車頭 ♪、站務員揮手 →
     //   列車自己加速開走、LEVEL UP。見 trainSwap
-    5: (e, s, ctx) => trainSwap(e, ctx, 'wave'),
-    // 高鐵：同五節，換成白底橘線的高鐵、站務員跳起來
-    6: (e, s, ctx) => trainSwap(e, ctx, 'jump'),
+    5: (e, s, ctx) => trainSwap(e, ctx, 'wave', { shout: true }),
+    // 高鐵：同五節，換成白底橘線的高鐵、站務員跳起來（計畫 23：不喊「！」，只跳）
+    6: (e, s, ctx) => trainSwap(e, ctx, 'jump', { shout: false }),
     // ◆ 通車到離島：鏡頭到風車島（zoom 0.8）→ 兩條支線從環上長出去，同時列車趕到支線入口（最多 4.5 倍、減速停進入口）→ 開進支線、
     //   到風車島那頭停一下 → 鏡頭回全景定格，看著列車倒回環上、緩緩開走 → LEVEL UP（遊樂場島的支線同時長好，接駁車 Lv8 才來）。
     //   風車島的支線（約 2.96 公尺）0.6 秒長完、每秒約 4.9 公尺；列車在支線上照 smoothstep 緩起緩停（SPUR_RUSH 4.2 → 開出去 0.70 秒，

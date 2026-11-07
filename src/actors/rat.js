@@ -3,7 +3,7 @@
 // → ◆ Lv4 分岔＝最終型態（引擎的 ratBranch；原本的 Lv4 分岔＋Lv5 最終型態併成一級）：
 //   賽博＝機器鼠排隊跟偵防師走到 101 腳下變身、軍團 ARMY_N 隻繞 101、一隻戴王冠坐在捷運站頂；
 //   外星（壞結局「變異鼠稱王」）＝變異鼠三眼綠光加冕、石堆島綠光圈（satellites.js）、小 UFO 盤旋。
-// 颱風把老鼠沖進大巨蛋：GROW_TO 隻在巨蛋門口晃。模型用 Quaternius Easy Enemies 的 Rat。
+// 颱風把老鼠沖進大巨蛋：GROW_TO 隻在巨蛋門口晃，型態照舊（R47 改版：變異鼠、機器鼠不退化成普通鼠）；鼠災收尾 DOME_N 隻。模型用 Quaternius Easy Enemies 的 Rat。
 // 老鼠當指標（唯一正解 §5.2）：Lv1 一隻、Lv2 一窩在舞台結算的 meta.trouble 那棟門口晃（沒有 trouble 才在窩旁）；放下那回合有 trouble 就跑過去聞一聞。
 // 全部老鼠是同一個名冊 rat.pack（§5.2：同一批老鼠上岸、生窩、上車、變身，不重生）；石堆小島上的兩隻是 satellites.js 的 rats 零件；
 // 站頂的王冠鼠是零件（kind 'king'，不走路、不進名冊）。人數預算：名冊最多 ARMY_N 隻＋王冠鼠（骨架動畫 ≤ 12，含柴犬）；
@@ -23,15 +23,12 @@ import { compile } from '../rules/conditions.js';
 import { trainCars, GAP, TRACK, DECK_AT, PLATFORM } from './token.js';
 import { modelExtras } from '../show/roster.js';
 import { body as towerBody, shipTop } from './tower.js';
-import { MAIN_CELLS, axialToWorld, cellAt, cellTop } from '../scene/hex.js';
-import { mulberry32 } from '../scene/random.js';
-import { mergeGeometries } from '../../vendor/three/addons/utils/BufferGeometryUtils.js';
 
 export const id = 'rat';
 export const labelY = 0.6;
 const RAT = 'quat/enemies/Rat.glb', GREY = { Grey: 0xc0c8d0 };
 const AT = anchorWorld('rat'), TOWER = anchorWorld('tower'), SPRING = landmarkWorld('spring'), DOME = anchorWorld('baseball');
-export const GATE = offset(DOME, 0, 1.1);          // 巨蛋門口（鼠災時老鼠在這裡晃；R47 鼠災收尾的鼠群從這裡湧出來，finale.js）
+export const GATE = offset(DOME, 0, 1.1);          // 巨蛋門口（鼠災時老鼠在這裡晃；R47 鼠災收尾補的老鼠從這裡冒出來，finale.js）
 export const MUTANT = offset(SPRING, 0.1, 0.97, 0.05);  // 變異鼠站的溫泉邊：池子正前方（靠鏡頭）；原本 (−0.75, 0.55) 離木牌只有 0.22，錄影裡疊在一起（2026-10-27）；
 // 牠在這裡時兩位溫泉客泡在池裡（池心半徑 0.3，計畫 13），離牠 0.73，不換位置
 const PARK = offset(anchorWorld('chip'), -0.5, 1.2);   // 園區門口（賽博 Lv4 補進軍團的機器鼠從這裡走出來）
@@ -79,47 +76,24 @@ export const UFO_PARTS = [
   { kind: 'sphere', pos: [0, -0.06, 0], scale: [0.35, 0.12, 0.35], color: C.alien, glow: C.alien },
 ];
 
-// ── R47 鼠災收尾（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）──
-// 大巨蛋鼠災的收尾（flags.epilogue 'domeRats'）多一個鼠群零件 rat.plague：PLAGUE_N 隻低多邊形黏土老鼠，一個 InstancedMesh（一個 draw call，
-// 沒有骨骼、不進名冊、不算人數）。每隻有自己的出發點（巨蛋門口 GATE 周圍半徑 PLAGUE_FROM 一圈）、目的地（七個主格的地面：格心半徑 PLAGUE_R 之間，
-// 照格子輪流分，每格 6–7 隻；離 101 底座中心 ≥ TOWER_CLEAR（底座 1.6 見方，角在 1.13）、離球場中心 ≥ DOME_CLEAR（巨蛋 footprint 是 2.3 × 1.9 的橢圓，
-// 設計寫 ≥ 1.0，放到 1.3 才不會站進巨蛋裡）、彼此 ≥ PLAGUE_GAP）、朝向（從門口往目的地）、抖動相位。固定種子亂數：每次載入一樣
-// 修正輪 1（協調者裁決，使用者要「整島都是老鼠」、截圖看起來只是小點）：48 → 96 隻（每格 13–14 隻，還是一個 draw call）、每隻放大 PLAGUE_SCALE 1.4 倍；
-// 彼此間距 0.3 → 0.35（身體長 0.31）
-export const PLAGUE_N = 96, PLAGUE_SCALE = 1.4;
-const PLAGUE_R = [0.6, 2.0], PLAGUE_FROM = [0.3, 0.6], TOWER_CLEAR = 1.2, DOME_CLEAR = 1.3, PLAGUE_GAP = 0.35;
-const flatDist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-export function plagueSpots(seed = 7) {
-  const rnd = mulberry32(seed), spots = [];
-  for (let i = 0; i < PLAGUE_N; i++) {
-    const cell = MAIN_CELLS[i % MAIN_CELLS.length], c = axialToWorld(...cell), y = cellTop(cell);
-    let to = null;
-    for (let tries = 0; tries < 500 && !to; tries++) {
-      const a = rnd() * Math.PI * 2, r = PLAGUE_R[0] + rnd() * (PLAGUE_R[1] - PLAGUE_R[0]), p = { x: c.x + Math.cos(a) * r, y, z: c.z + Math.sin(a) * r };
-      if (flatDist(p, TOWER) < TOWER_CLEAR || flatDist(p, DOME) < DOME_CLEAR || !cellAt(p.x, p.z) || spots.some(s => flatDist(s.to, p) < PLAGUE_GAP)) continue;
-      to = p;
-    }
-    if (!to) throw new Error(`plagueSpots: no room for rat ${i} on cell ${cell}`);
-    const a = rnd() * Math.PI * 2, r = PLAGUE_FROM[0] + rnd() * (PLAGUE_FROM[1] - PLAGUE_FROM[0]);
-    const from = { x: GATE.x + Math.cos(a) * r, y: GATE.y, z: GATE.z + Math.sin(a) * r };
-    spots.push({ from, to, yaw: Math.atan2(to.x - from.x, to.z - from.z), phase: rnd() * Math.PI * 2 });
-  }
-  return spots;
-}
-// 一隻老鼠（局部 +z 是頭）：身體橢球 0.16 × 0.1 × 0.22、頭球 0.08（前面、略低）、兩個小耳朵、尾巴（細圓柱往後拖、尾端微翹），整隻 × PLAGUE_SCALE。
-// 牠在原地亂竄的幅度 SCURRY（±0.15）、跑過去時的拋物線高度（每公尺 HOP_PER_M，從門口跳過水道、爬上台地格不穿地）
-export const PLAGUE_COLOR = 0x6b5b53, SCURRY = 0.15;
-const HOP_PER_M = 0.05;
-const PLACE_MAX = 0.6, PLACE_STEP = 0.05, PLACE_GAP = 0.3;   // place(nav)：挪開建築最遠幾公尺、一圈多寬、彼此至少多遠
-function ratGeometry(THREE) {
-  const geos = [
-    new THREE.SphereGeometry(0.5, 8, 6).scale(0.16, 0.1, 0.22).translate(0, 0.05, 0),
-    new THREE.SphereGeometry(0.04, 7, 5).translate(0, 0.06, 0.12),
-    new THREE.SphereGeometry(0.018, 5, 4).translate(-0.025, 0.1, 0.1), new THREE.SphereGeometry(0.018, 5, 4).translate(0.025, 0.1, 0.1),
-    new THREE.CylinderGeometry(0.006, 0.012, 0.16, 5).rotateX(Math.PI / 2 - 0.25).translate(0, 0.06, -0.18),
-  ];
-  const geo = mergeGeometries(geos).scale(PLAGUE_SCALE, PLAGUE_SCALE, PLAGUE_SCALE); geos.forEach(g => g.dispose());
-  return geo;
+// ── R47 鼠災收尾（2026-11-07 改版）──
+// 使用者 2026-11-07：「鼠災收尾莫名其妙。我覺得問題在於老鼠變異後下一級又變回老鼠，變異老鼠意義不明。另外全島老鼠的效果太噁心，建議收回。」
+// → 第一版的整島鼠群（rat.plague，InstancedMesh 96 隻）整段收回；鼠災只在大巨蛋門口演，老鼠維持型態（packModel）。
+// 收尾（flags.epilogue 'domeRats'）門口的鼠群補到 DOME_N 隻（骨架動畫 ≤ 12：DOME_N＋石堆島兩隻＋柴犬），站在門外扇形 GATE_FAN：
+// 內排四隻離門口 0.6（±20°、±60°）、外排兩隻 0.9（±40°），都在朝鏡頭那側 ±60° 內、彼此 ≥ 0.39，面朝外。門口往鏡頭那側
+// 只剩一小塊走得到（巨蛋格的南角，離門口 1.2 就是格邊），這六點是那一塊裡離可走邊緣 ≥ 0.15、彼此最分得開的對稱擺法。
+// finale.js 的收尾劇本讓牠們從門口衝到這裡（補的四隻從門口冒出來），跳過、截圖直接站好
+export const DOME_N = 6;
+export const GATE_FAN = [[-20, 0.6], [20, 0.6], [-60, 0.6], [60, 0.6], [-40, 0.9], [40, 0.9]].map(([deg, r]) => {
+  const a = deg * Math.PI / 180;
+  return { ...offset(GATE, Math.sin(a) * r, Math.cos(a) * r), yaw: a };
+});
+// 老鼠當下的型態（鼠災也照畫，不再退化成普通鼠）：Lv4 外星＝綠色發光三眼（同外星收尾的鼠群 rat.swarm）、賽博＝灰色帶天線（同機器鼠軍團）；
+// 不戴王冠、一般大小。其餘（Lv3 以下、分岔旗標還沒到）普通鼠
+export function packModel(lv, flags) {
+  if (lv.rat >= 4 && flags.ratBranch === 'alien') return { tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true };
+  if (lv.rat >= 4 && flags.ratBranch === 'cyber') return { tint: GREY, antenna: true };
+  return {};
 }
 
 // 依序判定；分岔旗標還沒到（同一回合稍晚的事件）時退回泡溫泉／搭捷運
@@ -172,71 +146,14 @@ export function view(lv, flags, meta) {
       else v['rat.ufo'] = { kind: 'ufo', at: offset(MUTANT, 0, 0, 1.3), footprint: false };
       return v;
     }
-    case 'dome': {
-      const v = { 'rat.pack': pack(GATE, GROW_TO, wander(GATE, 0.9)) };
-      // R47（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：收尾時整島撒滿鼠群（零件 at 在原點，spots 都是世界座標）
-      if (flags.epilogue === 'domeRats') v['rat.plague'] = { kind: 'plague', at: { x: 0, y: 0, z: 0 }, spots: plagueSpots(), footprint: false, shadow: false };
-      return v;
-    }
+    // 鼠災（颱風把老鼠沖進大巨蛋）：老鼠照當下的型態（packModel，R47 改版）在門口晃；收尾時 DOME_N 隻站在門外扇形（GATE_FAN）
+    case 'dome': return {
+      'rat.pack': flags.epilogue === 'domeRats' ? pack(GATE, DOME_N, { kind: 'stand', spots: GATE_FAN }, packModel(lv, flags)) : pack(GATE, GROW_TO, wander(GATE, 0.9), packModel(lv, flags)),
+    };
   }
 }
 
 export const builders = {
-  // R47 鼠群（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：一個 InstancedMesh、spec.spots 一隻一個實例，黏土色、平面著色、不投影。
-  // object.userData.rush(dur)：時鐘歸零、dur 秒內每隻沿自己的直線從 from 跑到 to（smoothstep，水平；高度多一段小拋物線），頭朝前進方向；
-  // 到了就原地小步亂竄（±SCURRY、各自的相位與週期，頭跟著微轉；跑的時候亂竄照 smoothstep 淡入，到站不跳）。finish()：跳到終態。
-  // 建好就是終態（全部在 to、亂竄中）：跳過、截圖、舞台重建零件直接看到撒滿島的老鼠。?quality=low 照畫（一個 draw call）
-  plague(THREE, spec) {
-    const spots = spec.spots.map(sp => ({ ...sp, to: { ...sp.to } })), n = spots.length, object = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: PLAGUE_COLOR, roughness: 0.85, metalness: 0, flatShading: true });
-    const mesh = new THREE.InstancedMesh(ratGeometry(THREE), mat, n);
-    mesh.castShadow = mesh.receiveShadow = false; mesh.frustumCulled = false; object.add(mesh);
-    const lengths = spots.map(s => Math.hypot(s.to.x - s.from.x, s.to.z - s.from.z));
-    const rates = spots.map(s => 2.2 + 1.6 * (s.phase / (Math.PI * 2)));   // 亂竄的角頻率（各不同）
-    const m4 = new THREE.Matrix4(), p = new THREE.Vector3(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), Y = new THREE.Vector3(0, 1, 0);
-    let t = Infinity, dur = 0, age = 0;
-    const pose = () => {
-      const k = t === Infinity ? 1 : Math.min(1, t / dur), s = k * k * (3 - 2 * k);
-      for (let i = 0; i < n; i++) {
-        const { from, to, yaw, phase } = spots[i], w = rates[i], a = age * w + phase;
-        const jx = SCURRY * Math.sin(a) * s, jz = SCURRY * Math.sin(a * 1.37 + phase) * s;
-        p.set(from.x + (to.x - from.x) * s + jx, from.y + (to.y - from.y) * s + HOP_PER_M * lengths[i] * 4 * k * (1 - k), from.z + (to.z - from.z) * s + jz);
-        q.setFromAxisAngle(Y, yaw + 0.5 * Math.sin(a * 0.8) * s);
-        mesh.setMatrixAt(i, m4.compose(p, q, one));
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-    };
-    object.userData.rush = d => { t = d > 0 ? 0 : Infinity; dur = d; pose(); };
-    object.userData.finish = () => { t = Infinity; pose(); };
-    // 整支審稿（R47）：plagueSpots 是純函式、看不到建築——十幾隻落在 101 底座旁、火山錐裡、隕石掉進的溫泉池裡，被埋掉。
-    // place(nav)：收尾一開演（live、跳過都叫，finale.js placePlague）把落在建築裡（nav.walkable 不成立：外擴後的 footprint）的目的地
-    // 挪到 PLACE_MAX 內、同一格、離已經放好的 ≥ PLACE_GAP 的最近可走點（一圈一圈找）；找不到就取 nav.nearestWalkable。朝向重算
-    object.userData.place = nav => {
-      let moved = 0;
-      spots.forEach((sp, i) => {
-        if (nav.walkable(sp.to.x, sp.to.z)) return;
-        const cell = String(cellAt(sp.to.x, sp.to.z)), others = spots.filter((o, j) => j !== i);
-        const ok = (x, z) => nav.walkable(x, z) && String(cellAt(x, z)) === cell && others.every(o => Math.hypot(o.to.x - x, o.to.z - z) >= PLACE_GAP);
-        let to = null;
-        for (let r = PLACE_STEP; !to && r <= PLACE_MAX + 1e-9; r += PLACE_STEP) for (let k = 0; k < 16 && !to; k++) {
-          const a = k / 16 * Math.PI * 2, x = sp.to.x + Math.cos(a) * r, z = sp.to.z + Math.sin(a) * r;
-          if (ok(x, z)) to = { x, y: nav.groundY(x, z), z };
-        }
-        to ??= nav.nearestWalkable(sp.to);
-        sp.to = { x: to.x, y: to.y ?? sp.to.y, z: to.z }; sp.yaw = Math.atan2(sp.to.x - sp.from.x, sp.to.z - sp.from.z);
-        lengths[i] = Math.hypot(sp.to.x - sp.from.x, sp.to.z - sp.from.z); moved++;
-      });
-      pose();
-      return moved;
-    };
-    object.userData.targets = () => spots.map(sp => ({ ...sp.to }));
-    pose();
-    return {
-      object,
-      update(dt) { age += dt; if (t !== Infinity) { t += dt; if (t >= dur) t = Infinity; } pose(); },
-      dispose() { mesh.geometry.dispose(); mat.dispose(); mesh.dispose?.(); },
-    };
-  },
   // 小 UFO：銀色碟 + 綠色底光，在原地小圓盤旋、上下飄
   ufo(THREE, spec, ctx) {
     const part = ctx.build({ kind: 'compound', at: { x: 0, y: 0, z: 0 }, parts: UFO_PARTS }), object = new THREE.Group(); object.add(part.object);

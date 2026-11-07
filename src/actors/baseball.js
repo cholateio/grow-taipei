@@ -98,6 +98,19 @@ const ARC = arc(AT, 6), ORDER = [2, 3, 1, 4, 0, 5];
 export const crowdN = n => (n >= 7 ? 5 : n >= 5 ? 4 : n >= 4 ? 3 : 0);
 // 第 i 個觀眾的站位（i 依加入的順序）
 export const fanSpots = n => ORDER.slice(0, n).map(k => ARC[k]);
+// ── R47 鼠災收尾（2026-11-07 改版；使用者 2026-11-07：「鼠災收尾莫名其妙…變異老鼠意義不明…全島老鼠的效果太噁心，建議收回」）──
+// 老鼠從門口湧出來（rat.js GATE_FAN），球迷、球員往左右兩側跑到門外 FLEE_SPOTS（離門口 1.3–1.6），收尾的家就在那裡（跳過也一樣）。
+// 左右各四個（相對門口；左右不完全對稱：門口往鏡頭那側只剩格子南角一小塊走得到，兩側的空地沿巨蛋的弧往後延伸）。
+// 每個人一個點、不交叉：觀眾照他在門前弧線上的位置（ARC k）分、球員分到兩側第三個（他們本來就在門口兩旁）；Lv7 五個觀眾、Lv8 三個觀眾＋兩個坐新線來的都排得下
+const GATE0 = offset(AT, 0, 1.1);   // 同下面的 GATE（巨蛋門口）
+const FLEE_SIDE = [[1.3, 0.22], [1.59, -0.02], [1.5, -0.4], [1.4, -0.75]];
+export const FLEE_SPOTS = [-1, 1].flatMap(k => FLEE_SIDE.map(([x, z]) => {
+  const p = offset(GATE0, k * x, z);
+  return { ...p, yaw: Math.atan2(GATE0.x - p.x, GATE0.z - p.z) };   // 回頭看門口的老鼠
+}));
+const L = i => FLEE_SPOTS[i], R = i => FLEE_SPOTS[FLEE_SIDE.length + i];
+const ARC_FLEE = [L(3), L(1), L(0), R(0), R(1), R(3)], PLAYER_FLEE = [L(2), R(2)];
+const fleeFans = ks => ks.map(k => ARC_FLEE[k]);
 
 // ── 巨蛋捷運站（Lv8）：環狀線往巨蛋門口方位（徑向）的那一點停車；一座高架月台從軌道邊接到球場格西南的格邊，
 // 再一條磚道接到門口。觀眾從列車下來（月台靠軌道那頭）、沿月台走上岸、走到門口 ──
@@ -203,14 +216,16 @@ export function view(lv, flags = {}) {
     { kind: 'cylinder', pos: [0, 0.045, 0], scale: [2.6, 0.05, 2.3], color: POOL },
   ] };
   // 球員：Lv1 一個（放置時從看台後方的格邊進場跑壘，之後站在本壘前），Lv2 起兩個傳接球；淹水時站上屋頂（不傳球）
+  // R47 鼠災收尾：球迷、球員的家搬到門外兩側（FLEE_SPOTS；finale.js 的收尾劇本讓他們跑過去，同珍奶老闆的家搬到船上）
+  const fled = flags.epilogue === 'domeRats';
   v['baseball.players'] = { kind: 'roster', at, n: n >= 2 ? 2 : 1, accessory: 'cap', shirt: [C.white, C.navy],
-    home: flood && n >= 2 ? { kind: 'stand', spots: roofSpots(at, n), entry: PLAYER_ENTRY } : { kind: 'stand', spots: players(at), rescue: true, entry: PLAYER_ENTRY } };
+    home: flood && n >= 2 ? { kind: 'stand', spots: roofSpots(at, n), entry: PLAYER_ENTRY } : { kind: 'stand', spots: fled ? PLAYER_FLEE : players(at), rescue: true, entry: PLAYER_ENTRY } };
   if (n >= 2) {
     if (!flood) v['baseball.ball'] = { kind: 'ball', at, from: [-0.4, 1.05], to: [0.4, 1.05], footprint: false };
     // 觀眾：Lv8 兩個是坐新線來的（baseball.riders），門口的名冊留前三個人
     const fans = n >= 8 ? 3 : crowdN(n);
-    if (fans) v['baseball.crowd'] = { kind: 'roster', at, n: fans, shirt: SHIRTS, home: { kind: 'stand', spots: fanSpots(fans), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
-    if (n >= 8) v['baseball.riders'] = { kind: 'roster', at, n: 2, shirt: SHIRTS.slice(5), home: { kind: 'stand', spots: RIDER_SPOTS, fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
+    if (fans) v['baseball.crowd'] = { kind: 'roster', at, n: fans, shirt: SHIRTS, home: { kind: 'stand', spots: fled ? fleeFans(ORDER.slice(0, fans)) : fanSpots(fans), fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
+    if (n >= 8) v['baseball.riders'] = { kind: 'roster', at, n: 2, shirt: SHIRTS.slice(5), home: { kind: 'stand', spots: fled ? fleeFans(ORDER.slice(3, 5)) : RIDER_SPOTS, fidget: 'jump', rescue: true, entry: CROWD_ENTRY } };
     // 演唱會起多一個觀眾在巨蛋東北邊的草皮散步（§14.3）；從月台走來
     if (n >= 5) v['baseball.lawn'] = { kind: 'roster', at: LAWN, n: 1, shirt: SHIRTS.slice(4), home: { kind: 'wander', at: LAWN, r: LAWN_R, entry: CROWD_ENTRY } };
   }

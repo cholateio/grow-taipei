@@ -66,8 +66,7 @@ export function view(lv, flags = {}) {
     // 雨不是建築：出現時只亮、不長（stage.js growsOn）——放下劇本裡大家等雨亮完才出發去躲，躲進門的那一刻沒有東西在閃
     v['typhoon.rain'] = { kind: 'rain', at: { x: 0, y: 0, z: 0 }, footprint: false };
     // 外送機車：純點綴（規則裡沒有外送 +1，協調者裁決）——珍奶噴泉廣場以上（≥4）颱風天有人騎車送；只有攤車（≤1，計畫 14）會被吹走，人龍、珍奶店有人顧著
-    // R47 修正輪 1（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：鼠災收尾整島都躲進門了，外送員也不再繞中心格（finale.js 鼠群出來那一拍縮掉）
-    if (lv.boba >= 4 && flags.epilogue !== 'domeRats') v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
+    if (lv.boba >= 4) v['typhoon.scooter'] = { kind: 'scooter', at: { x: 0, y: TOP, z: 0 }, footprint: false };
     return v;
   }
   // 彩虹：細環（rail）半截沉在水下，立在台地後面當背景，不擋住火山。自己一個零件（雲散了沒有 main）：Lv3 劇本讓它從台地後升起

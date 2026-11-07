@@ -7,7 +7,7 @@ import * as sat from '../src/actors/satellites.js';
 import * as landmarks from '../src/actors/landmarks.js';
 import { TRACK, RIDE_Y } from '../src/actors/token.js';
 import { anchorWorld, landmarkWorld } from '../src/actors/anchors.js';
-import { offset } from '../src/actors/palette.js';
+import { offset, C } from '../src/actors/palette.js';
 import { cellAt } from '../src/scene/hex.js';
 import { lv } from './helpers/actors.js';
 import { createPartFactory } from '../src/actors/parts.js';
@@ -865,74 +865,47 @@ test('◆ Lv4 alien in the real turn (the mutant starts by the spring, FAR_TROUB
   assert.ok(ev && ev.key && ev.live >= 4.5 && ev.live <= KEY_MAX, `turn ${ev?.turn}: ◆ Lv4 ${ev?.live.toFixed(2)} s`);
 });
 
-// ── R47 鼠災收尾：整島都是老鼠（使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）──
-// rat.plague：一個 InstancedMesh、PLAGUE_N 隻，從巨蛋門口跑到七個主格的地面；建好就是終態
-import { MAIN_CELLS, axialToWorld, cellTop } from '../src/scene/hex.js';
-const DOME0 = anchorWorld('baseball');
+// ── R47 改版（2026-11-07）：鼠災只在大巨蛋、老鼠維持型態 ──
+// 使用者 2026-11-07：「鼠災收尾莫名其妙。我覺得問題在於老鼠變異後下一級又變回老鼠，變異老鼠意義不明。另外全島老鼠的效果太噁心，建議收回。」
 const flatD = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
-test('R47 plagueSpots: PLAGUE_N rats from a ring 0.3–0.6 round the dome gate to the ground of all seven main cells (radius 0.6–2.0, clear of the 101 plinth ≥ 1.2 and the ballpark ≥ 1.0), fixed seed', () => {
-  const spots = rat.plagueSpots();
-  assert.equal(rat.PLAGUE_N, 96, 'fix round 1: 48 → 96 (still one draw call, ~14 a cell)');
-  assert.equal(spots.length, rat.PLAGUE_N);
-  assert.deepEqual(rat.plagueSpots(), spots, 'fixed seed: the same every time');
-  const perCell = new Map();
-  for (const [i, s] of spots.entries()) {
-    const cell = cellAt(s.to.x, s.to.z);
-    assert.ok(cell, `rat ${i} lands on a main cell`);
-    const c = axialToWorld(...cell), r = flatD(s.to, c);
-    assert.ok(r >= 0.6 - 1e-9 && r <= 2.0 + 1e-9, `rat ${i}: ${r.toFixed(2)} from its cell centre`);
-    assert.ok(Math.abs(s.to.y - cellTop(cell)) < 1e-9, `rat ${i} on the ground`);
-    assert.ok(flatD(s.to, TOWER) >= 1.2, `rat ${i} clear of 101 (${flatD(s.to, TOWER).toFixed(2)})`);
-    assert.ok(flatD(s.to, DOME0) >= 1.0, `rat ${i} clear of the ballpark (${flatD(s.to, DOME0).toFixed(2)})`);
-    const g = flatD(s.from, GATE);
-    assert.ok(g >= 0.3 - 1e-9 && g <= 0.6 + 1e-9, `rat ${i} starts by the gate (${g.toFixed(2)})`);
-    assert.ok(Number.isFinite(s.yaw) && Number.isFinite(s.phase));
-    perCell.set(String(cell), (perCell.get(String(cell)) ?? 0) + 1);
-  }
-  assert.equal(perCell.size, MAIN_CELLS.length, 'all seven cells');
-  const lo = Math.floor(rat.PLAGUE_N / MAIN_CELLS.length), hi = Math.ceil(rat.PLAGUE_N / MAIN_CELLS.length);
-  for (const [cell, n] of perCell) assert.ok(n >= lo && n <= hi, `cell ${cell}: ${n} rats`);
-  // 修正輪 1：放大 1.4 倍之後彼此還是分得開（身體長 0.31）
-  for (let i = 0; i < spots.length; i++) for (let j = i + 1; j < spots.length; j++) assert.ok(flatD(spots[i].to, spots[j].to) >= 0.35 - 1e-9, `rats ${i}, ${j} apart`);
+test('R47 rev packModel: Lv4 alien → green glowing three-eyed (the swarm look), Lv4 cyber → grey with an antenna, otherwise a plain rat; no crown, normal size', () => {
+  assert.deepEqual(rat.packModel(lv({ rat: 4 }), { ratBranch: 'alien' }), { tint: { Grey: C.alien }, glow: { Grey: C.alien }, eye: true });
+  assert.deepEqual(rat.packModel(lv({ rat: 4 }), { ratBranch: 'cyber' }), { tint: { Grey: 0xc0c8d0 }, antenna: true });
+  for (const [l, f] of [[{ rat: 3 }, {}], [{ rat: 3 }, { ratBranch: 'alien' }], [{ rat: 4 }, {}], [{ rat: 2 }, { ratBranch: 'cyber' }]]) assert.deepEqual(rat.packModel(lv(l), f), {}, JSON.stringify([l, f]));
+  // 同外星收尾的鼠群 rat.swarm（不戴王冠、一般大小）
+  assert.deepEqual(rat.packModel(lv({ rat: 4 }), { ratBranch: 'alien' }), (({ path, h, anim, ...rest }) => rest)(rat.view(lv({ rat: 4 }), { ratBranch: 'alien', epilogue: 'alien' })['rat.swarm'].model));
 });
-test('R47 view: rat.plague only in the domeRats epilogue (one part, no footprint, no shadow)', () => {
-  const v = rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, missile: 'deflect', epilogue: 'domeRats' });
-  const p = v['rat.plague'];
-  assert.ok(p, 'the plague'); assert.equal(p.kind, 'plague'); assert.deepEqual(p.at, { x: 0, y: 0, z: 0 });
-  assert.equal(p.footprint, false); assert.equal(p.shadow, false);
-  assert.deepEqual(p.spots, rat.plagueSpots());
-  assert.ok(v['rat.pack'], 'the two roster rats stay');
-  for (const flags of [{ domeRats: true }, { domeRats: true, missile: 'deflect' }, { ratBranch: 'alien', epilogue: 'alien', missile: 'deflect' }, {}]) {
-    assert.equal(rat.view(lv({ rat: 4, baseball: 8 }), flags)['rat.plague'], undefined, JSON.stringify(flags));
+test('R47 rev dome mode: the gate rats keep their form (alien / cyber / plain), 2 of them in the game, DOME_N 6 standing on GATE_FAN in the domeRats epilogue; no plague part left', () => {
+  assert.equal(rat.DOME_N, 6);
+  for (const [l, f, want] of [[{ rat: 4 }, { ratBranch: 'alien', domeRats: true }, 'alien'], [{ rat: 4 }, { ratBranch: 'cyber', domeRats: true }, 'cyber'], [{ rat: 3 }, { domeRats: true }, 'plain'], [{ rat: 2 }, { domeRats: true }, 'plain']]) {
+    for (const epilogue of [undefined, 'domeRats']) {
+      const v = rat.view(lv(l), { ...f, epilogue }), p = v['rat.pack'], what = `${want} ${epilogue}`;
+      assert.equal(rat.ratMode(lv(l), f), 'dome', what);
+      assert.equal(p.model.h, 0.2, `${what}: normal size`); assert.equal(p.model.crown, undefined, `${what}: no crown`);
+      assert.equal(!!p.model.eye, want === 'alien', `${what}: eye`); assert.equal(!!p.model.antenna, want === 'cyber', `${what}: antenna`);
+      assert.deepEqual(p.model.glow, want === 'alien' ? { Grey: C.alien } : undefined, `${what}: glow`);
+      assert.equal(p.n, epilogue ? 6 : 2, `${what}: n`);
+      assert.deepEqual(p.home, epilogue ? { kind: 'stand', spots: rat.GATE_FAN } : { kind: 'wander', at: GATE, r: 0.9 }, `${what}: home`);
+      assert.equal(v['rat.plague'], undefined, `${what}: no plague part`);
+      assert.deepEqual(Object.keys(v), ['rat.pack'], `${what}: only the pack`);
+      // 骨架動畫 ≤ 11（再加柴犬 ≤ 12）：門口的鼠群＋石堆島的兩隻
+      const s = sat.view(lv(l), { ...f, epilogue }), anim = p.n + (s['sat.rocks']?.n ?? 0);
+      assert.ok(anim <= 11, `${what}: animated rats ${anim}`);
+    }
   }
+  for (const k of ['PLAGUE_N', 'PLAGUE_SCALE', 'plagueSpots', 'PLAGUE_COLOR', 'SCURRY']) assert.equal(rat[k], undefined, `${k} gone`);
+  assert.equal(rat.builders.plague, undefined, 'no plague builder');
 });
-test('R47 plague part: one InstancedMesh (one draw call, no shadow) of clay rats; built finished (every rat at its to); rush(1.2) restarts at the gate, half way after 0.3 s, home after 1.2 s; scurries ±0.15 in place; ?quality=low the same', () => {
-  const spec = rat.view(lv({ rat: 4, baseball: 8 }), { domeRats: true, epilogue: 'domeRats' })['rat.plague'], S = spec.spots;
-  for (const quality of ['high', 'low']) {
-    const f = createPartFactory(THREE, { glow: createGlowRegistry(), quality, builders: rat.builders });
-    const p = f.build(spec), meshes = [];
-    p.object.traverse(o => { if (o.isMesh) meshes.push(o); });
-    assert.equal(meshes.length, 1, `${quality}: one draw call`);
-    const [mesh] = meshes;
-    assert.ok(mesh.isInstancedMesh); assert.equal(mesh.count, rat.PLAGUE_N);
-    assert.equal(mesh.castShadow, false);
-    assert.equal(mesh.material.color.getHex(), 0x6b5b53);
-    // 修正輪 1：一隻 × 1.4（身體約 0.22 × 0.14 × 0.31）
-    mesh.geometry.computeBoundingBox(); const sz = mesh.geometry.boundingBox.getSize(new THREE.Vector3());
-    assert.ok(Math.abs(sz.x - 0.224) < 0.01 && sz.y > 0.14 && sz.y < 0.2 && sz.z > 0.45 && sz.z < 0.6, `${quality}: rat size ${sz.x.toFixed(3)} × ${sz.y.toFixed(3)} × ${sz.z.toFixed(3)} (with head and tail)`);
-    const m4 = new THREE.Matrix4(), v = new THREE.Vector3();
-    const at = i => { mesh.getMatrixAt(i, m4); return v.setFromMatrixPosition(m4).clone(); };
-    const progress = i => { const a = at(i), s = S[i], dx = s.to.x - s.from.x, dz = s.to.z - s.from.z; return ((a.x - s.from.x) * dx + (a.z - s.from.z) * dz) / (dx * dx + dz * dz); };
-    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} built at its to`);
-    p.update(0.5, 0.5);
-    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} scurries in place`);
-    p.object.userData.rush(1.2);
-    p.update(0, 0.5);
-    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].from) < 1e-6, `${quality}: rat ${i} back at the gate`);
-    p.update(0.3, 0.8);
-    for (const i of [0, 17, 47]) { const k = progress(i); assert.ok(k > 0.05 && k < 0.95, `${quality}: rat ${i} on its way (${k.toFixed(2)})`); }
-    for (let t = 0; t < 0.95; t += 1 / 30) p.update(1 / 30, 0.8 + t);
-    for (const i of [0, 17, 47]) assert.ok(flatD(at(i), S[i].to) <= 0.15 * Math.SQRT2 + 1e-6, `${quality}: rat ${i} arrived`);
-    p.dispose();
+test('R47 rev GATE_FAN: six spots outside the dome gate, 0.6–1.0 from GATE, within ±60° of the camera side, ≥ 0.3 apart, facing out, walkable', () => {
+  const nav = createNav();
+  assert.equal(rat.GATE_FAN.length, rat.DOME_N);
+  for (const [i, p] of rat.GATE_FAN.entries()) {
+    const dx = p.x - GATE.x, dz = p.z - GATE.z, r = Math.hypot(dx, dz), a = Math.atan2(dx, dz) * 180 / Math.PI;
+    assert.ok(r >= 0.6 - 1e-9 && r <= 1.0 + 1e-9, `spot ${i}: ${r.toFixed(2)} from the gate`);
+    assert.ok(Math.abs(a) <= 60 + 1e-9, `spot ${i}: ${a.toFixed(0)}°`);
+    assert.ok(Math.abs(p.yaw - Math.atan2(dx, dz)) < 1e-9, `spot ${i} faces out`);
+    assert.equal(p.y, GATE.y);
+    assert.ok(nav.walkable(p.x, p.z), `spot ${i} walkable`);
   }
+  for (let i = 0; i < rat.GATE_FAN.length; i++) for (let j = i + 1; j < rat.GATE_FAN.length; j++) assert.ok(flatD(rat.GATE_FAN[i], rat.GATE_FAN[j]) >= 0.3, `spots ${i}, ${j} apart`);
 });

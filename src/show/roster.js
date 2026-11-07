@@ -405,16 +405,14 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     else if (hurry) m.arriving = 'hurry';   // truthy 同 arriving；path（n 1）的人走到折線上最近的那一點（不是剛走進來的錯開點，見 onPath）
   }
   function accessory(m, acc) { if (!m.walker) return; m.walker.setAccessory(acc); glint(m); }
-  // stay（R47 鼠災收尾，使用者 2026-11-06：我理想中的鼠災是整島都是老鼠）：躲進門就不出來了——跳過、snap、showAll 都不放他出來
-  //   （終局最後一個回合：live 演完跟跳過的終態一樣，大家都躲在門裡）；show(m) 或 RESET（舞台重建名冊）才收掉
-  function hide(m, { stay = false } = {}) { m.hidden = true; if (stay) m.stay = true; place(m); }
-  function show(m) { m.hidden = false; m.stay = false; place(m); }
+  function hide(m) { m.hidden = true; place(m); }
+  function show(m) { m.hidden = false; place(m); }
   // 全部露出來：hidden 只在颱風放下劇本那一段有效（躲進門裡、comeOut 放出來），保險起見下一回合開始、跳過、RESET 都收掉。
   // walk（下一回合開始，計畫 3.8 Task 6）：躲著的人從藏起來的地方（門口）出來、用走路速度走回家（不閃）；
   // 不帶 walk（跳過、snap）只露出來，snap 自己會讓每個人瞬間到家
   function showAll({ walk = false } = {}) {
     for (const g of groups.values()) for (const m of g.members) {
-      if (!m.hidden || m.stay) continue;
+      if (!m.hidden) continue;
       show(m);
       if (!walk || m.mode !== 'home') continue;
       const kind = current(g)?.home?.kind;
@@ -431,7 +429,7 @@ export function createRoster(THREE, { people, assets, build = null, nav, blink =
     for (const g of groups.values()) {
       const spec = current(g); if (!spec) continue;
       for (const m of g.members) {
-        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = !!m.stay; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
+        m.mode = 'home'; m.trip = null; m.rest = pause(); m.hidden = false; m.glint = false; m.arriving = false; m.settled = null;   // 跳過：晚到的模型不再補閃
         m.cursor = null; m.waited = 0; setPose(m, { ...homePose(spec, m.i, m), walking: false });
       }
     }
